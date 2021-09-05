@@ -263,6 +263,10 @@ local function insertMode()
                     currCursorY = currCursorY - 1
                     if oldx ~= nil then
                         currCursorX = oldx
+                        while currCursorX > wid do
+                            currCursorX = currCursorX - 1
+                            currXOffset = currXOffset + 1
+                        end
                     end
                     if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
                         oldx = currCursorX + currXOffset
@@ -295,6 +299,10 @@ local function insertMode()
                     currCursorY = currCursorY + 1
                     if oldx ~= nil then
                         currCursorX = oldx
+                        while currCursorX > wid do
+                            currCursorX = currCursorX - 1
+                            currXOffset = currXOffset + 1
+                        end
                     end
                     if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
                         oldx = currCursorX + currXOffset
@@ -527,7 +535,7 @@ while running == true do
         if var1 == keys.left then
             if currCursorX + currXOffset ~= 1 then
                 currCursorX = currCursorX - 1
-                olddx = nil
+                olddx = currCursorX
                 if currCursorX < 1 then
                     currCursorX = currCursorX + 1
                     currXOffset = currXOffset - 1
@@ -538,7 +546,7 @@ while running == true do
             if filelines[currCursorY + currFileOffset] ~= nil then
                 if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 then
                     currCursorX = currCursorX + 1
-                    olddx = nil
+                    olddx = currCursorX
                     if currCursorX > wid then
                         currCursorX = currCursorX - 1
                         currXOffset = currXOffset + 1
@@ -551,9 +559,13 @@ while running == true do
                 currCursorY = currCursorY - 1
                 if olddx ~= nil then
                     currCursorX = olddx
+                    while currCursorX > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
                 end
                 if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
-                    olddx = currCursorX + currXOffset
+                    olddx = currCursorX
                     if filelines[currCursorY + currFileOffset] ~= "" then
                         currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
                         if currCursorX < 1 then
@@ -583,6 +595,10 @@ while running == true do
                 currCursorY = currCursorY + 1
                 if olddx ~= nil then
                     currCursorX = olddx
+                    while currCursorX > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
                 end
                 if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
                     olddx = currCursorX + currXOffset
@@ -601,6 +617,7 @@ while running == true do
                         end
                     else
                         currCursorX = 1
+                        currXOffset = 0
                     end
                 end
                 if currCursorY > hig - 1 then
