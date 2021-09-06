@@ -9,10 +9,11 @@ Currently very limited, but here's what works:
 - Opening/Saving files
 - Scrolling (both directions)
 - Appending files
+- Copy - paste
 
 What's currently being worked on:
 - Various ":" commands
-- Copy - paste
+- Cut
 
 
 What's planned:
