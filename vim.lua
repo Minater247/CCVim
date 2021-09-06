@@ -285,6 +285,7 @@ local function insertMode()
                 end
             elseif key == keys.down - currFileOffset then
                 if currCursorY + currFileOffset ~= #filelines then
+                    currCursorY = currCursorY + 1
                     if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
                         if filelines[currCursorY + currFileOffset] ~= "" then
                             currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
@@ -301,6 +302,7 @@ local function insertMode()
                             end
                         else
                             currCursorX = 1
+                            currXOffset = 0
                         end
                     end
                     if currCursorY > hig - 1 then
