@@ -6,7 +6,7 @@ You can use [TAB] to exit editing mode.
 Currently very limited, but here's what works:
 - Insert mode
 - Append mode
-- Opening files
+- Opening/Saving files
 - Scrolling (both directions)
 - Appending files
 
