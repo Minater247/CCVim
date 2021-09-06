@@ -200,14 +200,12 @@ local function sendMsg(message)
     write(message)
 end
 
-local function drawFile(cursorX, cursorY, offset)
-    currCursorX = cursorX
-    currCursorY = cursorY
+local function drawFile()
     for i=1,hig-1,1 do
         clearScreenLine(i)
     end
-    for i=offset,(hig - 1) + offset,1 do
-        setpos(1, i - offset)
+    for i=currFileOffset,(hig - 1) + currFileOffset,1 do
+        setpos(1, i - currFileOffset)
         if filelines[i] ~= nil then
             setcolors(colors.black, colors.white)
             write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
@@ -217,10 +215,10 @@ local function drawFile(cursorX, cursorY, offset)
         end
     end
     local tmp
-    if filelines[cursorY + currFileOffset] ~= nil then
-        tmp = string.sub(filelines[cursorY + currFileOffset], cursorX + currXOffset, cursorX + currXOffset)
+    if filelines[currCursorY + currFileOffset] ~= nil then
+        tmp = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
     end
-    setpos(cursorX, cursorY)
+    setpos(currCursorX, currCursorY)
     setcolors(colors.lightGray, colors.white)
     if tmp ~= nil and tmp ~= "" then
         write(tmp)
@@ -236,7 +234,7 @@ local function moveCursorLeft()
             currCursorX = currCursorX + 1
             currXOffset = currXOffset - 1
         end
-        drawFile(currCursorX, currCursorY, currFileOffset)
+        drawFile()
     end
 end
 
@@ -248,7 +246,7 @@ local function moveCursorRight()
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
             end
-            drawFile(currCursorX, currCursorY, currFileOffset)
+            drawFile()
         end
     end
 end
@@ -279,7 +277,7 @@ local function moveCursorUp()
             currFileOffset = currFileOffset - 1
             currCursorY = currCursorY + 1
         end
-        drawFile(currCursorX, currCursorY, currFileOffset)
+        drawFile()
     end
 end
 
@@ -309,7 +307,7 @@ local function moveCursorDown()
             currFileOffset = currFileOffset + 1
             currCursorY = currCursorY - 1
         end
-        drawFile(currCursorX, currCursorY, currFileOffset)
+        drawFile()
     end
 end
 
@@ -331,14 +329,14 @@ local function insertMode()
                 if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil then
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
                     currCursorX = currCursorX - 1
-                    drawFile(currCursorX, currCursorY, currFileOffset)
+                    drawFile()
                     unsavedchanges = true
                 else
                     if #filelines > 1 then
                         table.remove(filelines, currCursorY)
                         currCursorY = currCursorY - 1
                         currCursorX = #(filelines[currCursorY + currFileOffset]) + 1
-                        drawFile(currCursorX, currCursorY, currFileOffset)
+                        drawFile()
                         unsavedchanges = true
                     end
                 end
@@ -352,7 +350,7 @@ local function insertMode()
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
-                drawFile(currCursorX, currCursorY, currFileOffset)
+                drawFile()
             end
         elseif ev == "char" then
             if filelines[currCursorY + currFileOffset] == nil then
@@ -360,7 +358,7 @@ local function insertMode()
             end
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
             currCursorX = currCursorX + 1
-            drawFile(currCursorX, currCursorY, currFileOffset)
+            drawFile()
             unsavedchanges = true
         end
     end
@@ -406,7 +404,7 @@ if not (#openfiles > 0) then
     setcolors(colors.lightGray, colors.white)
     write(" ")
 else
-    drawFile(currCursorX, currCursorY, currFileOffset)
+    drawFile()
     sendMsg("\""..filename.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
     if newfile then
         sendMsg("\""..filename.."\" [New File]")
@@ -460,7 +458,7 @@ while running == true do
                     setpos(1, 1)
                     running = false
                 end
-            elseif cmdtab[1] == ":wq" or cmdtab[1] == ":wq!" then
+            elseif cmdtab[1] == ":wq" or cmdtab[1] == ":x" then
                 if cmdtab[2] == nil and filename == "" then
                     err("No file name")
                 else
@@ -502,7 +500,7 @@ while running == true do
                     newfile = true
                     sendMsg("\""..filename.."\" [New File]")
                 end
-                drawFile(1, 1, 0)
+                drawFile()
                 currFileOffset = 0
             elseif cmdtab[1] == ":r" or cmdtab[1] == ":read" then
                 local name = ""
@@ -517,7 +515,7 @@ while running == true do
                     for i=1,#secondArr,1 do
                         table.insert(filelines, secondArr[i])
                     end
-                    drawFile(currCursorX, currCursorY, currFileOffset)
+                    drawFile()
                     sendMsg("\""..name.."\" "..#secondArr.."L, "..#(tab.getLongestItem(secondArr)).."C")
                 else
                     err("Can't open file "..name)
@@ -535,6 +533,15 @@ while running == true do
             moveCursorUp()
         elseif var1 == "l" then
             moveCursorRight()
+        elseif var1 == "H" then
+            currCursorY = 1
+            drawFile()
+        elseif var1 == "M" then
+            currCursorY = math.floor((hig - 1) / 2)
+            drawFile()
+        elseif var1 == "L" then
+            currCursorY = hig - 1
+            drawFile()
         end
     elseif event == "key" then
         if var1 == keys.left then
