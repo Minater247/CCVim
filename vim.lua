@@ -48,6 +48,9 @@ local unimplementedArgs = {
     "--help"
 }
 
+local version = 0.1
+local releasedate = "2021-09-06 | 03:24:55"
+
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
 local str = require("/vim/lib/str")
@@ -450,8 +453,8 @@ end
 
 for i=1,#decargs,1 do
     if decargs[i] == "--version" then
-        print("CCVIM - ComputerCraft Vi IMproved 0.0")
-        print("Build 2  (2021 September 4)")
+        print("CCVIM - ComputerCraft Vi IMproved "..version)
+        print("Build 1  (2021 September 5)")
         do return end --termination
     end
 end
