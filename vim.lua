@@ -411,12 +411,11 @@ local function appendMode()
                     if currCursorX + currXOffset > 1 then
                         filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
                         currXOffset = currXOffset - math.floor(wid / 2)
-                        currCursorX = math.floor(wid / 2) - 1
+                        currCursorX = math.floor(wid / 2)
                         if currXOffset < 0 then
+                            currCursorX = currXOffset + currCursorX + 1
                             currXOffset = 0
-                            currCursorX = #filelines[currCursorY + currFileOffset] + 1
                         end
-                        sendMsg(math.floor(wid / 2))
                         drawFile()
                         unsavedchanges = true
                     end
