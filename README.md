@@ -13,7 +13,6 @@ Currently very limited, but here's what works:
 
 What's currently being worked on:
 - Various ":" commands
-- Cut
 
 
 What's planned:
