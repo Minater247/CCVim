@@ -48,8 +48,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.1
-local releasedate = "2021-09-06 | 03:24:55"
+local version = 0.11
+local releasedate = "2021-09-06 | 05:07:50"
 
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
@@ -68,6 +68,7 @@ local currCursorY = 1
 local newfile = false
 local currFileOffset = 0
 local currXOffset = 0
+local oldx = nil
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -239,6 +240,7 @@ local function moveCursorLeft()
         end
         drawFile()
     end
+    oldx = nil
 end
 
 local function moveCursorRight(endPad)
@@ -252,28 +254,34 @@ local function moveCursorRight(endPad)
             drawFile()
         end
     end
+    oldx = nil
 end
 
 local function moveCursorUp()
+    if oldx ~= nil then
+        currCursorX = oldx - currXOffset
+    else
+        oldx = currCursorX + currXOffset
+    end
     if currCursorY + currFileOffset ~= 1 then
         currCursorY = currCursorY - 1
         if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
             if filelines[currCursorY + currFileOffset] ~= "" then
                 currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
-                if currCursorX < 1 then
-                    while currCursorX < 1 do
-                        currXOffset = currXOffset - 1
-                        currCursorX = currCursorX + 1
-                    end
-                elseif currCursorX > wid then
-                    while currCursorX > wid do
-                        currXOffset = currXOffset + 1
-                        currCursorX = currCursorX - 1
-                    end
-                end
             else
                 currCursorX = 1
                 currXOffset = 0
+            end
+        end
+        if currCursorX < 1 then
+            while currCursorX < 1 do
+                currXOffset = currXOffset - 1
+                currCursorX = currCursorX + 1
+            end
+        elseif currCursorX > wid then
+            while currCursorX > wid do
+                currXOffset = currXOffset + 1
+                currCursorX = currCursorX - 1
             end
         end
         if currCursorY < 0 then
@@ -285,25 +293,30 @@ local function moveCursorUp()
 end
 
 local function moveCursorDown()
+    if oldx ~= nil then
+        currCursorX = oldx - currXOffset
+    else
+        oldx = currCursorX + currXOffset
+    end
     if currCursorY + currFileOffset ~= #filelines then
         currCursorY = currCursorY + 1
         if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
             if filelines[currCursorY + currFileOffset] ~= "" then
                 currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
-                if currCursorX < 1 then
-                    while currCursorX < 1 do
-                        currXOffset = currXOffset - 1
-                        currCursorX = currCursorX + 1
-                    end
-                elseif currCursorX > wid then
-                    while currCursorX > wid do
-                        currXOffset = currXOffset + 1
-                        currCursorX = currCursorX - 1
-                    end
-                end
             else
                 currCursorX = 1
                 currXOffset = 0
+            end
+        end
+        if currCursorX < 1 then
+            while currCursorX < 1 do
+                currXOffset = currXOffset - 1
+                currCursorX = currCursorX + 1
+            end
+        elseif currCursorX > wid then
+            while currCursorX > wid do
+                currXOffset = currXOffset + 1
+                currCursorX = currCursorX - 1
             end
         end
         if currCursorY > hig - 1 then

@@ -1,6 +1,8 @@
 # CCVim
 Yet another Vim clone for ComputerCraft, which I'm trying to make work as well as possible.
 
+You can use [TAB] to exit editing mode.
+
 Currently very limited, but here's what works:
 - Insert mode
 - Append mode
@@ -11,7 +13,6 @@ Currently very limited, but here's what works:
 What's currently being worked on:
 - Various ":" commands
 - Copy - paste
-- Vertical line movement that follows an X position
 
 
 What's planned:
