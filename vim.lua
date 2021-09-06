@@ -707,6 +707,9 @@ while running == true do
                         copybuffer = " " .. copybuffer
                     end
                 end
+            elseif c == "$" then
+                copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
+                copytype = "text"
             end
         elseif var1 == "p" then
             if copytype == "line" then
