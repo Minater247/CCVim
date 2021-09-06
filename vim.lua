@@ -229,6 +229,90 @@ local function drawFile(cursorX, cursorY, offset)
     end
 end
 
+local function moveCursorLeft()
+    if currCursorX + currXOffset ~= 1 then
+        currCursorX = currCursorX - 1
+        if currCursorX < 1 then
+            currCursorX = currCursorX + 1
+            currXOffset = currXOffset - 1
+        end
+        drawFile(currCursorX, currCursorY, currFileOffset)
+    end
+end
+
+local function moveCursorRight()
+    if filelines[currCursorY + currFileOffset] ~= nil then
+        if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 then
+            currCursorX = currCursorX + 1
+            if currCursorX > wid then
+                currCursorX = currCursorX - 1
+                currXOffset = currXOffset + 1
+            end
+            drawFile(currCursorX, currCursorY, currFileOffset)
+        end
+    end
+end
+
+local function moveCursorUp()
+    if currCursorY + currFileOffset ~= 1 then
+        currCursorY = currCursorY - 1
+        if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
+            if filelines[currCursorY + currFileOffset] ~= "" then
+                currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
+                if currCursorX < 1 then
+                    while currCursorX < 1 do
+                        currXOffset = currXOffset - 1
+                        currCursorX = currCursorX + 1
+                    end
+                elseif currCursorX > wid then
+                    while currCursorX > wid do
+                        currXOffset = currXOffset + 1
+                        currCursorX = currCursorX - 1
+                    end
+                end
+            else
+                currCursorX = 1
+                currXOffset = 0
+            end
+        end
+        if currCursorY < 0 then
+            currFileOffset = currFileOffset - 1
+            currCursorY = currCursorY + 1
+        end
+        drawFile(currCursorX, currCursorY, currFileOffset)
+    end
+end
+
+local function moveCursorDown()
+    if currCursorY + currFileOffset ~= #filelines then
+        currCursorY = currCursorY + 1
+        if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
+            if filelines[currCursorY + currFileOffset] ~= "" then
+                currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
+                if currCursorX < 1 then
+                    while currCursorX < 1 do
+                        currXOffset = currXOffset - 1
+                        currCursorX = currCursorX + 1
+                    end
+                elseif currCursorX > wid then
+                    while currCursorX > wid do
+                        currXOffset = currXOffset + 1
+                        currCursorX = currCursorX - 1
+                    end
+                end
+            else
+                currCursorX = 1
+                currXOffset = 0
+            end
+        end
+        if currCursorY > hig - 1 then
+            currFileOffset = currFileOffset + 1
+            currCursorY = currCursorY - 1
+        end
+        drawFile(currCursorX, currCursorY, currFileOffset)
+    end
+end
+
 local function insertMode()
     sendMsg("-- INSERT --")
     local ev, key
@@ -236,81 +320,13 @@ local function insertMode()
         ev, key = os.pullEvent()
         if ev == "key" then
             if key == keys.left then
-                if currCursorX + currXOffset ~= 1 then
-                    currCursorX = currCursorX - 1
-                    if currCursorX < 1 then
-                        currCursorX = currCursorX + 1
-                        currXOffset = currXOffset - 1
-                    end
-                    drawFile(currCursorX, currCursorY, currFileOffset)
-                end
+                moveCursorLeft()
             elseif key == keys.right then
-                if filelines[currCursorY + currFileOffset] ~= nil then
-                    if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 then
-                        currCursorX = currCursorX + 1
-                        if currCursorX > wid then
-                            currCursorX = currCursorX - 1
-                            currXOffset = currXOffset + 1
-                        end
-                        drawFile(currCursorX, currCursorY, currFileOffset)
-                    end
-                end
+                moveCursorRight()
             elseif key == keys.up then
-                if currCursorY + currFileOffset ~= 1 then
-                    currCursorY = currCursorY - 1
-                    if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
-                        if filelines[currCursorY + currFileOffset] ~= "" then
-                            currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
-                            if currCursorX < 1 then
-                                while currCursorX < 1 do
-                                    currXOffset = currXOffset - 1
-                                    currCursorX = currCursorX + 1
-                                end
-                            elseif currCursorX > wid then
-                                while currCursorX > wid do
-                                    currXOffset = currXOffset + 1
-                                    currCursorX = currCursorX - 1
-                                end
-                            end
-                        else
-                            currCursorX = 1
-                            currXOffset = 0
-                        end
-                    end
-                    if currCursorY < 0 then
-                        currFileOffset = currFileOffset - 1
-                        currCursorY = currCursorY + 1
-                    end
-                    drawFile(currCursorX, currCursorY, currFileOffset)
-                end
-            elseif key == keys.down - currFileOffset then
-                if currCursorY + currFileOffset ~= #filelines then
-                    currCursorY = currCursorY + 1
-                    if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
-                        if filelines[currCursorY + currFileOffset] ~= "" then
-                            currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
-                            if currCursorX < 1 then
-                                while currCursorX < 1 do
-                                    currXOffset = currXOffset - 1
-                                    currCursorX = currCursorX + 1
-                                end
-                            elseif currCursorX > wid then
-                                while currCursorX > wid do
-                                    currXOffset = currXOffset + 1
-                                    currCursorX = currCursorX - 1
-                                end
-                            end
-                        else
-                            currCursorX = 1
-                            currXOffset = 0
-                        end
-                    end
-                    if currCursorY > hig - 1 then
-                        currFileOffset = currFileOffset + 1
-                        currCursorY = currCursorY - 1
-                    end
-                    drawFile(currCursorX, currCursorY, currFileOffset)
-                end
+                moveCursorUp()
+            elseif key == keys.down then
+                moveCursorDown()
             elseif key == keys.backspace then
                 if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil then
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
@@ -511,84 +527,24 @@ while running == true do
             end
         elseif var1 == "i" or var1 == "I" then
             insertMode()
+        elseif var1 == "h" then
+            moveCursorLeft()
+        elseif var1 == "j" then
+            moveCursorDown()
+        elseif var1 == "k" then
+            moveCursorUp()
+        elseif var1 == "l" then
+            moveCursorRight()
         end
     elseif event == "key" then
         if var1 == keys.left then
-            if currCursorX + currXOffset ~= 1 then
-                currCursorX = currCursorX - 1
-                if currCursorX < 1 then
-                    currCursorX = currCursorX + 1
-                    currXOffset = currXOffset - 1
-                end
-                drawFile(currCursorX, currCursorY, currFileOffset)
-            end
+            moveCursorLeft()
         elseif var1 == keys.right then
-            if filelines[currCursorY + currFileOffset] ~= nil then
-                if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 then
-                    currCursorX = currCursorX + 1
-                    if currCursorX > wid then
-                        currCursorX = currCursorX - 1
-                        currXOffset = currXOffset + 1
-                    end
-                    drawFile(currCursorX, currCursorY, currFileOffset)
-                end
-            end
+            moveCursorRight()
         elseif var1 == keys.up then
-            if currCursorY + currFileOffset ~= 1 then
-                currCursorY = currCursorY - 1
-                if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
-                    if filelines[currCursorY + currFileOffset] ~= "" then
-                        currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
-                        if currCursorX < 1 then
-                            while currCursorX < 1 do
-                                currXOffset = currXOffset - 1
-                                currCursorX = currCursorX + 1
-                            end
-                        elseif currCursorX > wid then
-                            while currCursorX > wid do
-                                currXOffset = currXOffset + 1
-                                currCursorX = currCursorX - 1
-                            end
-                        end
-                    else
-                        currCursorX = 1
-                        currXOffset = 0
-                    end
-                end
-                if currCursorY < 1 then
-                    currFileOffset = currFileOffset - 1
-                    currCursorY = currCursorY + 1
-                end
-                drawFile(currCursorX, currCursorY, currFileOffset)
-            end
+            moveCursorUp()
         elseif var1 == keys.down then
-            if currCursorY + currFileOffset ~= #filelines then
-                currCursorY = currCursorY + 1
-                if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
-                    if filelines[currCursorY + currFileOffset] ~= "" then
-                        currCursorX = #(filelines[currCursorY + currFileOffset]) + 1 - currXOffset
-                        if currCursorX < 1 then
-                            while currCursorX < 1 do
-                                currXOffset = currXOffset - 1
-                                currCursorX = currCursorX + 1
-                            end
-                        elseif currCursorX > wid then
-                            while currCursorX > wid do
-                                currXOffset = currXOffset + 1
-                                currCursorX = currCursorX - 1
-                            end
-                        end
-                    else
-                        currCursorX = 1
-                        currXOffset = 0
-                    end
-                end
-                if currCursorY > hig - 1 then
-                    currFileOffset = currFileOffset + 1
-                    currCursorY = currCursorY - 1
-                end
-                drawFile(currCursorX, currCursorY, currFileOffset)
-            end
+            moveCursorDown()
         end
     end
 end
