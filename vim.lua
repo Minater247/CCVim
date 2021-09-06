@@ -790,6 +790,10 @@ while running == true do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
                 end
+            elseif copytype == "linetable" then
+                for i=#copybuffer,1,-1 do
+                    table.insert(filelines, currCursorY + currFileOffset + 1, copybuffer[i])
+                end
             end
             drawFile()
             unsavedchanges = true
@@ -803,9 +807,42 @@ while running == true do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
                 end
+            elseif copytype == "linetable" then
+                for i=#copybuffer,1,-1 do
+                    table.insert(filelines, currCursorY + currFileOffset, copybuffer[i])
+                end
+                currCursorY = currCursorY + #copybuffer
+                while currCursorY > hig - 1 do
+                    currCursorY = currCursorY - 1
+                    currFileOffset = currFileOffset + 1
+                end
             end
             drawFile()
             unsavedchanges = true
+        elseif tonumber(var1) ~= nil then
+            local num = var1
+            local _, ch
+            local var = 0
+            while tonumber(var) ~= nil do
+                _, var = os.pullEvent("char")
+                if tonumber(var) ~= nil then
+                    num = num .. var
+                else
+                    ch = var
+                end
+            end
+            if ch == "y" then
+                _, ch = os.pullEvent("char")
+                if ch == "y" then
+                    if not (currCursorY + currFileOffset + tonumber(num) >= #filelines) then
+                        copybuffer = {}
+                        for i=1,tonumber(num),1 do
+                            table.insert(copybuffer, #copybuffer + 1, filelines[currCursorY + currFileOffset + i - 1])
+                        end
+                        copytype = "linetable"
+                    end
+                end
+            end
         end
     elseif event == "key" then
         if var1 == keys.left then
