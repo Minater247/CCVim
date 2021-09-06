@@ -238,9 +238,9 @@ local function moveCursorLeft()
     end
 end
 
-local function moveCursorRight()
+local function moveCursorRight(endPad)
     if filelines[currCursorY + currFileOffset] ~= nil then
-        if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 then
+        if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 - endPad then
             currCursorX = currCursorX + 1
             if currCursorX > wid then
                 currCursorX = currCursorX - 1
@@ -320,22 +320,39 @@ local function insertMode()
             if key == keys.left then
                 moveCursorLeft()
             elseif key == keys.right then
-                moveCursorRight()
+                moveCursorRight(0)
             elseif key == keys.up then
                 moveCursorUp()
             elseif key == keys.down then
                 moveCursorDown()
             elseif key == keys.backspace then
-                if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil then
+                if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil and currCursorX > 1 then
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
-                    currCursorX = currCursorX - 1
+                    moveCursorLeft()
                     drawFile()
                     unsavedchanges = true
                 else
-                    if #filelines > 1 then
+                    if currCursorX + currXOffset < 2 then
+                        currCursorX = #(filelines[currCursorY + currFileOffset - 1]) + 1
+                        filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
                         table.remove(filelines, currCursorY)
-                        currCursorY = currCursorY - 1
-                        currCursorX = #(filelines[currCursorY + currFileOffset]) + 1
+                        moveCursorUp()
+                        if currCursorX > wid then
+                            while currCursorX > wid do
+                                currXOffset = currXOffset + 1
+                                currCursorX = currCursorX - 1
+                            end
+                        end
+                        drawFile()
+                        unsavedchanges = true
+                    else
+                        filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
+                        currXOffset = currXOffset - math.floor(wid / 2)
+                        currCursorX = currCursorX + math.floor(wid / 2) - 1
+                        if currXOffset < 0 then
+                            currCursorX = currXOffset + currCursorX
+                            currXOffset = 0
+                        end
                         drawFile()
                         unsavedchanges = true
                     end
@@ -346,6 +363,7 @@ local function insertMode()
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
                     currCursorY = currCursorY + 1
                     currCursorX = 1
+                    currXOffset = 0
                     unsavedchanges = true
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
@@ -358,6 +376,70 @@ local function insertMode()
             end
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
             currCursorX = currCursorX + 1
+            if currCursorX > wid then
+                currCursorX = currCursorX - 1
+                currXOffset = currXOffset + 1
+            end
+            drawFile()
+            unsavedchanges = true
+        end
+    end
+    sendMsg(" ")
+end
+
+local function appendMode()
+    sendMsg("-- APPEND --")
+    local ev, key
+    while key ~= keys.tab do
+        ev, key = os.pullEvent()
+        if ev == "key" then
+            if key == keys.left then
+                moveCursorLeft()
+            elseif key == keys.right then
+                moveCursorRight(1)
+            elseif key == keys.up then
+                moveCursorUp()
+            elseif key == keys.down then
+                moveCursorDown()
+            elseif key == keys.backspace then
+                if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil and currCursorX > 1 then
+                    filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+                    moveCursorLeft()
+                    drawFile()
+                    unsavedchanges = true
+                else
+                    if currCursorX + currXOffset > 1 then
+                        filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+                        currXOffset = currXOffset - math.floor(wid / 2)
+                        currCursorX = math.floor(wid / 2) - 1
+                        if currXOffset < 0 then
+                            currXOffset = 0
+                            currCursorX = #filelines[currCursorY + currFileOffset] + 1
+                        end
+                        sendMsg(math.floor(wid / 2))
+                        drawFile()
+                        unsavedchanges = true
+                    end
+                end
+            elseif key == keys.enter then
+                if filelines[currCursorY + currFileOffset] ~= nil then
+                    table.insert(filelines, currCursorY + currFileOffset + 1, string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset])))
+                    filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset)
+                    moveCursorDown()
+                    currCursorX = 1
+                    currXOffset = 0
+                    unsavedchanges = true
+                else
+                    table.insert(filelines, currCursorY + currFileOffset + 1, "")
+                end
+                drawFile()
+            end
+        elseif ev == "char" then
+            if filelines[currCursorY + currFileOffset] == nil then
+                filelines[currCursorY + currFileOffset] = ""
+            end
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+            moveCursorRight(0)
             drawFile()
             unsavedchanges = true
         end
@@ -523,7 +605,12 @@ while running == true do
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
-        elseif var1 == "i" or var1 == "I" then
+        elseif var1 == "i"then
+            insertMode()
+        elseif var1 == "I" then
+            currXOffset = 1
+            currCursorX = 0
+            drawFile()
             insertMode()
         elseif var1 == "h" then
             moveCursorLeft()
@@ -532,7 +619,7 @@ while running == true do
         elseif var1 == "k" then
             moveCursorUp()
         elseif var1 == "l" then
-            moveCursorRight()
+            moveCursorRight(0)
         elseif var1 == "H" then
             currCursorY = 1
             drawFile()
@@ -567,12 +654,14 @@ while running == true do
             drawFile()
             insertMode()
             unsavedchanges = true
+        elseif var1 == "a" then
+            appendMode()
         end
     elseif event == "key" then
         if var1 == keys.left then
             moveCursorLeft()
         elseif var1 == keys.right then
-            moveCursorRight()
+            moveCursorRight(0)
         elseif var1 == keys.up then
             moveCursorUp()
         elseif var1 == keys.down then
