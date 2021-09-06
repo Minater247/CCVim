@@ -552,6 +552,21 @@ while running == true do
             table.remove(filelines, currCursorY + currFileOffset + 1)
             drawFile()
             unsavedchanges = true
+        elseif var1 == "o" then
+            table.insert(filelines, currCursorY + currFileOffset + 1, "")
+            moveCursorDown()
+            currCursorX = 1
+            currXOffset = 0
+            drawFile()
+            insertMode()
+            unsavedchanges = true
+        elseif var1 == "O" then
+            table.insert(filelines, currCursorY + currFileOffset, "")
+            currCursorX = 1
+            currXOffset = 0
+            drawFile()
+            insertMode()
+            unsavedchanges = true
         end
     elseif event == "key" then
         if var1 == keys.left then
