@@ -688,6 +688,25 @@ while running == true do
                     copybuffer = copybuffer .. " "
                 end
                 copytype = "text"
+            elseif c == "i" then
+                local _, ch = os.pullEvent("char")
+                if ch == "w" then
+                    local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
+                    copybuffer = word
+                    copytype = "text"
+                end
+            elseif c == "a" then
+                local _, ch = os.pullEvent("char")
+                if ch == "w" then
+                    local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
+                    copybuffer = word
+                    if ed ~= #filelines[currCursorY + currFileOffset] then
+                        copybuffer = copybuffer .. " "
+                    end
+                    if beg ~= 1 then
+                        copybuffer = " " .. copybuffer
+                    end
+                end
             end
         elseif var1 == "p" then
             if copytype == "line" then
