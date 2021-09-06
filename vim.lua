@@ -542,6 +542,16 @@ while running == true do
         elseif var1 == "L" then
             currCursorY = hig - 1
             drawFile()
+        elseif var1 == "r" then
+            local _, chr = os.pullEvent("char")
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. chr .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+            drawFile()
+            unsavedchanges = true
+        elseif var1 == "J" then
+            filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. " " .. filelines[currCursorY + currFileOffset + 1]
+            table.remove(filelines, currCursorY + currFileOffset + 1)
+            drawFile()
+            unsavedchanges = true
         end
     elseif event == "key" then
         if var1 == keys.left then
