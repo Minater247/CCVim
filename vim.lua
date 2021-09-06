@@ -69,6 +69,8 @@ local newfile = false
 local currFileOffset = 0
 local currXOffset = 0
 local oldx = nil
+local copybuffer = ""
+local copytype = nil
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -244,6 +246,9 @@ local function moveCursorLeft()
 end
 
 local function moveCursorRight(endPad)
+    if endPad == nil then
+        endPad = 0
+    end
     if filelines[currCursorY + currFileOffset] ~= nil then
         if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 - endPad then
             currCursorX = currCursorX + 1
@@ -671,6 +676,41 @@ while running == true do
             unsavedchanges = true
         elseif var1 == "a" then
             appendMode()
+        elseif var1 == "y" then
+            local _, c = os.pullEvent("char")
+            if c == "y" then
+                copybuffer = filelines[currCursorY + currFileOffset]
+                copytype = "line"
+            elseif c == "w" then
+                local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
+                copybuffer = word
+                if ed ~= #filelines[currCursorY + currFileOffset] then
+                    copybuffer = copybuffer .. " "
+                end
+                copytype = "text"
+            end
+        elseif var1 == "p" then
+            if copytype == "line" then
+                table.insert(filelines, currCursorY + currFileOffset + 1, copybuffer)
+            elseif copytype == "text" then
+                filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. copybuffer .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
+                for i=1,#copybuffer,1 do
+                    moveCursorRight()
+                end
+            end
+            drawFile()
+            unsavedchanges = true
+        elseif var1 == "P" then
+            if copytype == "line" then
+                table.insert(filelines, currCursorY + currFileOffset, copybuffer)
+            elseif copytype == "text" then
+                filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. copybuffer .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
+                for i=1,#copybuffer,1 do
+                    moveCursorRight()
+                end
+            end
+            drawFile()
+            unsavedchanges = true
         end
     elseif event == "key" then
         if var1 == keys.left then
