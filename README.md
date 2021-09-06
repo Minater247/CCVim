@@ -20,3 +20,6 @@ What's planned:
 - Many other things unable to be listed
 
 Fun fact - this README was written in the program!
+
+# Installation
+Put ```vim.lua``` as well as the ```lib``` folder in a directory at ```/vim/``` in your CC or CC:Tweaked computer.
