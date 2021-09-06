@@ -711,6 +711,21 @@ while running == true do
                 copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
                 copytype = "text"
             end
+        elseif var1 == "x" then
+            copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
+            copytype = "text"
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
+            drawFile()
+            unsavedchanges = true
+        elseif var1 == "d" then
+            local _, c = os.pullEvent("char")
+            if c == "d" then
+                copybuffer = filelines[currCursorY + currFileOffset]
+                copytype = "line"
+                table.remove(filelines, currCursorY + currFileOffset)
+                drawFile()
+                unsavedchanges = true
+            end
         elseif var1 == "p" then
             if copytype == "line" then
                 table.insert(filelines, currCursorY + currFileOffset + 1, copybuffer)
