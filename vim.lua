@@ -834,12 +834,28 @@ while running == true do
             if ch == "y" then
                 _, ch = os.pullEvent("char")
                 if ch == "y" then
-                    if not (currCursorY + currFileOffset + tonumber(num) >= #filelines) then
+                    if not (currCursorY + currFileOffset + tonumber(num) > #filelines) then
                         copybuffer = {}
                         for i=1,tonumber(num),1 do
                             table.insert(copybuffer, #copybuffer + 1, filelines[currCursorY + currFileOffset + i - 1])
                         end
                         copytype = "linetable"
+                    end
+                end
+            elseif ch == "d" then
+                _, ch = os.pullEvent("char")
+                if ch == "d" then
+                    if not (currCursorY + currFileOffset + tonumber(num) > #filelines) then
+                        copybuffer = {}
+                        for i=1,tonumber(num),1 do
+                            table.insert(copybuffer, #copybuffer + 1, filelines[currCursorY + currFileOffset + i - 1])
+                        end
+                        copytype = "linetable"
+                        for i=1,tonumber(num),1 do
+                            table.remove(filelines, currCursorY + currFileOffset)
+                        end
+                        drawFile()
+                        unsavedchanges = true
                     end
                 end
             end
