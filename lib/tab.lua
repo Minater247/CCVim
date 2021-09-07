@@ -1,7 +1,7 @@
 local function find(table, query)
     for i=1,#table,1 do
         if table[i] == query then
-            return true
+            return i
         end
     end
     return false

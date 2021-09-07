@@ -1,3 +1,11 @@
+local tab = require("/vim/lib/tab")
+
+local punctuation = {
+    ".",
+    "!",
+    "?"
+}
+
 local function split(s, delimiter)
     local result = {};
     for match in (s..delimiter):gmatch("(.-)"..delimiter) do
@@ -25,18 +33,21 @@ local function wordOfPos(inp, pos)
     return string.sub(inp, beg, ed), beg, ed
 end
 
---Returns a table of the beginning index of each word
-local function wordBeginnings(inp)
+--Returns a table of the beginning index of each word, if nopunc then punctuation counts as a split
+local function wordBeginnings(inp, nopunc)
+    if nopunc == nil then
+        nopunc = false
+    end
     local letters = {}
     local output = {}
     for i=1,#inp,1 do
         table.insert(letters, #letters + 1, string.sub(inp, i, i))
     end
-    if letters[1] ~= " " and letters[1] ~= nil then
+    if letters[1] ~= " " and letters[1] ~= nil and not (tab.find(punctuation, letters[1] and nopunc)) then
         table.insert(output, #output + 1, 1)
     end
     for i=1,#letters,1 do
-        if letters[i - 1] == " " and letters[i] ~= " " then
+        if (letters[i - 1] == " " and letters[i] ~= " " and not (tab.find(punctuation, letters[i] and nopunc))) or (tab.find(punctuation, letters[i - 1]) and letters[i] ~= " " and nopunc) then
             table.insert(output, #output + 1, i)
         end
     end
@@ -44,14 +55,17 @@ local function wordBeginnings(inp)
 end
 
 --Returns a table with the end index of each word
-local function wordEnds(inp)
+local function wordEnds(inp, nopunc)
+    if nopunc == nil then
+        nopunc = false
+    end
     local letters = {}
     local output = {}
     for i=1,#inp,1 do
         table.insert(letters, #letters + 1, string.sub(inp, i, i))
     end
     for i=1,#letters,1 do
-        if letters[i] ~= " " and (letters[i + 1] == " " or letters[i + 1] == nil) then
+        if ((letters[i + 1] == " " or letters[i + 1] == nil) and letters[i] ~= " " and not (tab.find(punctuation, letters[i] and nopunc))) or (tab.find(punctuation, letters[i + 1]) and letters[i] ~= " " and nopunc) then
             table.insert(output, #output + 1, i)
         end
     end
