@@ -1042,6 +1042,25 @@ while running == true do
                     drawFile()
                 end
             end
+        elseif var1 == "F" or var1 == "T" then
+            local _,c = os.pullEvent("char")
+            local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
+            if #idx > 0 then
+                if currCursorX + currFileOffset > idx[1] then
+                    currCursorX = currCursorX - 1
+                    while not tab.find(idx, currCursorX + currFileOffset) do
+                        currCursorX = currCursorX - 1
+                    end
+                    if var1 == "T" then
+                        currCursorX = currCursorX - 1
+                    end
+                    while currCursorX < 1 do
+                        currCursorX = currCursorX + 1
+                        currXOffset = currXOffset - 1
+                    end
+                    drawFile()
+                end
+            end
         end
     elseif event == "key" then
         if var1 == keys.left then
