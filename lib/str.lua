@@ -76,5 +76,15 @@ local function wordEnds(inp, nopunc)
     end
     return output
 end
+--Returns a table of the indices of every letter, case-sensitive
+local function indicesOfLetter(inp, chr)
+    local output = {}
+    for i=1,#inp,1 do
+        if string.sub(inp, i, i) == chr then
+            table.insert(output, #output + 1, i)
+        end
+    end
+    return output
+end
 
-return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings, wordEnds = wordEnds}
+return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings, wordEnds = wordEnds, indicesOfLetter = indicesOfLetter }
