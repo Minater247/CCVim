@@ -859,6 +859,14 @@ while running == true do
                     end
                 end
             end
+        elseif var1 == "g" then
+            local _,c = os.pullEvent("char")
+            if c == "J" then
+                filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. filelines[currCursorY + currFileOffset + 1]
+                table.remove(filelines, currCursorY + currFileOffset + 1)
+                drawFile()
+                unsavedchanges = true
+            end
         end
     elseif event == "key" then
         if var1 == keys.left then
