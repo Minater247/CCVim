@@ -6,7 +6,8 @@
         "keys",
         "fs",
         "shell",
-        "window"
+        "window",
+        "read"
     ],
     "Lua.diagnostics.disable": [
         "undefined-field"
