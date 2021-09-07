@@ -4,7 +4,11 @@ local punctuation = {
     ".",
     "!",
     "?",
-    "/"
+    "/",
+    ",",
+    ":",
+    "[",
+    "]"
 }
 
 local function split(s, delimiter)
@@ -48,7 +52,7 @@ local function wordBeginnings(inp, nopunc)
         table.insert(output, #output + 1, 1)
     end
     for i=1,#letters,1 do
-        if (letters[i - 1] == " " and letters[i] ~= " " and not (tab.find(punctuation, letters[i] and nopunc))) or (tab.find(punctuation, letters[i - 1]) and letters[i] ~= " " and nopunc) then
+        if (letters[i - 1] == " " and letters[i] ~= " " and not (tab.find(punctuation, letters[i]) and nopunc)) or (tab.find(punctuation, letters[i - 1]) and letters[i] ~= " " and nopunc) then
             table.insert(output, #output + 1, i)
         end
     end
@@ -66,7 +70,7 @@ local function wordEnds(inp, nopunc)
         table.insert(letters, #letters + 1, string.sub(inp, i, i))
     end
     for i=1,#letters,1 do
-        if ((letters[i + 1] == " " or letters[i + 1] == nil) and letters[i] ~= " " and not (tab.find(punctuation, letters[i] and nopunc))) or (tab.find(punctuation, letters[i + 1]) and letters[i] ~= " " and nopunc) then
+        if ((letters[i + 1] == " " or letters[i + 1] == nil) and letters[i] ~= " " and not (tab.find(punctuation, letters[i]) and nopunc)) or (tab.find(punctuation, letters[i + 1]) and letters[i] ~= " " and nopunc) then
             table.insert(output, #output + 1, i)
         end
     end

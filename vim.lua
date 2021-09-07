@@ -916,6 +916,20 @@ while running == true do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
                 end
+                oldx = currCursorX + currXOffset
+                drawFile()
+            end
+        elseif var1 == "e" or var1 == "E" then
+            local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
+            if currCursorX + currXOffset < begs[#begs] then
+                currCursorX = currCursorX + 1
+                while not tab.find(begs, currCursorX + currXOffset) do
+                    currCursorX = currCursorX + 1
+                end
+                while currCursorX < 1 do
+                    currCursorX = currCursorX - 1
+                    currXOffset = currXOffset + 1
+                end
                 drawFile()
             end
         end
