@@ -357,7 +357,7 @@ local function insertMode()
                     if currCursorX + currXOffset < 2 then
                         currCursorX = #(filelines[currCursorY + currFileOffset - 1]) + 1
                         filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
-                        table.remove(filelines, currCursorY)
+                        table.remove(filelines, currCursorY + currFileOffset)
                         moveCursorUp()
                         if currCursorX > wid then
                             while currCursorX > wid do
