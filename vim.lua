@@ -905,6 +905,19 @@ while running == true do
             currCursorX = 1
             currXOffset = 0
             drawFile()
+        elseif var1 == "w" or var1 == "W" then
+            local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
+            if currCursorX + currXOffset < begs[#begs] then
+                currCursorX = currCursorX + 1
+                while not tab.find(begs, currCursorX + currXOffset) do
+                    currCursorX = currCursorX + 1
+                end
+                while currCursorX > wid do
+                    currCursorX = currCursorX - 1
+                    currXOffset = currXOffset + 1
+                end
+                drawFile()
+            end
         end
     elseif event == "key" then
         if var1 == keys.left then

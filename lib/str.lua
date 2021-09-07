@@ -3,7 +3,8 @@ local tab = require("/vim/lib/tab")
 local punctuation = {
     ".",
     "!",
-    "?"
+    "?",
+    "/"
 }
 
 local function split(s, delimiter)
