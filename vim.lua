@@ -939,6 +939,26 @@ while running == true do
                     end
                     drawFile()
                 end
+            elseif c == "_" then
+                currCursorX = #filelines[currCursorY + currFileOffset]
+                currXOffset = 0
+                local i = currCursorX
+                while string.sub(filelines[currCursorY + currFileOffset], i, i) == " " do
+                    i = i - 1
+                end
+                currCursorX = i
+                if currCursorX > wid then
+                    while currCursorX > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
+                elseif currCursorX < 1 then
+                    while currCursorX < 1 do
+                        currCursorX = currCursorX + 1
+                        currXOffset = currXOffset - 1
+                    end
+                end
+                drawFile()
             end
         elseif var1 == "G" then
             currFileOffset = 0
@@ -991,23 +1011,16 @@ while running == true do
                 drawFile()
             end
         elseif var1 == "^" then
-            currCursorX = #filelines[currCursorY + currFileOffset]
+            currCursorX = 1
             currXOffset = 0
             local i = currCursorX
             while string.sub(filelines[currCursorY + currFileOffset], i, i) == " " do
-                i = i - 1
+                i = i + 1
             end
             currCursorX = i
-            if currCursorX > wid then
-                while currCursorX > wid do
-                    currCursorX = currCursorX - 1
-                    currXOffset = currXOffset + 1
-                end
-            elseif currCursorX < 1 then
-                while currCursorX < 1 do
-                    currCursorX = currCursorX + 1
-                    currXOffset = currXOffset - 1
-                end
+            while currCursorX > wid do
+                currCursorX = currCursorX - 1
+                currXOffset = currXOffset + 1
             end
             drawFile()
         end
