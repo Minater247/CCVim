@@ -71,6 +71,7 @@ local currXOffset = 0
 local oldx = nil
 local copybuffer = ""
 local copytype = nil
+local jumpbuffer = {}
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -1029,7 +1030,7 @@ while running == true do
             if #idx > 0 then
                 if currCursorX + currFileOffset < idx[#idx] then
                     currCursorX = currCursorX + 1
-                    while not tab.find(idx, currCursorX + currFileOffset) do
+                    while not tab.find(idx, currCursorX + currXOffset) do
                         currCursorX = currCursorX + 1
                     end
                     if var1 == "t" then
@@ -1040,6 +1041,7 @@ while running == true do
                         currXOffset = currXOffset + 1
                     end
                     drawFile()
+                    jumpbuffer = {var1, c}
                 end
             end
         elseif var1 == "F" or var1 == "T" then
@@ -1048,17 +1050,59 @@ while running == true do
             if #idx > 0 then
                 if currCursorX + currFileOffset > idx[1] then
                     currCursorX = currCursorX - 1
-                    while not tab.find(idx, currCursorX + currFileOffset) do
+                    while not tab.find(idx, currCursorX + currXOffset) do
                         currCursorX = currCursorX - 1
                     end
                     if var1 == "T" then
-                        currCursorX = currCursorX - 1
+                        currCursorX = currCursorX + 1
                     end
                     while currCursorX < 1 do
                         currCursorX = currCursorX + 1
                         currXOffset = currXOffset - 1
                     end
                     drawFile()
+                    jumpbuffer = {var1, c}
+                end
+            end
+        elseif var1 == ";" or var1 == "," then
+            if string.match(jumpbuffer[1], "%u") then
+                local c = jumpbuffer[2]
+                local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
+                if #idx > 0 then
+                    if currCursorX + currFileOffset > idx[1] then
+                        currCursorX = currCursorX - 1
+                        while not tab.find(idx, currCursorX + currXOffset) do
+                            currCursorX = currCursorX - 1
+                        end
+                        if jumpbuffer[1] == "T" then
+                            currCursorX = currCursorX + 1
+                        end
+                        while currCursorX < 1 do
+                            currCursorX = currCursorX + 1
+                            currXOffset = currXOffset - 1
+                        end
+                        drawFile()
+                    end
+                end
+            else
+                local c = jumpbuffer[2]
+                local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
+                if #idx > 0 then
+                    if currCursorX + currFileOffset < idx[#idx] then
+                        currCursorX = currCursorX + 1
+                        while not tab.find(idx, currCursorX + currXOffset) do
+                            currCursorX = currCursorX + 1
+                        end
+                        if jumpbuffer[1] == "t" then
+                            currCursorX = currCursorX - 1
+                        end
+                        while currCursorX > wid do
+                            currCursorX = currCursorX - 1
+                            currXOffset = currXOffset + 1
+                        end
+                        drawFile()
+                        jumpbuffer = {var1, c}
+                    end
                 end
             end
         end
