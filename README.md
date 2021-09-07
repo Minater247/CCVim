@@ -10,9 +10,10 @@ Currently very limited, but here's what works:
 - Scrolling (both directions)
 - Appending files
 - Copy / Cut / Paste
+- Jumping to lines
 
 What's currently being worked on:
-- Various ":" commands
+The grand majority of the things at [this list of VIM commands](https://vim.rtorr.com)
 
 
 What's planned:
