@@ -819,6 +819,17 @@ while running == true do
             end
             drawFile()
             unsavedchanges = true
+        elseif var1 == "$" then
+            currCursorX = #filelines[currCursorY + currFileOffset]
+            while currCursorX > wid do
+                currCursorX = currCursorX - 1
+                currXOffset = currXOffset + 1
+            end
+            drawFile()
+        elseif var1 == "0" then --must be before the number things so 0 isn't captured too
+            currCursorX = 1
+            currXOffset = 0
+            drawFile()
         elseif tonumber(var1) ~= nil then
             local num = var1
             local _, ch
@@ -858,6 +869,19 @@ while running == true do
                         unsavedchanges = true
                     end
                 end
+            elseif ch == "g" then
+                _, ch = os.pullEvent("char")
+                if ch == "g" then
+                    currCursorY = tonumber(num) - 1 --minus one for moveCursorDown
+                    currFileOffset = 0
+                    currCursorX = 1
+                    currXOffset = 0
+                    while currCursorY > hig - 1 do
+                        currCursorY = currCursorY - 1
+                        currFileOffset = currFileOffset + 1
+                    end
+                    drawFile()
+                end
             end
         elseif var1 == "g" then
             local _,c = os.pullEvent("char")
@@ -866,7 +890,23 @@ while running == true do
                 table.remove(filelines, currCursorY + currFileOffset + 1)
                 drawFile()
                 unsavedchanges = true
+            elseif c == "g" then
+                currCursorY = 1
+                currFileOffset = 0
+                currCursorX = 1
+                currXOffset = 0
+                drawFile()
             end
+        elseif var1 == "G" then
+            currFileOffset = 0
+            currCursorY = #filelines
+            while currCursorY > hig - 1 do
+                currCursorY = currCursorY - 1
+                currFileOffset = currFileOffset + 1
+            end
+            currCursorX = 1
+            currXOffset = 0
+            drawFile()
         end
     elseif event == "key" then
         if var1 == keys.left then
