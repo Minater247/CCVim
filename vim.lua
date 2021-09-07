@@ -684,6 +684,29 @@ while running == true do
             end
             drawFile()
             appendMode()
+        elseif var1 == "Z" then
+            local _,c = os.pullEvent("char")
+            if c == "Q" then
+                setcolors(colors.black, colors.white)
+                clear()
+                setpos(1, 1)
+                running = false
+            elseif c == "Z" then
+                if filename == "" then
+                    err("No file name")
+                else
+                    local file = fs.open(fil.topath(filename), "w")
+                    for i=1,#filelines,1 do
+                        file.writeLine(filelines[i])
+                    end
+                    file.close()
+                    unsavedchanges = false
+                    setcolors(colors.black, colors.white)
+                    clear()
+                    setpos(1, 1)
+                    running = false
+                end
+            end
         elseif var1 == "y" then
             local _, c = os.pullEvent("char")
             if c == "y" then
