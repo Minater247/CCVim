@@ -675,6 +675,15 @@ while running == true do
             unsavedchanges = true
         elseif var1 == "a" then
             appendMode()
+        elseif var1 == "A" then
+            currCursorX = #filelines[currCursorY + currFileOffset]
+            currXOffset = 0
+            while currCursorX > wid do
+                currXOffset = currXOffset + 1
+                currCursorX = currCursorX - 1
+            end
+            drawFile()
+            appendMode()
         elseif var1 == "y" then
             local _, c = os.pullEvent("char")
             if c == "y" then
