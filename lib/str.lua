@@ -43,4 +43,19 @@ local function wordBeginnings(inp)
     return output
 end
 
-return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings}
+--Returns a table with the end index of each word
+local function wordEnds(inp)
+    local letters = {}
+    local output = {}
+    for i=1,#inp,1 do
+        table.insert(letters, #letters + 1, string.sub(inp, i, i))
+    end
+    for i=1,#letters,1 do
+        if letters[i] ~= " " and (letters[i + 1] == " " or letters[i + 1] == nil) then
+            table.insert(output, #output + 1, i)
+        end
+    end
+    return output
+end
+
+return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings, wordEnds = wordEnds}
