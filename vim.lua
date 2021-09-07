@@ -56,7 +56,7 @@ local argv = require("/vim/lib/args")
 local str = require("/vim/lib/str")
 local fil = require("/vim/lib/fil")
 local monitor
-local decargs = argv.pull(args, validArgs, unimplementedArgs)
+local decargs = argv.pull(args, validArgs, unimplementedArgs) --DecodedArguments
 local openfiles = {}
 local wid, hig = term.getSize()
 local running = true
@@ -66,7 +66,7 @@ local filename = ""
 local currCursorX = 1
 local currCursorY = 1
 local newfile = false
-local currFileOffset = 0
+local currFileOffset = 0 --AKA CurrYOffset
 local currXOffset = 0
 local oldx = nil
 local copybuffer = ""
@@ -990,6 +990,26 @@ while running == true do
                 end
                 drawFile()
             end
+        elseif var1 == "^" then
+            currCursorX = #filelines[currCursorY + currFileOffset]
+            currXOffset = 0
+            local i = currCursorX
+            while string.sub(filelines[currCursorY + currFileOffset], i, i) == " " do
+                i = i - 1
+            end
+            currCursorX = i
+            if currCursorX > wid then
+                while currCursorX > wid do
+                    currCursorX = currCursorX - 1
+                    currXOffset = currXOffset + 1
+                end
+            elseif currCursorX < 1 then
+                while currCursorX < 1 do
+                    currCursorX = currCursorX + 1
+                    currXOffset = currXOffset - 1
+                end
+            end
+            drawFile()
         end
     elseif event == "key" then
         if var1 == keys.left then
