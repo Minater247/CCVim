@@ -894,6 +894,19 @@ while running == true do
                 currCursorX = 1
                 currXOffset = 0
                 drawFile()
+            elseif c == "e" or c == "E" then
+                local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(c, "%u"))
+                if currCursorX + currXOffset > begs[1] then
+                    currCursorX = currCursorX - 1
+                    while not tab.find(begs, currCursorX + currXOffset) do
+                        currCursorX = currCursorX - 1
+                    end
+                    while currCursorX > wid do
+                        currCursorX = currCursorX + 1
+                        currXOffset = currXOffset - 1
+                    end
+                    drawFile()
+                end
             end
         elseif var1 == "G" then
             currFileOffset = 0
@@ -929,6 +942,19 @@ while running == true do
                 while currCursorX < 1 do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
+                end
+                drawFile()
+            end
+        elseif var1 == "b" or var1 == "B" then
+            local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
+            if currCursorX + currXOffset > begs[1] then
+                currCursorX = currCursorX - 1
+                while not tab.find(begs, currCursorX + currXOffset) do
+                    currCursorX = currCursorX - 1
+                end
+                while currCursorX > wid do
+                    currCursorX = currCursorX + 1
+                    currXOffset = currXOffset - 1
                 end
                 drawFile()
             end
