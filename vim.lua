@@ -383,7 +383,7 @@ local function insertMode()
                 if filelines[currCursorY + currFileOffset] ~= nil then
                     table.insert(filelines, currCursorY + currFileOffset + 1, string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset])))
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
-                    currCursorY = currCursorY + 1
+                    moveCursorDown()
                     currCursorX = 1
                     currXOffset = 0
                     unsavedchanges = true
