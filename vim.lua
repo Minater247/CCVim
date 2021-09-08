@@ -735,6 +735,23 @@ while running == true do
                     end
                     filename = openfiles[currfile]
                 end
+            elseif cmdtab[1] == ":tabm" or cmdtab[1] == ":tabmove" then
+                fileContents[currfile] = filelines
+                fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                local tmp = tonumber(cmdtab[2])
+                if tonumber(cmdtab[2]) >= 0 and tonumber(cmdtab[2]) <= #fileContents - 1 then
+                    currfile = tonumber(cmdtab[2]) + 1
+                    sendMsg(currfile)
+                    filelines = fileContents[currfile]
+                    if fileContents[currfile]["cursor"] then
+                        currCursorX = fileContents[currfile]["cursor"][1]
+                        currXOffset = fileContents[currfile]["cursor"][2]
+                        currCursorY = fileContents[currfile]["cursor"][3]
+                        currFileOffset = fileContents[currfile]["cursor"][4]
+                    end
+                    drawFile()
+                end
+                clearScreenLine(hig)
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
