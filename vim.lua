@@ -788,8 +788,34 @@ while running == true do
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                 end
                 clearScreenLine(hig)
-            elseif cmdtab[1] == ":tabo" or cmdtab[1] == ":tabonly" then
-                --not yet!
+            elseif cmdtab[1] == ":tabo" or cmdtab[1] == ":tabonly" or cmdtab[1] == ":tabo!" or cmdtab[1] == ":tabonly!" then
+                local closable = true
+                local unclosablename = ""
+                local unclosablenum = -1
+                for i=1,#fileContents,1 do
+                    if fileContents[i]["unsavedchanges"] and not (i == currfile) and cmdtab[1] ~= ":tabo!" and cmdtab[1] ~= ":tabonly!" then
+                        closable = false
+                        unclosablename = openfiles[i]
+                        unclosablenum = i
+                    end
+                end
+                if not closable then
+                    err("Unsaved work in \""..unclosablename.."\" (add ! to override)")
+                else
+                    fileContents = {fileContents[currfile]}
+                    openfiles = {openfiles[currfile]}
+                    currfile = 1
+                    filelines = fileContents[currfile]
+                    if fileContents[currfile]["cursor"] then
+                        currCursorX = fileContents[currfile]["cursor"][1]
+                        currXOffset = fileContents[currfile]["cursor"][2]
+                        currCursorY = fileContents[currfile]["cursor"][3]
+                        currFileOffset = fileContents[currfile]["cursor"][4]
+                    end
+                    drawFile()
+                    clearScreenLine(hig)
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                end
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
                     err("No write since last change (add ! to override)")
