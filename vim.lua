@@ -493,8 +493,8 @@ if #decargs["files"] > 0 then
         if fs.exists(fil.topath(decargs["files"][i])) then
             table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(decargs["files"][i])))
         else
-            openfiles = {decargs["files"][1]}
-            table.insert(fileContents, #fileContents + 1, {})
+            table.insert(openfiles, #openfiles + 1, decargs["files"][1])
+            table.insert(fileContents, #fileContents + 1, {""})
             newfile = true
         end
         filelines = fileContents[1]
@@ -601,17 +601,35 @@ while running == true do
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":q!" then
                     err("No write since last change (add ! to override)")
                 else
-                    setcolors(colors.black, colors.white)
-                    clear()
-                    setpos(1, 1)
-                    running = false
+                    if #fileContents == 1 then
+                        setcolors(colors.black, colors.white)
+                        clear()
+                        setpos(1, 1)
+                        running = false
+                    else
+                        table.remove(fileContents, currfile)
+                        table.remove(openfiles, currfile)
+                        if not (currfile == 1) then
+                            currfile = currfile - 1
+                        end
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                        clearScreenLine(hig)
+                    end
                 end
             elseif cmdtab[1] == ":wq" or cmdtab[1] == ":x" then
-                if cmdtab[2] == nil and filename == "" then
+                if cmdtab[2] == nil and openfiles[currfile] == "" then
                     err("No file name")
                 else
                     local name = ""
-                    if filename == "" then
+                    sendMsg(#openfiles .. " " .. currfile)
+                    if openfiles[currfile] == "" then
                         for i=2,#cmdtab,1 do
                             name = name .. cmdtab[i]
                             if i ~= #cmdtab then
@@ -619,7 +637,7 @@ while running == true do
                             end
                         end
                     else
-                        name = filename
+                        name = openfiles[currfile]
                     end
                     local file = fs.open(fil.topath(name), "w")
                     for i=1,#filelines,1 do
@@ -627,10 +645,27 @@ while running == true do
                     end
                     file.close()
                     fileContents[currfile]["unsavedchanges"] = false
-                    setcolors(colors.black, colors.white)
-                    clear()
-                    setpos(1, 1)
-                    running = false
+                    if #fileContents == 1 then
+                        setcolors(colors.black, colors.white)
+                        clear()
+                        setpos(1, 1)
+                        running = false
+                    else
+                        table.remove(fileContents, currfile)
+                        table.remove(openfiles, currfile)
+                        if not (currfile == 1) then
+                            currfile = currfile - 1
+                        end
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                        clearScreenLine(hig)
+                    end
                 end
             elseif cmdtab[1] == ":e" or cmdtab[1] == ":ex" then
                 local name = ""
@@ -753,22 +788,7 @@ while running == true do
                 end
                 clearScreenLine(hig)
             elseif cmdtab[1] == ":tabo" or cmdtab[1] == ":tabonly" then
-                fileContents[currfile] = filelines
-                fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
-                local tmp = tonumber(cmdtab[2])
-                if tonumber(cmdtab[2]) >= 0 and tonumber(cmdtab[2]) <= #fileContents - 1 then
-                    currfile = tonumber(cmdtab[2]) + 1
-                    sendMsg(currfile)
-                    filelines = fileContents[currfile]
-                    if fileContents[currfile]["cursor"] then
-                        currCursorX = fileContents[currfile]["cursor"][1]
-                        currXOffset = fileContents[currfile]["cursor"][2]
-                        currCursorY = fileContents[currfile]["cursor"][3]
-                        currFileOffset = fileContents[currfile]["cursor"][4]
-                    end
-                    drawFile()
-                end
-                clearScreenLine(hig)
+                --not yet!
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
