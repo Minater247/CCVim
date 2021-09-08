@@ -675,6 +675,7 @@ while running == true do
             elseif cmdtab[1] == ":tabn" or cmdtab[1] == ":tabnext" then
                 if #fileContents > 1 then
                     if currfile ~= #fileContents then
+                        sendMsg(currfile)
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                         currfile = currfile + 1
@@ -974,7 +975,7 @@ while running == true do
             currXOffset = 0
             drawFile()
         elseif tonumber(var1) ~= nil then
-            local num = var1
+            local num = var1 --num IS A STRING! Convert it to a number with tonumber() before use!
             local _, ch
             local var = 0
             while tonumber(var) ~= nil do
@@ -1024,6 +1025,20 @@ while running == true do
                         currFileOffset = currFileOffset + 1
                     end
                     drawFile()
+                elseif ch == "t" then
+                    fileContents[currfile] = filelines
+                    fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                    currfile = tonumber(num)
+                    if currfile <= #fileContents and currfile > 1 then
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                    end
                 end
             end
         elseif var1 == "g" then
