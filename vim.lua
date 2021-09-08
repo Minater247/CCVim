@@ -621,6 +621,7 @@ while running == true do
                         end
                         drawFile()
                         clearScreenLine(hig)
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                 end
             elseif cmdtab[1] == ":wq" or cmdtab[1] == ":x" then
@@ -678,10 +679,10 @@ while running == true do
                 filename = name
                 if fs.exists(fil.topath(name)) then
                     filelines = fil.toArr(fil.topath(name))
-                    sendMsg("\""..filename.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                 else
                     newfile = true
-                    sendMsg("\""..filename.."\" [New File]")
+                    sendMsg("\""..openfiles[currfile].."\" [New File]")
                 end
                 table.insert(openfiles, #openfiles + 1, filename)
                 table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(filename)))
@@ -722,7 +723,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
-                        clearScreenLine(hig)
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -735,7 +736,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
-                        clearScreenLine(hig)
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                     filename = openfiles[currfile]
                 end
@@ -753,7 +754,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
-                        clearScreenLine(hig)
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -766,7 +767,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
-                        clearScreenLine(hig)
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                     filename = openfiles[currfile]
                 end
@@ -776,7 +777,6 @@ while running == true do
                 local tmp = tonumber(cmdtab[2])
                 if tonumber(cmdtab[2]) >= 0 and tonumber(cmdtab[2]) <= #fileContents - 1 then
                     currfile = tonumber(cmdtab[2]) + 1
-                    sendMsg(currfile)
                     filelines = fileContents[currfile]
                     if fileContents[currfile]["cursor"] then
                         currCursorX = fileContents[currfile]["cursor"][1]
@@ -785,6 +785,7 @@ while running == true do
                         currFileOffset = fileContents[currfile]["cursor"][4]
                     end
                     drawFile()
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                 end
                 clearScreenLine(hig)
             elseif cmdtab[1] == ":tabo" or cmdtab[1] == ":tabonly" then
@@ -1092,6 +1093,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                 end
             end
@@ -1155,6 +1157,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -1167,6 +1170,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                     filename = openfiles[currfile]
                 end
@@ -1184,6 +1188,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -1196,6 +1201,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                         drawFile()
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                     filename = openfiles[currfile]
                 end
