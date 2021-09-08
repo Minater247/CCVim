@@ -14,12 +14,8 @@ Currently very limited, but here's what works:
 - fF/tT jumping, with repeat/repeat reverse (```;```/```,```)
 
 What's currently being worked on:
-The grand majority of the things at [this list of VIM commands](https://vim.rtorr.com)
-
-
-What's planned:
-- Opening multiple files
-- Many other things unable to be listed
+- The grand majority of the things at [this list of VIM commands](https://vim.rtorr.com)
+- File browser
 
 Fun fact - this README was written in the program!
 

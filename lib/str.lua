@@ -78,6 +78,9 @@ local function wordEnds(inp, nopunc)
 end
 --Returns a table of the indices of every letter, case-sensitive
 local function indicesOfLetter(inp, chr)
+    if inp == nil then
+        return {}
+    end
     local output = {}
     for i=1,#inp,1 do
         if string.sub(inp, i, i) == chr then

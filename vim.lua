@@ -216,17 +216,21 @@ local function drawFile()
     end
     for i=currFileOffset,(hig - 1) + currFileOffset,1 do
         setpos(1, i - currFileOffset)
-        if filelines[i] ~= nil then
-            setcolors(colors.black, colors.white)
-            write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
-        else
-            setcolors(colors.black, colors.purple)
-            write("~")
+        if filelines then
+            if filelines[i] ~= nil then
+                setcolors(colors.black, colors.white)
+                write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+            else
+                setcolors(colors.black, colors.purple)
+                write("~")
+            end
         end
     end
     local tmp
-    if filelines[currCursorY + currFileOffset] ~= nil then
-        tmp = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
+    if filelines then
+        if filelines[currCursorY + currFileOffset] ~= nil then
+            tmp = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
+        end
     end
     setpos(currCursorX, currCursorY)
     setcolors(colors.lightGray, colors.white)
@@ -490,6 +494,7 @@ if #decargs["files"] > 0 then
             table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(decargs["files"][i])))
         else
             openfiles = {decargs["files"][1]}
+            table.insert(fileContents, #fileContents + 1, {})
             newfile = true
         end
         filelines = fileContents[1]
@@ -497,6 +502,7 @@ if #decargs["files"] > 0 then
     filename = decargs["files"][1]
 else
     openfiles = {}
+    currfile = 0
 end
 
 if not (#openfiles > 0) then
@@ -513,9 +519,10 @@ if not (#openfiles > 0) then
     write(" ")
 else
     drawFile()
-    sendMsg("\""..filename.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
     if newfile then
         sendMsg("\""..filename.."\" [New File]")
+    else
+        sendMsg("\""..filename.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
     end
 end
 
@@ -641,6 +648,10 @@ while running == true do
                     newfile = true
                     sendMsg("\""..filename.."\" [New File]")
                 end
+                table.insert(openfiles, #openfiles + 1, filename)
+                table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(filename)))
+                currfile = #fileContents
+                filelines = fileContents[currfile]
                 drawFile()
                 currFileOffset = 0
             elseif cmdtab[1] == ":r" or cmdtab[1] == ":read" then
@@ -660,6 +671,68 @@ while running == true do
                     sendMsg("\""..name.."\" "..#secondArr.."L, "..#(tab.getLongestItem(secondArr)).."C")
                 else
                     err("Can't open file "..name)
+                end
+            elseif cmdtab[1] == ":tabn" or cmdtab[1] == ":tabnext" then
+                if #fileContents > 1 then
+                    if currfile ~= #fileContents then
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = currfile + 1
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                        clearScreenLine(hig)
+                    else
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = 1
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                        clearScreenLine(hig)
+                    end
+                    filename = openfiles[currfile]
+                end
+            elseif cmdtab[1] == ":tabp" or cmdtab[1] == ":tabprevious" then
+                if #fileContents > 1 then
+                    if currfile ~= 1 then
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = currfile - 1
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                        clearScreenLine(hig)
+                    else
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = #fileContents
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                        clearScreenLine(hig)
+                    end
+                    filename = openfiles[currfile]
                 end
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
@@ -1026,6 +1099,7 @@ while running == true do
                         end
                         drawFile()
                     end
+                    filename = openfiles[currfile]
                 end
             elseif c == "T" then
                 if #fileContents > 1 then
@@ -1054,6 +1128,7 @@ while running == true do
                         end
                         drawFile()
                     end
+                    filename = openfiles[currfile]
                 end
             end
         elseif var1 == "G" then
