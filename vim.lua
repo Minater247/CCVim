@@ -1131,6 +1131,59 @@ while running == true do
                     end
                 end
             end
+        elseif var1 == "c" then
+            local _, c = os.pullEvent("char")
+            if c == "c" then
+                filelines[currCursorY + currFileOffset] = ""
+                currCursorX = 1
+                currXOffset = 0
+                drawFile()
+                unsavedchanges = true
+                insertMode()
+            elseif c == "$" then
+                filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
+                drawFile()
+                unsavedchanges = true
+                insertMode()
+            elseif c == "i" then
+                local _, ch = os.pullEvent("char")
+                if ch == "w" then
+                    local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
+                    filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
+                    currCursorX = beg
+                    currXOffset = 0
+                    while currCursorX > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
+                    drawFile()
+                    unsavedchanges = true
+                    insertMode()
+                end
+            elseif c == "w" or c == "e" then
+                local word, beg, ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
+                filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1).. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
+                drawFile()
+                unsavedchanges = true
+                insertMode()
+            end
+        elseif var1 == "C" then
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
+            drawFile()
+            unsavedchanges = true
+            insertMode()
+        elseif var1 == "s" then
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
+            drawFile()
+            unsavedchanges = true
+            insertMode()
+        elseif var1 == "S" then
+            filelines[currCursorY + currFileOffset] = ""
+            currCursorX = 1
+            currXOffset = 0
+            drawFile()
+            unsavedchanges = true
+            insertMode()
         end
     elseif event == "key" then
         if var1 == keys.left then
