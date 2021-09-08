@@ -711,7 +711,6 @@ while running == true do
             elseif cmdtab[1] == ":tabn" or cmdtab[1] == ":tabnext" then
                 if #fileContents > 1 then
                     if currfile ~= #fileContents then
-                        sendMsg(currfile)
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                         currfile = currfile + 1
@@ -815,6 +814,28 @@ while running == true do
                     drawFile()
                     clearScreenLine(hig)
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                end
+            elseif cmdtab[1] == ":tabnew" then
+                if not cmdtab[2] then
+                    cmdtab[2] = 1
+                end
+                if tonumber(cmdtab[2]) ~= nil then
+                    for i=1,tonumber(cmdtab[2]),1 do
+                        table.insert(fileContents, currfile + 1, {""})
+                        table.insert(openfiles, currfile + 1, "")
+                    end
+                    sendMsg("added "..tonumber(cmdtab[2]).." new tab")
+                    if tonumber(cmdtab[2]) > 1 then
+                        write("s")
+                    end
+                    fileContents[currfile] = filelines
+                    fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                    currfile = currfile + 1
+                    filelines = fileContents[currfile]
+                    drawFile()
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                else
+                    --check for files matching name
                 end
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
