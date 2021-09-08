@@ -11,6 +11,7 @@ Currently very limited, but here's what works:
 - Appending files
 - Copy / Cut / Paste
 - Jumping to lines
+- fF/tT jumping, with repeat/repeat reverse (";"/",")
 
 What's currently being worked on:
 The grand majority of the things at [this list of VIM commands](https://vim.rtorr.com)
