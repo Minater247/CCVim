@@ -535,7 +535,7 @@ while running == true do
                     err("File exists (add ! to override)")
                 else
                     local new = true
-                    if fs.exists(fil.topath(name), "w") then
+                    if fs.exists(fil.topath(name)) then
                         new = false
                     end
                     local file = fs.open(fil.topath(name), "w")
@@ -543,6 +543,39 @@ while running == true do
                         file.writeLine(filelines[i])
                     end
                     file.close()
+                    unsavedchanges = false
+                    sendMsg("\""..name.."\" ")
+                    if new then
+                        write("[New]  ")
+                    else
+                        write(" ")
+                    end
+                    write(#filelines.."L written")
+                end
+            elseif cmdtab[1] == ":w" or cmdtab[1] == ":w!" then
+                local name = ""
+                if #cmdtab > 1 then
+                    for i=2,#cmdtab,1 do
+                        name = name .. cmdtab[i]
+                        if i ~= #cmdtab then
+                            name = name .. " "
+                        end
+                    end
+                else
+                    name = filename
+                end
+                if #cmdtab < 2 and filename == "" then
+                    err("No file name")
+                else
+                    local new = true
+                    if fs.exists(fil.topath(name)) then
+                        new = false
+                    end
+                    local fl = fs.open(fil.topath(name), "w")
+                    for i=1,#filelines,1 do
+                        fl.writeLine(filelines[i])
+                    end
+                    fl.close()
                     unsavedchanges = false
                     sendMsg("\""..name.."\" ")
                     if new then
