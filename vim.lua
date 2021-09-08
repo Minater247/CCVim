@@ -790,6 +790,33 @@ while running == true do
                 clearScreenLine(hig)
             elseif cmdtab[1] == ":tabo" or cmdtab[1] == ":tabonly" then
                 --not yet!
+            elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
+                if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
+                    err("No write since last change (add ! to override)")
+                else
+                    if #fileContents == 1 then
+                        setcolors(colors.black, colors.white)
+                        clear()
+                        setpos(1, 1)
+                        running = false
+                    else
+                        table.remove(fileContents, currfile)
+                        table.remove(openfiles, currfile)
+                        if not (currfile == 1) then
+                            currfile = currfile - 1
+                        end
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                        clearScreenLine(hig)
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    end
+                end
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
