@@ -73,6 +73,8 @@ local copybuffer = ""
 local copytype = nil
 local jumpbuffer = {}
 local jumpoffset = 0 --offset for going before/after a letter
+local currfile = 1
+local fileContents = {}
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -480,17 +482,17 @@ end
 
 if #decargs["files"] > 0 then
     openfiles = decargs["files"]
-    if #openfiles > 1 then
-        error("Opening multiple files is currently unsupported.")
-    end
     if fs.isDir(fil.topath(decargs["files"][1])) then
         error("Cannot currently open directories")
     end
-    if fs.exists(fil.topath(decargs["files"][1])) then
-        filelines = fil.toArr(fil.topath(decargs["files"][1]))
-    else
-        openfiles = {decargs["files"][1]}
-        newfile = true
+    for i=1,#openfiles,1 do
+        if fs.exists(fil.topath(decargs["files"][i])) then
+            table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(decargs["files"][i])))
+        else
+            openfiles = {decargs["files"][1]}
+            newfile = true
+        end
+        filelines = fileContents[1]
     end
     filename = decargs["files"][1]
 else
@@ -997,6 +999,62 @@ while running == true do
                     end
                 end
                 drawFile()
+            elseif c == "t" then
+                if #fileContents > 1 then
+                    if currfile ~= #fileContents then
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = currfile + 1
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                    else
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = 1
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                    end
+                end
+            elseif c == "T" then
+                if #fileContents > 1 then
+                    if currfile ~= 1 then
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = currfile - 1
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                    else
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = #fileContents
+                        filelines = fileContents[currfile]
+                        if fileContents[currfile]["cursor"] then
+                            currCursorX = fileContents[currfile]["cursor"][1]
+                            currXOffset = fileContents[currfile]["cursor"][2]
+                            currCursorY = fileContents[currfile]["cursor"][3]
+                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        end
+                        drawFile()
+                    end
+                end
             end
         elseif var1 == "G" then
             currFileOffset = 0
@@ -1096,7 +1154,7 @@ while running == true do
             if #idx > 0 then
                 if currCursorX + currFileOffset > idx[1] + jumpoffset then
                     currCursorX = currCursorX - (1 + jumpoffset)
-                    while not tab.find(idx, currCursorX + currXOffset) do
+                    while not tab.find(idx, currCursorX + currXOffset) and currCursorX > 1 do
                         currCursorX = currCursorX - 1
                     end
                     if var1 == "T" then
