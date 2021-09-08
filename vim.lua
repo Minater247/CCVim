@@ -483,6 +483,9 @@ if #decargs["files"] > 0 then
     if #openfiles > 1 then
         error("Opening multiple files is currently unsupported.")
     end
+    if fs.isDir(fil.topath(decargs["files"][1])) then
+        error("Cannot currently open directories")
+    end
     if fs.exists(fil.topath(decargs["files"][1])) then
         filelines = fil.toArr(fil.topath(decargs["files"][1]))
     else
