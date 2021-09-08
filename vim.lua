@@ -48,8 +48,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.14
-local releasedate = "2021-09-07"
+local version = 0.15
+local releasedate = "2021-09-08"
 
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
