@@ -359,7 +359,7 @@ local function insertMode()
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
                     moveCursorLeft()
                     drawFile()
-                    unsavedchanges = true
+                    fileContents[currfile]["unsavedchanges"] = true
                 else
                     if currCursorX + currXOffset < 2 then
                         currCursorX = #(filelines[currCursorY + currFileOffset - 1]) + 1
@@ -373,7 +373,7 @@ local function insertMode()
                             end
                         end
                         drawFile()
-                        unsavedchanges = true
+                        fileContents[currfile]["unsavedchanges"] = true
                     else
                         filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
                         currXOffset = currXOffset - math.floor(wid / 2)
@@ -383,7 +383,7 @@ local function insertMode()
                             currXOffset = 0
                         end
                         drawFile()
-                        unsavedchanges = true
+                        fileContents[currfile]["unsavedchanges"] = true
                     end
                 end
             elseif key == keys.enter then
@@ -393,7 +393,7 @@ local function insertMode()
                     moveCursorDown()
                     currCursorX = 1
                     currXOffset = 0
-                    unsavedchanges = true
+                    fileContents[currfile]["unsavedchanges"] = true
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
@@ -410,7 +410,7 @@ local function insertMode()
                 currXOffset = currXOffset + 1
             end
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         end
     end
     sendMsg(" ")
@@ -435,7 +435,7 @@ local function appendMode()
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
                     moveCursorLeft()
                     drawFile()
-                    unsavedchanges = true
+                    fileContents[currfile]["unsavedchanges"] = true
                 else
                     if currCursorX + currXOffset > 1 then
                         filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
@@ -446,7 +446,7 @@ local function appendMode()
                             currXOffset = 0
                         end
                         drawFile()
-                        unsavedchanges = true
+                        fileContents[currfile]["unsavedchanges"] = true
                     end
                 end
             elseif key == keys.enter then
@@ -456,7 +456,7 @@ local function appendMode()
                     moveCursorDown()
                     currCursorX = 1
                     currXOffset = 0
-                    unsavedchanges = true
+                    fileContents[currfile]["unsavedchanges"] = true
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
@@ -469,7 +469,7 @@ local function appendMode()
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
             moveCursorRight(0)
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         end
     end
     sendMsg(" ")
@@ -555,7 +555,7 @@ while running == true do
                         file.writeLine(filelines[i])
                     end
                     file.close()
-                    unsavedchanges = false
+                    fileContents[currfile]["unsavedchanges"] = false
                     sendMsg("\""..name.."\" ")
                     if new then
                         write("[New]  ")
@@ -588,7 +588,7 @@ while running == true do
                         fl.writeLine(filelines[i])
                     end
                     fl.close()
-                    unsavedchanges = false
+                    fileContents[currfile]["unsavedchanges"] = false
                     sendMsg("\""..name.."\" ")
                     if new then
                         write("[New]  ")
@@ -598,7 +598,7 @@ while running == true do
                     write(#filelines.."L written")
                 end
             elseif cmdtab[1] == ":q" or cmdtab[1] == ":q!" then
-                if unsavedchanges and cmdtab[1] ~= ":q!" then
+                if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":q!" then
                     err("No write since last change (add ! to override)")
                 else
                     setcolors(colors.black, colors.white)
@@ -626,7 +626,7 @@ while running == true do
                         file.writeLine(filelines[i])
                     end
                     file.close()
-                    unsavedchanges = false
+                    fileContents[currfile]["unsavedchanges"] = false
                     setcolors(colors.black, colors.white)
                     clear()
                     setpos(1, 1)
@@ -752,6 +752,23 @@ while running == true do
                     drawFile()
                 end
                 clearScreenLine(hig)
+            elseif cmdtab[1] == ":tabo" or cmdtab[1] == ":tabonly" then
+                fileContents[currfile] = filelines
+                fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                local tmp = tonumber(cmdtab[2])
+                if tonumber(cmdtab[2]) >= 0 and tonumber(cmdtab[2]) <= #fileContents - 1 then
+                    currfile = tonumber(cmdtab[2]) + 1
+                    sendMsg(currfile)
+                    filelines = fileContents[currfile]
+                    if fileContents[currfile]["cursor"] then
+                        currCursorX = fileContents[currfile]["cursor"][1]
+                        currXOffset = fileContents[currfile]["cursor"][2]
+                        currCursorY = fileContents[currfile]["cursor"][3]
+                        currFileOffset = fileContents[currfile]["cursor"][4]
+                    end
+                    drawFile()
+                end
+                clearScreenLine(hig)
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
@@ -783,12 +800,12 @@ while running == true do
             local _, chr = os.pullEvent("char")
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. chr .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "J" then
             filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. " " .. filelines[currCursorY + currFileOffset + 1]
             table.remove(filelines, currCursorY + currFileOffset + 1)
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "o" then
             table.insert(filelines, currCursorY + currFileOffset + 1, "")
             moveCursorDown()
@@ -796,14 +813,14 @@ while running == true do
             currXOffset = 0
             drawFile()
             insertMode()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "O" then
             table.insert(filelines, currCursorY + currFileOffset, "")
             currCursorX = 1
             currXOffset = 0
             drawFile()
             insertMode()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "a" then
             appendMode()
         elseif var1 == "A" then
@@ -831,7 +848,7 @@ while running == true do
                         file.writeLine(filelines[i])
                     end
                     file.close()
-                    unsavedchanges = false
+                    fileContents[currfile]["unsavedchanges"] = false
                     setcolors(colors.black, colors.white)
                     clear()
                     setpos(1, 1)
@@ -878,7 +895,7 @@ while running == true do
             copytype = "text"
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "d" then
             local _, c = os.pullEvent("char")
             if c == "d" then
@@ -886,7 +903,7 @@ while running == true do
                 copytype = "line"
                 table.remove(filelines, currCursorY + currFileOffset)
                 drawFile()
-                unsavedchanges = true
+                fileContents[currfile]["unsavedchanges"] = true
             elseif c == "w" then
                 local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
                 copybuffer = word
@@ -899,7 +916,7 @@ while running == true do
                 end
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
                 drawFile()
-                unsavedchanges = true
+                fileContents[currfile]["unsavedchanges"] = true
             elseif c == "i" then
                 local _, ch = os.pullEvent("char")
                 local word,beg,ed
@@ -909,7 +926,7 @@ while running == true do
                     copytype = "text"
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
                     drawFile()
-                    unsavedchanges = true
+                    fileContents[currfile]["unsavedchanges"] = true
                 end
             elseif c == "a" then
                 local _, ch = os.pullEvent("char")
@@ -926,21 +943,21 @@ while running == true do
                     copytype = "text"
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
                     drawFile()
-                    unsavedchanges = true
+                    fileContents[currfile]["unsavedchanges"] = true
                 end
             elseif c == "$" then
                 copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
                 copytype = "text"
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
                 drawFile()
-                unsavedchanges = true
+                fileContents[currfile]["unsavedchanges"] = true
             end
         elseif var1 == "D" then
             copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
             copytype = "text"
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "p" then
             if copytype == "line" then
                 table.insert(filelines, currCursorY + currFileOffset + 1, copybuffer)
@@ -957,7 +974,7 @@ while running == true do
                 end
             end
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "P" then
             if copytype == "line" then
                 table.insert(filelines, currCursorY + currFileOffset, copybuffer)
@@ -979,7 +996,7 @@ while running == true do
                 end
             end
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "$" then
             currCursorX = #filelines[currCursorY + currFileOffset]
             while currCursorX > wid do
@@ -1027,7 +1044,7 @@ while running == true do
                             table.remove(filelines, currCursorY + currFileOffset)
                         end
                         drawFile()
-                        unsavedchanges = true
+                        fileContents[currfile]["unsavedchanges"] = true
                     end
                 end
             elseif ch == "g" then
@@ -1064,7 +1081,7 @@ while running == true do
                 filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. filelines[currCursorY + currFileOffset + 1]
                 table.remove(filelines, currCursorY + currFileOffset + 1)
                 drawFile()
-                unsavedchanges = true
+                fileContents[currfile]["unsavedchanges"] = true
             elseif c == "g" then
                 currCursorY = 1
                 currFileOffset = 0
@@ -1339,12 +1356,12 @@ while running == true do
                 currCursorX = 1
                 currXOffset = 0
                 drawFile()
-                unsavedchanges = true
+                fileContents[currfile]["unsavedchanges"] = true
                 insertMode()
             elseif c == "$" then
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
                 drawFile()
-                unsavedchanges = true
+                fileContents[currfile]["unsavedchanges"] = true
                 insertMode()
             elseif c == "i" then
                 local _, ch = os.pullEvent("char")
@@ -1358,32 +1375,32 @@ while running == true do
                         currXOffset = currXOffset + 1
                     end
                     drawFile()
-                    unsavedchanges = true
+                    fileContents[currfile]["unsavedchanges"] = true
                     insertMode()
                 end
             elseif c == "w" or c == "e" then
                 local word, beg, ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1).. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
                 drawFile()
-                unsavedchanges = true
+                fileContents[currfile]["unsavedchanges"] = true
                 insertMode()
             end
         elseif var1 == "C" then
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
             insertMode()
         elseif var1 == "s" then
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
             insertMode()
         elseif var1 == "S" then
             filelines[currCursorY + currFileOffset] = ""
             currCursorX = 1
             currXOffset = 0
             drawFile()
-            unsavedchanges = true
+            fileContents[currfile]["unsavedchanges"] = true
             insertMode()
         end
     elseif event == "key" then
