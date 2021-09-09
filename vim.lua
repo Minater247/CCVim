@@ -1224,6 +1224,52 @@ while running == true do
                     currFileOffset = currFileOffset - 1
                 end
                 drawFile()
+            elseif ch == "w" or ch == "W" then
+                for i=1,tonumber(num),1 do
+                    local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(ch, "%u"))
+                    if currCursorX + currXOffset < begs[#begs] then
+                        currCursorX = currCursorX + 1
+                        while not tab.find(begs, currCursorX + currXOffset) do
+                            currCursorX = currCursorX + 1
+                        end
+                        while currCursorX > wid do
+                            currCursorX = currCursorX - 1
+                            currXOffset = currXOffset + 1
+                        end
+                        oldx = currCursorX + currXOffset
+                        drawFile()
+                    end
+                end
+            elseif ch == "e" or ch == "E" then
+                for i=1,tonumber(num),1 do
+                    local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(ch, "%u"))
+                    if currCursorX + currXOffset < begs[#begs] then
+                        currCursorX = currCursorX + 1
+                        while not tab.find(begs, currCursorX + currXOffset) do
+                            currCursorX = currCursorX + 1
+                        end
+                        while currCursorX > wid do
+                            currCursorX = currCursorX - 1
+                            currXOffset = currXOffset + 1
+                        end
+                        drawFile()
+                    end
+                end
+            elseif ch == "b" or ch == "B" then
+                for i=1,tonumber(num),1 do
+                    local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(ch, "%u"))
+                    if currCursorX + currXOffset > begs[1] then
+                        currCursorX = currCursorX - 1
+                        while not tab.find(begs, currCursorX + currXOffset) do
+                            currCursorX = currCursorX - 1
+                        end
+                        while currCursorX < 1 do
+                            currCursorX = currCursorX + 1
+                            currXOffset = currXOffset - 1
+                        end
+                        drawFile()
+                    end
+                end
             end
         elseif var1 == "g" then
             local _,c = os.pullEvent("char")
@@ -1365,7 +1411,7 @@ while running == true do
                 while not tab.find(begs, currCursorX + currXOffset) do
                     currCursorX = currCursorX + 1
                 end
-                while currCursorX < 1 do
+                while currCursorX > wid do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
                 end
@@ -1378,7 +1424,7 @@ while running == true do
                 while not tab.find(begs, currCursorX + currXOffset) do
                     currCursorX = currCursorX - 1
                 end
-                while currCursorX > wid do
+                while currCursorX < 1 do
                     currCursorX = currCursorX + 1
                     currXOffset = currXOffset - 1
                 end
