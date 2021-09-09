@@ -675,18 +675,25 @@ while running == true do
                         name = name .. " "
                     end
                 end
-                filename = name
+                if name then
+                    filename = name
+                else
+                    filename = ""
+                end
+                table.insert(openfiles, #openfiles + 1, filename)
                 if fs.exists(fil.topath(name)) then
                     filelines = fil.toArr(fil.topath(name))
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                 else
                     newfile = true
-                    sendMsg("\""..openfiles[currfile].."\" [New File]")
+                    sendMsg("\""..filename.."\" [New File]")
                 end
-                table.insert(openfiles, #openfiles + 1, filename)
                 table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(filename)))
+                if not fileContents[#fileContents] then
+                    fileContents[#fileContents] = {""}
+                end
                 currfile = #fileContents
-                filelines = fileContents[currfile]
+                filelines = {""}
                 drawFile()
                 currFileOffset = 0
             elseif cmdtab[1] == ":r" or cmdtab[1] == ":read" then
@@ -1168,6 +1175,21 @@ while running == true do
                         drawFile()
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
+                elseif ch == "e" or ch == "E" then
+                    for i=1,tonumber(num),1 do
+                        local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(ch, "%u"))
+                        if currCursorX + currXOffset > begs[1] then
+                            currCursorX = currCursorX - 1
+                            while not tab.find(begs, currCursorX + currXOffset) do
+                                currCursorX = currCursorX - 1
+                            end
+                            while currCursorX > wid do
+                                currCursorX = currCursorX + 1
+                                currXOffset = currXOffset - 1
+                            end
+                        end
+                    end
+                    drawFile()
                 end
             elseif ch == "G" then
                 currCursorY = tonumber(num) - 1 --minus one for moveCursorDown
@@ -1268,6 +1290,62 @@ while running == true do
                             currXOffset = currXOffset - 1
                         end
                         drawFile()
+                    end
+                end
+            elseif ch == "f" or ch == "t" then
+                local _,c = os.pullEvent("char")
+                local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
+                for i=1,tonumber(num),1 do
+                    if #idx > 0 then
+                        if currCursorX + currFileOffset < idx[#idx] - jumpoffset then
+                            local oldcursor = currCursorX
+                            currCursorX = currCursorX + (1 + jumpoffset)
+                            while not tab.find(idx, currCursorX + currXOffset) and not (currCursorX + currXOffset >= #filelines[currCursorY + currFileOffset]) do
+                                currCursorX = currCursorX + 1
+                            end
+                            if not tab.find(idx, currCursorX + currXOffset) then
+                                currCursorX = oldcursor
+                            end
+                            if ch == "t" then
+                                currCursorX = currCursorX - 1
+                            end
+                            while currCursorX > wid do
+                                currCursorX = currCursorX - 1
+                                currXOffset = currXOffset + 1
+                            end
+                            jumpbuffer = {c, ch}
+                            if ch == "t" then
+                                jumpoffset = 1
+                            else
+                                jumpoffset = 0
+                            end
+                        end
+                    end
+                end
+                drawFile()
+            elseif ch == "F" or ch == "T" then
+                local _,c = os.pullEvent("char")
+                local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
+                if #idx > 0 then
+                    if currCursorX + currFileOffset > idx[1] + jumpoffset then
+                        currCursorX = currCursorX - (1 + jumpoffset)
+                        while not tab.find(idx, currCursorX + currXOffset) and currCursorX > 1 do
+                            currCursorX = currCursorX - 1
+                        end
+                        if ch == "T" then
+                            currCursorX = currCursorX + 1
+                        end
+                        while currCursorX < 1 do
+                            currCursorX = currCursorX + 1
+                            currXOffset = currXOffset - 1
+                        end
+                        drawFile()
+                        jumpbuffer = {c, ch}
+                        if ch == "T" then
+                            jumpoffset = 1
+                        else
+                            jumpoffset = 0
+                        end
                     end
                 end
             end
