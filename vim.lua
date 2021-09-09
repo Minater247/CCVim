@@ -60,7 +60,6 @@ local decargs = argv.pull(args, validArgs, unimplementedArgs) --DecodedArguments
 local openfiles = {}
 local wid, hig = term.getSize()
 local running = true
-local unsavedchanges = false
 local filelines = {}
 local filename = ""
 local currCursorX = 1
@@ -1170,6 +1169,61 @@ while running == true do
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                 end
+            elseif ch == "G" then
+                currCursorY = tonumber(num) - 1 --minus one for moveCursorDown
+                currFileOffset = 0
+                currCursorX = 1
+                currXOffset = 0
+                while currCursorY > hig - 1 do
+                    currCursorY = currCursorY - 1
+                    currFileOffset = currFileOffset + 1
+                end
+                drawFile()
+            elseif ch == "h" then
+                currCursorX = currCursorX - tonumber(num) + 1
+                if currCursorX + currXOffset < 1 then
+                    currCursorX = 1
+                    currXOffset = 0
+                else
+                    while currCursorX < 1 do
+                        currCursorX = currCursorX + 1
+                        currXOffset = currXOffset - 1
+                    end
+                end
+                drawFile()
+            elseif ch == "l" then
+                currCursorX = currCursorX + tonumber(num)
+                if currCursorX + currXOffset > #filelines[currCursorY + currFileOffset] then
+                    currXOffset = 0
+                    currCursorX = #filelines[currCursorY + currFileOffset] + 1
+                end
+                while currCursorX > wid do
+                    currCursorX = currCursorX - 1
+                    currXOffset = currXOffset + 1
+                end
+                drawFile()
+            elseif ch == "j" then
+                currCursorY = currCursorY + tonumber(num)
+                if currCursorY + currFileOffset > #filelines then
+                    currCursorY = #filelines
+                    currFileOffset = 0
+                end
+                while currCursorY > hig - 1 do
+                    currCursorY = currCursorY - 1
+                    currFileOffset = currFileOffset + 1
+                end
+                drawFile()
+            elseif ch == "k" then
+                currCursorY = currCursorY - tonumber(num)
+                if currCursorY + currFileOffset < 1 then
+                    currCursorY = 1
+                    currFileOffset = 0
+                end
+                while currCursorY < 1 do
+                    currCursorY = currCursorY + 1
+                    currFileOffset = currFileOffset - 1
+                end
+                drawFile()
             end
         elseif var1 == "g" then
             local _,c = os.pullEvent("char")
