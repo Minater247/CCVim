@@ -1003,7 +1003,6 @@ while running == true do
                 copybuffer = filelines[currCursorY + currFileOffset]
                 copytype = "line"
                 table.remove(filelines, currCursorY + currFileOffset)
-                drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "w" then
                 local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
@@ -1015,8 +1014,8 @@ while running == true do
                 if ed ~= #filelines[currCursorY + currFileOffset] then
                     ed = ed + 1
                 end
+                currCursorX = beg - 1
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
-                drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "i" then
                 local _, ch = os.pullEvent("char")
@@ -1026,8 +1025,8 @@ while running == true do
                     copybuffer = word
                     copytype = "text"
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
-                    drawFile()
                     fileContents[currfile]["unsavedchanges"] = true
+                    currCursorX = beg - 1
                 end
             elseif c == "a" then
                 local _, ch = os.pullEvent("char")
@@ -1042,17 +1041,24 @@ while running == true do
                         beg = beg - 1
                     end
                     copytype = "text"
+                    currCursorX = beg - 1
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
-                    drawFile()
                     fileContents[currfile]["unsavedchanges"] = true
                 end
             elseif c == "$" then
                 copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
                 copytype = "text"
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
-                drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
             end
+            while currCursorX + currXOffset > #filelines[currCursorY + currFileOffset] do
+                currCursorX = currCursorX - 1
+                if currCursorX < 1 then
+                    currXOffset = currXOffset - 1
+                    currCursorX = currCursorX + 1
+                end
+            end
+            drawFile()
         elseif var1 == "D" then
             copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
             copytype = "text"
