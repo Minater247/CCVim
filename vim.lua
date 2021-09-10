@@ -597,6 +597,9 @@ while running == true do
                     write(#filelines.."L written")
                 end
             elseif cmdtab[1] == ":q" or cmdtab[1] == ":q!" then
+                if not fileContents[currfile] then
+                    fileContents[currfile] = {""}
+                end
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":q!" then
                     err("No write since last change (add ! to override)")
                 else
@@ -612,11 +615,13 @@ while running == true do
                             currfile = currfile - 1
                         end
                         filelines = fileContents[currfile]
-                        if fileContents[currfile]["cursor"] then
-                            currCursorX = fileContents[currfile]["cursor"][1]
-                            currXOffset = fileContents[currfile]["cursor"][2]
-                            currCursorY = fileContents[currfile]["cursor"][3]
-                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        if fileContents[currfile] then
+                            if fileContents[currfile]["cursor"] then
+                                currCursorX = fileContents[currfile]["cursor"][1]
+                                currXOffset = fileContents[currfile]["cursor"][2]
+                                currCursorY = fileContents[currfile]["cursor"][3]
+                                currFileOffset = fileContents[currfile]["cursor"][4]
+                            end
                         end
                         drawFile()
                         clearScreenLine(hig)
@@ -838,10 +843,68 @@ while running == true do
                     fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                     currfile = currfile + 1
                     filelines = fileContents[currfile]
-                    drawFile()
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    currCursorX = 1
+                    currXOffset = 0
+                    currCursorY = 1
+                    currFileOffset = 0
+                    drawFile()
                 else
-                    --check for files matching name
+                    if cmdtab[2] then
+                        local name = ""
+                        for i=2,#cmdtab,1 do
+                            name = name .. cmdtab[i]
+                            if i ~= #cmdtab then
+                                name = name .. " "
+                            end
+                        end
+                        if fs.exists(fil.topath(name)) then
+                            fileContents[currfile] = filelines
+                            fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                            table.insert(fileContents, currfile + 1, fil.toArr(fil.topath(name)))
+                            table.insert(openfiles, currfile + 1, name)
+                            currfile = currfile + 1
+                            filelines = fileContents[currfile]
+                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            currCursorX = 1
+                            currXOffset = 0
+                            currCursorY = 1
+                            currFileOffset = 0
+                            drawFile()
+                        else
+                            local templines = fil.toArr(fil.topath(name))
+                            if templines then
+                                table.insert(fileContents, currfile + 1, templines)
+                            else
+                                table.insert(fileContents, currfile + 1, {""})
+                            end
+                            table.insert(openfiles, currfile + 1, name)
+                            fileContents[currfile] = filelines
+                            fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                            currfile = currfile + 1
+                            filelines = fileContents[currfile]
+                            sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            currCursorX = 1
+                            currXOffset = 0
+                            currCursorY = 1
+                            currFileOffset = 0
+                            drawFile()
+                        end
+                    else
+                        --just add an empty tab
+                        table.insert(fileContents, currfile + 1, {""})
+                        table.insert(openfiles, currfile + 1, "")
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = currfile + 1
+                        filelines = fileContents[currfile]
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        currCursorX = 1
+                        currXOffset = 0
+                        currCursorY = 1
+                        currFileOffset = 0
+                        drawFile()
+                    end
                 end
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
@@ -1476,17 +1539,19 @@ while running == true do
             drawFile()
         elseif var1 == "w" or var1 == "W" then
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
-            if currCursorX + currXOffset < begs[#begs] then
-                currCursorX = currCursorX + 1
-                while not tab.find(begs, currCursorX + currXOffset) do
+            if begs then
+                if currCursorX + currXOffset < begs[#begs] then
                     currCursorX = currCursorX + 1
+                    while not tab.find(begs, currCursorX + currXOffset) do
+                        currCursorX = currCursorX + 1
+                    end
+                    while currCursorX > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
+                    oldx = currCursorX + currXOffset
+                    drawFile()
                 end
-                while currCursorX > wid do
-                    currCursorX = currCursorX - 1
-                    currXOffset = currXOffset + 1
-                end
-                oldx = currCursorX + currXOffset
-                drawFile()
             end
         elseif var1 == "e" or var1 == "E" then
             local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
