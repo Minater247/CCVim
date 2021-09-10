@@ -257,7 +257,7 @@ local function moveCursorRight(endPad)
         endPad = 0
     end
     if filelines[currCursorY + currFileOffset] ~= nil then
-        if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 - endPad then
+        if currCursorX + currXOffset < #(filelines[currCursorY + currFileOffset]) + 1 - endPad then
             currCursorX = currCursorX + 1
             if currCursorX > wid then
                 currCursorX = currCursorX - 1
@@ -465,7 +465,7 @@ local function appendMode()
             if filelines[currCursorY + currFileOffset] == nil then
                 filelines[currCursorY + currFileOffset] = ""
             end
-            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 2, #(filelines[currCursorY + currFileOffset]))
             moveCursorRight(0)
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true

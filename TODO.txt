@@ -1,3 +1,4 @@
 //TODO
 
+-- Ability to :newtab with file too
 -- Check if file opened in tab
