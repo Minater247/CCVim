@@ -48,8 +48,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.15
-local releasedate = "2021-09-08"
+local version = 0.16
+local releasedate = "2021-09-10"
 
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
@@ -257,7 +257,7 @@ local function moveCursorRight(endPad)
         endPad = 0
     end
     if filelines[currCursorY + currFileOffset] ~= nil then
-        if currCursorX + currXOffset ~= #(filelines[currCursorY + currFileOffset]) + 1 - endPad then
+        if currCursorX + currXOffset < #(filelines[currCursorY + currFileOffset]) + 1 - endPad then
             currCursorX = currCursorX + 1
             if currCursorX > wid then
                 currCursorX = currCursorX - 1
@@ -340,6 +340,7 @@ local function moveCursorDown()
 end
 
 local function insertMode()
+    drawFile()
     sendMsg("-- INSERT --")
     local ev, key
     while key ~= keys.tab do
@@ -409,6 +410,9 @@ local function insertMode()
                 currXOffset = currXOffset + 1
             end
             drawFile()
+            if not fileContents[currfile] then
+                fileContents[currfile] = {""}
+            end
             fileContents[currfile]["unsavedchanges"] = true
         end
     end
@@ -416,6 +420,7 @@ local function insertMode()
 end
 
 local function appendMode()
+    drawFile()
     sendMsg("-- APPEND --")
     local ev, key
     while key ~= keys.tab do
@@ -465,7 +470,7 @@ local function appendMode()
             if filelines[currCursorY + currFileOffset] == nil then
                 filelines[currCursorY + currFileOffset] = ""
             end
-            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 2, #(filelines[currCursorY + currFileOffset]))
             moveCursorRight(0)
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true
@@ -512,6 +517,26 @@ if not (#openfiles > 0) then
         setpos(1,i)
         write("~")
     end
+    --MOTD
+    setcolors(colors.black, colors.white)
+    setpos((wid / 2) - (33 / 2), (hig / 2) - 3)
+    write("CCVIM - ComputerCraft Vi Improved")
+    setpos((wid / 2) - (#("version ".. version) / 2), (hig / 2) - 1)
+    write("version "..version)
+    setpos((wid / 2) - (13 / 2), (hig / 2))
+    write("By Minater247")
+    if wid > 53 then
+        setpos((wid / 2) - (46 / 2), (hig / 2) + 1)
+        write("CCVIM is open source and freely distributable.")
+        setpos((wid / 2) - (28 / 2), (hig / 2) + 4)
+    else
+        setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
+    end
+    write("Type :q")
+    setcolors(colors.black, colors.lightBlue)
+    write("<Enter>       ")
+    setcolors(colors.black, colors.white)
+    write("to exit")
 
     setpos(1, 1)
     setcolors(colors.lightGray, colors.white)
@@ -597,10 +622,13 @@ while running == true do
                     write(#filelines.."L written")
                 end
             elseif cmdtab[1] == ":q" or cmdtab[1] == ":q!" then
+                if not fileContents[currfile] then
+                    fileContents[currfile] = {""}
+                end
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":q!" then
                     err("No write since last change (add ! to override)")
                 else
-                    if #fileContents == 1 then
+                    if #fileContents <= 1 then
                         setcolors(colors.black, colors.white)
                         clear()
                         setpos(1, 1)
@@ -612,11 +640,13 @@ while running == true do
                             currfile = currfile - 1
                         end
                         filelines = fileContents[currfile]
-                        if fileContents[currfile]["cursor"] then
-                            currCursorX = fileContents[currfile]["cursor"][1]
-                            currXOffset = fileContents[currfile]["cursor"][2]
-                            currCursorY = fileContents[currfile]["cursor"][3]
-                            currFileOffset = fileContents[currfile]["cursor"][4]
+                        if fileContents[currfile] then
+                            if fileContents[currfile]["cursor"] then
+                                currCursorX = fileContents[currfile]["cursor"][1]
+                                currXOffset = fileContents[currfile]["cursor"][2]
+                                currCursorY = fileContents[currfile]["cursor"][3]
+                                currFileOffset = fileContents[currfile]["cursor"][4]
+                            end
                         end
                         drawFile()
                         clearScreenLine(hig)
@@ -838,10 +868,68 @@ while running == true do
                     fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                     currfile = currfile + 1
                     filelines = fileContents[currfile]
-                    drawFile()
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    currCursorX = 1
+                    currXOffset = 0
+                    currCursorY = 1
+                    currFileOffset = 0
+                    drawFile()
                 else
-                    --check for files matching name
+                    if cmdtab[2] then
+                        local name = ""
+                        for i=2,#cmdtab,1 do
+                            name = name .. cmdtab[i]
+                            if i ~= #cmdtab then
+                                name = name .. " "
+                            end
+                        end
+                        if fs.exists(fil.topath(name)) then
+                            fileContents[currfile] = filelines
+                            fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                            table.insert(fileContents, currfile + 1, fil.toArr(fil.topath(name)))
+                            table.insert(openfiles, currfile + 1, name)
+                            currfile = currfile + 1
+                            filelines = fileContents[currfile]
+                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            currCursorX = 1
+                            currXOffset = 0
+                            currCursorY = 1
+                            currFileOffset = 0
+                            drawFile()
+                        else
+                            local templines = fil.toArr(fil.topath(name))
+                            if templines then
+                                table.insert(fileContents, currfile + 1, templines)
+                            else
+                                table.insert(fileContents, currfile + 1, {""})
+                            end
+                            table.insert(openfiles, currfile + 1, name)
+                            fileContents[currfile] = filelines
+                            fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                            currfile = currfile + 1
+                            filelines = fileContents[currfile]
+                            sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            currCursorX = 1
+                            currXOffset = 0
+                            currCursorY = 1
+                            currFileOffset = 0
+                            drawFile()
+                        end
+                    else
+                        --just add an empty tab
+                        table.insert(fileContents, currfile + 1, {""})
+                        table.insert(openfiles, currfile + 1, "")
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        currfile = currfile + 1
+                        filelines = fileContents[currfile]
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        currCursorX = 1
+                        currXOffset = 0
+                        currCursorY = 1
+                        currFileOffset = 0
+                        drawFile()
+                    end
                 end
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
@@ -1003,7 +1091,6 @@ while running == true do
                 copybuffer = filelines[currCursorY + currFileOffset]
                 copytype = "line"
                 table.remove(filelines, currCursorY + currFileOffset)
-                drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "w" then
                 local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
@@ -1015,8 +1102,8 @@ while running == true do
                 if ed ~= #filelines[currCursorY + currFileOffset] then
                     ed = ed + 1
                 end
+                currCursorX = beg - 1
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
-                drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "i" then
                 local _, ch = os.pullEvent("char")
@@ -1026,8 +1113,8 @@ while running == true do
                     copybuffer = word
                     copytype = "text"
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
-                    drawFile()
                     fileContents[currfile]["unsavedchanges"] = true
+                    currCursorX = beg - 1
                 end
             elseif c == "a" then
                 local _, ch = os.pullEvent("char")
@@ -1042,17 +1129,24 @@ while running == true do
                         beg = beg - 1
                     end
                     copytype = "text"
+                    currCursorX = beg - 1
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
-                    drawFile()
                     fileContents[currfile]["unsavedchanges"] = true
                 end
             elseif c == "$" then
                 copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
                 copytype = "text"
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
-                drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
             end
+            while currCursorX + currXOffset > #filelines[currCursorY + currFileOffset] do
+                currCursorX = currCursorX - 1
+                if currCursorX < 1 then
+                    currXOffset = currXOffset - 1
+                    currCursorX = currCursorX + 1
+                end
+            end
+            drawFile()
         elseif var1 == "D" then
             copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
             copytype = "text"
@@ -1470,17 +1564,19 @@ while running == true do
             drawFile()
         elseif var1 == "w" or var1 == "W" then
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
-            if currCursorX + currXOffset < begs[#begs] then
-                currCursorX = currCursorX + 1
-                while not tab.find(begs, currCursorX + currXOffset) do
+            if begs then
+                if currCursorX + currXOffset < begs[#begs] then
                     currCursorX = currCursorX + 1
+                    while not tab.find(begs, currCursorX + currXOffset) do
+                        currCursorX = currCursorX + 1
+                    end
+                    while currCursorX > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
+                    oldx = currCursorX + currXOffset
+                    drawFile()
                 end
-                while currCursorX > wid do
-                    currCursorX = currCursorX - 1
-                    currXOffset = currXOffset + 1
-                end
-                oldx = currCursorX + currXOffset
-                drawFile()
             end
         elseif var1 == "e" or var1 == "E" then
             local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
