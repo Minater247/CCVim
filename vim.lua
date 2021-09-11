@@ -48,8 +48,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.15
-local releasedate = "2021-09-08"
+local version = 0.16
+local releasedate = "2021-09-10"
 
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
@@ -525,7 +525,13 @@ if not (#openfiles > 0) then
     write("version "..version)
     setpos((wid / 2) - (13 / 2), (hig / 2))
     write("By Minater247")
-    setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
+    if wid > 53 then
+        setpos((wid / 2) - (46 / 2), (hig / 2) + 1)
+        write("CCVIM is open source and freely distributable.")
+        setpos((wid / 2) - (28 / 2), (hig / 2) + 4)
+    else
+        setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
+    end
     write("Type :q")
     setcolors(colors.black, colors.lightBlue)
     write("<Enter>       ")
