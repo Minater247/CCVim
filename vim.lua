@@ -340,6 +340,7 @@ local function moveCursorDown()
 end
 
 local function insertMode()
+    drawFile()
     sendMsg("-- INSERT --")
     local ev, key
     while key ~= keys.tab do
@@ -409,6 +410,9 @@ local function insertMode()
                 currXOffset = currXOffset + 1
             end
             drawFile()
+            if not fileContents[currfile] then
+                fileContents[currfile] = {""}
+            end
             fileContents[currfile]["unsavedchanges"] = true
         end
     end
@@ -416,6 +420,7 @@ local function insertMode()
 end
 
 local function appendMode()
+    drawFile()
     sendMsg("-- APPEND --")
     local ev, key
     while key ~= keys.tab do
@@ -512,6 +517,20 @@ if not (#openfiles > 0) then
         setpos(1,i)
         write("~")
     end
+    --MOTD
+    setcolors(colors.black, colors.white)
+    setpos((wid / 2) - (33 / 2), (hig / 2) - 3)
+    write("CCVIM - ComputerCraft Vi Improved")
+    setpos((wid / 2) - (#("version ".. version) / 2), (hig / 2) - 1)
+    write("version "..version)
+    setpos((wid / 2) - (13 / 2), (hig / 2))
+    write("By Minater247")
+    setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
+    write("Type :q")
+    setcolors(colors.black, colors.lightBlue)
+    write("<Enter>       ")
+    setcolors(colors.black, colors.white)
+    write("to exit")
 
     setpos(1, 1)
     setcolors(colors.lightGray, colors.white)
@@ -603,7 +622,7 @@ while running == true do
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":q!" then
                     err("No write since last change (add ! to override)")
                 else
-                    if #fileContents == 1 then
+                    if #fileContents <= 1 then
                         setcolors(colors.black, colors.white)
                         clear()
                         setpos(1, 1)
