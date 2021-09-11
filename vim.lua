@@ -74,6 +74,7 @@ local jumpbuffer = {}
 local jumpoffset = 0 --offset for going before/after a letter
 local currfile = 1
 local fileContents = {}
+local motd = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -210,6 +211,7 @@ local function sendMsg(message)
 end
 
 local function drawFile()
+    motd = false
     for i=1,hig-1,1 do
         clearScreenLine(i)
     end
@@ -339,6 +341,64 @@ local function moveCursorDown()
     end
 end
 
+local function redrawTerm()
+    clearScreenLine(hig)
+    if motd then
+        clear()
+        setcolors(colors.black, colors.white)
+        setpos((wid / 2) - (33 / 2), (hig / 2) - 3)
+        write("CCVIM - ComputerCraft Vi Improved")
+        setpos((wid / 2) - (#("version ".. version) / 2), (hig / 2) - 1)
+        write("version "..version)
+        setpos((wid / 2) - (13 / 2), (hig / 2))
+        write("By Minater247")
+        if wid > 53 then
+            setpos((wid / 2) - (46 / 2), (hig / 2) + 1)
+            write("CCVIM is open source and freely distributable.")
+            setpos((wid / 2) - (28 / 2), (hig / 2) + 4)
+        else
+            setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
+        end
+        write("Type :q")
+        setcolors(colors.black, colors.lightBlue)
+        write("<Enter>       ")
+        setcolors(colors.black, colors.white)
+        write("to exit")
+
+        for i=currFileOffset,(hig - 1) + currFileOffset,1 do
+            setpos(1, i - currFileOffset)
+            if filelines then
+                if filelines[i] ~= nil then
+                    setcolors(colors.black, colors.white)
+                    write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                else
+                    setcolors(colors.black, colors.purple)
+                    write("~")
+                end
+            end
+        end
+    else
+        drawFile()
+    end
+    while currCursorX > wid do
+        currCursorX = currCursorX - 1
+        currXOffset = currXOffset + 1
+    end
+    while currCursorX < 1 do
+        currCursorX = currCursorX + 1
+        currXOffset = currXOffset - 1
+    end
+    while currCursorY > hig - 1 do
+        currCursorY = currCursorY - 1
+        currFileOffset = currFileOffset + 1
+    end
+    while currCursorY < 1 do
+        currCursorY = currCursorY + 1
+        currFileOffset = currFileOffset - 1
+    end
+end
+
+
 local function insertMode()
     drawFile()
     sendMsg("-- INSERT --")
@@ -414,6 +474,10 @@ local function insertMode()
                 fileContents[currfile] = {""}
             end
             fileContents[currfile]["unsavedchanges"] = true
+        elseif ev == "term_resize" then
+            resetSize()
+            redrawTerm()
+            sendMsg("-- INSERT --")
         end
     end
     sendMsg(" ")
@@ -474,11 +538,14 @@ local function appendMode()
             moveCursorRight(0)
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true
+        elseif ev == "term_resize" then
+            resetSize()
+            redrawTerm()
+            sendMsg("-- APPEND --")
         end
     end
     sendMsg(" ")
 end
-
 
 
 for i=1,#decargs,1 do
@@ -530,6 +597,7 @@ if not (#openfiles > 0) then
         write("~")
     end
     --MOTD
+    motd = true
     setcolors(colors.black, colors.white)
     setpos((wid / 2) - (33 / 2), (hig / 2) - 3)
     write("CCVIM - ComputerCraft Vi Improved")
@@ -564,6 +632,7 @@ end
 
 while running == true do
     local event, var1 = os.pullEvent()
+    resetSize()
     if event == "char" then
         if var1 == ":" then
             clearScreenLine(hig)
@@ -1710,54 +1779,56 @@ while running == true do
                 end
             end
         elseif var1 == ";" or var1 == "," then
-            local tx = jumpbuffer[1]
-            if var1 == "," then
-                if string.match(tx, "%u") then
-                    tx = string.lower(tx)
-                else
-                    tx = string.upper(tx)
-                end
-            end
-            if string.match(tx, "%u") then
-                local c = jumpbuffer[2]
-                local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
-                if #idx > 0 then
-                    if currCursorX + currFileOffset > idx[1] + jumpoffset then
-                        currCursorX = currCursorX - (1 + jumpoffset)
-                        while not tab.find(idx, currCursorX + currXOffset) do
-                            currCursorX = currCursorX - 1
-                        end
-                        if jumpbuffer[1] == "T" or jumpbuffer[1] == "t" then
-                            currCursorX = currCursorX + 1
-                        end
-                        while currCursorX < 1 do
-                            currCursorX = currCursorX + 1
-                            currXOffset = currXOffset - 1
-                        end
-                        drawFile()
+            if jumpbuffer[1] then
+                local tx = jumpbuffer[1]
+                if var1 == "," then
+                    if string.match(tx, "%u") then
+                        tx = string.lower(tx)
+                    else
+                        tx = string.upper(tx)
                     end
                 end
-            else
-                local c = jumpbuffer[2]
-                local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
-                if #idx > 0 then
-                    if currCursorX + currFileOffset < idx[#idx] - jumpoffset then
-                        local oldcursor = currCursorX
-                        currCursorX = currCursorX + (1 + jumpoffset)
-                        while not tab.find(idx, currCursorX + currXOffset) and currCursorX + currXOffset ~= #filelines[currCursorY + currFileOffset] do
-                            currCursorX = currCursorX + 1
+                if string.match(tx, "%u") then
+                    local c = jumpbuffer[2]
+                    local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
+                    if #idx > 0 then
+                        if currCursorX + currFileOffset > idx[1] + jumpoffset then
+                            currCursorX = currCursorX - (1 + jumpoffset)
+                            while not tab.find(idx, currCursorX + currXOffset) do
+                                currCursorX = currCursorX - 1
+                            end
+                            if jumpbuffer[1] == "T" or jumpbuffer[1] == "t" then
+                                currCursorX = currCursorX + 1
+                            end
+                            while currCursorX < 1 do
+                                currCursorX = currCursorX + 1
+                                currXOffset = currXOffset - 1
+                            end
+                            drawFile()
                         end
-                        if not tab.find(idx, currCursorX + currXOffset) then
-                            currCursorX = oldcursor
+                    end
+                else
+                    local c = jumpbuffer[2]
+                    local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
+                    if #idx > 0 then
+                        if currCursorX + currFileOffset < idx[#idx] - jumpoffset then
+                            local oldcursor = currCursorX
+                            currCursorX = currCursorX + (1 + jumpoffset)
+                            while not tab.find(idx, currCursorX + currXOffset) and currCursorX + currXOffset ~= #filelines[currCursorY + currFileOffset] do
+                                currCursorX = currCursorX + 1
+                            end
+                            if not tab.find(idx, currCursorX + currXOffset) then
+                                currCursorX = oldcursor
+                            end
+                            if jumpbuffer[1] == "t" or jumpbuffer[1] == "T" then
+                                currCursorX = currCursorX - 1
+                            end
+                            while currCursorX > wid do
+                                currCursorX = currCursorX - 1
+                                currXOffset = currXOffset + 1
+                            end
+                            drawFile()
                         end
-                        if jumpbuffer[1] == "t" or jumpbuffer[1] == "T" then
-                            currCursorX = currCursorX - 1
-                        end
-                        while currCursorX > wid do
-                            currCursorX = currCursorX - 1
-                            currXOffset = currXOffset + 1
-                        end
-                        drawFile()
                     end
                 end
             end
@@ -1825,5 +1896,8 @@ while running == true do
         elseif var1 == keys.down then
             moveCursorDown()
         end
+    elseif event == "term_resize" then
+        resetSize()
+        redrawTerm()
     end
 end
