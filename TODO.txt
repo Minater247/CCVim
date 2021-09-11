@@ -1,8 +1,7 @@
 //TODO
 
 LITTLE PROJECTS:
--- MOTD
---make the cursor snap right if loading into new file with line offset
+-- Make the cursor snap right if loading into new file with line offset
 
 BIG PROJECTS:
 -- Check if file opened in tab\

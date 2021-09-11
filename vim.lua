@@ -964,8 +964,8 @@ while running == true do
         elseif var1 == "i"then
             insertMode()
         elseif var1 == "I" then
-            currXOffset = 1
-            currCursorX = 0
+            currXOffset = 0
+            currCursorX = 1
             drawFile()
             insertMode()
         elseif var1 == "h" then
