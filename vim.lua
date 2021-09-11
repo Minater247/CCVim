@@ -504,6 +504,18 @@ if #decargs["files"] > 0 then
         filelines = fileContents[1]
     end
     filename = decargs["files"][1]
+    if filelines[1] ~= nil then
+        local tb = str.wordBeginnings(filelines[1])
+        if tb[1] then
+            currCursorX = tb[1]
+        else
+            currCursorX = 0
+        end
+        while currCursorX > wid do
+            currCursorX = currCursorX - 1
+            currXOffset = currXOffset + 1
+        end
+    end
 else
     openfiles = {}
     currfile = 0
@@ -711,6 +723,10 @@ while running == true do
                     filename = ""
                 end
                 table.insert(openfiles, #openfiles + 1, filename)
+                if currfile == 0 then
+                    currfile = 1
+                end
+                sendMsg(#openfiles.." "..currfile)
                 if fs.exists(fil.topath(name)) then
                     filelines = fil.toArr(fil.topath(name))
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
@@ -723,9 +739,21 @@ while running == true do
                     fileContents[#fileContents] = {""}
                 end
                 currfile = #fileContents
-                filelines = {""}
-                drawFile()
+                filelines = fileContents[currfile]
                 currFileOffset = 0
+                if filelines[1] ~= nil then
+                    local tb = str.wordBeginnings(filelines[1])
+                    if tb[1] then
+                        currCursorX = tb[1]
+                    else
+                        currCursorX = 0
+                    end
+                    while currCursorX > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
+                end
+                drawFile()
             elseif cmdtab[1] == ":r" or cmdtab[1] == ":read" then
                 local name = ""
                 for i=2,#cmdtab,1 do
@@ -895,6 +923,16 @@ while running == true do
                             currXOffset = 0
                             currCursorY = 1
                             currFileOffset = 0
+                            local tb = str.wordBeginnings(filelines[1])
+                            if tb[1] then
+                                currCursorX = tb[1]
+                            else
+                                currCursorX = 0
+                            end
+                            while currCursorX > wid do
+                                currCursorX = currCursorX - 1
+                                currXOffset = currXOffset + 1
+                            end
                             drawFile()
                         else
                             local templines = fil.toArr(fil.topath(name))

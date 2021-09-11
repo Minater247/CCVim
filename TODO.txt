@@ -8,3 +8,5 @@ BIG PROJECTS:
 -- Colored text
 -- Visual mode
 -- Code highlighting
+-- Undo tree
+    - Better change detection 
