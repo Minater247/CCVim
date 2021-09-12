@@ -576,7 +576,7 @@ if #decargs["files"] > 0 then
         if tb[1] then
             currCursorX = tb[1]
         else
-            currCursorX = 0
+            currCursorX = 1
         end
         while currCursorX > wid do
             currCursorX = currCursorX - 1
