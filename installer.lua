@@ -97,7 +97,7 @@ local function install()
     if c == "y" then
         addToPath()
     end
-    if fs.exists("/vim/vim.lua") and fs.exists("/vim/lib/args.lua") and fs.exists("/vim/lib/fil.lua") and fs.exists("/bin/lib/str.lua") and fs.exists("/vim/lib/tab.lua") then
+    if fs.exists("/vim/vim.lua") and fs.exists("/vim/lib/args.lua") and fs.exists("/vim/lib/fil.lua") and fs.exists("/vim/lib/str.lua") and fs.exists("/vim/lib/tab.lua") then
         print("Finished installing.")
         print("Press any key to continue...")
         os.pullEvent("char")
