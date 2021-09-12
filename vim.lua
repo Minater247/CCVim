@@ -75,6 +75,7 @@ local jumpoffset = 0 --offset for going before/after a letter
 local currfile = 1
 local fileContents = {}
 local motd = false
+local remappings = {}
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -422,18 +423,20 @@ local function insertMode()
                     fileContents[currfile]["unsavedchanges"] = true
                 else
                     if currCursorX + currXOffset < 2 then
-                        currCursorX = #(filelines[currCursorY + currFileOffset - 1]) + 1
-                        filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
-                        table.remove(filelines, currCursorY + currFileOffset)
-                        moveCursorUp()
-                        if currCursorX > wid then
-                            while currCursorX > wid do
-                                currXOffset = currXOffset + 1
-                                currCursorX = currCursorX - 1
+                        if #filelines > 1 then
+                            currCursorX = #(filelines[currCursorY + currFileOffset - 1]) + 1
+                            filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
+                            table.remove(filelines, currCursorY + currFileOffset)
+                            moveCursorUp()
+                            if currCursorX > wid then
+                                while currCursorX > wid do
+                                    currXOffset = currXOffset + 1
+                                    currCursorX = currCursorX - 1
+                                end
                             end
+                            drawFile()
+                            fileContents[currfile]["unsavedchanges"] = true
                         end
-                        drawFile()
-                        fileContents[currfile]["unsavedchanges"] = true
                     else
                         filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
                         currXOffset = currXOffset - math.floor(wid / 2)
@@ -537,6 +540,9 @@ local function appendMode()
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 2, #(filelines[currCursorY + currFileOffset]))
             moveCursorRight(0)
             drawFile()
+            if not fileContents[currfile] then
+                fileContents[currfile] = filelines
+            end
             fileContents[currfile]["unsavedchanges"] = true
         elseif ev == "term_resize" then
             resetSize()
@@ -546,6 +552,16 @@ local function appendMode()
     end
     sendMsg(" ")
 end
+
+local function pullChar()
+    local _, tm = os.pullEvent("char")
+    if remappings[tm] then
+        tm = remappings[tm]
+    end
+    return _, tm
+end
+
+
 
 
 for i=1,#decargs,1 do
@@ -1093,7 +1109,7 @@ while running == true do
             currCursorY = hig - 1
             drawFile()
         elseif var1 == "r" then
-            local _, chr = os.pullEvent("char")
+            local _, chr = pullChar()
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. chr .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true
@@ -1129,7 +1145,7 @@ while running == true do
             drawFile()
             appendMode()
         elseif var1 == "Z" then
-            local _,c = os.pullEvent("char")
+            local _,c = pullChar()
             if c == "Q" then
                 setcolors(colors.black, colors.white)
                 clear()
@@ -1152,7 +1168,7 @@ while running == true do
                 end
             end
         elseif var1 == "y" then
-            local _, c = os.pullEvent("char")
+            local _, c = pullChar()
             if c == "y" then
                 copybuffer = filelines[currCursorY + currFileOffset]
                 copytype = "line"
@@ -1164,14 +1180,14 @@ while running == true do
                 end
                 copytype = "text"
             elseif c == "i" then
-                local _, ch = os.pullEvent("char")
+                local _, ch = pullChar()
                 if ch == "w" then
                     local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
                     copybuffer = word
                     copytype = "text"
                 end
             elseif c == "a" then
-                local _, ch = os.pullEvent("char")
+                local _, ch = pullChar()
                 if ch == "w" then
                     local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
                     copybuffer = word
@@ -1193,7 +1209,7 @@ while running == true do
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "d" then
-            local _, c = os.pullEvent("char")
+            local _, c = pullChar()
             if c == "d" then
                 copybuffer = filelines[currCursorY + currFileOffset]
                 copytype = "line"
@@ -1213,7 +1229,7 @@ while running == true do
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "i" then
-                local _, ch = os.pullEvent("char")
+                local _, ch = pullChar()
                 local word,beg,ed
                 if ch == "w" then
                     word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
@@ -1224,7 +1240,7 @@ while running == true do
                     currCursorX = beg - 1
                 end
             elseif c == "a" then
-                local _, ch = os.pullEvent("char")
+                local _, ch = pullChar()
                 if ch == "w" then
                     local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
                     copybuffer = word
@@ -1315,7 +1331,7 @@ while running == true do
             local _, ch
             local var = 0
             while tonumber(var) ~= nil do
-                _, var = os.pullEvent("char")
+                _, var = pullChar()
                 if tonumber(var) ~= nil then
                     num = num .. var
                 else
@@ -1323,7 +1339,7 @@ while running == true do
                 end
             end
             if ch == "y" then
-                _, ch = os.pullEvent("char")
+                _, ch = pullChar()
                 if ch == "y" then
                     if not (currCursorY + currFileOffset + tonumber(num) > #filelines) then
                         copybuffer = {}
@@ -1334,7 +1350,7 @@ while running == true do
                     end
                 end
             elseif ch == "d" then
-                _, ch = os.pullEvent("char")
+                _, ch = pullChar()
                 if ch == "d" then
                     if not (currCursorY + currFileOffset + tonumber(num) > #filelines) then
                         copybuffer = {}
@@ -1350,7 +1366,7 @@ while running == true do
                     end
                 end
             elseif ch == "g" then
-                _, ch = os.pullEvent("char")
+                _, ch = pullChar()
                 if ch == "g" then
                     currCursorY = tonumber(num) - 1 --minus one for moveCursorDown
                     currFileOffset = 0
@@ -1494,7 +1510,7 @@ while running == true do
                     end
                 end
             elseif ch == "f" or ch == "t" then
-                local _,c = os.pullEvent("char")
+                local _,c = pullChar()
                 local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
                 for i=1,tonumber(num),1 do
                     if #idx > 0 then
@@ -1525,7 +1541,7 @@ while running == true do
                 end
                 drawFile()
             elseif ch == "F" or ch == "T" then
-                local _,c = os.pullEvent("char")
+                local _,c = pullChar()
                 local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
                 if #idx > 0 then
                     if currCursorX + currFileOffset > idx[1] + jumpoffset then
@@ -1551,7 +1567,7 @@ while running == true do
                 end
             end
         elseif var1 == "g" then
-            local _,c = os.pullEvent("char")
+            local _,c = pullChar()
             if c == "J" then
                 filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. filelines[currCursorY + currFileOffset + 1]
                 table.remove(filelines, currCursorY + currFileOffset + 1)
@@ -1725,7 +1741,7 @@ while running == true do
             end
             drawFile()
         elseif var1 == "f" or var1 == "t" then
-            local _,c = os.pullEvent("char")
+            local _,c = pullChar()
             local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
             if #idx > 0 then
                 if currCursorX + currFileOffset < idx[#idx] - jumpoffset then
@@ -1754,7 +1770,7 @@ while running == true do
                 end
             end
         elseif var1 == "F" or var1 == "T" then
-            local _,c = os.pullEvent("char")
+            local _,c = pullChar()
             local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
             if #idx > 0 then
                 if currCursorX + currFileOffset > idx[1] + jumpoffset then
@@ -1833,7 +1849,7 @@ while running == true do
                 end
             end
         elseif var1 == "c" then
-            local _, c = os.pullEvent("char")
+            local _, c = pullChar()
             if c == "c" then
                 filelines[currCursorY + currFileOffset] = ""
                 currCursorX = 1
@@ -1847,7 +1863,7 @@ while running == true do
                 fileContents[currfile]["unsavedchanges"] = true
                 insertMode()
             elseif c == "i" then
-                local _, ch = os.pullEvent("char")
+                local _, ch = pullChar()
                 if ch == "w" then
                     local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
