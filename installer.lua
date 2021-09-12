@@ -4,7 +4,7 @@ local function initialMenu()
     print("Welcome to the CCVIM Installer")
     print() --skip a line
     print("1. Install CCVIM")
-    print("2. Add VIM to universal path")
+    print("2. Add CCVIM to universal path")
     print("3. Exit")
 end
 
@@ -39,7 +39,7 @@ end
 local function addToPath()
     local lines = toArr("/startup")
     if not find(lines, "shell.setPath(shell.path()..\":/vim/\")") then
-        print("This will not work if you have moved your VIM installation. Proceed? [y/n]")
+        print("This will not work if you have moved your CCVIM installation. Proceed? [y/n]")
         local _, c = os.pullEvent("char")
         if c == "y" or c == "Y" then
             print("Looking for existing startup file...")
