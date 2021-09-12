@@ -37,36 +37,40 @@ local function toArr(filePath)
 end
 
 local function addToPath()
-    local lines = toArr("/startup")
-    if not find(lines, "shell.setPath(shell.path()..\":/vim/\")") then
-        print("This will not work if you have moved your CCVIM installation. Proceed? [y/n]")
-        local _, c = os.pullEvent("char")
-        if c == "y" or c == "Y" then
-            print("Looking for existing startup file...")
-            if fs.exists("startup") then
-                print("Existing startup file found. Would you like to back it up (startup.bkup) before proceeding? [y/n]")
-                local _,cha = os.pullEvent("char")
-                if cha == "y" or cha == "Y" then
-                    shell.run("cp", "/startup/", "/startup.bkup/")
-                    if not fs.exists("startup.bkup") then
-                        error("Failed to create backup file.")
+    if fs.exists("/vim/vim.lua") then
+        local lines = toArr("/startup")
+        if not find(lines, "shell.setPath(shell.path()..\":/vim/\")") then
+            print("This will not work if you have moved your CCVIM installation. Proceed? [y/n]")
+            local _, c = os.pullEvent("char")
+            if c == "y" or c == "Y" then
+                print("Looking for existing startup file...")
+                if fs.exists("startup") then
+                    print("Existing startup file found. Would you like to back it up (startup.bkup) before proceeding? [y/n]")
+                    local _,cha = os.pullEvent("char")
+                    if cha == "y" or cha == "Y" then
+                        shell.run("cp", "/startup/", "/startup.bkup/")
+                        if not fs.exists("startup.bkup") then
+                            error("Failed to create backup file.")
+                        end
+                        print("Backed up existing startup file to /startup.bkup")
+                    else
+                        print("Proceeding without backing up existing startup file")
                     end
-                    print("Backed up existing startup file to /startup.bkup")
-                else
-                    print("Proceeding without backing up existing startup file")
                 end
+                print("Adding path setup to startup file...")
+                local file = fs.open("startup", "a")
+                file.writeLine("shell.setPath(shell.path()..\":/vim/\")")
+                file.close()
+                print("Added path setup to startup file.")
             end
-            print("Adding path setup to startup file...")
-            local file = fs.open("startup", "a")
-            file.writeLine("shell.setPath(shell.path()..\":/vim/\")")
-            file.close()
-            print("Added path setup to startup file.")
+        else
+            print("Already added to file.")
         end
     else
-        print("Already added to file.")
+        print("No vim installation found.")
     end
     print("Press any key to continue...")
-    os.pullEvent("key")
+    os.pullEvent("char")
 end
 
 local function download(url, file)
@@ -93,9 +97,22 @@ local function install()
     if c == "y" then
         addToPath()
     end
-    print("Finished installing.")
-    print("Press any key to continue...")
-    os.pullEvent("key")
+    if fs.exists("/vim/vim.lua") and fs.exists("/vim/lib/args.lua") and fs.exists("/vim/lib/fil.lua") and fs.exists("/bin/lib/str.lua") and fs.exists("/vim/lib/tab.lua") then
+        print("Finished installing.")
+        print("Press any key to continue...")
+        os.pullEvent("char")
+    else
+        print("Something went wrong. Do you want to delete the existing files and try again? [y/n]")
+        local _, eh = os.pullEvent("char")
+        if eh == "y" then
+            print("Retrying...")
+            install()
+        else
+            print("Vim was partially installed but failed to download some files. Please rerun the installation before usage.")
+            print("Press any key to contine.")
+            os.pullEvent("key")
+        end
+    end
 end
 
 local running = true
