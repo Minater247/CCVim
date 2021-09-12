@@ -21,4 +21,4 @@ What's currently being worked on:
 Fun fact - this README was written in the program!
 
 # Installation
-Put ```vim.lua``` as well as the ```lib``` folder in a directory at ```/vim/``` in your CC or CC:Tweaked computer.
+Run ```pastebin run eX0BrfjA``` on your computer.
