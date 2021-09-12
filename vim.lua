@@ -76,6 +76,7 @@ local currfile = 1
 local fileContents = {}
 local motd = false
 local remappings = {}
+local filetypes = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -551,6 +552,36 @@ local function appendMode()
         end
     end
     sendMsg(" ")
+end
+
+--Parse .vimrc file here
+if fs.exists("/vim/.vimrc") then
+    local vimrclines = fil.toArr("/vim/.vimrc")
+    for i=1,#vimrclines,1 do
+        if not (string.sub(vimrclines[i], 1, 1) == "\"") then --ignore commented lines
+            local rctable = str.split(vimrclines[i], " ")
+            if rctable[1] == "set" then
+                if not string.find(rctable[2], "=") then
+                    --set the things
+                else
+                    --set the things to values
+                end
+            elseif rctable[1] == "map" then
+                if rctable[2] and rctable[3] or not (#rctable > 3) then
+                    remappings[rctable[2]] = rctable[3]
+                else
+                    print("Mapping requires 2 arguments.")
+                    sendMsg("Press enter to continue...")
+                    local _,k = os.pullEvent("key")
+                    while k ~= keys.enter do
+                        _,k = os.pullEvent("key")
+                    end
+                end
+            else
+                error("Unrecognized vimrc command " .. rctable[1] .. ". Full vimscript is not yet supported.")
+            end
+        end
+    end
 end
 
 local function pullChar()
