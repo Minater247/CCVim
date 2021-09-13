@@ -811,32 +811,36 @@ while running == true do
                     else
                         name = openfiles[currfile]
                     end
-                    local file = fs.open(fil.topath(name), "w")
-                    for i=1,#filelines,1 do
-                        file.writeLine(filelines[i])
-                    end
-                    file.close()
-                    fileContents[currfile]["unsavedchanges"] = false
-                    if #fileContents == 1 then
-                        setcolors(colors.black, colors.white)
-                        clear()
-                        setpos(1, 1)
-                        running = false
+                    if #name > 0 then
+                        local file = fs.open(fil.topath(name), "w")
+                        for i=1,#filelines,1 do
+                            file.writeLine(filelines[i])
+                        end
+                        file.close()
+                        fileContents[currfile]["unsavedchanges"] = false
+                        if #fileContents == 1 then
+                            setcolors(colors.black, colors.white)
+                            clear()
+                            setpos(1, 1)
+                            running = false
+                        else
+                            table.remove(fileContents, currfile)
+                            table.remove(openfiles, currfile)
+                            if not (currfile == 1) then
+                                currfile = currfile - 1
+                            end
+                            filelines = fileContents[currfile]
+                            if fileContents[currfile]["cursor"] then
+                                currCursorX = fileContents[currfile]["cursor"][1]
+                                currXOffset = fileContents[currfile]["cursor"][2]
+                                currCursorY = fileContents[currfile]["cursor"][3]
+                                currFileOffset = fileContents[currfile]["cursor"][4]
+                            end
+                            drawFile()
+                            clearScreenLine(hig)
+                        end
                     else
-                        table.remove(fileContents, currfile)
-                        table.remove(openfiles, currfile)
-                        if not (currfile == 1) then
-                            currfile = currfile - 1
-                        end
-                        filelines = fileContents[currfile]
-                        if fileContents[currfile]["cursor"] then
-                            currCursorX = fileContents[currfile]["cursor"][1]
-                            currXOffset = fileContents[currfile]["cursor"][2]
-                            currCursorY = fileContents[currfile]["cursor"][3]
-                            currFileOffset = fileContents[currfile]["cursor"][4]
-                        end
-                        drawFile()
-                        clearScreenLine(hig)
+                        err("No file name")
                     end
                 end
             elseif cmdtab[1] == ":e" or cmdtab[1] == ":ex" then
