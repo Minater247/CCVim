@@ -811,7 +811,7 @@ while running == true do
                     else
                         name = openfiles[currfile]
                     end
-                    if #name > 0 then
+                    if name then
                         local file = fs.open(fil.topath(name), "w")
                         for i=1,#filelines,1 do
                             file.writeLine(filelines[i])
