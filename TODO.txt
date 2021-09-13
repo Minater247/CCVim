@@ -1,7 +1,7 @@
 //TODO
 
 LITTLE PROJECTS:
--- Make the cursor snap right if loading into new file with line offset
+-- Line numbers
 
 BIG PROJECTS:
 -- Check if file opened in tab\
