@@ -331,9 +331,12 @@ local function moveCursorUp()
                 currCursorX = currCursorX - 1
             end
         end
-        if currCursorY < 0 then
+        if currCursorY < 1 then
             currFileOffset = currFileOffset - 1
             currCursorY = currCursorY + 1
+        end
+        if currFileOffset < 0 then
+            currFileOffset = currFileOffset + 1
         end
         drawFile()
     end
@@ -870,6 +873,16 @@ while running == true do
                 end
             elseif cmdtab[1] == ":e" or cmdtab[1] == ":ex" then
                 if #cmdtab > 1 then
+                    if not motd then
+                        if currfile == 0 then
+                            currfile = 1
+                        end
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        if not openfiles[currfile] then
+                            openfiles[currfile] = ""
+                        end
+                    end
                     local name = ""
                     for i=2,#cmdtab,1 do
                         name = name .. cmdtab[i]
@@ -1785,16 +1798,18 @@ while running == true do
             end
         elseif var1 == "e" or var1 == "E" then
             local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
-            if currCursorX + currXOffset < begs[#begs] then
-                currCursorX = currCursorX + 1
-                while not tab.find(begs, currCursorX + currXOffset) do
+            if begs then
+                if currCursorX + currXOffset < begs[#begs] then
                     currCursorX = currCursorX + 1
+                    while not tab.find(begs, currCursorX + currXOffset) do
+                        currCursorX = currCursorX + 1
+                    end
+                    while currCursorX + lineoffset > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
+                    drawFile()
                 end
-                while currCursorX + lineoffset > wid do
-                    currCursorX = currCursorX - 1
-                    currXOffset = currXOffset + 1
-                end
-                drawFile()
             end
         elseif var1 == "b" or var1 == "B" then
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
