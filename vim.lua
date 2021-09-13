@@ -492,6 +492,8 @@ local function insertMode()
             resetSize()
             redrawTerm()
             sendMsg("-- INSERT --")
+        elseif ev == "mouse_click" then
+            key = keys.tab --get out of the loop
         end
     end
     sendMsg(" ")
@@ -559,6 +561,8 @@ local function appendMode()
             resetSize()
             redrawTerm()
             sendMsg("-- APPEND --")
+        elseif ev == "mouse_click" then
+            key = keys.tab --get out of the loop
         end
     end
     sendMsg(" ")
@@ -1956,9 +1960,5 @@ while running == true do
     elseif event == "term_resize" then
         resetSize()
         redrawTerm()
-    elseif event == "mouse_click" and mobile then
-        if var3 == hig then
-            pullCommand(":", false)
-        end
     end
 end
