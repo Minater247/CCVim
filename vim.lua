@@ -77,6 +77,7 @@ local fileContents = {}
 local motd = false
 local remappings = {}
 local filetypes = false
+local mobile = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -134,11 +135,11 @@ end
 
 --pull event with remaps
 local function pullEventWRMP()
-    local e, s = os.pullEvent()
+    local e, s, v2, v3 = os.pullEvent()
     if e == "char" and remappings[s] then
         s = remappings[s]
     end
-    return e, s
+    return e, s, v2, v3
 end
 
 local function pullCommand(input, numeric, len)
@@ -571,7 +572,9 @@ if fs.exists("/vim/.vimrc") then
             local rctable = str.split(vimrclines[i], " ")
             if rctable[1] == "set" then
                 if not string.find(rctable[2], "=") then
-                    --set the things
+                    if rctable[2] == "mobile" then
+                        mobile = true
+                    end
                 else
                     --set the things to values
                 end
@@ -685,7 +688,7 @@ else
 end
 
 while running == true do
-    local event, var1 = pullEventWRMP()
+    local event, var1, var2, var3 = pullEventWRMP()
     resetSize()
     if event == "char" then
         if var1 == ":" then
@@ -1953,5 +1956,9 @@ while running == true do
     elseif event == "term_resize" then
         resetSize()
         redrawTerm()
+    elseif event == "mouse_click" and mobile then
+        if var3 == hig then
+            pullCommand(":", false)
+        end
     end
 end
