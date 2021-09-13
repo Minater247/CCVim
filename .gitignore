@@ -1,0 +1,8 @@
+# These don't need to be pushed
+.DS_store
+
+# People should make their own vimrc
+.vimrc
+
+# Todo is for my use
+TODO.txt
