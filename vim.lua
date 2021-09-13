@@ -844,67 +844,75 @@ while running == true do
                     end
                 end
             elseif cmdtab[1] == ":e" or cmdtab[1] == ":ex" then
-                local name = ""
-                for i=2,#cmdtab,1 do
-                    name = name .. cmdtab[i]
-                    if i ~= #cmdtab then
-                        name = name .. " "
+                if #cmdtab > 1 then
+                    local name = ""
+                    for i=2,#cmdtab,1 do
+                        name = name .. cmdtab[i]
+                        if i ~= #cmdtab then
+                            name = name .. " "
+                        end
                     end
-                end
-                if name then
-                    filename = name
-                else
-                    filename = ""
-                end
-                table.insert(openfiles, #openfiles + 1, filename)
-                if currfile == 0 then
-                    currfile = 1
-                end
-                sendMsg(#openfiles.." "..currfile)
-                if fs.exists(fil.topath(name)) then
-                    filelines = fil.toArr(fil.topath(name))
-                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
-                else
-                    newfile = true
-                    sendMsg("\""..filename.."\" [New File]")
-                end
-                table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(filename)))
-                if not fileContents[#fileContents] then
-                    fileContents[#fileContents] = {""}
-                end
-                currfile = #fileContents
-                filelines = fileContents[currfile]
-                currFileOffset = 0
-                if filelines[1] ~= nil then
-                    local tb = str.wordBeginnings(filelines[1])
-                    if tb[1] then
-                        currCursorX = tb[1]
+                    if name then
+                        filename = name
                     else
-                        currCursorX = 0
+                        filename = ""
                     end
-                    while currCursorX > wid do
-                        currCursorX = currCursorX - 1
-                        currXOffset = currXOffset + 1
+                    table.insert(openfiles, #openfiles + 1, filename)
+                    if currfile == 0 then
+                        currfile = 1
                     end
-                end
-                drawFile()
-            elseif cmdtab[1] == ":r" or cmdtab[1] == ":read" then
-                local name = ""
-                for i=2,#cmdtab,1 do
-                    name = name .. cmdtab[i]
-                    if i ~= #cmdtab then
-                        name = name .. " "
+                    sendMsg(#openfiles.." "..currfile) --will immediately be overwritten if nothing goes wrong, used for debug
+                    if fs.exists(fil.topath(name)) then
+                        filelines = fil.toArr(fil.topath(name))
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    else
+                        newfile = true
+                        sendMsg("\""..filename.."\" [New File]")
                     end
-                end
-                if fs.exists(fil.topath(name)) then
-                    local secondArr = fil.toArr(fil.topath(name))
-                    for i=1,#secondArr,1 do
-                        table.insert(filelines, secondArr[i])
+                    table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(filename)))
+                    if not fileContents[#fileContents] then
+                        fileContents[#fileContents] = {""}
+                    end
+                    currfile = #fileContents
+                    filelines = fileContents[currfile]
+                    currFileOffset = 0
+                    if filelines[1] ~= nil then
+                        local tb = str.wordBeginnings(filelines[1])
+                        if tb[1] then
+                            currCursorX = tb[1]
+                        else
+                            currCursorX = 0
+                        end
+                        while currCursorX > wid do
+                            currCursorX = currCursorX - 1
+                            currXOffset = currXOffset + 1
+                        end
                     end
                     drawFile()
-                    sendMsg("\""..name.."\" "..#secondArr.."L, "..#(tab.getLongestItem(secondArr)).."C")
                 else
-                    err("Can't open file "..name)
+                    err("No file name")
+                end
+            elseif cmdtab[1] == ":r" or cmdtab[1] == ":read" then
+                if #cmdtab > 1 then
+                    local name = ""
+                    for i=2,#cmdtab,1 do
+                        name = name .. cmdtab[i]
+                        if i ~= #cmdtab then
+                            name = name .. " "
+                        end
+                    end
+                    if fs.exists(fil.topath(name)) then
+                        local secondArr = fil.toArr(fil.topath(name))
+                        for i=1,#secondArr,1 do
+                            table.insert(filelines, secondArr[i])
+                        end
+                        drawFile()
+                        sendMsg("\""..name.."\" "..#secondArr.."L, "..#(tab.getLongestItem(secondArr)).."C")
+                    else
+                        err("Can't open file "..name)
+                    end
+                else
+                    err("No file name")
                 end
             elseif cmdtab[1] == ":tabn" or cmdtab[1] == ":tabnext" then
                 if #fileContents > 1 then
