@@ -132,6 +132,15 @@ local function setpos(xpos, ypos)
     end
 end
 
+--pull event with remaps
+local function pullEventWRMP()
+    local e, s = os.pullEvent()
+    if e == "char" and remappings[s] then
+        s = remappings[s]
+    end
+    return e, s
+end
+
 local function pullCommand(input, numeric, len)
     if input == nil then
         input = ''
@@ -159,7 +168,7 @@ local function pullCommand(input, numeric, len)
             write(" ")
         end
   
-      local ev, p1 = os.pullEvent()
+      local ev, p1 = pullEventWRMP()
   
         if ev == 'char' then
             local send = true
@@ -406,7 +415,7 @@ local function insertMode()
     sendMsg("-- INSERT --")
     local ev, key
     while key ~= keys.tab do
-        ev, key = os.pullEvent()
+        ev, key = pullEventWRMP()
         if ev == "key" then
             if key == keys.left then
                 moveCursorLeft()
@@ -492,7 +501,7 @@ local function appendMode()
     sendMsg("-- APPEND --")
     local ev, key
     while key ~= keys.tab do
-        ev, key = os.pullEvent()
+        ev, key = pullEventWRMP()
         if ev == "key" then
             if key == keys.left then
                 moveCursorLeft()
@@ -593,8 +602,6 @@ local function pullChar()
 end
 
 
-
-
 for i=1,#decargs,1 do
     if decargs[i] == "--version" then
         print("CCVIM - ComputerCraft Vi IMproved "..version.." ("..releasedate..")")
@@ -678,7 +685,7 @@ else
 end
 
 while running == true do
-    local event, var1 = os.pullEvent()
+    local event, var1 = pullEventWRMP()
     resetSize()
     if event == "char" then
         if var1 == ":" then
