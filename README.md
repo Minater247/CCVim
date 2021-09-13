@@ -23,4 +23,4 @@ Fun fact - this README was written in the program!
 # Installation
 Run ```pastebin run eX0BrfjA``` on your computer.
 
-Or, for manual installation copy ```vim``` and the ```libs``` folder with its contents to the ```/vim/``` folder.
+Or, for manual installation copy ```vim``` and the ```libs``` folder with its contents to the ```/vim/``` folder of your computer.
