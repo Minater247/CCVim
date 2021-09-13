@@ -15,8 +15,12 @@ Currently very limited, but here's what works:
 - Tabs (opening multiple files uses tabs)
 
 What's currently being worked on:
-- The grand majority of the things at [this list of VIM commands](https://vim.rtorr.com)
+- The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
 - File browser
+
+What doesn't work:
+- Commands that require pressing control
+- CraftOS Mobile
 
 Fun fact - this README was written in the program!
 
