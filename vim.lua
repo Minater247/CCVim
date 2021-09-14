@@ -1176,6 +1176,20 @@ while running == true do
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                 end
+            elseif cmdtab[1] == ":set" then
+                if cmdtab[2] == "number" then
+                    linenumbers = true
+                    lineoffset= 4
+                    drawFile()
+                elseif cmdtab[2] == "mobile" then
+                    mobile = true
+                elseif cmdtab[2] == "nonumber" then
+                    linenumbers = false
+                    lineoffset = 0
+                    drawFile()
+                elseif cmdtab[2] == "nomobile" then
+                    mobile = false
+                end
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
