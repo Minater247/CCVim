@@ -10,3 +10,4 @@ local function types()
     return {commentstring, removedpunctuation}
 end
 
+return { types = types }

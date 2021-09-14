@@ -263,7 +263,7 @@ local function drawFile()
         end
     end
     if filelines then
-        setpos(currCursorX + 4, currCursorY)
+        setpos(currCursorX + lineoffset, currCursorY)
     else
         setpos(currCursorX, currCursorY)
     end
@@ -620,7 +620,7 @@ if fs.exists("/vim/.vimrc") then
                         _,k = os.pullEvent("key")
                     end
                 end
-            else
+            elseif rctable[1] ~= "" and rctable[1] ~= nil then
                 error("Unrecognized vimrc command " .. rctable[1] .. ". Full vimscript is not yet supported.")
             end
         end
