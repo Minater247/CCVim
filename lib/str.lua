@@ -8,7 +8,9 @@ local punctuation = {
     ",",
     ":",
     "[",
-    "]"
+    "]",
+    "@",
+    "-"
 }
 
 local function split(s, delimiter)
