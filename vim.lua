@@ -95,6 +95,14 @@ local function resetSize()
     end
 end
 
+local function getWindSize()
+    if monitor then
+        return monitor.getSize()
+    else
+        return term.getSize()
+    end
+end
+
 local function setflash(bool)
     if monitor then
         monitor.setCursorBlink(bool)
@@ -144,6 +152,12 @@ local function pullEventWRMP()
         s = remappings[s]
     end
     return e, s, v2, v3
+end
+
+local function printarray(arr)
+    for i=1,#arr,1 do
+        print(arr[i])
+    end
 end
 
 local function pullCommand(input, numeric, len)
@@ -251,7 +265,78 @@ local function drawFile()
                     end
                 end
                 setcolors(colors.black, colors.white)
-                write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                if filetypes then
+                    local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
+                    local wordsOfLine = str.split(filelines[i], " ")
+                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                    for j=1,#wordsOfLine,1 do
+                        if tab.find(synt[1], wordsOfLine[j]) then
+                            setcolors(colors.yellow, colors.blue)
+                        elseif tab.find(synt[2][1], wordsOfLine[j]) then
+                            setcolors(colors.black, colors.lightBlue)
+                        elseif tab.find(synt[2][2], wordsOfLine[j]) then
+                            setcolors(colors.black, colors.purple)
+                        else
+                            setcolors(colors.black, colors.white)
+                        end
+                        write(wordsOfLine[j])
+                        if j ~= #wordsOfLine then
+                            setcolors(colors.black, colors.white)
+                            write(" ")
+                        end
+                    end
+                    --another loop for drawing strings
+                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                    local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
+                    local inquotes = false
+                    local justset = false
+                    setcolors(colors.black, colors.red)
+                    for j=1,#filelines[i],1 do
+                        setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                        if tab.find(quotationmarks, j) then
+                            if not inquotes then
+                                if j < quotationmarks[#quotationmarks] then
+                                    inquotes = true
+                                    justset = true
+                                end
+                            end
+                        end
+                        if inquotes then
+                            write(string.sub(filelines[i], j, j))
+                        end
+                        if tab.find(quotationmarks, j) and not justset then
+                            if inquotes then
+                                inquotes = false
+                            end
+                        end
+                        justset = false
+                    end
+                    local commentstart, ts, tt = string.find(filelines[68], synt[4]) --this won't work, need custom function
+                    if tt and not tt == 0 then
+                        setpos(1 - currXOffset + lineoffset + commentstart, i - currFileOffset - 1)
+                        setcolors(colors.black, colors.green)
+                        write(string.sub(filelines[i], commentstart, #filelines[i]))
+                    end
+                    --repeat the line number drawing since we just overwrote it
+                    setpos(1, i)
+                    setcolors(colors.black, colors.yellow)
+                    local _, yy = getWindSize()
+                    if yy ~= hig then
+                        if i < 1000 then
+                            for i=1,3 - #(tostring(i)),1 do
+                                write(" ")
+                            end
+                        end
+                        if i < 10000 then
+                            write(i)
+                            write(" ")
+                        else
+                            write("10k+")
+                        end
+                    end
+                else
+                    write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                end
             else
                 setcolors(colors.black, colors.purple)
                 write("~")
@@ -670,7 +755,11 @@ if #decargs["files"] > 0 then
             if filetypes then
                 if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
                     fileContents[i]["filetype"] = filenamestring
-                    filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                    if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                        filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                    else
+                        fileContents[i]["filetype"] = nil
+                    end
                 else
                     fileContents[i]["filetype"] = nil
                 end
