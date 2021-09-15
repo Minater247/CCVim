@@ -77,9 +77,11 @@ local fileContents = {}
 local motd = false
 local remappings = {}
 local filetypes = false
+local filetypearr = {}
 local mobile = false
 local linenumbers = false
 local lineoffset = 0
+local syntaxhighlighting = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -605,6 +607,10 @@ if fs.exists("/vim/.vimrc") then
                     elseif rctable[2] == "number" then
                         linenumbers = true
                         lineoffset = 4
+                    elseif rctable[2] == "filetype" then
+                        filetypes = true
+                    elseif rctable[2] == "syntax" then
+                        syntaxhighlighting = true
                     end
                 else
                     --set the things to values
@@ -650,7 +656,25 @@ if #decargs["files"] > 0 then
     end
     for i=1,#openfiles,1 do
         if fs.exists(fil.topath(decargs["files"][i])) then
-            table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(decargs["files"][i])))
+            local doneGettingEnd = false
+            local filenamestring = ""
+            for j=#decargs["files"][i],1,-1 do
+                if string.sub(decargs["files"][i], j, j) ~= "." and not doneGettingEnd then
+                    filenamestring = string.sub(decargs["files"][i], j, j) .. filenamestring
+                else
+                    doneGettingEnd = true
+                end
+            end
+            filelines = fil.toArr(fil.topath(decargs["files"][i]))
+            fileContents[i] = fil.toArr(fil.topath(decargs["files"][i]))
+            if filetypes then
+                if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
+                    fileContents[i]["filetype"] = filenamestring
+                    filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                else
+                    fileContents[i]["filetype"] = nil
+                end
+            end
         else
             table.insert(openfiles, #openfiles + 1, decargs["files"][1])
             table.insert(fileContents, #fileContents + 1, {""})
@@ -723,6 +747,9 @@ while running == true do
     local event, var1, var2, var3 = pullEventWRMP()
     resetSize()
     if event == "char" then
+        if var1 == ";" then
+            print(fileContents[currfile]["filetype"])
+        end
         if var1 == ":" then
             clearScreenLine(hig)
             local cmd = pullCommand(":", false)
@@ -926,6 +953,16 @@ while running == true do
                             currXOffset = currXOffset + 1
                         end
                     end
+                    local doneGettingEnd = false
+                    local filenamestring = ""
+                    for j=#openfiles[currfile],1,-1 do
+                        if string.sub(openfiles[currfile], j, j) ~= "." and not doneGettingEnd then
+                            filenamestring = string.sub(openfiles[currfile], j, j) .. filenamestring
+                        else
+                            doneGettingEnd = true
+                        end
+                    end
+                    fileContents[currfile]["filetype"] = filenamestring
                     drawFile()
                 else
                     err("No file name")
@@ -1149,6 +1186,16 @@ while running == true do
                         drawFile()
                     end
                 end
+                local doneGettingEnd = false
+                local filenamestring = ""
+                for j=#openfiles[currfile],1,-1 do
+                    if string.sub(openfiles[currfile], j, j) ~= "." and not doneGettingEnd then
+                        filenamestring = string.sub(openfiles[currfile], j, j) .. filenamestring
+                    else
+                        doneGettingEnd = true
+                    end
+                end
+                fileContents[currfile]["filetype"] = filenamestring
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
                     err("No write since last change (add ! to override)")
@@ -1177,6 +1224,7 @@ while running == true do
                     end
                 end
             elseif cmdtab[1] == ":set" then
+                local seterror = false
                 if cmdtab[2] == "number" then
                     linenumbers = true
                     lineoffset= 4
@@ -1189,6 +1237,12 @@ while running == true do
                     drawFile()
                 elseif cmdtab[2] == "nomobile" then
                     mobile = false
+                else
+                    err("Variable " .. cmdtab[2] .. " not supported.")
+                    seterror = true
+                end
+                if not seterror then
+                    clearScreenLine(hig)
                 end
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
