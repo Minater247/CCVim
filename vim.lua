@@ -290,6 +290,7 @@ local function drawFile()
                     local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
                     local inquotes = false
                     local justset = false
+                    local quotepoints = {}
                     setcolors(colors.black, colors.red)
                     for j=1,#filelines[i],1 do
                         setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
@@ -303,6 +304,7 @@ local function drawFile()
                         end
                         if inquotes then
                             write(string.sub(filelines[i], j, j))
+                            table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
                         end
                         if tab.find(quotationmarks, j) and not justset then
                             if inquotes then
@@ -312,8 +314,7 @@ local function drawFile()
                         justset = false
                     end
                     local commentstart = 0
-                    commentstart = str.find(filelines[i], synt[4])
-                    setpos(1, 1)
+                    commentstart = str.find(filelines[i], synt[4], quotepoints)
                     if commentstart and commentstart ~= false then
                         setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
                         setcolors(colors.black, colors.green)

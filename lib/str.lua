@@ -13,6 +13,10 @@ local punctuation = {
     "-"
 }
 
+local escapable = {
+    "\""
+}
+
 local function split(s, delimiter)
     local result = {};
     for match in (s..delimiter):gmatch("(.-)"..delimiter) do
@@ -86,16 +90,24 @@ local function indicesOfLetter(inp, chr)
     local output = {}
     for i=1,#inp,1 do
         if string.sub(inp, i, i) == chr then
-            table.insert(output, #output + 1, i)
+            if tab.find(escapable, chr) then
+                if string.sub(inp, i-1, i-1) ~= "\\" then
+                    table.insert(output, #output + 1, i)
+                end
+            else
+                table.insert(output, #output + 1, i)
+            end
         end
     end
     return output
 end
 
-local function find(inp, mtch)
+local function find(inp, mtch, ignore)
     for i=1,#inp,1 do
         if string.sub(inp, i, i + #mtch - 1) == mtch then
-            return i
+            if not tab.find(ignore, i) then
+                return i
+            end
         end
     end
     return false
