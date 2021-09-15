@@ -92,4 +92,13 @@ local function indicesOfLetter(inp, chr)
     return output
 end
 
-return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings, wordEnds = wordEnds, indicesOfLetter = indicesOfLetter }
+local function find(inp, mtch)
+    for i=1,#inp,1 do
+        if string.sub(inp, i, i + #mtch - 1) == mtch then
+            return i
+        end
+    end
+    return false
+end
+
+return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings, wordEnds = wordEnds, indicesOfLetter = indicesOfLetter, find = find }

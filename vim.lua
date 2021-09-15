@@ -265,7 +265,7 @@ local function drawFile()
                     end
                 end
                 setcolors(colors.black, colors.white)
-                if filetypes then
+                if filetypes and fileContents[currfile]["filetype"] then
                     local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
                     local wordsOfLine = str.split(filelines[i], " ")
                     setpos(1 - currXOffset + lineoffset, i - currFileOffset)
@@ -311,9 +311,11 @@ local function drawFile()
                         end
                         justset = false
                     end
-                    local commentstart, ts, tt = string.find(filelines[68], synt[4]) --this won't work, need custom function
-                    if tt and not tt == 0 then
-                        setpos(1 - currXOffset + lineoffset + commentstart, i - currFileOffset - 1)
+                    local commentstart = 0
+                    commentstart = str.find(filelines[i], synt[4])
+                    setpos(1, 1)
+                    if commentstart and commentstart ~= false then
+                        setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
                         setcolors(colors.black, colors.green)
                         write(string.sub(filelines[i], commentstart, #filelines[i]))
                     end
