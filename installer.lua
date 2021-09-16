@@ -36,6 +36,7 @@ local function toArr(filePath)
     end
 end
 
+local setPath = false
 local function addToPath()
     if fs.exists("/vim/vim.lua") then
         local lines = toArr("/startup")
@@ -62,6 +63,7 @@ local function addToPath()
                 file.writeLine("shell.setPath(shell.path()..\":/vim/\")")
                 file.close()
                 print("Added path setup to startup file.")
+                setPath = true
             end
         else
             print("Already added to file.")
@@ -99,6 +101,20 @@ local function install()
     end
     if fs.exists("/vim/vim.lua") and fs.exists("/vim/lib/args.lua") and fs.exists("/vim/lib/fil.lua") and fs.exists("/vim/lib/str.lua") and fs.exists("/vim/lib/tab.lua") then
         print("Finished installing.")
+        print("Are you able to press tab on your device? [y/n]")
+        local _, eh = os.pullEvent("char")
+        if eh ~= "y" then
+            print("Adding config line to .vimrc ...")
+            local ff = fs.open("/vim/.vimrc", "a")
+            ff.writeLine("set mobile")
+            ff.close()
+            print("Configured for tabless use. Tap or click the bottom line to exit insert or append mode.")
+        else
+            print("Using default config.")
+        end
+        if setPath then
+            print("Please reboot your computer to complete the installation")
+        end
         print("Press any key to continue...")
         os.pullEvent("char")
     else

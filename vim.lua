@@ -77,7 +77,11 @@ local fileContents = {}
 local motd = false
 local remappings = {}
 local filetypes = false
+local filetypearr = {}
 local mobile = false
+local linenumbers = false
+local lineoffset = 0
+local syntaxhighlighting = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -88,6 +92,14 @@ local function resetSize()
         wid, hig = monitor.getSize()
     else
         wid, hig = term.getSize()
+    end
+end
+
+local function getWindSize()
+    if monitor then
+        return monitor.getSize()
+    else
+        return term.getSize()
     end
 end
 
@@ -140,6 +152,12 @@ local function pullEventWRMP()
         s = remappings[s]
     end
     return e, s, v2, v3
+end
+
+local function printarray(arr)
+    for i=1,#arr,1 do
+        print(arr[i])
+    end
 end
 
 local function pullCommand(input, numeric, len)
@@ -227,12 +245,101 @@ local function drawFile()
     for i=1,hig-1,1 do
         clearScreenLine(i)
     end
+    local length = #(tostring(currCursorY + currFileOffset + hig - 1))
     for i=currFileOffset,(hig - 1) + currFileOffset,1 do
         setpos(1, i - currFileOffset)
         if filelines then
             if filelines[i] ~= nil then
+                setcolors(colors.black, colors.yellow)
+                if linenumbers then
+                    if i < 1000 then
+                        for i=1,3 - #(tostring(i)),1 do
+                            write(" ")
+                        end
+                    end
+                    if i < 10000 then
+                        write(i)
+                        write(" ")
+                    else
+                        write("10k+")
+                    end
+                end
                 setcolors(colors.black, colors.white)
-                write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                if filetypes and fileContents[currfile]["filetype"] and syntaxhighlighting then
+                    local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
+                    local wordsOfLine = str.split(filelines[i], " ")
+                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                    for j=1,#wordsOfLine,1 do
+                        if tab.find(synt[1], wordsOfLine[j]) then
+                            setcolors(colors.yellow, colors.blue)
+                        elseif tab.find(synt[2][1], wordsOfLine[j]) then
+                            setcolors(colors.black, colors.lightBlue)
+                        elseif tab.find(synt[2][2], wordsOfLine[j]) then
+                            setcolors(colors.black, colors.purple)
+                        else
+                            setcolors(colors.black, colors.white)
+                        end
+                        write(wordsOfLine[j])
+                        if j ~= #wordsOfLine then
+                            setcolors(colors.black, colors.white)
+                            write(" ")
+                        end
+                    end
+                    --another loop for drawing strings
+                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                    local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
+                    local inquotes = false
+                    local justset = false
+                    local quotepoints = {}
+                    setcolors(colors.black, colors.red)
+                    for j=1,#filelines[i],1 do
+                        setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                        if tab.find(quotationmarks, j) then
+                            if not inquotes then
+                                if j < quotationmarks[#quotationmarks] then
+                                    inquotes = true
+                                    justset = true
+                                end
+                            end
+                        end
+                        if inquotes then
+                            write(string.sub(filelines[i], j, j))
+                            table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
+                        end
+                        if tab.find(quotationmarks, j) and not justset then
+                            if inquotes then
+                                inquotes = false
+                            end
+                        end
+                        justset = false
+                    end
+                    local commentstart = 0
+                    commentstart = str.find(filelines[i], synt[4], quotepoints)
+                    if commentstart and commentstart ~= false then
+                        setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
+                        setcolors(colors.black, colors.green)
+                        write(string.sub(filelines[i], commentstart, #filelines[i]))
+                    end
+                    --repeat the line number drawing since we just overwrote it
+                    setpos(1, i)
+                    setcolors(colors.black, colors.yellow)
+                    local _, yy = getWindSize()
+                    if yy ~= hig then
+                        if i < 1000 then
+                            for i=1,3 - #(tostring(i)),1 do
+                                write(" ")
+                            end
+                        end
+                        if i < 10000 then
+                            write(i)
+                            write(" ")
+                        else
+                            write("10k+")
+                        end
+                    end
+                else
+                    write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                end
             else
                 setcolors(colors.black, colors.purple)
                 write("~")
@@ -245,7 +352,11 @@ local function drawFile()
             tmp = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
         end
     end
-    setpos(currCursorX, currCursorY)
+    if filelines then
+        setpos(currCursorX + lineoffset, currCursorY)
+    else
+        setpos(currCursorX, currCursorY)
+    end
     setcolors(colors.lightGray, colors.white)
     if tmp ~= nil and tmp ~= "" then
         write(tmp)
@@ -273,7 +384,7 @@ local function moveCursorRight(endPad)
     if filelines[currCursorY + currFileOffset] ~= nil then
         if currCursorX + currXOffset < #(filelines[currCursorY + currFileOffset]) + 1 - endPad then
             currCursorX = currCursorX + 1
-            if currCursorX > wid then
+            if currCursorX + lineoffset > wid then
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
             end
@@ -304,15 +415,18 @@ local function moveCursorUp()
                 currXOffset = currXOffset - 1
                 currCursorX = currCursorX + 1
             end
-        elseif currCursorX > wid then
-            while currCursorX > wid do
+        elseif currCursorX + lineoffset > wid then
+            while currCursorX + lineoffset > wid do
                 currXOffset = currXOffset + 1
                 currCursorX = currCursorX - 1
             end
         end
-        if currCursorY < 0 then
+        if currCursorY < 1 then
             currFileOffset = currFileOffset - 1
             currCursorY = currCursorY + 1
+        end
+        if currFileOffset < 0 then
+            currFileOffset = currFileOffset + 1
         end
         drawFile()
     end
@@ -324,7 +438,7 @@ local function moveCursorDown()
     else
         oldx = currCursorX + currXOffset
     end
-    if currCursorY + currFileOffset ~= #filelines then
+    if currCursorY + currFileOffset < #filelines then
         currCursorY = currCursorY + 1
         if currCursorX + currXOffset > #(filelines[currCursorY + currFileOffset]) + 1 then
             if filelines[currCursorY + currFileOffset] ~= "" then
@@ -339,8 +453,8 @@ local function moveCursorDown()
                 currXOffset = currXOffset - 1
                 currCursorX = currCursorX + 1
             end
-        elseif currCursorX > wid then
-            while currCursorX > wid do
+        elseif currCursorX + lineoffset > wid then
+            while currCursorX + lineoffset > wid do
                 currXOffset = currXOffset + 1
                 currCursorX = currCursorX - 1
             end
@@ -392,7 +506,7 @@ local function redrawTerm()
     else
         drawFile()
     end
-    while currCursorX > wid do
+    while currCursorX + lineoffset > wid do
         currCursorX = currCursorX - 1
         currXOffset = currXOffset + 1
     end
@@ -439,8 +553,8 @@ local function insertMode()
                             filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
                             table.remove(filelines, currCursorY + currFileOffset)
                             moveCursorUp()
-                            if currCursorX > wid then
-                                while currCursorX > wid do
+                            if currCursorX + lineoffset > wid then
+                                while currCursorX + lineoffset > wid do
                                     currXOffset = currXOffset + 1
                                     currCursorX = currCursorX - 1
                                 end
@@ -479,7 +593,7 @@ local function insertMode()
             end
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
             currCursorX = currCursorX + 1
-            if currCursorX > wid then
+            if currCursorX + lineoffset > wid then
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
             end
@@ -492,7 +606,7 @@ local function insertMode()
             resetSize()
             redrawTerm()
             sendMsg("-- INSERT --")
-        elseif ev == "mouse_click" then
+        elseif ev == "mouse_click" and mobile then
             key = keys.tab --get out of the loop
         end
     end
@@ -561,7 +675,7 @@ local function appendMode()
             resetSize()
             redrawTerm()
             sendMsg("-- APPEND --")
-        elseif ev == "mouse_click" then
+        elseif ev == "mouse_click" and mobile then
             key = keys.tab --get out of the loop
         end
     end
@@ -578,10 +692,17 @@ if fs.exists("/vim/.vimrc") then
                 if not string.find(rctable[2], "=") then
                     if rctable[2] == "mobile" then
                         mobile = true
+                    elseif rctable[2] == "number" then
+                        linenumbers = true
+                        lineoffset = 4
+                    elseif rctable[2] == "filetype" then
+                        filetypes = true
                     end
                 else
                     --set the things to values
                 end
+            elseif rctable[1] == "syntax" and rctable[2] == "on" then
+                syntaxhighlighting = true
             elseif rctable[1] == "map" then
                 if rctable[2] and rctable[3] or not (#rctable > 3) then
                     remappings[rctable[2]] = rctable[3]
@@ -593,7 +714,7 @@ if fs.exists("/vim/.vimrc") then
                         _,k = os.pullEvent("key")
                     end
                 end
-            else
+            elseif rctable[1] ~= "" and rctable[1] ~= nil then
                 error("Unrecognized vimrc command " .. rctable[1] .. ". Full vimscript is not yet supported.")
             end
         end
@@ -623,7 +744,29 @@ if #decargs["files"] > 0 then
     end
     for i=1,#openfiles,1 do
         if fs.exists(fil.topath(decargs["files"][i])) then
-            table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(decargs["files"][i])))
+            local doneGettingEnd = false
+            local filenamestring = ""
+            for j=#decargs["files"][i],1,-1 do
+                if string.sub(decargs["files"][i], j, j) ~= "." and not doneGettingEnd then
+                    filenamestring = string.sub(decargs["files"][i], j, j) .. filenamestring
+                else
+                    doneGettingEnd = true
+                end
+            end
+            filelines = fil.toArr(fil.topath(decargs["files"][i]))
+            fileContents[i] = fil.toArr(fil.topath(decargs["files"][i]))
+            if filetypes then
+                if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
+                    fileContents[i]["filetype"] = filenamestring
+                    if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                        filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                    else
+                        fileContents[i]["filetype"] = nil
+                    end
+                else
+                    fileContents[i]["filetype"] = nil
+                end
+            end
         else
             table.insert(openfiles, #openfiles + 1, decargs["files"][1])
             table.insert(fileContents, #fileContents + 1, {""})
@@ -639,13 +782,14 @@ if #decargs["files"] > 0 then
         else
             currCursorX = 1
         end
-        while currCursorX > wid do
+        while currCursorX + lineoffset > wid do
             currCursorX = currCursorX - 1
             currXOffset = currXOffset + 1
         end
     end
 else
     openfiles = {}
+    filelines = {""}
     currfile = 0
 end
 
@@ -695,6 +839,9 @@ while running == true do
     local event, var1, var2, var3 = pullEventWRMP()
     resetSize()
     if event == "char" then
+        if var1 == ";" then
+            print(fileContents[currfile]["filetype"])
+        end
         if var1 == ":" then
             clearScreenLine(hig)
             local cmd = pullCommand(":", false)
@@ -845,6 +992,16 @@ while running == true do
                 end
             elseif cmdtab[1] == ":e" or cmdtab[1] == ":ex" then
                 if #cmdtab > 1 then
+                    if not motd then
+                        if currfile == 0 then
+                            currfile = 1
+                        end
+                        fileContents[currfile] = filelines
+                        fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
+                        if not openfiles[currfile] then
+                            openfiles[currfile] = ""
+                        end
+                    end
                     local name = ""
                     for i=2,#cmdtab,1 do
                         name = name .. cmdtab[i]
@@ -883,11 +1040,21 @@ while running == true do
                         else
                             currCursorX = 0
                         end
-                        while currCursorX > wid do
+                        while currCursorX + lineoffset > wid do
                             currCursorX = currCursorX - 1
                             currXOffset = currXOffset + 1
                         end
                     end
+                    local doneGettingEnd = false
+                    local filenamestring = ""
+                    for j=#openfiles[currfile],1,-1 do
+                        if string.sub(openfiles[currfile], j, j) ~= "." and not doneGettingEnd then
+                            filenamestring = string.sub(openfiles[currfile], j, j) .. filenamestring
+                        else
+                            doneGettingEnd = true
+                        end
+                    end
+                    fileContents[currfile]["filetype"] = filenamestring
                     drawFile()
                 else
                     err("No file name")
@@ -1071,7 +1238,7 @@ while running == true do
                             else
                                 currCursorX = 0
                             end
-                            while currCursorX > wid do
+                            while currCursorX + lineoffset > wid do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
@@ -1111,6 +1278,16 @@ while running == true do
                         drawFile()
                     end
                 end
+                local doneGettingEnd = false
+                local filenamestring = ""
+                for j=#openfiles[currfile],1,-1 do
+                    if string.sub(openfiles[currfile], j, j) ~= "." and not doneGettingEnd then
+                        filenamestring = string.sub(openfiles[currfile], j, j) .. filenamestring
+                    else
+                        doneGettingEnd = true
+                    end
+                end
+                fileContents[currfile]["filetype"] = filenamestring
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
                     err("No write since last change (add ! to override)")
@@ -1138,6 +1315,40 @@ while running == true do
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                 end
+            elseif cmdtab[1] == ":set" then
+                local seterror = false
+                if cmdtab[2] == "number" then
+                    linenumbers = true
+                    lineoffset= 4
+                    drawFile()
+                elseif cmdtab[2] == "mobile" then
+                    mobile = true
+                elseif cmdtab[2] == "nonumber" then
+                    linenumbers = false
+                    lineoffset = 0
+                    drawFile()
+                elseif cmdtab[2] == "nomobile" then
+                    mobile = false
+                elseif cmdtab[2] == "filetype" then
+                    filetypes = true
+                elseif cmdtab[2] == "nofiletype" then
+                    filetypes = false
+                else
+                    err("Variable " .. cmdtab[2] .. " not supported.")
+                    seterror = true
+                end
+                if not seterror then
+                    clearScreenLine(hig)
+                end
+            elseif cmdtab[1] == ":syntax" then
+                if cmdtab[2] == "on" then
+                    syntaxhighlighting = true
+                elseif cmdtab[2] == "off" then
+                    syntaxhighlighting = false
+                else
+                    err("invalid :syntax subcommand: "..cmdtab[2])
+                end
+                drawFile()
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
@@ -1195,7 +1406,7 @@ while running == true do
         elseif var1 == "A" then
             currCursorX = #filelines[currCursorY + currFileOffset]
             currXOffset = 0
-            while currCursorX > wid do
+            while currCursorX + lineoffset > wid do
                 currXOffset = currXOffset + 1
                 currCursorX = currCursorX - 1
             end
@@ -1339,7 +1550,7 @@ while running == true do
             elseif copytype == "text" then
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. copybuffer .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
                 currCursorX = currCursorX + #copybuffer --minus one so we can have the function reset viewpoint
-                while currCursorX > wid do
+                while currCursorX + lineoffset > wid do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
                 end
@@ -1356,7 +1567,7 @@ while running == true do
             elseif copytype == "text" then
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. copybuffer .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
                 currCursorX = currCursorX + #copybuffer
-                while currCursorX > wid do
+                while currCursorX + lineoffset > wid do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
                 end
@@ -1374,7 +1585,7 @@ while running == true do
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "$" then
             currCursorX = #filelines[currCursorY + currFileOffset]
-            while currCursorX > wid do
+            while currCursorX + lineoffset > wid do
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
             end
@@ -1457,7 +1668,7 @@ while running == true do
                             while not tab.find(begs, currCursorX + currXOffset) do
                                 currCursorX = currCursorX - 1
                             end
-                            while currCursorX > wid do
+                            while currCursorX + lineoffset > wid do
                                 currCursorX = currCursorX + 1
                                 currXOffset = currXOffset - 1
                             end
@@ -1493,7 +1704,7 @@ while running == true do
                     currXOffset = 0
                     currCursorX = #filelines[currCursorY + currFileOffset] + 1
                 end
-                while currCursorX > wid do
+                while currCursorX + lineoffset > wid do
                     currCursorX = currCursorX - 1
                     currXOffset = currXOffset + 1
                 end
@@ -1528,7 +1739,7 @@ while running == true do
                         while not tab.find(begs, currCursorX + currXOffset) do
                             currCursorX = currCursorX + 1
                         end
-                        while currCursorX > wid do
+                        while currCursorX + lineoffset > wid do
                             currCursorX = currCursorX - 1
                             currXOffset = currXOffset + 1
                         end
@@ -1544,7 +1755,7 @@ while running == true do
                         while not tab.find(begs, currCursorX + currXOffset) do
                             currCursorX = currCursorX + 1
                         end
-                        while currCursorX > wid do
+                        while currCursorX + lineoffset > wid do
                             currCursorX = currCursorX - 1
                             currXOffset = currXOffset + 1
                         end
@@ -1583,7 +1794,7 @@ while running == true do
                             if ch == "t" then
                                 currCursorX = currCursorX - 1
                             end
-                            while currCursorX > wid do
+                            while currCursorX + lineoffset > wid do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
@@ -1643,7 +1854,7 @@ while running == true do
                     while not tab.find(begs, currCursorX + currXOffset) do
                         currCursorX = currCursorX - 1
                     end
-                    while currCursorX > wid do
+                    while currCursorX + lineoffset > wid do
                         currCursorX = currCursorX + 1
                         currXOffset = currXOffset - 1
                     end
@@ -1657,8 +1868,8 @@ while running == true do
                     i = i - 1
                 end
                 currCursorX = i
-                if currCursorX > wid then
-                    while currCursorX > wid do
+                if currCursorX + lineoffset > wid then
+                    while currCursorX + lineoffset > wid do
                         currCursorX = currCursorX - 1
                         currXOffset = currXOffset + 1
                     end
@@ -1750,7 +1961,7 @@ while running == true do
                     while not tab.find(begs, currCursorX + currXOffset) do
                         currCursorX = currCursorX + 1
                     end
-                    while currCursorX > wid do
+                    while currCursorX + lineoffset > wid do
                         currCursorX = currCursorX - 1
                         currXOffset = currXOffset + 1
                     end
@@ -1760,16 +1971,18 @@ while running == true do
             end
         elseif var1 == "e" or var1 == "E" then
             local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
-            if currCursorX + currXOffset < begs[#begs] then
-                currCursorX = currCursorX + 1
-                while not tab.find(begs, currCursorX + currXOffset) do
+            if begs then
+                if currCursorX + currXOffset < begs[#begs] then
                     currCursorX = currCursorX + 1
+                    while not tab.find(begs, currCursorX + currXOffset) do
+                        currCursorX = currCursorX + 1
+                    end
+                    while currCursorX + lineoffset > wid do
+                        currCursorX = currCursorX - 1
+                        currXOffset = currXOffset + 1
+                    end
+                    drawFile()
                 end
-                while currCursorX > wid do
-                    currCursorX = currCursorX - 1
-                    currXOffset = currXOffset + 1
-                end
-                drawFile()
             end
         elseif var1 == "b" or var1 == "B" then
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
@@ -1792,7 +2005,7 @@ while running == true do
                 i = i + 1
             end
             currCursorX = i
-            while currCursorX > wid do
+            while currCursorX + lineoffset > wid do
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
             end
@@ -1813,7 +2026,7 @@ while running == true do
                     if var1 == "t" then
                         currCursorX = currCursorX - 1
                     end
-                    while currCursorX > wid do
+                    while currCursorX + lineoffset > wid do
                         currCursorX = currCursorX - 1
                         currXOffset = currXOffset + 1
                     end
@@ -1896,7 +2109,7 @@ while running == true do
                             if jumpbuffer[1] == "t" or jumpbuffer[1] == "T" then
                                 currCursorX = currCursorX - 1
                             end
-                            while currCursorX > wid do
+                            while currCursorX + lineoffset > wid do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
@@ -1926,7 +2139,7 @@ while running == true do
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, beg - 1) .. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
                     currCursorX = beg
                     currXOffset = 0
-                    while currCursorX > wid do
+                    while currCursorX + lineoffset > wid do
                         currCursorX = currCursorX - 1
                         currXOffset = currXOffset + 1
                     end
