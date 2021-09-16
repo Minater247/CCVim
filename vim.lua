@@ -265,7 +265,7 @@ local function drawFile()
                     end
                 end
                 setcolors(colors.black, colors.white)
-                if filetypes and fileContents[currfile]["filetype"] then
+                if filetypes and fileContents[currfile]["filetype"] and syntaxhighlighting then
                     local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
                     local wordsOfLine = str.split(filelines[i], " ")
                     setpos(1 - currXOffset + lineoffset, i - currFileOffset)
@@ -697,12 +697,12 @@ if fs.exists("/vim/.vimrc") then
                         lineoffset = 4
                     elseif rctable[2] == "filetype" then
                         filetypes = true
-                    elseif rctable[2] == "syntax" then
-                        syntaxhighlighting = true
                     end
                 else
                     --set the things to values
                 end
+            elseif rctable[1] == "syntax" and rctable[2] == "on" then
+                syntaxhighlighting = true
             elseif rctable[1] == "map" then
                 if rctable[2] and rctable[3] or not (#rctable > 3) then
                     remappings[rctable[2]] = rctable[3]
@@ -1329,6 +1329,10 @@ while running == true do
                     drawFile()
                 elseif cmdtab[2] == "nomobile" then
                     mobile = false
+                elseif cmdtab[2] == "filetype" then
+                    filetypes = true
+                elseif cmdtab[2] == "nofiletype" then
+                    filetypes = false
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
                     seterror = true
@@ -1336,6 +1340,15 @@ while running == true do
                 if not seterror then
                     clearScreenLine(hig)
                 end
+            elseif cmdtab[1] == ":syntax" then
+                if cmdtab[2] == "on" then
+                    syntaxhighlighting = true
+                elseif cmdtab[2] == "off" then
+                    syntaxhighlighting = false
+                else
+                    err("invalid :syntax subcommand: "..cmdtab[2])
+                end
+                drawFile()
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
