@@ -13,6 +13,8 @@ Currently very limited, but here's what works:
 - Jumping to lines
 - fF/tT jumping, with repeat/repeat reverse (```;```/```,```)
 - Tabs (opening multiple files uses tabs)
+- Basic syntax highlighting
+- Line numbers
 
 What's currently being worked on:
 - The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
