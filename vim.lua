@@ -76,7 +76,6 @@ local currfile = 1
 local fileContents = {}
 local motd = false
 local remappings = {}
-local filetypes = false
 local filetypearr = {}
 local mobile = false
 local linenumbers = false
@@ -265,7 +264,7 @@ local function drawFile()
                     end
                 end
                 setcolors(colors.black, colors.white)
-                if filetypes and fileContents[currfile]["filetype"] and syntaxhighlighting then
+                if fileContents[currfile]["filetype"] and syntaxhighlighting then
                     local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
                     local wordsOfLine = str.split(filelines[i], " ")
                     setpos(1 - currXOffset + lineoffset, i - currFileOffset)
@@ -695,8 +694,6 @@ if fs.exists("/vim/.vimrc") then
                     elseif rctable[2] == "number" then
                         linenumbers = true
                         lineoffset = 4
-                    elseif rctable[2] == "filetype" then
-                        filetypes = true
                     end
                 else
                     --set the things to values
@@ -755,17 +752,15 @@ if #decargs["files"] > 0 then
             end
             filelines = fil.toArr(fil.topath(decargs["files"][i]))
             fileContents[i] = fil.toArr(fil.topath(decargs["files"][i]))
-            if filetypes then
-                if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
-                    fileContents[i]["filetype"] = filenamestring
-                    if fs.exists("/vim/syntax/"..filenamestring..".lua") then
-                        filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
-                    else
-                        fileContents[i]["filetype"] = nil
-                    end
+            if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
+                fileContents[i]["filetype"] = filenamestring
+                if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                    filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
                 else
                     fileContents[i]["filetype"] = nil
                 end
+            else
+                fileContents[i]["filetype"] = nil
             end
         else
             table.insert(openfiles, #openfiles + 1, decargs["files"][1])
@@ -1329,10 +1324,6 @@ while running == true do
                     drawFile()
                 elseif cmdtab[2] == "nomobile" then
                     mobile = false
-                elseif cmdtab[2] == "filetype" then
-                    filetypes = true
-                elseif cmdtab[2] == "nofiletype" then
-                    filetypes = false
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
                     seterror = true
