@@ -2162,6 +2162,8 @@ while running == true do
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true
             insertMode()
+        elseif var1 == "%" then
+            
         end
     elseif event == "key" then
         if var1 == keys.left then
