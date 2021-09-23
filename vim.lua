@@ -1650,7 +1650,7 @@ while running == true do
             elseif ch == "g" then
                 _, ch = pullChar()
                 if ch == "g" then
-                    currCursorY = tonumber(num) - 1 --minus one for moveCursorDown
+                    currCursorY = tonumber(num)
                     currFileOffset = 0
                     currCursorX = 1
                     currXOffset = 0
@@ -1691,7 +1691,7 @@ while running == true do
                     drawFile()
                 end
             elseif ch == "G" then
-                currCursorY = tonumber(num) - 1 --minus one for moveCursorDown
+                currCursorY = tonumber(num)
                 currFileOffset = 0
                 currCursorX = 1
                 currXOffset = 0
