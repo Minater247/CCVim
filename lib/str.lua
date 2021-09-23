@@ -105,7 +105,11 @@ end
 local function find(inp, mtch, ignore)
     for i=1,#inp,1 do
         if string.sub(inp, i, i + #mtch - 1) == mtch then
-            if not tab.find(ignore, i) then
+            if ignore then
+                if not tab.find(ignore, i) then
+                    return i
+                end
+            else
                 return i
             end
         end
