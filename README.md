@@ -16,6 +16,7 @@ Currently very limited, but here's what works:
 - Basic syntax highlighting
 - Line numbers
 - Jumping to matching bracket (currently works with ```{}```,```[]```, and ```()```.
+- Basic mobile support (tap the bottom line to exit insert/append mode)
 
 What's currently being worked on:
 - The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
@@ -23,7 +24,6 @@ What's currently being worked on:
 
 What doesn't work:
 - Commands that require pressing control
-- CraftOS Mobile
 
 Fun fact - this README was written in the program!
 
