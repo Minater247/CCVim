@@ -15,6 +15,7 @@ Currently very limited, but here's what works:
 - Tabs (opening multiple files uses tabs)
 - Basic syntax highlighting
 - Line numbers
+- Jumping to matching bracket (currently works with ```{}```,```[]```, and ```()```.
 
 What's currently being worked on:
 - The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
