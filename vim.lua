@@ -2189,6 +2189,7 @@ while running == true do
             fileContents[currfile]["unsavedchanges"] = true
             insertMode()
         elseif var1 == "%" then
+            local startpos = {currCursorX, currXOffset, currCursorY, currFileOffset}
             local startbracket = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
             local endbracket = ""
             if startbracket == "(" then
@@ -2228,7 +2229,9 @@ while running == true do
                         else
                             currCursorX = 1
                             currXOffset = 0
-                            currCursorY = currCursorY + 1
+                            if #filelines > 1 then
+                                currCursorY = currCursorY + 1
+                            end
                         end
                     end
                 end
@@ -2246,6 +2249,12 @@ while running == true do
                 currFileOffset = currFileOffset + 1
             end
             drawFile()
+            if not string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset) == endbracket then
+                currCursorX = startpos[1]
+                currXOffset = startpos[2]
+                currCursorY = startpos[3]
+                currFileOffset = startpos[4]
+            end
         end
     elseif event == "key" then
         if var1 == keys.left then
