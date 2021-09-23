@@ -8,7 +8,8 @@ local function syntax()
     local removedpunctuation = {
         "~"
     }
-    return {todos, keywords, stringchar, commentstring, removedpunctuation}
+    local type = "code"
+    return {todos, keywords, stringchar, commentstring, removedpunctuation, type}
 end
 
 return { syntax = syntax }
