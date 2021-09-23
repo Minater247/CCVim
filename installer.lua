@@ -5,7 +5,8 @@ local function initialMenu()
     print() --skip a line
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
-    print("3. Exit")
+    print("3. Add syntax to installation")
+    print("4. Exit")
 end
 
 local function find(table, query)
@@ -75,10 +76,14 @@ local function addToPath()
     os.pullEvent("char")
 end
 
-local function download(url, file)
+local function download(url, file, noerr)
     local content = http.get(url).readAll()
     if not content then
-        error("Failed to access resource " .. url)
+        if not noerr then
+            error("Failed to access resource " .. url)
+        else
+            return false
+        end
     end
     local fi = fs.open(file, "w")
     fi.write(content)
@@ -88,6 +93,7 @@ end
 local function install()
     print("Downloading files from github...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/vim.lua", "/vim/vim.lua")
+    download("https://raw.githubusercontent.com/Minater247/CCVim/main/.vimrc", "/vim/.vimrc")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/args.lua", "/vim/lib/args.lua")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/fil.lua", "/vim/lib/fil.lua")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/str.lua", "/vim/lib/str.lua")
@@ -131,6 +137,22 @@ local function install()
     end
 end
 
+local function syntax()
+    print("Downloader for the official syntax files.")
+    print("Enter the file extension for the filetype: ")
+    local fts = string.lower(read())
+    print("Looking for extension \""..fts.."\" in repo...")
+    if download("https://raw.githubusercontent.com/Minater247/CCVim/main/syntax/"..fts..".lua", "/vim/syntax/"..fts..".lua") == false then
+        print("Could not find file for extension \""..fts.."\"")
+        print("Press any key to continue...")
+        os.pullEvent("key")
+    else
+        print("Downloaded syntax for \""..fts.."\"")
+        print("Press any key to continue...")
+        os.pullEvent("key")
+    end
+end
+
 local running = true
 while running == true do
     initialMenu()
@@ -147,6 +169,10 @@ while running == true do
         term.setCursorPos(1, 1)
         addToPath()
     elseif ch == "3" then
+        term.clear()
+        term.setCursorPos(1, 1)
+        syntax()
+    elseif ch == "4" then
         term.clear()
         term.setCursorPos(1, 1)
         running = false
