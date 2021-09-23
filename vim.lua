@@ -838,9 +838,6 @@ while running == true do
     local event, var1, var2, var3 = pullEventWRMP()
     resetSize()
     if event == "char" then
-        if var1 == ";" then
-            print(fileContents[currfile]["filetype"])
-        end
         if var1 == ":" then
             clearScreenLine(hig)
             local cmd = pullCommand(":", false)
@@ -1394,12 +1391,16 @@ while running == true do
             local _, chr = pullChar()
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. chr .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
             drawFile()
-            fileContents[currfile]["unsavedchanges"] = true
+            if fileContents[currfile] then
+                fileContents[currfile]["unsavedchanges"] = true
+            end
         elseif var1 == "J" then
-            filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. " " .. filelines[currCursorY + currFileOffset + 1]
-            table.remove(filelines, currCursorY + currFileOffset + 1)
-            drawFile()
-            fileContents[currfile]["unsavedchanges"] = true
+            if filelines[currCursorY + currFileOffset] and filelines[currCursorY + currFileOffset + 1] then
+                filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. " " .. filelines[currCursorY + currFileOffset + 1]
+                table.remove(filelines, currCursorY + currFileOffset + 1)
+                drawFile()
+                fileContents[currfile]["unsavedchanges"] = true
+            end
         elseif var1 == "o" then
             table.insert(filelines, currCursorY + currFileOffset + 1, "")
             moveCursorDown()
@@ -1407,7 +1408,9 @@ while running == true do
             currXOffset = 0
             drawFile()
             insertMode()
-            fileContents[currfile]["unsavedchanges"] = true
+            if fileContents[currfile] then
+                fileContents[currfile]["unsavedchanges"] = true
+            end
         elseif var1 == "O" then
             table.insert(filelines, currCursorY + currFileOffset, "")
             currCursorX = 1
@@ -1489,7 +1492,9 @@ while running == true do
             copytype = "text"
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
             drawFile()
-            fileContents[currfile]["unsavedchanges"] = true
+            if fileContents[currfile] then
+                fileContents[currfile]["unsavedchanges"] = true
+            end
         elseif var1 == "d" then
             local _, c = pullChar()
             if c == "d" then
@@ -1574,7 +1579,9 @@ while running == true do
                 end
             end
             drawFile()
-            fileContents[currfile]["unsavedchanges"] = true
+            if fileContents[currfile] then
+                fileContents[currfile]["unsavedchanges"] = true
+            end
         elseif var1 == "P" then
             if copytype == "line" then
                 table.insert(filelines, currCursorY + currFileOffset, copybuffer)
@@ -1969,7 +1976,7 @@ while running == true do
             drawFile()
         elseif var1 == "w" or var1 == "W" then
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
-            if begs then
+            if begs[#begs] then
                 if currCursorX + currXOffset < begs[#begs] then
                     currCursorX = currCursorX + 1
                     while not tab.find(begs, currCursorX + currXOffset) do
@@ -1985,7 +1992,7 @@ while running == true do
             end
         elseif var1 == "e" or var1 == "E" then
             local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
-            if begs then
+            if begs[#begs] then
                 if currCursorX + currXOffset < begs[#begs] then
                     currCursorX = currCursorX + 1
                     while not tab.find(begs, currCursorX + currXOffset) do
@@ -2000,16 +2007,18 @@ while running == true do
             end
         elseif var1 == "b" or var1 == "B" then
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
-            if currCursorX + currXOffset > begs[1] then
-                currCursorX = currCursorX - 1
-                while not tab.find(begs, currCursorX + currXOffset) do
+            if begs[1] then
+                if currCursorX + currXOffset > begs[1] then
                     currCursorX = currCursorX - 1
+                    while not tab.find(begs, currCursorX + currXOffset) do
+                        currCursorX = currCursorX - 1
+                    end
+                    while currCursorX < 1 do
+                        currCursorX = currCursorX + 1
+                        currXOffset = currXOffset - 1
+                    end
+                    drawFile()
                 end
-                while currCursorX < 1 do
-                    currCursorX = currCursorX + 1
-                    currXOffset = currXOffset - 1
-                end
-                drawFile()
             end
         elseif var1 == "^" then
             currCursorX = 1
