@@ -3,7 +3,7 @@ Yet another Vim clone for ComputerCraft, which I'm trying to make work as well a
 
 You can use [TAB] to exit editing mode.
 
-Currently very limited, but here's what works:
+Features:
 - Insert mode
 - Append mode
 - Opening/Saving files
@@ -16,13 +16,15 @@ Currently very limited, but here's what works:
 - Basic syntax highlighting
 - Line numbers
 - Jumping to matching bracket (currently works with ```{}```,```[]```, and ```()```.
+- Commands that require pressing control (type ```:ctrl``` to activate the emulated control key, or ```:ctrl X``` to emulate [control + key X].)
+
 
 What's currently being worked on:
 - The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
 - File browser
 
+
 What doesn't work:
-- Commands that require pressing control
 - CraftOS Mobile
 
 Fun fact - this README was written in the program!
