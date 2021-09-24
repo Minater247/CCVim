@@ -26,6 +26,7 @@ What's currently being worked on:
 
 What doesn't work:
 - CraftOS Mobile
+- Setting filetype when inside the file with :set (currently figuring out why)
 
 Fun fact - this README was written in the program!
 
