@@ -424,11 +424,11 @@ local function moveCursorUp()
                 currCursorX = currCursorX - 1
             end
         end
-        if currCursorY < 1 then
+        while currCursorY < 1 do
             currFileOffset = currFileOffset - 1
             currCursorY = currCursorY + 1
         end
-        if currFileOffset < 0 then
+        while currFileOffset < 0 do
             currFileOffset = currFileOffset + 1
         end
         drawFile()
@@ -462,7 +462,7 @@ local function moveCursorDown()
                 currCursorX = currCursorX - 1
             end
         end
-        if currCursorY > hig - 1 then
+        while currCursorY > hig - 1 do
             currFileOffset = currFileOffset + 1
             currCursorY = currCursorY - 1
         end
@@ -1358,6 +1358,68 @@ while running == true do
                     syntaxhighlighting = false
                 else
                     err("invalid :syntax subcommand: "..cmdtab[2])
+                end
+                drawFile()
+            elseif cmdtab[1] == ":control" or cmdtab[1] == ":ctrl" then --not yet working
+                local _, ch
+                if not cmdtab[2] then
+                    sendMsg("Emulating held control until next key press:")
+                    _, ch = os.pullEvent("char")
+                    sendMsg("Sent CONTROL + "..ch)
+                else
+                    ch = cmdtab[2]
+                    clearScreenLine(hig)
+                end
+                if ch == "e" then
+                    currFileOffset = currFileOffset + 1
+                    currCursorY = currCursorY - 1
+                elseif ch == "y" then
+                    currFileOffset = currFileOffset - 1
+                    currCursorY = currCursorY + 1
+                elseif ch == "b" then
+                    local oldCursorY = currCursorY
+                    if currCursorY + currFileOffset > hig - 1 then
+                        currCursorY = currCursorY - (hig - 1)
+                    end
+                    while currCursorY < oldCursorY do
+                        currCursorY = currCursorY + 1
+                        currFileOffset = currFileOffset - 1
+                    end
+                elseif ch == "f" then
+                    local oldCursorY = currCursorY
+                    if currCursorY + currFileOffset < #filelines - (hig - 1) then
+                        currCursorY = currCursorY + (hig - 1)
+                    end
+                    while currCursorY > oldCursorY do
+                        currCursorY = currCursorY - 1
+                        currFileOffset = currFileOffset + 1
+                    end
+                elseif ch == "d" then
+                    local oldCursorY = currCursorY
+                    if currCursorY + currFileOffset < #filelines - math.floor((hig - 1)/2) then
+                        currCursorY = currCursorY + math.floor((hig - 1)/2)
+                    end
+                    while currCursorY > oldCursorY do
+                        currCursorY = currCursorY - 1
+                        currFileOffset = currFileOffset + 1
+                    end
+                    while currFileOffset > #filelines - (hig - 1) do
+                        currFileOffset = currFileOffset - 1
+                        currCursorY = currCursorY + 1
+                    end
+                elseif ch == "u" then
+                    local oldCursorY = currCursorY
+                    if currCursorY + currFileOffset > (hig - 1) then
+                        currCursorY = currCursorY - math.floor((hig - 1)/2)
+                    end
+                    while currCursorY < oldCursorY do
+                        currCursorY = currCursorY + 1
+                        currFileOffset = currFileOffset - 1
+                    end
+                    while currFileOffset < 0 do
+                        currFileOffset = currFileOffset + 1
+                        currCursorY = currCursorY - 1
+                    end
                 end
                 drawFile()
             elseif cmdtab[1] ~= "" then
