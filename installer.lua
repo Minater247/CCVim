@@ -8,7 +8,7 @@
 local function initialMenu()
     term.clear()
     term.setCursorPos(1, 1)
-    print("Welcome to the CCVIM Installer")
+    print("CCVIM Installer v0.1")
     print() --skip a line
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
@@ -119,6 +119,7 @@ local function install()
     print("Downloading files from github...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/vim.lua", "/vim/vim.lua")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/.vimrc", "/vim/.vimrc")
+    download("https://raw.githubusercontent.com/Minater247/CCVim/main/.version", "/vim/.version")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/args.lua", "/vim/lib/args.lua")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/fil.lua", "/vim/lib/fil.lua")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/str.lua", "/vim/lib/str.lua")
@@ -178,6 +179,14 @@ local function syntax()
     end
 end
 
+local function split(s, delimiter)
+    local result = {};
+    for match in (s..delimiter):gmatch("(.-)"..delimiter) do
+        table.insert(result, match);
+    end
+    return result;
+end
+
 local function update()
     print("Fetching current version...")
     local con = true
@@ -185,15 +194,72 @@ local function update()
     local vimver
     local instver
     local nf
+    local nft
+    local nvimver
+    local ninstver
     if not fs.isDir("/vim/") then
         con = false 
     end
-    if fs.exists("/vim/.version") then
+    if fs.exists("/vim/.version") and con then
         f = toArr("/vim/.version")
         vimver = f[1]
         instver = f[2]
-        nf = http.get("https://raw.githubusercontent.com/Minater247/CCVim/main/.version")
-        error(nf[1])
+        nf = http.get("https://raw.githubusercontent.com/Minater247/CCVim/main/.version").readAll()
+        nft = split(nf, "\n")
+        nvimver = nft[1]
+        ninstver = nft[2]
+        if ninstver > instver then
+            print("This version of the installer is outdated. Please download a new version to continue.")
+            print("Download now? [y/n]")
+            local _,inp = os.pullEvent("char")
+            if inp == "y" then
+                download("https://raw.githubusercontent.com/Minater247/CCVim/main/installer.lua", "/vim/installer")
+                fs.delete("/vim/installer.lua")
+                fs.move("/vim/installer", "/vim/installer.lua")
+                print("Updated installer downloaded.")
+                print("Updating local version file...")
+                local filelines = toArr("/vim/.version")
+                filelines[2] = ninstver
+                local ff = fs.open("/vim/.version", "w")
+                for i=1,#filelines,1 do
+                    ff.writeLine(filelines[i])
+                end
+                print("Updated local version.")
+                ff.close()
+                print("Exiting.")
+                print("Press any key to continue...")
+                os.pullEvent("key")
+                error("Ignore this, have to throw an error to move file while in use. Please run the installer again.")
+            end
+        else
+            print("Installer version is current.")
+            if nvimver == vimver then
+                print("An update is available! "..vimver.." -> "..nvimver)
+                print("Downloading files from github...")
+                download("https://raw.githubusercontent.com/Minater247/CCVim/main/vim.lua", "/vim/vim.lua")
+                download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/args.lua", "/vim/lib/args.lua")
+                download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/fil.lua", "/vim/lib/fil.lua")
+                download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/str.lua", "/vim/lib/str.lua")
+                download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/tab.lua", "/vim/lib/tab.lua")
+                print("Update complete.")
+                print("Updating local version info...")
+                local filelines = toArr("/vim/.version")
+                filelines[2] = ninstver
+                local ff = fs.open("/vim/.version", "w")
+                for i=1,#filelines,1 do
+                    ff.writeLine(filelines[i])
+                end
+                print("Updated local version.")
+                ff.close()
+                print("Wrapping up...")
+                --used to be code here
+                print("Done.")
+                print("Press any key to continue")
+                os.pullEvent("key")
+            else
+                print("CCVIM version is current.")
+            end
+        end
     else
         print("Failed to check version. Continue anyways?")
     end
