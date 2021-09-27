@@ -639,7 +639,7 @@ local function appendMode()
                     fileContents[currfile]["unsavedchanges"] = true
                 else
                     if currCursorX + currXOffset > 1 then
-                        filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+                        filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
                         currXOffset = currXOffset - math.floor(wid / 2)
                         currCursorX = math.floor(wid / 2)
                         if currXOffset < 0 then
@@ -667,7 +667,7 @@ local function appendMode()
             if filelines[currCursorY + currFileOffset] == nil then
                 filelines[currCursorY + currFileOffset] = ""
             end
-            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 2, #(filelines[currCursorY + currFileOffset]))
+            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
             moveCursorRight(0)
             drawFile()
             if not fileContents[currfile] then
@@ -1340,8 +1340,17 @@ while running == true do
                             stri = stri .. "="
                         end
                     end
-                    if comm == "filetype" then
-                        fileContents[currfile]["filetype"] = stri
+                    if comm == "filetype" then --this is really broken and I can't find why
+                        if stri ~= openfiles[currfile] and stri ~= string.sub(openfiles[currfile], 2, #openfiles[currfile]) then
+                            fileContents[currfile]["filetype"] = stri
+                            if fs.exists("/vim/syntax/"..stri..".lua") then
+                                filetypearr[stri] = require("/vim/syntax/"..stri)
+                            else
+                                fileContents[currfile]["filetype"] = nil
+                            end
+                        else
+                            fileContents[currfile]["filetype"] = nil
+                        end
                     end
                     drawFile()
                 else
