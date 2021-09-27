@@ -258,10 +258,14 @@ local function update()
                 os.pullEvent("key")
             else
                 print("CCVIM version is current.")
+                print("Press any key to continue...")
+                os.pullEvent("key")
             end
         end
     else
-        print("Failed to check version. Continue anyways?")
+        print("Failed to check version.")
+        print("Press any key to continue.")
+        os.pullEvent("key")
     end
 end
 
