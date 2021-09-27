@@ -13,8 +13,8 @@ local function initialMenu()
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
     print("3. Add syntax to installation")
-    print("4. Update CCVIM")
-    print("5. Exit")
+    --print("4. Update CCVIM")
+    print("4. Exit")
 end
 
 local function toArr(filePath)
@@ -218,11 +218,11 @@ while running == true do
         term.clear()
         term.setCursorPos(1, 1)
         syntax()
-    elseif ch == "4" then
+    elseif ch == "5" then
         term.clear()
         term.setCursorPos(1, 1)
         update()
-    elseif ch == "5" then
+    elseif ch == "4" then
         term.clear()
         term.setCursorPos(1, 1)
         running = false
