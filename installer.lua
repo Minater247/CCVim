@@ -1,3 +1,10 @@
+--[[ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+                        CCVIM INSTALLER
+                          VERSION 0.1
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -]]
+
 local function initialMenu()
     term.clear()
     term.setCursorPos(1, 1)
@@ -6,7 +13,25 @@ local function initialMenu()
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
     print("3. Add syntax to installation")
-    print("4. Exit")
+    print("4. Update CCVIM")
+    print("5. Exit")
+end
+
+local function toArr(filePath)
+    local fileHandle = fs.open(filePath, "r")
+    local log
+    if fileHandle then
+        log = {}
+        local line = fileHandle.readLine()
+        while line do
+            table.insert(log, line)
+            line = fileHandle.readLine()
+        end
+        fileHandle.close()
+        return log
+    else
+        return false
+    end
 end
 
 local function find(table, query)
@@ -153,6 +178,27 @@ local function syntax()
     end
 end
 
+local function update()
+    print("Fetching current version...")
+    local con = true
+    local f
+    local vimver
+    local instver
+    local nf
+    if not fs.isDir("/vim/") then
+        con = false 
+    end
+    if fs.exists("/vim/.version") then
+        f = toArr("/vim/.version")
+        vimver = f[1]
+        instver = f[2]
+        nf = http.get("https://raw.githubusercontent.com/Minater247/CCVim/main/.version")
+        error(nf[1])
+    else
+        print("Failed to check version. Continue anyways?")
+    end
+end
+
 local running = true
 while running == true do
     initialMenu()
@@ -173,6 +219,10 @@ while running == true do
         term.setCursorPos(1, 1)
         syntax()
     elseif ch == "4" then
+        term.clear()
+        term.setCursorPos(1, 1)
+        update()
+    elseif ch == "5" then
         term.clear()
         term.setCursorPos(1, 1)
         running = false
