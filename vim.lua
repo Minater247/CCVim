@@ -1152,8 +1152,6 @@ while running == true do
                     end
                     if filename ~= "" then
                         filename = fs.getName(filename)
-                        sendMsg(filename)
-                        os.pullEvent("key")
                     end
                     table.insert(openfiles, #openfiles + 1, filename)
                     if currfile == 0 then
