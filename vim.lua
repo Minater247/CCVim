@@ -859,6 +859,7 @@ if #decargs["files"] > 0 then
         error("Cannot currently open directories")
     end
     for i=1,#openfiles,1 do
+        decargs["files"][i] = fs.getName(decargs["files"][i])
         if fs.exists(fil.topath(decargs["files"][i])) then
             local doneGettingEnd = false
             local filenamestring = ""
@@ -1130,14 +1131,23 @@ while running == true do
                     else
                         filename = ""
                     end
+                    if filename ~= "" then
+                        filename = fs.getName(filename)
+                    end
                     table.insert(openfiles, #openfiles + 1, filename)
                     if currfile == 0 then
                         currfile = 1
                     end
                     sendMsg(#openfiles.." "..currfile) --will immediately be overwritten if nothing goes wrong, used for debug
-                    if fs.exists(fil.topath(name)) then
-                        filelines = fil.toArr(fil.topath(name))
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    newfile = false
+                    if fs.exists(fil.topath(filename)) then
+                        filelines = fil.toArr(fil.topath(filename))
+                        if filelines then
+                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        else
+                            newfile = true
+                            sendMsg("\""..filename.."\" [New File]")
+                        end
                     else
                         newfile = true
                         sendMsg("\""..filename.."\" [New File]")
@@ -1170,7 +1180,19 @@ while running == true do
                             doneGettingEnd = true
                         end
                     end
-                    fileContents[currfile]["filetype"] = filenamestring
+                    if filenamestring ~= openfiles[currfile] and filenamestring ~= string.sub(openfiles[currfile], 2, #openfiles[currfile]) then
+                        fileContents[currfile]["filetype"] = filenamestring
+                        if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                            filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                        else
+                            fileContents[currfile]["filetype"] = nil
+                        end
+                    else
+                        fileContents[currfile]["filetype"] = nil
+                    end
+                    if newfile then
+                        moveCursorRight()
+                    end
                     drawFile(true)
                 else
                     err("No file name")
@@ -1184,6 +1206,7 @@ while running == true do
                             name = name .. " "
                         end
                     end
+                    name = fs.getName(name)
                     if fs.exists(fil.topath(name)) then
                         local secondArr = fil.toArr(fil.topath(name))
                         for i=1,#secondArr,1 do
@@ -1332,6 +1355,7 @@ while running == true do
                                 name = name .. " "
                             end
                         end
+                        name = fs.getName(name)
                         if fs.exists(fil.topath(name)) then
                             fileContents[currfile] = filelines
                             fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -1451,7 +1475,7 @@ while running == true do
                             stri = stri .. "="
                         end
                     end
-                    if comm == "filetype" then --this is really broken and I can't find why
+                    if comm == "filetype" then
                         if stri ~= openfiles[currfile] and stri ~= string.sub(openfiles[currfile], 2, #openfiles[currfile]) then
                             fileContents[currfile]["filetype"] = stri
                             if fs.exists("/vim/syntax/"..stri..".lua") then
