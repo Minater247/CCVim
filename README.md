@@ -1,5 +1,5 @@
 # CCVim
-Yet another Vim clone for ComputerCraft, which I'm trying to make work as well as possible.
+A newer Vim clone for ComputerCraft, made since I wanted some of the features the previous one didn't have.
 
 You can use [TAB] to exit editing mode.
 
