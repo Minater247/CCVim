@@ -886,6 +886,25 @@ if #decargs["files"] > 0 then
             table.insert(openfiles, #openfiles + 1, decargs["files"][1])
             table.insert(fileContents, #fileContents + 1, {""})
             newfile = true
+            local doneGettingEnd = false
+            local filenamestring = ""
+            for j=#decargs["files"][i],1,-1 do
+                if string.sub(decargs["files"][i], j, j) ~= "." and not doneGettingEnd then
+                    filenamestring = string.sub(decargs["files"][i], j, j) .. filenamestring
+                else
+                    doneGettingEnd = true
+                end
+            end
+            if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
+                fileContents[i]["filetype"] = filenamestring
+                if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                    filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                else
+                    fileContents[i]["filetype"] = nil
+                end
+            else
+                fileContents[i]["filetype"] = nil
+            end
         end
         filelines = fileContents[1]
     end
@@ -1133,6 +1152,8 @@ while running == true do
                     end
                     if filename ~= "" then
                         filename = fs.getName(filename)
+                        sendMsg(filename)
+                        os.pullEvent("key")
                     end
                     table.insert(openfiles, #openfiles + 1, filename)
                     if currfile == 0 then
