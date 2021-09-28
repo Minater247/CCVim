@@ -81,6 +81,8 @@ local mobile = false
 local linenumbers = false
 local lineoffset = 0
 local syntaxhighlighting = false
+local oldXOffset = 0
+local oldFileOffset = 0
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -239,94 +241,129 @@ local function sendMsg(message)
     write(message)
 end
 
-local function drawFile()
+local function drawFile(forcedredraw)
     motd = false
-    for i=1,hig-1,1 do
-        clearScreenLine(i)
-    end
     local length = #(tostring(currCursorY + currFileOffset + hig - 1))
-    for i=currFileOffset,(hig - 1) + currFileOffset,1 do
-        setpos(1, i - currFileOffset)
-        if filelines then
-            if filelines[i] ~= nil then
-                setcolors(colors.black, colors.yellow)
-                if linenumbers then
-                    if i < 1000 then
-                        for i=1,3 - #(tostring(i)),1 do
-                            write(" ")
-                        end
-                    end
-                    if i < 10000 then
-                        write(i)
+    if currXOffset ~= oldXOffset or currFileOffset ~= oldFileOffset or forcedredraw then
+        for i=1,hig-1,1 do
+            clearScreenLine(i)
+        end
+        oldXOffset = currXOffset
+        oldFileOffset = currFileOffset
+        for i=currFileOffset,(hig - 1) + currFileOffset,1 do
+            setpos(1, i - currFileOffset)
+            if filelines then
+                if filelines[i] ~= nil then
+                    setcolors(colors.black, colors.yellow)
+                    if linenumbers then
                         if i < 1000 then
-                            write(" ")
-                        end
-                    else
-                        write("10k+")
-                    end
-                end
-                setcolors(colors.black, colors.white)
-                if fileContents[currfile] then
-                    if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
-                        local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
-                        local wordsOfLine = str.split(filelines[i], " ")
-                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                        for j=1,#wordsOfLine,1 do
-                            if tab.find(synt[1], wordsOfLine[j]) then
-                                setcolors(colors.yellow, colors.blue)
-                            elseif tab.find(synt[2][1], wordsOfLine[j]) then
-                                setcolors(colors.black, colors.lightBlue)
-                            elseif tab.find(synt[2][2], wordsOfLine[j]) then
-                                setcolors(colors.black, colors.purple)
-                            else
-                                setcolors(colors.black, colors.white)
-                            end
-                            write(wordsOfLine[j])
-                            if j ~= #wordsOfLine then
-                                setcolors(colors.black, colors.white)
+                            for i=1,3 - #(tostring(i)),1 do
                                 write(" ")
                             end
                         end
-                        --another loop for drawing strings
-                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                        local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
-                        local inquotes = false
-                        local justset = false
-                        local quotepoints = {}
-                        setcolors(colors.black, colors.red)
-                        for j=1,#filelines[i],1 do
-                            setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
-                            if tab.find(quotationmarks, j) then
-                                if not inquotes then
-                                    if j < quotationmarks[#quotationmarks] then
-                                        inquotes = true
-                                        justset = true
+                        if i < 10000 then
+                            write(i)
+                            if i < 1000 then
+                                write(" ")
+                            end
+                        else
+                            write("10k+")
+                        end
+                    end
+                    setcolors(colors.black, colors.white)
+                    if fileContents[currfile] then
+                        if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
+                            local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
+                            local wordsOfLine = str.split(filelines[i], " ")
+                            setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                            for j=1,#wordsOfLine,1 do
+                                if tab.find(synt[1], wordsOfLine[j]) then
+                                    setcolors(colors.yellow, colors.blue)
+                                elseif tab.find(synt[2][1], wordsOfLine[j]) then
+                                    setcolors(colors.black, colors.lightBlue)
+                                elseif tab.find(synt[2][2], wordsOfLine[j]) then
+                                    setcolors(colors.black, colors.purple)
+                                else
+                                    setcolors(colors.black, colors.white)
+                                end
+                                write(wordsOfLine[j])
+                                if j ~= #wordsOfLine then
+                                    setcolors(colors.black, colors.white)
+                                    write(" ")
+                                end
+                            end
+                            --another loop for drawing strings
+                            setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                            local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
+                            local inquotes = false
+                            local justset = false
+                            local quotepoints = {}
+                            setcolors(colors.black, colors.red)
+                            for j=1,#filelines[i],1 do
+                                setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                                if tab.find(quotationmarks, j) then
+                                    if not inquotes then
+                                        if j < quotationmarks[#quotationmarks] then
+                                            inquotes = true
+                                            justset = true
+                                        end
                                     end
                                 end
-                            end
-                            if inquotes then
-                                write(string.sub(filelines[i], j, j))
-                                table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
-                            end
-                            if tab.find(quotationmarks, j) and not justset then
                                 if inquotes then
-                                    inquotes = false
+                                    write(string.sub(filelines[i], j, j))
+                                    table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
+                                end
+                                if tab.find(quotationmarks, j) and not justset then
+                                    if inquotes then
+                                        inquotes = false
+                                    end
+                                end
+                                justset = false
+                            end
+                            local commentstart = 0
+                            commentstart = str.find(filelines[i], synt[4], quotepoints)
+                            if commentstart and commentstart ~= false then
+                                setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
+                                setcolors(colors.black, colors.green)
+                                write(string.sub(filelines[i], commentstart, #filelines[i]))
+                            end
+                            --repeat the line number drawing since we just overwrote it
+                            setpos(1, i)
+                            setcolors(colors.black, colors.yellow)
+                            local _, yy = getWindSize()
+                            if yy ~= hig then
+                                if i < 1000 then
+                                    for i=1,3 - #(tostring(i)),1 do
+                                        write(" ")
+                                    end
+                                end
+                                if i < 10000 then
+                                    write(i)
+                                    write(" ")
+                                else
+                                    write("10k+")
                                 end
                             end
-                            justset = false
+                        else
+                            write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
                         end
-                        local commentstart = 0
-                        commentstart = str.find(filelines[i], synt[4], quotepoints)
-                        if commentstart and commentstart ~= false then
-                            setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
-                            setcolors(colors.black, colors.green)
-                            write(string.sub(filelines[i], commentstart, #filelines[i]))
-                        end
-                        --repeat the line number drawing since we just overwrote it
-                        setpos(1, i)
+                    end
+                else
+                    setcolors(colors.black, colors.purple)
+                    write("~")
+                end
+            end
+        end
+    else
+        --only draw one line
+        for i=currCursorY + currFileOffset - 1, currCursorY + currFileOffset + 2, 1 do
+            if i - currFileOffset < hig then
+                clearScreenLine(i - currFileOffset)
+                setpos(1, i - currFileOffset)
+                if filelines then
+                    if filelines[i] ~= nil then
                         setcolors(colors.black, colors.yellow)
-                        local _, yy = getWindSize()
-                        if yy ~= hig then
+                        if linenumbers then
                             if i < 1000 then
                                 for i=1,3 - #(tostring(i)),1 do
                                     write(" ")
@@ -334,18 +371,96 @@ local function drawFile()
                             end
                             if i < 10000 then
                                 write(i)
-                                write(" ")
+                                if i < 1000 then
+                                    write(" ")
+                                end
                             else
                                 write("10k+")
                             end
                         end
+                        setcolors(colors.black, colors.white)
+                        if fileContents[currfile] then
+                            if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
+                                local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
+                                local wordsOfLine = str.split(filelines[i], " ")
+                                setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                for j=1,#wordsOfLine,1 do
+                                    if tab.find(synt[1], wordsOfLine[j]) then
+                                        setcolors(colors.yellow, colors.blue)
+                                    elseif tab.find(synt[2][1], wordsOfLine[j]) then
+                                        setcolors(colors.black, colors.lightBlue)
+                                    elseif tab.find(synt[2][2], wordsOfLine[j]) then
+                                        setcolors(colors.black, colors.purple)
+                                    else
+                                        setcolors(colors.black, colors.white)
+                                    end
+                                    write(wordsOfLine[j])
+                                    if j ~= #wordsOfLine then
+                                        setcolors(colors.black, colors.white)
+                                        write(" ")
+                                    end
+                                end
+                                --another loop for drawing strings
+                                setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
+                                local inquotes = false
+                                local justset = false
+                                local quotepoints = {}
+                                setcolors(colors.black, colors.red)
+                                for j=1,#filelines[i],1 do
+                                    setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                                    if tab.find(quotationmarks, j) then
+                                        if not inquotes then
+                                            if j < quotationmarks[#quotationmarks] then
+                                                inquotes = true
+                                                justset = true
+                                            end
+                                        end
+                                    end
+                                    if inquotes then
+                                        write(string.sub(filelines[i], j, j))
+                                        table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
+                                    end
+                                    if tab.find(quotationmarks, j) and not justset then
+                                        if inquotes then
+                                            inquotes = false
+                                        end
+                                    end
+                                    justset = false
+                                end
+                                local commentstart = 0
+                                commentstart = str.find(filelines[i], synt[4], quotepoints)
+                                if commentstart and commentstart ~= false then
+                                    setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
+                                    setcolors(colors.black, colors.green)
+                                    write(string.sub(filelines[i], commentstart, #filelines[i]))
+                                end
+                                --repeat the line number drawing since we just overwrote it
+                                setpos(1, i)
+                                setcolors(colors.black, colors.yellow)
+                                local _, yy = getWindSize()
+                                if yy ~= hig then
+                                    if i < 1000 then
+                                        for i=1,3 - #(tostring(i)),1 do
+                                            write(" ")
+                                        end
+                                    end
+                                    if i < 10000 then
+                                        write(i)
+                                        write(" ")
+                                    else
+                                        write("10k+")
+                                    end
+                                end
+                            else
+                                write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                            end
+                        end
                     else
-                        write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                        setcolors(colors.black, colors.purple)
+                        write("~")
                     end
                 end
-            else
-                setcolors(colors.black, colors.purple)
-                write("~")
             end
         end
     end
@@ -507,7 +622,7 @@ local function redrawTerm()
             end
         end
     else
-        drawFile()
+        drawFile(true)
     end
     while currCursorX + lineoffset > wid do
         currCursorX = currCursorX - 1
@@ -547,8 +662,8 @@ local function insertMode()
                 if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil and currCursorX > 1 then
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
                     moveCursorLeft()
-                    drawFile()
                     fileContents[currfile]["unsavedchanges"] = true
+                    drawFile()
                 else
                     if currCursorX + currXOffset < 2 then
                         if #filelines > 1 then
@@ -562,7 +677,7 @@ local function insertMode()
                                     currCursorX = currCursorX - 1
                                 end
                             end
-                            drawFile()
+                            drawFile(true)
                             fileContents[currfile]["unsavedchanges"] = true
                         end
                     else
@@ -661,7 +776,7 @@ local function appendMode()
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
-                drawFile()
+                drawFile(true)
             end
         elseif ev == "char" then
             if filelines[currCursorY + currFileOffset] == nil then
@@ -826,7 +941,7 @@ if not (#openfiles > 0) then
     setcolors(colors.lightGray, colors.white)
     write(" ")
 else
-    drawFile()
+    drawFile(true)
     if newfile then
         sendMsg("\""..filename.."\" [New File]")
     else
@@ -937,7 +1052,7 @@ while running == true do
                                 currFileOffset = fileContents[currfile]["cursor"][4]
                             end
                         end
-                        drawFile()
+                        drawFile(true)
                         clearScreenLine(hig)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
@@ -984,7 +1099,7 @@ while running == true do
                                 currCursorY = fileContents[currfile]["cursor"][3]
                                 currFileOffset = fileContents[currfile]["cursor"][4]
                             end
-                            drawFile()
+                            drawFile(true)
                             clearScreenLine(hig)
                         end
                     else
@@ -1056,7 +1171,7 @@ while running == true do
                         end
                     end
                     fileContents[currfile]["filetype"] = filenamestring
-                    drawFile()
+                    drawFile(true)
                 else
                     err("No file name")
                 end
@@ -1074,7 +1189,7 @@ while running == true do
                         for i=1,#secondArr,1 do
                             table.insert(filelines, secondArr[i])
                         end
-                        drawFile()
+                        drawFile(true)
                         sendMsg("\""..name.."\" "..#secondArr.."L, "..#(tab.getLongestItem(secondArr)).."C")
                     else
                         err("Can't open file "..name)
@@ -1095,8 +1210,6 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -1108,9 +1221,9 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
+                    drawFile(true)
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     filename = openfiles[currfile]
                 end
             elseif cmdtab[1] == ":tabp" or cmdtab[1] == ":tabprevious" then
@@ -1126,8 +1239,6 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -1139,9 +1250,9 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
+                    drawFile(true)
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     filename = openfiles[currfile]
                 end
             elseif cmdtab[1] == ":tabm" or cmdtab[1] == ":tabmove" then
@@ -1157,7 +1268,7 @@ while running == true do
                         currCursorY = fileContents[currfile]["cursor"][3]
                         currFileOffset = fileContents[currfile]["cursor"][4]
                     end
-                    drawFile()
+                    drawFile(true)
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                 end
                 clearScreenLine(hig)
@@ -1211,7 +1322,7 @@ while running == true do
                     currXOffset = 0
                     currCursorY = 1
                     currFileOffset = 0
-                    drawFile()
+                    drawFile(true)
                 else
                     if cmdtab[2] then
                         local name = ""
@@ -1243,7 +1354,7 @@ while running == true do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
-                            drawFile()
+                            drawFile(true)
                         else
                             local templines = fil.toArr(fil.topath(name))
                             if templines then
@@ -1261,7 +1372,7 @@ while running == true do
                             currXOffset = 0
                             currCursorY = 1
                             currFileOffset = 0
-                            drawFile()
+                            drawFile(true)
                         end
                     else
                         --just add an empty tab
@@ -1276,7 +1387,7 @@ while running == true do
                         currXOffset = 0
                         currCursorY = 1
                         currFileOffset = 0
-                        drawFile()
+                        drawFile(true)
                     end
                 end
                 local doneGettingEnd = false
@@ -1311,7 +1422,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
+                        drawFile(true)
                         clearScreenLine(hig)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
@@ -1321,13 +1432,13 @@ while running == true do
                 if cmdtab[2] == "number" then
                     linenumbers = true
                     lineoffset= 4
-                    drawFile()
+                    drawFile(true)
                 elseif cmdtab[2] == "mobile" then
                     mobile = true
                 elseif cmdtab[2] == "nonumber" then
                     linenumbers = false
                     lineoffset = 0
-                    drawFile()
+                    drawFile(true)
                 elseif cmdtab[2] == "nomobile" then
                     mobile = false
                 elseif str.find(cmdtab[2], "=") then
@@ -1352,7 +1463,7 @@ while running == true do
                             fileContents[currfile]["filetype"] = nil
                         end
                     end
-                    drawFile()
+                    drawFile(true)
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
                     seterror = true
@@ -1368,7 +1479,7 @@ while running == true do
                 else
                     err("invalid :syntax subcommand: "..cmdtab[2])
                 end
-                drawFile()
+                drawFile(true)
             elseif cmdtab[1] == ":control" or cmdtab[1] == ":ctrl" then --not yet working
                 local _, ch
                 if not cmdtab[2] then
@@ -1439,7 +1550,7 @@ while running == true do
         elseif var1 == "I" then
             currXOffset = 0
             currCursorX = 1
-            drawFile()
+            drawFile(true)
             insertMode()
         elseif var1 == "h" then
             moveCursorLeft()
@@ -1451,17 +1562,17 @@ while running == true do
             moveCursorRight(0)
         elseif var1 == "H" then
             currCursorY = 1
-            drawFile()
+            drawFile(true)
         elseif var1 == "M" then
             currCursorY = math.floor((hig - 1) / 2)
-            drawFile()
+            drawFile(true)
         elseif var1 == "L" then
             currCursorY = hig - 1
-            drawFile()
+            drawFile(true)
         elseif var1 == "r" then
             local _, chr = pullChar()
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. chr .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
-            drawFile()
+            drawFile(true)
             if fileContents[currfile] then
                 fileContents[currfile]["unsavedchanges"] = true
             end
@@ -1469,7 +1580,7 @@ while running == true do
             if filelines[currCursorY + currFileOffset] and filelines[currCursorY + currFileOffset + 1] then
                 filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. " " .. filelines[currCursorY + currFileOffset + 1]
                 table.remove(filelines, currCursorY + currFileOffset + 1)
-                drawFile()
+                drawFile(true)
                 fileContents[currfile]["unsavedchanges"] = true
             end
         elseif var1 == "o" then
@@ -1477,7 +1588,7 @@ while running == true do
             moveCursorDown()
             currCursorX = 1
             currXOffset = 0
-            drawFile()
+            drawFile(true)
             insertMode()
             if fileContents[currfile] then
                 fileContents[currfile]["unsavedchanges"] = true
@@ -1486,7 +1597,7 @@ while running == true do
             table.insert(filelines, currCursorY + currFileOffset, "")
             currCursorX = 1
             currXOffset = 0
-            drawFile()
+            drawFile(true)
             insertMode()
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "a" then
@@ -1627,7 +1738,7 @@ while running == true do
                     currCursorX = currCursorX + 1
                 end
             end
-            drawFile()
+            drawFile(true)
         elseif var1 == "D" then
             copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
             copytype = "text"
@@ -1649,7 +1760,7 @@ while running == true do
                     table.insert(filelines, currCursorY + currFileOffset + 1, copybuffer[i])
                 end
             end
-            drawFile()
+            drawFile(true)
             if fileContents[currfile] then
                 fileContents[currfile]["unsavedchanges"] = true
             end
@@ -1673,7 +1784,7 @@ while running == true do
                     currFileOffset = currFileOffset + 1
                 end
             end
-            drawFile()
+            drawFile(true)
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "$" then
             currCursorX = #filelines[currCursorY + currFileOffset]
@@ -1721,7 +1832,7 @@ while running == true do
                         for i=1,tonumber(num),1 do
                             table.remove(filelines, currCursorY + currFileOffset)
                         end
-                        drawFile()
+                        drawFile(true)
                         fileContents[currfile]["unsavedchanges"] = true
                     end
                 end
@@ -1749,7 +1860,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
+                        drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                 elseif ch == "e" or ch == "E" then
@@ -1931,7 +2042,7 @@ while running == true do
             if c == "J" then
                 filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. filelines[currCursorY + currFileOffset + 1]
                 table.remove(filelines, currCursorY + currFileOffset + 1)
-                drawFile()
+                drawFile(true)
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "g" then
                 currCursorY = 1
@@ -1985,7 +2096,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
+                        drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
@@ -1998,7 +2109,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
+                        drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                     filename = openfiles[currfile]
@@ -2016,7 +2127,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
+                        drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
                         fileContents[currfile] = filelines
@@ -2029,7 +2140,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
-                        drawFile()
+                        drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
                     filename = openfiles[currfile]
@@ -2095,7 +2206,7 @@ while running == true do
             currCursorX = 1
             currXOffset = 0
             local i = currCursorX
-            while string.sub(filelines[currCursorY + currFileOffset], i, i) == " " do
+            while string.sub(filelines[currCursorY + currFileOffset], i, i) == " " and i < #filelines[currCursorY + currFileOffset] do
                 i = i + 1
             end
             currCursorX = i
