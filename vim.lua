@@ -1376,7 +1376,7 @@ while running == true do
                             table.insert(openfiles, currfile + 1, name)
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
-                            sendMsg("\""..name.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                             currCursorX = 1
                             currXOffset = 0
                             currCursorY = 1
