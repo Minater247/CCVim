@@ -225,11 +225,14 @@ local function update()
                     ff.writeLine(filelines[i])
                 end
                 print("Updated local version.")
+                if nvimver > vimver then
+                    print("Please restart the installer to complete the update.")
+                end
                 ff.close()
                 print("Exiting.")
                 print("Press any key to continue...")
-                os.pullEvent("key")
-                error("Ignore this, have to throw an error to move file while in use. Please run the installer again.")
+                os.pullEvent("char")
+                error() --not an actual error, displays nothing to user. Just used to quit.
             end
         else
             print("Installer version is current.")
