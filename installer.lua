@@ -1,14 +1,14 @@
 --[[ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
                         CCVIM INSTALLER
-                          VERSION 0.1
+                          VERSION 0.11
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -]]
 
 local function initialMenu()
     term.clear()
     term.setCursorPos(1, 1)
-    print("CCVIM Installer v0.1")
+    print("CCVIM Installer v0.11")
     print() --skip a line
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
@@ -247,7 +247,7 @@ local function update()
                 print("Update complete.")
                 print("Updating local version info...")
                 local filelines = toArr("/vim/.version")
-                filelines[2] = ninstver
+                filelines[2] = nvimver
                 local ff = fs.open("/vim/.version", "w")
                 for i=1,#filelines,1 do
                     ff.writeLine(filelines[i])
