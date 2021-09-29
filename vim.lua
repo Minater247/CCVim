@@ -859,13 +859,13 @@ if #decargs["files"] > 0 then
         error("Cannot currently open directories")
     end
     for i=1,#openfiles,1 do
-        decargs["files"][i] = fs.getName(decargs["files"][i])
+        local nodirectories = fs.getName(decargs["files"][i])
         if fs.exists(fil.topath(decargs["files"][i])) then
             local doneGettingEnd = false
             local filenamestring = ""
-            for j=#decargs["files"][i],1,-1 do
-                if string.sub(decargs["files"][i], j, j) ~= "." and not doneGettingEnd then
-                    filenamestring = string.sub(decargs["files"][i], j, j) .. filenamestring
+            for j=#nodirectories,1,-1 do
+                if string.sub(nodirectories, j, j) ~= "." and not doneGettingEnd then
+                    filenamestring = string.sub(nodirectories, j, j) .. filenamestring
                 else
                     doneGettingEnd = true
                 end
@@ -1150,10 +1150,6 @@ while running == true do
                     else
                         filename = ""
                     end
-                    local printname = ""
-                    if filename ~= "" then
-                        printname = fs.getName(filename)
-                    end
                     table.insert(openfiles, #openfiles + 1, filename)
                     if currfile == 0 then
                         currfile = 1
@@ -1162,14 +1158,14 @@ while running == true do
                     if fs.exists(fil.topath(filename)) then
                         filelines = fil.toArr(fil.topath(filename))
                         if filelines then
-                            sendMsg("\""..printname.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            sendMsg("\""..filename.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                         else
                             newfile = true
-                            sendMsg("\""..printname.."\" [New File]")
+                            sendMsg("\""..filename.."\" [New File]")
                         end
                     else
                         newfile = true
-                        sendMsg("\""..printname.."\" [New File]")
+                        sendMsg("\""..filename.."\" [New File]")
                     end
                     table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(filename)))
                     if not fileContents[#fileContents] then
@@ -1225,7 +1221,6 @@ while running == true do
                             name = name .. " "
                         end
                     end
-                    name = fs.getName(name)
                     if fs.exists(fil.topath(name)) then
                         local secondArr = fil.toArr(fil.topath(name))
                         for i=1,#secondArr,1 do
@@ -1374,7 +1369,6 @@ while running == true do
                                 name = name .. " "
                             end
                         end
-                        name = fs.getName(name)
                         if fs.exists(fil.topath(name)) then
                             fileContents[currfile] = filelines
                             fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -1382,7 +1376,7 @@ while running == true do
                             table.insert(openfiles, currfile + 1, name)
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
-                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            sendMsg("\""..name.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                             currCursorX = 1
                             currXOffset = 0
                             currCursorY = 1
