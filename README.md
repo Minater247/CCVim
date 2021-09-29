@@ -33,4 +33,4 @@ Fun fact - this README was written in the program!
 # Installation
 Run ```pastebin run eX0BrfjA``` on your computer.
 
-Or, for manual installation copy ```vim``` and the ```libs``` folder with its contents to the ```/vim/``` folder of your computer.
+Or, for manual installation copy ```vim.lua```, ```.version``` and the ```libs``` folder with its contents to the ```/vim/``` folder of your computer. For syntax, put each syntax file according to extension (ex. ```XYZ.lua``` -> ```/syntax/lua.lua```, ```XYZ.swf``` -> ```/syntax/swf.lua```) in the ```/vim/syntax/``` folder.
