@@ -247,7 +247,7 @@ local function update()
                 print("Update complete.")
                 print("Updating local version info...")
                 local filelines = toArr("/vim/.version")
-                filelines[2] = nvimver
+                filelines[1] = nvimver
                 local ff = fs.open("/vim/.version", "w")
                 for i=1,#filelines,1 do
                     ff.writeLine(filelines[i])
