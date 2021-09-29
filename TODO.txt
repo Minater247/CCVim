@@ -1,12 +1,10 @@
 //TODO
 
 LITTLE PROJECTS:
--- Line numbers
+
 
 BIG PROJECTS:
--- Check if file opened in tab\
--- Colored text
+-- Check if file opened in tab
 -- Visual mode
--- Code highlighting
 -- Undo tree
     - Better change detection 

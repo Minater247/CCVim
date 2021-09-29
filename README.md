@@ -23,7 +23,6 @@ Features:
 What's currently being worked on:
 - The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
 - File browser
-- Reducing flickering on larger screens
 
 
 What doesn't work:
