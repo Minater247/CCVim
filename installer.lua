@@ -1,14 +1,14 @@
 --[[ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
                         CCVIM INSTALLER
-                          VERSION 0.11
+                          VERSION 0.12
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -]]
 
 local function initialMenu()
     term.clear()
     term.setCursorPos(1, 1)
-    print("CCVIM Installer v0.11")
+    print("CCVIM Installer v0.12")
     print() --skip a line
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
@@ -216,7 +216,7 @@ local function update()
                 download("https://raw.githubusercontent.com/Minater247/CCVim/main/installer.lua", "/vim/installer")
                 fs.delete("/vim/installer.lua")
                 fs.move("/vim/installer", "/vim/installer.lua")
-                print("Updated installer downloaded.")
+                print("Updated installer downloaded. Local path is at /vim/installer.lua")
                 print("Updating local version file...")
                 local filelines = toArr("/vim/.version")
                 filelines[2] = ninstver
