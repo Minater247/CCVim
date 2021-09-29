@@ -1150,26 +1150,26 @@ while running == true do
                     else
                         filename = ""
                     end
+                    local printname = ""
                     if filename ~= "" then
-                        filename = fs.getName(filename)
+                        printname = fs.getName(filename)
                     end
                     table.insert(openfiles, #openfiles + 1, filename)
                     if currfile == 0 then
                         currfile = 1
                     end
-                    sendMsg(#openfiles.." "..currfile) --will immediately be overwritten if nothing goes wrong, used for debug
                     newfile = false
                     if fs.exists(fil.topath(filename)) then
                         filelines = fil.toArr(fil.topath(filename))
                         if filelines then
-                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            sendMsg("\""..printname.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                         else
                             newfile = true
-                            sendMsg("\""..filename.."\" [New File]")
+                            sendMsg("\""..printname.."\" [New File]")
                         end
                     else
                         newfile = true
-                        sendMsg("\""..filename.."\" [New File]")
+                        sendMsg("\""..printname.."\" [New File]")
                     end
                     table.insert(fileContents, #fileContents + 1, fil.toArr(fil.topath(filename)))
                     if not fileContents[#fileContents] then
