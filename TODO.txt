@@ -1,7 +1,7 @@
 //TODO
 
 LITTLE PROJECTS:
-
+-- Figure out why the monitors aren't detecting
 
 BIG PROJECTS:
 -- Check if file opened in tab

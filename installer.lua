@@ -117,12 +117,50 @@ end
 
 local function install()
     print("Downloading files from github...")
+    local oldx, oldy = term.getCursorPos()
+    local wid, hig = term.getSize()
+    term.setCursorPos(oldx, oldy)
+    for i=1,wid,1 do
+        term.write(" ")
+    end
+    term.setCursorPos(oldx, oldy)
+    term.write("Downloading vim.lua ...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/vim.lua", "/vim/vim.lua")
+    term.setCursorPos(oldx, oldy)
+    for i=1,wid,1 do
+        term.write(" ")
+    end
+    term.setCursorPos(oldx, oldy)
+    term.write("Downloading .vimrc ...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/.vimrc", "/vim/.vimrc")
+    term.setCursorPos(oldx, oldy)
+    for i=1,wid,1 do
+        term.write(" ")
+    end
+    term.setCursorPos(oldx, oldy)
+    term.write("Downloading .version ...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/.version", "/vim/.version")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/args.lua", "/vim/lib/args.lua")
+    term.setCursorPos(oldx, oldy)
+    for i=1,wid,1 do
+        term.write(" ")
+    end
+    term.setCursorPos(oldx, oldy)
+    term.write("Downloading args.lua ...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/fil.lua", "/vim/lib/fil.lua")
+    term.setCursorPos(oldx, oldy)
+    for i=1,wid,1 do
+        term.write(" ")
+    end
+    term.setCursorPos(oldx, oldy)
+    term.write("Downloading str.lua ...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/str.lua", "/vim/lib/str.lua")
+    term.setCursorPos(oldx, oldy)
+    for i=1,wid,1 do
+        term.write(" ")
+    end
+    term.setCursorPos(oldx, oldy)
+    term.write("Downloading tab.lua ...")
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/lib/tab.lua", "/vim/lib/tab.lua")
     print("Done.")
     print("Do you want to add CCVIM to your universal path?")
