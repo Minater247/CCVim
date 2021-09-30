@@ -51,6 +51,8 @@ local unimplementedArgs = {
 local version = 0.31
 local releasedate = "2021-09-30"
 
+local fileEditorVer = 0.1
+
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
 local str = require("/vim/lib/str")
@@ -845,9 +847,10 @@ local function pullChar()
     return _, tm
 end
 
-local function drawDirInfo(dir, sortType)
-    setpos(1, 1)
+local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
     setcolors(colors.black, colors.white)
+    clear()
+    setpos(1, 1)
     write("\" ")
     for i=1,wid - 4,1 do
         write("=")
@@ -857,9 +860,14 @@ local function drawDirInfo(dir, sortType)
     for i=1,wid-25,1 do
         write(" ")
     end
+    setpos(wid-#tostring(fileEditorVer)-6, 2)
+    write("ver. "..fileEditorVer)
     setpos(1, 3)
-    write("\"   "..dir)
-    for i=1,wid-#("\"   "..dir),1 do
+    write("\"   "..shell.resolve(dir))
+    if fs.isDir(shell.resolve(dir)) then
+        write("/")
+    end
+    for i=1,wid-#("\"   "..shell.resolve(dir)),1 do
         write(" ")
     end
     setpos(1, 4)
@@ -876,24 +884,97 @@ local function drawDirInfo(dir, sortType)
     setpos(1, 6)
     setcolors(colors.black, colors.white)
     write("\" ")
-    for i=1,wid - 4,1 do
+    for i=1,wid - 2,1 do
         write("=")
+    end
+    if sortType == "name" then
+        for i=1+yoff,#filesInDir,1 do
+            setpos(1, 6+i)
+            if i - yoff == ypos then
+                setcolors(colors.lightGray, colors.white)
+            else
+                setcolors(colors.black, colors.white)
+            end
+            if 6 + i < hig then
+                write(filesInDir[i + yoff])
+                if fs.isDir(dir .. "/" .. filesInDir[i + yoff]) then
+                    write("/")
+                end
+            end
+        end
     end
 end
 
 -- Directory opener.
 -- Make sure the path is passed through fil.path() before coming to this function.
 local function dirOpener(dir)
-    local currDir = dir
+    local currSelection = dir.."/"
     local sortType = "name"
+    local currDirY = 1
+    local currDirOffset = 0
+    local realFilesInDir = fs.list(currSelection)
+    local filesInDir = {".."}
+    for i=1,#realFilesInDir,1 do
+        table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+    end
+    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
     if fs.isDir(dir) then
         local stillInExplorer = true
         while stillInExplorer do
-            drawDirInfo(currDir, sortType)
             local _, k = os.pullEvent("key")
-            if k == keys.enter then
-                stillInExplorer = false
+            local realFilesInDir = fs.list(currSelection)
+            local filesInDir = {}
+            if not (shell.resolve(currSelection) == "") then
+                filesInDir = {".."}
             end
+            for i=1,#realFilesInDir,1 do
+                table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+            end
+            if k == keys.enter then
+                if fs.isDir(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]) then
+                    currSelection = currSelection .. "/" .. filesInDir[currDirY + currDirOffset]
+                    currDirY = 1
+                    currDirOffset = 0
+                    --refresh file list
+                    realFilesInDir = fs.list(currSelection)
+                    if not (shell.resolve(currSelection) == "") then
+                        filesInDir = {".."}
+                    else
+                        filesInDir = {}
+                    end
+                    for i=1,#realFilesInDir,1 do
+                        table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+                    end
+                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
+                else
+                    return "/"..shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
+                end
+            elseif k == keys.s then
+                if sortType == "name" then
+                    sortType = "size"
+                elseif sortType == "size" then
+                    sortType = "extension"
+                elseif sortType == "extension" then
+                    sortType = "name"
+                end
+            elseif k == keys.down then
+                if currDirY + currDirOffset < #filesInDir then
+                    currDirY = currDirY + 1
+                end
+                while currDirY > hig - 7 do
+                    currDirY = currDirY - 1
+                    currDirOffset = currDirOffset + 1
+                end
+            elseif k == keys.up then
+                if currDirY + currDirOffset > 1 then
+                    currDirY = currDirY - 1
+                end
+                while currDirY < 1 do
+                    currDirY = currDirY + 1
+                    currDirOffset = currDirOffset - 1
+                end
+            end
+            drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
         end
     else
         error("dirOpener got invalid path: "..dir.." is not a directory.")
@@ -983,6 +1064,7 @@ else
 end
 
 if not (#openfiles > 0) then
+    setcolors(colors.black, colors.white)
     clear()
     resetSize()
     setcolors(colors.black, colors.purple)
@@ -1203,7 +1285,12 @@ while running == true do
                         end
                     end
                     if name then
-                        filename = name
+                        if fs.isDir(name) then
+                            filename = dirOpener(name)
+                        else
+                            filename = name
+                        
+                        end
                     else
                         filename = ""
                     end
