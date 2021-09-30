@@ -1,14 +1,14 @@
 --[[ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
                         CCVIM INSTALLER
-                          VERSION 0.12
+                          VERSION 0.13
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -]]
 
 local function initialMenu()
     term.clear()
     term.setCursorPos(1, 1)
-    print("CCVIM Installer v0.12")
+    print("CCVIM Installer v0.13")
     print() --skip a line
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")

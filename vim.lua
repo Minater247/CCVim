@@ -48,8 +48,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.3
-local releasedate = "2021-09-28"
+local version = 0.31
+local releasedate = "2021-09-30"
 
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
@@ -71,7 +71,7 @@ local oldx = nil
 local copybuffer = ""
 local copytype = nil
 local jumpbuffer = {}
-local jumpoffset = 0 --offset for going before/after a letter
+local jumpoffset = 0 --offset for t/T jumping before/after a letter
 local currfile = 1
 local fileContents = {}
 local motd = false
@@ -1089,42 +1089,44 @@ while running == true do
                 else
                     name = openfiles[currfile]
                 end
-                if cmdtab[2] == nil and openfiles[currfile] == "" then
-                    err("No file name")
-                elseif fs.isReadOnly(fil.topath(name)) then
-                    err("File is read-only")
-                else
-                    if name then
-                        local file = fs.open(fil.topath(name), "w")
-                        for i=1,#filelines,1 do
-                            file.writeLine(filelines[i])
-                        end
-                        file.close()
-                        fileContents[currfile]["unsavedchanges"] = false
-                        if #fileContents == 1 then
-                            setcolors(colors.black, colors.white)
-                            clear()
-                            setpos(1, 1)
-                            running = false
-                        else
-                            table.remove(fileContents, currfile)
-                            table.remove(openfiles, currfile)
-                            if not (currfile == 1) then
-                                currfile = currfile - 1
-                            end
-                            filelines = fileContents[currfile]
-                            if fileContents[currfile]["cursor"] then
-                                currCursorX = fileContents[currfile]["cursor"][1]
-                                currXOffset = fileContents[currfile]["cursor"][2]
-                                currCursorY = fileContents[currfile]["cursor"][3]
-                                currFileOffset = fileContents[currfile]["cursor"][4]
-                            end
-                            drawFile(true)
-                            clearScreenLine(hig)
-                        end
-                    else
+                if name then
+                    if cmdtab[2] == nil and openfiles[currfile] == "" then
                         err("No file name")
+                    elseif fs.isReadOnly(fil.topath(name)) then
+                        err("File is read-only")
+                    else
+                        if name then
+                            local file = fs.open(fil.topath(name), "w")
+                            for i=1,#filelines,1 do
+                                file.writeLine(filelines[i])
+                            end
+                            file.close()
+                            fileContents[currfile]["unsavedchanges"] = false
+                            if #fileContents == 1 then
+                                setcolors(colors.black, colors.white)
+                                clear()
+                                setpos(1, 1)
+                                running = false
+                            else
+                                table.remove(fileContents, currfile)
+                                table.remove(openfiles, currfile)
+                                if not (currfile == 1) then
+                                    currfile = currfile - 1
+                                end
+                                filelines = fileContents[currfile]
+                                if fileContents[currfile]["cursor"] then
+                                    currCursorX = fileContents[currfile]["cursor"][1]
+                                    currXOffset = fileContents[currfile]["cursor"][2]
+                                    currCursorY = fileContents[currfile]["cursor"][3]
+                                    currFileOffset = fileContents[currfile]["cursor"][4]
+                                end
+                                drawFile(true)
+                                clearScreenLine(hig)
+                            end
+                        end
                     end
+                else
+                    err("No file name")
                 end
             elseif cmdtab[1] == ":e" or cmdtab[1] == ":ex" then
                 if #cmdtab > 1 then
@@ -1498,6 +1500,12 @@ while running == true do
                             end
                         else
                             fileContents[currfile]["filetype"] = nil
+                        end
+                    elseif comm == "size" then
+                        if monitor then
+                            monitor.setTextScale(tonumber(stri))
+                            resetSize()
+                            redrawTerm()
                         end
                     end
                     drawFile(true)
