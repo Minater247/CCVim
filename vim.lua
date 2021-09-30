@@ -1,7 +1,8 @@
 local args = {...}
 
 local validArgs = {
-    "--version"
+    "--version",
+    "--term"
 }
 
 local unimplementedArgs = {
