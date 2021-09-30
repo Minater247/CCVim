@@ -845,6 +845,61 @@ local function pullChar()
     return _, tm
 end
 
+local function drawDirInfo(dir, sortType)
+    setpos(1, 1)
+    setcolors(colors.black, colors.white)
+    write("\" ")
+    for i=1,wid - 4,1 do
+        write("=")
+    end
+    setpos(1, 2)
+    write("\" CCFXP Directory Listing")
+    for i=1,wid-25,1 do
+        write(" ")
+    end
+    setpos(1, 3)
+    write("\"   "..dir)
+    for i=1,wid-#("\"   "..dir),1 do
+        write(" ")
+    end
+    setpos(1, 4)
+    write("\"   Sorted by    ")
+    write(sortType)
+    for i=1,wid-#("\"   Sorted by    "..sortType),1 do
+        write(" ")
+    end
+    setpos(1, 5)
+    write("\"   Quick help soon!")
+    for i=1,wid-#("\"   Quick help soon!"),1 do
+        write(" ")
+    end
+    setpos(1, 6)
+    setcolors(colors.black, colors.white)
+    write("\" ")
+    for i=1,wid - 4,1 do
+        write("=")
+    end
+end
+
+-- Directory opener.
+-- Make sure the path is passed through fil.path() before coming to this function.
+local function dirOpener(dir)
+    local currDir = dir
+    local sortType = "name"
+    if fs.isDir(dir) then
+        local stillInExplorer = true
+        while stillInExplorer do
+            drawDirInfo(currDir, sortType)
+            local _, k = os.pullEvent("key")
+            if k == keys.enter then
+                stillInExplorer = false
+            end
+        end
+    else
+        error("dirOpener got invalid path: "..dir.." is not a directory.")
+    end
+end
+
 
 for i=1,#decargs,1 do
     if decargs[i] == "--version" then
@@ -856,7 +911,7 @@ end
 if #decargs["files"] > 0 then
     openfiles = decargs["files"]
     if fs.isDir(fil.topath(decargs["files"][1])) then
-        error("Cannot currently open directories")
+        decargs["files"][1] = dirOpener(fil.topath(decargs["files"][1]))
     end
     for i=1,#openfiles,1 do
         local nodirectories = fs.getName(decargs["files"][i])
