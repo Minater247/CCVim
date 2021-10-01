@@ -17,4 +17,16 @@ local function getLongestItem(table)
     return longest
 end
 
+local function removeDuplicates(table)
+    if table then
+        local outputtable = {}
+        for i=1,#table,1 do
+            if not find(outputtable, table[i]) then
+                table.insert(outputtable, #outputtable + 1, table[i])
+            end
+        end
+        return outputtable
+    end
+end
+
 return { find = find, getLongestItem = getLongestItem }
