@@ -890,15 +890,15 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
     end
     if sortType == "name" then
         for i=1+yoff,#filesInDir,1 do
-            setpos(1, 6+i)
+            setpos(1, 6+i - yoff)
             if i - yoff == ypos then
                 setcolors(colors.lightGray, colors.white)
             else
                 setcolors(colors.black, colors.white)
             end
-            if 6 + i < hig then
-                write(filesInDir[i + yoff])
-                if fs.isDir(dir .. "/" .. filesInDir[i + yoff]) then
+            if 6 + i - yoff < hig then
+                write(filesInDir[i])
+                if fs.isDir(dir .. "/" .. filesInDir[i]) then
                     write("/")
                 end
             end
