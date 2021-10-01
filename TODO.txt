@@ -2,6 +2,7 @@
 
 LITTLE PROJECTS:
 -- Add the rest of the file explorer commands
+-- Reduce flickering in file explorer (reduce render line amount to above and below, don't redraw header, etc)
 
 BIG PROJECTS:
 -- Check if file opened in tab

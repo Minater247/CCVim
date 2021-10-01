@@ -890,7 +890,7 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
     for i=1,wid - 2,1 do
         write("=")
     end
-    for i=1+yoff,#filesInDir,1 do
+    for i=1+yoff,hig - 7 + yoff,1 do
         setpos(1, 6+i - yoff)
         if i - yoff == ypos then
             setcolors(colors.lightGray, colors.white)
@@ -898,9 +898,15 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
             setcolors(colors.black, colors.white)
         end
         if 6 + i - yoff < hig then
-            write(filesInDir[i])
-            if fs.isDir(dir .. "/" .. filesInDir[i]) then
-                write("/")
+            if filesInDir[i] then
+                write(filesInDir[i])
+                if fs.isDir(dir .. "/" .. filesInDir[i]) then
+                    write("/")
+                end
+            else
+                setcolors(colors.black, colors.purple)
+                write("~")
+                setcolors(colors.black, colors.white)
             end
         end
     end
@@ -935,7 +941,20 @@ local function dirOpener(dir, inputname)
             for i=1,#realFilesInDir,1 do
                 table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
             end
-            if sortType == "extension" then
+            if sortType == "name" then
+                table.sort(filesInDir, 
+                    function (k1, k2)
+                        if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
+                            return true
+                        elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                            return k1 < k2
+                        elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                            return false
+                        else
+                            return k1 < k2
+                        end
+                    end)
+            elseif sortType == "extension" then
                 table.sort(filesInDir, 
                     function (k1, k2)
                         if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
