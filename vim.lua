@@ -850,7 +850,9 @@ end
 
 local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
     setcolors(colors.black, colors.white)
-    clear()
+    for i=1,hig-1,1 do
+        clearScreenLine(i)
+    end
     setpos(1, 1)
     write("\" ")
     for i=1,wid - 4,1 do
@@ -888,19 +890,17 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
     for i=1,wid - 2,1 do
         write("=")
     end
-    if sortType == "name" then
-        for i=1+yoff,#filesInDir,1 do
-            setpos(1, 6+i - yoff)
-            if i - yoff == ypos then
-                setcolors(colors.lightGray, colors.white)
-            else
-                setcolors(colors.black, colors.white)
-            end
-            if 6 + i - yoff < hig then
-                write(filesInDir[i])
-                if fs.isDir(dir .. "/" .. filesInDir[i]) then
-                    write("/")
-                end
+    for i=1+yoff,#filesInDir,1 do
+        setpos(1, 6+i - yoff)
+        if i - yoff == ypos then
+            setcolors(colors.lightGray, colors.white)
+        else
+            setcolors(colors.black, colors.white)
+        end
+        if 6 + i - yoff < hig then
+            write(filesInDir[i])
+            if fs.isDir(dir .. "/" .. filesInDir[i]) then
+                write("/")
             end
         end
     end
@@ -908,8 +908,14 @@ end
 
 -- Directory opener.
 -- Make sure the path is passed through fil.path() before coming to this function.
-local function dirOpener(dir)
+-- Display name can be passed to inputname, but is optional.
+local function dirOpener(dir, inputname)
     local currSelection = dir.."/"
+    if inputname then
+        sendMsg("\""..inputname.."\" is a directory")
+    else
+        sendMsg("\""..dir.."\" is a direcotry")
+    end
     local sortType = "name"
     local currDirY = 1
     local currDirOffset = 0
@@ -918,11 +924,9 @@ local function dirOpener(dir)
     for i=1,#realFilesInDir,1 do
         table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
     end
-    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
     if fs.isDir(dir) then
         local stillInExplorer = true
         while stillInExplorer do
-            local _, k = os.pullEvent("key")
             local realFilesInDir = fs.list(currSelection)
             local filesInDir = {}
             if not (shell.resolve(currSelection) == "") then
@@ -931,6 +935,35 @@ local function dirOpener(dir)
             for i=1,#realFilesInDir,1 do
                 table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
             end
+            if sortType == "extension" then
+                table.sort(filesInDir, 
+                    function (k1, k2)
+                        if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
+                            return true
+                        elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                            return k1 < k2
+                        elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                            return false
+                        else
+                            if str.getFileExtension(k1) == str.getFileExtension(k2) then
+                                return k1 < k2
+                            elseif str.getFileExtension(k1) == "" and str.getFileExtension(k2) ~= "" then
+                                return false
+                            elseif str.getFileExtension(k1) ~= "" and str.getFileExtension(k2) == "" then
+                                return true
+                            else
+                                return str.getFileExtension(k1) < str.getFileExtension(k2)
+                            end
+                        end
+                    end)  --this whole large table.sort function sorts out the directories first and the extensionless files last
+            elseif sortType == "size" then
+                table.sort(filesInDir,
+                    function (k1, k2)
+                        return fs.getSize(currSelection.."/"..k1) < fs.getSize(currSelection.."/"..k2)
+                    end)
+            end
+            drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
+            local _, k = os.pullEvent("key")
             if k == keys.enter then
                 if fs.isDir(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]) then
                     currSelection = currSelection .. "/" .. filesInDir[currDirY + currDirOffset]
@@ -993,7 +1026,7 @@ end
 if #decargs["files"] > 0 then
     openfiles = decargs["files"]
     if fs.isDir(fil.topath(decargs["files"][1])) then
-        decargs["files"][1] = dirOpener(fil.topath(decargs["files"][1]))
+        decargs["files"][1] = dirOpener(fil.topath(decargs["files"][1]), decargs["files"][1])
     end
     for i=1,#openfiles,1 do
         local nodirectories = fs.getName(decargs["files"][i])
@@ -2627,7 +2660,7 @@ while running == true do
                 currCursorY = currCursorY - 1
                 currFileOffset = currFileOffset + 1
             end
-            drawFile()
+            drawFile(true)
             if not string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset) == endbracket then
                 currCursorX = startpos[1]
                 currXOffset = startpos[2]
