@@ -848,40 +848,43 @@ local function pullChar()
     return _, tm
 end
 
-local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
-    setcolors(colors.black, colors.white)
-    for i=1,hig-1,1 do
-        clearScreenLine(i)
+local oldyoff
+local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
+    if initialDraw then
+        setcolors(colors.black, colors.white)
+        for i=1,hig-1,1 do
+            clearScreenLine(i)
+        end
+        setpos(1, 1)
+        write("\" ")
+        for i=1,wid - 4,1 do
+            write("=")
+        end
+        setpos(1, 2)
+        write("\" CCFXP Directory Listing")
+        for i=1,wid-25,1 do
+            write(" ")
+        end
+        setpos(wid-#tostring(fileEditorVer)-6, 2)
+        write("ver. "..fileEditorVer)
+        setpos(1, 5)
+        write("\"   Quick help soon!")
+        for i=1,wid-#("\"   Quick help soon!"),1 do
+            write(" ")
+        end
     end
-    setpos(1, 1)
-    write("\" ")
-    for i=1,wid - 4,1 do
-        write("=")
-    end
-    setpos(1, 2)
-    write("\" CCFXP Directory Listing")
-    for i=1,wid-25,1 do
+    for i=1,wid-#("\"   "..shell.resolve(dir)),1 do
         write(" ")
     end
-    setpos(wid-#tostring(fileEditorVer)-6, 2)
-    write("ver. "..fileEditorVer)
     setpos(1, 3)
     write("\"   "..shell.resolve(dir))
     if fs.isDir(shell.resolve(dir)) then
         write("/")
     end
-    for i=1,wid-#("\"   "..shell.resolve(dir)),1 do
-        write(" ")
-    end
     setpos(1, 4)
     write("\"   Sorted by    ")
     write(sortType)
     for i=1,wid-#("\"   Sorted by    "..sortType),1 do
-        write(" ")
-    end
-    setpos(1, 5)
-    write("\"   Quick help soon!")
-    for i=1,wid-#("\"   Quick help soon!"),1 do
         write(" ")
     end
     setpos(1, 6)
@@ -890,25 +893,52 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir)
     for i=1,wid - 2,1 do
         write("=")
     end
-    for i=1+yoff,hig - 7 + yoff,1 do
-        setpos(1, 6+i - yoff)
-        if i - yoff == ypos then
-            setcolors(colors.lightGray, colors.white)
-        else
-            setcolors(colors.black, colors.white)
-        end
-        if 6 + i - yoff < hig then
-            if filesInDir[i] then
-                write(filesInDir[i])
-                if fs.isDir(dir .. "/" .. filesInDir[i]) then
-                    write("/")
-                end
+    if oldyoff ~= yoff or initialDraw then
+        for i=1+yoff,hig - 7 + yoff,1 do
+            clearScreenLine(6+i - yoff)
+            setpos(1, 6+i - yoff)
+            if i - yoff == ypos then
+                setcolors(colors.lightGray, colors.white)
             else
-                setcolors(colors.black, colors.purple)
-                write("~")
                 setcolors(colors.black, colors.white)
             end
+            if 6 + i - yoff < hig then
+                if filesInDir[i] then
+                    write(filesInDir[i])
+                    if fs.isDir(dir .. "/" .. filesInDir[i]) then
+                        write("/")
+                    end
+                else
+                    setcolors(colors.black, colors.purple)
+                    write("~")
+                    setcolors(colors.black, colors.white)
+                end
+            end
         end
+        setcolors(colors.black, colors.white)
+        oldyoff = yoff
+    else
+        for i=-1,1,1 do
+            setpos(1, 6 + ypos + i)
+            if i == 0 then
+                setcolors(colors.lightGray, colors.white)
+            else
+                setcolors(colors.black, colors.white)
+            end
+            if 6 + ypos + i > 6 then
+                if filesInDir[ypos + yoff + i] then
+                    write(filesInDir[ypos + yoff + i])
+                    if fs.isDir(dir .. "/" .. filesInDir[ypos + yoff + i]) then
+                        write("/")
+                    end
+                else
+                    setcolors(colors.black, colors.purple)
+                    write("~")
+                    setcolors(colors.black, colors.white)
+                end
+            end
+        end
+        setcolors(colors.black, colors.white)
     end
 end
 
@@ -927,6 +957,7 @@ local function dirOpener(dir, inputname)
     local currDirOffset = 0
     local realFilesInDir = fs.list(currSelection)
     local filesInDir = {".."}
+    local firstDraw = true
     for i=1,#realFilesInDir,1 do
         table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
     end
@@ -942,6 +973,7 @@ local function dirOpener(dir, inputname)
                 table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
             end
             if sortType == "name" then
+                local oldtab = filesInDir
                 table.sort(filesInDir, 
                     function (k1, k2)
                         if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
@@ -954,7 +986,11 @@ local function dirOpener(dir, inputname)
                             return k1 < k2
                         end
                     end)
+                if oldtab ~= filesInDir then
+                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
+                end
             elseif sortType == "extension" then
+                local oldtab = filesInDir
                 table.sort(filesInDir, 
                     function (k1, k2)
                         if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
@@ -975,15 +1011,72 @@ local function dirOpener(dir, inputname)
                             end
                         end
                     end)  --this whole large table.sort function sorts out the directories first and the extensionless files last
+                if oldtab ~= filesInDir then
+                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, firstDraw)
+                end
             elseif sortType == "size" then
+                local oldtab = filesInDir
                 table.sort(filesInDir,
                     function (k1, k2)
                         return fs.getSize(currSelection.."/"..k1) < fs.getSize(currSelection.."/"..k2)
                     end)
+                if oldtab ~= filesInDir then
+                    firstDraw = true
+                end
             end
-            drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
+            drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, firstDraw)
             local e, k = os.pullEvent()
-            if e == "key" then
+            if e == "char" then
+                if k == "s" then
+                    if sortType == "name" then
+                        sortType = "size"
+                    elseif sortType == "size" then
+                        sortType = "extension"
+                    elseif sortType == "extension" then
+                        sortType = "name"
+                    end
+                elseif k == "d" then
+                    sendMsg("Please give directory name: ")
+                    local newdirname = read()
+                    if fs.isReadOnly(currSelection) then
+                        err("Directory is read-only")
+                    else
+                        fs.makeDir(currSelection.."/"..newdirname)
+                    end
+                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
+                elseif k == "D" then
+                    clearScreenLine(hig)
+                    local sst = "Confirm deletion of directory<"..shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]).."> [{y(es)},n(o),a(ll),q(uit)]"
+                    if #sst > wid then
+                        clearScreenLine(hig - 1)
+                        setpos(1, hig-1)
+                    else
+                        setpos(1, hig)
+                    end
+                    write(string.sub(sst, 1, wid))
+                    if #sst > wid then
+                        setpos(1, hig)
+                        write(string.sub(sst, wid, #sst))
+                    end
+                    local _,op
+                    while op ~= "y" and op ~= "n" and op ~= "a" and op ~= "q" do
+                        _,op = pullChar()
+                        if op == "y" then
+                            fs.delete(currSelection.."/"..filesInDir[currDirY + currDirOffset])
+                        elseif op == "a" then
+                            fs.delete(currSelection)
+                            fs.makeDir(currSelection)
+                        elseif op == "q" then
+                            running = false
+                        end
+                    end
+                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
+                    clearScreenLine(hig)
+                elseif k == "R" then
+                    sendMsg("Moving "..currSelection.."/"..shell.resolve(filesInDir[currDirY + currDirOffset]).." to : "..shell.resolve(currSelection).."/")
+                    fs.move(shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]), shell.resolve(currSelection).."/"..read())
+                end
+            elseif e == "key" then
                 if k == keys.enter then
                     if fs.isDir(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]) then
                         currSelection = currSelection .. "/" .. filesInDir[currDirY + currDirOffset]
@@ -999,17 +1092,9 @@ local function dirOpener(dir, inputname)
                         for i=1,#realFilesInDir,1 do
                             table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
                         end
-                        drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
+                        drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
                     else
                         return "/"..shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
-                    end
-                elseif k == keys.s then
-                    if sortType == "name" then
-                        sortType = "size"
-                    elseif sortType == "size" then
-                        sortType = "extension"
-                    elseif sortType == "extension" then
-                        sortType = "name"
                     end
                 elseif k == keys.down then
                     if currDirY + currDirOffset < #filesInDir then
@@ -1038,8 +1123,11 @@ local function dirOpener(dir, inputname)
                     currDirY = currDirY + 1
                     currDirOffset = currDirOffset - 1
                 end
+                drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
             end
-            drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
+            if firstDraw then
+                firstDraw = false
+            end
         end
     else
         error("dirOpener got invalid path: "..dir.." is not a directory.")
