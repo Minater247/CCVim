@@ -18,15 +18,13 @@ Features:
 - Line numbers
 - Jumping to matching bracket (currently works with ```{}```,```[]```, and ```()```.
 - Commands that require pressing control (type ```:ctrl``` to activate the emulated control key, or ```:ctrl X``` to emulate [control + key X].)
+- File explorer
+- Support for tapping/clicking bottom line to exit insert/append modes, for use on mobile
 
 
 What's currently being worked on:
 - The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
-- File browser
 
-
-What doesn't work:
-- CraftOS Mobile
 
 Fun fact - this README was written in the program!
 
