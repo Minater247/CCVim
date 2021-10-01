@@ -963,45 +963,57 @@ local function dirOpener(dir, inputname)
                     end)
             end
             drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
-            local _, k = os.pullEvent("key")
-            if k == keys.enter then
-                if fs.isDir(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]) then
-                    currSelection = currSelection .. "/" .. filesInDir[currDirY + currDirOffset]
-                    currDirY = 1
-                    currDirOffset = 0
-                    --refresh file list
-                    realFilesInDir = fs.list(currSelection)
-                    if not (shell.resolve(currSelection) == "") then
-                        filesInDir = {".."}
+            local e, k = os.pullEvent()
+            if e == "key" then
+                if k == keys.enter then
+                    if fs.isDir(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]) then
+                        currSelection = currSelection .. "/" .. filesInDir[currDirY + currDirOffset]
+                        currDirY = 1
+                        currDirOffset = 0
+                        --refresh file list
+                        realFilesInDir = fs.list(currSelection)
+                        if not (shell.resolve(currSelection) == "") then
+                            filesInDir = {".."}
+                        else
+                            filesInDir = {}
+                        end
+                        for i=1,#realFilesInDir,1 do
+                            table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+                        end
+                        drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
                     else
-                        filesInDir = {}
+                        return "/"..shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
                     end
-                    for i=1,#realFilesInDir,1 do
-                        table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+                elseif k == keys.s then
+                    if sortType == "name" then
+                        sortType = "size"
+                    elseif sortType == "size" then
+                        sortType = "extension"
+                    elseif sortType == "extension" then
+                        sortType = "name"
                     end
-                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir)
-                else
-                    return "/"..shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
+                elseif k == keys.down then
+                    if currDirY + currDirOffset < #filesInDir then
+                        currDirY = currDirY + 1
+                    end
+                    while currDirY > hig - 7 do
+                        currDirY = currDirY - 1
+                        currDirOffset = currDirOffset + 1
+                    end
+                elseif k == keys.up then
+                    if currDirY + currDirOffset > 1 then
+                        currDirY = currDirY - 1
+                    end
+                    while currDirY < 1 do
+                        currDirY = currDirY + 1
+                        currDirOffset = currDirOffset - 1
+                    end
                 end
-            elseif k == keys.s then
-                if sortType == "name" then
-                    sortType = "size"
-                elseif sortType == "size" then
-                    sortType = "extension"
-                elseif sortType == "extension" then
-                    sortType = "name"
-                end
-            elseif k == keys.down then
-                if currDirY + currDirOffset < #filesInDir then
-                    currDirY = currDirY + 1
-                end
+            elseif e == "term_resize" then
+                resetSize()
                 while currDirY > hig - 7 do
                     currDirY = currDirY - 1
                     currDirOffset = currDirOffset + 1
-                end
-            elseif k == keys.up then
-                if currDirY + currDirOffset > 1 then
-                    currDirY = currDirY - 1
                 end
                 while currDirY < 1 do
                     currDirY = currDirY + 1

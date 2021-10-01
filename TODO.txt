@@ -1,10 +1,11 @@
 //TODO
 
 LITTLE PROJECTS:
--- Figure out why the monitors aren't detecting
+-- Add the rest of the file explorer commands
 
 BIG PROJECTS:
 -- Check if file opened in tab
+-- Move command handling to its own function so it can be called outside of main loop
 -- Visual mode
 -- Undo tree
     - Better change detection 
