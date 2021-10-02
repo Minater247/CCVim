@@ -1,10 +1,13 @@
 //TODO
 
 LITTLE PROJECTS:
--- Figure out why the monitors aren't detecting
+-- Optimize when it reloads file contents (consolidate to function?)
+-- Automatically redraw on setting text scale
 
 BIG PROJECTS:
 -- Check if file opened in tab
+-- Move command handling to its own function so it can be called outside of main loop
 -- Visual mode
 -- Undo tree
     - Better change detection 
+-- Look into more of the file explorer commands
