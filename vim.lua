@@ -49,7 +49,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.42
+local version = 0.43
 local releasedate = "2021-10-01"
 
 local fileEditorVer = 0.1
@@ -868,8 +868,8 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
         setpos(wid-#tostring(fileEditorVer)-6, 2)
         write("ver. "..fileEditorVer)
         setpos(1, 5)
-        write("\"   Quick Help: <F1>:help  -:go up dir  D:delete  R:rename  s:sort-by  x:special")
-        for i=1,wid-#("\"   Quick Help: <F1>:help  -:go up dir  D:delete  R:rename  s:sort-by  x:special"),1 do
+        write("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by")
+        for i=1,wid-#("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by"),1 do
             write(" ")
         end
     end
@@ -1091,6 +1091,22 @@ local function dirOpener(dir, inputname)
                 elseif k == "-" then
                     currSelection = currSelection .. "/" .. ".."
                     redrawNext = true
+                elseif k == "j" then
+                    if currDirY + currDirOffset < #filesInDir then
+                        currDirY = currDirY + 1
+                    end
+                    while currDirY > hig - 7 do
+                        currDirY = currDirY - 1
+                        currDirOffset = currDirOffset + 1
+                    end
+                elseif k == "k" then
+                    if currDirY + currDirOffset > 1 then
+                        currDirY = currDirY - 1
+                    end
+                    while currDirY < 1 do
+                        currDirY = currDirY + 1
+                        currDirOffset = currDirOffset - 1
+                    end
                 end
             elseif e == "key" then
                 if k == keys.enter then
