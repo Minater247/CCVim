@@ -2,7 +2,7 @@
 
 LITTLE PROJECTS:
 -- Add the rest of the file explorer commands
--- Reduce flickering in file explorer (reduce render line amount to above and below, don't redraw header, etc)
+-- Show absolute dir on move/delete of file in explorer
 
 BIG PROJECTS:
 -- Check if file opened in tab

@@ -963,6 +963,7 @@ local function dirOpener(dir, inputname)
     end
     if fs.isDir(dir) then
         local stillInExplorer = true
+        local redrawNext = false
         while stillInExplorer do
             local realFilesInDir = fs.list(currSelection)
             local filesInDir = {}
@@ -973,7 +974,6 @@ local function dirOpener(dir, inputname)
                 table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
             end
             if sortType == "name" then
-                local oldtab = filesInDir
                 table.sort(filesInDir, 
                     function (k1, k2)
                         if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
@@ -986,11 +986,7 @@ local function dirOpener(dir, inputname)
                             return k1 < k2
                         end
                     end)
-                if oldtab ~= filesInDir then
-                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
-                end
             elseif sortType == "extension" then
-                local oldtab = filesInDir
                 table.sort(filesInDir, 
                     function (k1, k2)
                         if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
@@ -1011,20 +1007,18 @@ local function dirOpener(dir, inputname)
                             end
                         end
                     end)  --this whole large table.sort function sorts out the directories first and the extensionless files last
-                if oldtab ~= filesInDir then
-                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, firstDraw)
-                end
             elseif sortType == "size" then
-                local oldtab = filesInDir
                 table.sort(filesInDir,
                     function (k1, k2)
                         return fs.getSize(currSelection.."/"..k1) < fs.getSize(currSelection.."/"..k2)
                     end)
-                if oldtab ~= filesInDir then
-                    firstDraw = true
-                end
             end
-            drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, firstDraw)
+            if redrawNext then
+                drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
+                redrawNext = false
+            else
+                drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, firstDraw)
+            end
             local e, k = os.pullEvent()
             if e == "char" then
                 if k == "s" then
@@ -1035,6 +1029,7 @@ local function dirOpener(dir, inputname)
                     elseif sortType == "extension" then
                         sortType = "name"
                     end
+                    redrawNext = true
                 elseif k == "d" then
                     sendMsg("Please give directory name: ")
                     local newdirname = read()
@@ -1070,8 +1065,8 @@ local function dirOpener(dir, inputname)
                             running = false
                         end
                     end
-                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
                     clearScreenLine(hig)
+                    redrawNext = true
                 elseif k == "R" then
                     sendMsg("Moving "..currSelection.."/"..shell.resolve(filesInDir[currDirY + currDirOffset]).." to : "..shell.resolve(currSelection).."/")
                     fs.move(shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]), shell.resolve(currSelection).."/"..read())
@@ -1096,6 +1091,7 @@ local function dirOpener(dir, inputname)
                     else
                         return "/"..shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
                     end
+                    redrawNext = true
                 elseif k == keys.down then
                     if currDirY + currDirOffset < #filesInDir then
                         currDirY = currDirY + 1
