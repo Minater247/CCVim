@@ -925,7 +925,7 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
             else
                 setcolors(colors.black, colors.white)
             end
-            if 6 + ypos + i > 6 then
+            if 6 + ypos + i > 6 and 6 + ypos + i < hig then
                 if filesInDir[ypos + yoff + i] then
                     write(filesInDir[ypos + yoff + i])
                     if fs.isDir(dir .. "/" .. filesInDir[ypos + yoff + i]) then
@@ -964,6 +964,7 @@ local function dirOpener(dir, inputname)
     if fs.isDir(dir) then
         local stillInExplorer = true
         local redrawNext = false
+        local e, k
         while stillInExplorer do
             local realFilesInDir = fs.list(currSelection)
             local filesInDir = {}
@@ -1016,10 +1017,10 @@ local function dirOpener(dir, inputname)
             if redrawNext then
                 drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
                 redrawNext = false
-            else
+            elseif e ~= "key_up" then
                 drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, firstDraw)
             end
-            local e, k = os.pullEvent()
+            e, k = os.pullEvent()
             if e == "char" then
                 if k == "s" then
                     if sortType == "name" then
@@ -1033,12 +1034,14 @@ local function dirOpener(dir, inputname)
                 elseif k == "d" then
                     sendMsg("Please give directory name: ")
                     local newdirname = read()
-                    if fs.isReadOnly(currSelection) then
-                        err("Directory is read-only")
-                    else
-                        fs.makeDir(currSelection.."/"..newdirname)
+                    if newdirname then
+                        if fs.isReadOnly(currSelection) then
+                            err("Directory is read-only")
+                        else
+                            fs.makeDir(currSelection.."/"..newdirname)
+                        end
                     end
-                    drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
+                    redrawNext = true
                 elseif k == "D" then
                     clearScreenLine(hig)
                     local sst = "Confirm deletion of directory<"..shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]).."> [{y(es)},n(o),a(ll),q(uit)]"
@@ -1061,6 +1064,8 @@ local function dirOpener(dir, inputname)
                         elseif op == "a" then
                             fs.delete(currSelection)
                             fs.makeDir(currSelection)
+                            currDirY = 1
+                            currDirOffset = 0
                         elseif op == "q" then
                             running = false
                         end
@@ -1070,6 +1075,18 @@ local function dirOpener(dir, inputname)
                 elseif k == "R" then
                     sendMsg("Moving "..currSelection.."/"..shell.resolve(filesInDir[currDirY + currDirOffset]).." to : "..shell.resolve(currSelection).."/")
                     fs.move(shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]), shell.resolve(currSelection).."/"..read())
+                elseif k == "%" then
+                    sendMsg("Enter filename: ")
+                    local filenamevar = read()
+                    if filenamevar then
+                        if fs.isDir("/"..shell.resolve(currSelection .. "/" .. filenamevar)) then
+                            sendMsg("\"/"..shell.resolve(currSelection .. "/" .. filenamevar).. "\" is a directory")
+                            currSelection = currSelection .. "/" .. filenamevar
+                            drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
+                        else
+                            return "/"..shell.resolve(currSelection .. "/" .. filenamevar)
+                        end
+                    end
                 end
             elseif e == "key" then
                 if k == keys.enter then
@@ -1087,7 +1104,7 @@ local function dirOpener(dir, inputname)
                         for i=1,#realFilesInDir,1 do
                             table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
                         end
-                        drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
+                        redrawNext = true
                     else
                         return "/"..shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
                     end
@@ -1807,6 +1824,9 @@ while running == true do
                 if not seterror then
                     clearScreenLine(hig)
                 end
+            elseif cmdtab[1] == ":resetscale" then
+                resetSize()
+                redrawTerm()
             elseif cmdtab[1] == ":syntax" then
                 if cmdtab[2] == "on" then
                     syntaxhighlighting = true
