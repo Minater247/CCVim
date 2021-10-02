@@ -3,7 +3,6 @@
 LITTLE PROJECTS:
 -- Optimize when it reloads file contents (consolidate to function?)
 -- Automatically redraw on setting text scale
--- Add quick help to CCFXP
 
 BIG PROJECTS:
 -- Check if file opened in tab

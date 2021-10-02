@@ -49,7 +49,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.41
+local version = 0.42
 local releasedate = "2021-10-01"
 
 local fileEditorVer = 0.1
@@ -868,8 +868,8 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
         setpos(wid-#tostring(fileEditorVer)-6, 2)
         write("ver. "..fileEditorVer)
         setpos(1, 5)
-        write("\"   Quick help soon!")
-        for i=1,wid-#("\"   Quick help soon!"),1 do
+        write("\"   Quick Help: <F1>:help  -:go up dir  D:delete  R:rename  s:sort-by  x:special")
+        for i=1,wid-#("\"   Quick Help: <F1>:help  -:go up dir  D:delete  R:rename  s:sort-by  x:special"),1 do
             write(" ")
         end
     end
