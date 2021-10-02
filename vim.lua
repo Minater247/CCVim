@@ -49,7 +49,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.4
+local version = 0.41
 local releasedate = "2021-10-01"
 
 local fileEditorVer = 0.1
@@ -881,6 +881,7 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
     if fs.isDir(shell.resolve(dir)) then
         write("/")
     end
+    clearScreenLine(4)
     setpos(1, 4)
     write("\"   Sorted by    ")
     write(sortType)
@@ -1087,6 +1088,9 @@ local function dirOpener(dir, inputname)
                             return "/"..shell.resolve(currSelection .. "/" .. filenamevar)
                         end
                     end
+                elseif k == "-" then
+                    currSelection = currSelection .. "/" .. ".."
+                    redrawNext = true
                 end
             elseif e == "key" then
                 if k == keys.enter then
