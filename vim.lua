@@ -49,10 +49,10 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.44
+local version = 0.45
 local releasedate = "2021-10-02"
 
-local fileEditorVer = 0.1
+local fileEditorVer = 0.11
 
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
@@ -1074,7 +1074,7 @@ local function dirOpener(dir, inputname)
                     clearScreenLine(hig)
                     redrawNext = true
                 elseif k == "R" then
-                    sendMsg("Moving "..currSelection.."/"..shell.resolve(filesInDir[currDirY + currDirOffset]).." to : "..shell.resolve(currSelection).."/")
+                    sendMsg("Moving "..shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]).." to : "..shell.resolve(currSelection).."/")
                     fs.move(shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]), shell.resolve(currSelection).."/"..read())
                 elseif k == "%" then
                     sendMsg("Enter filename: ")
