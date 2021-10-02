@@ -1177,10 +1177,10 @@ end
 
 if #decargs["files"] > 0 then
     openfiles = decargs["files"]
-    if fs.isDir(fil.topath(decargs["files"][1])) then
-        decargs["files"][1] = dirOpener(fil.topath(decargs["files"][1]), decargs["files"][1])
-    end
     for i=1,#openfiles,1 do
+        if fs.isDir(fil.topath(decargs["files"][i])) then
+            decargs["files"][i] = dirOpener(fil.topath(decargs["files"][i]), decargs["files"][i])
+        end
         local nodirectories = fs.getName(decargs["files"][i])
         if fs.exists(fil.topath(decargs["files"][i])) then
             local doneGettingEnd = false
@@ -1194,6 +1194,9 @@ if #decargs["files"] > 0 then
             end
             filelines = fil.toArr(fil.topath(decargs["files"][i]))
             fileContents[i] = fil.toArr(fil.topath(decargs["files"][i]))
+            if not fileContents[i] then
+                error(decargs["files"][i].." failed to load. If this issue persists, please create an issue on the github repository.")
+            end
             if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
                 fileContents[i]["filetype"] = filenamestring
                 if fs.exists("/vim/syntax/"..filenamestring..".lua") then
@@ -1829,13 +1832,13 @@ while running == true do
                         else
                             fileContents[currfile]["filetype"] = nil
                         end
-                    elseif comm == "size" then
-                        if monitor then
+                    elseif comm == "scale" then
+                        if monitor and tonumber(stri) then
                             monitor.setTextScale(tonumber(stri))
-                            resetSize()
-                            redrawTerm()
                         end
                     end
+                    resetSize()
+                    redrawTerm()
                     drawFile(true)
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
