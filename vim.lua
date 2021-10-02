@@ -49,8 +49,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.31
-local releasedate = "2021-09-30"
+local version = 0.4
+local releasedate = "2021-10-01"
 
 local fileEditorVer = 0.1
 
