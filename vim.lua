@@ -335,10 +335,16 @@ local function drawFile(forcedredraw)
                                 setcolors(colors.black, colors.green)
                                 write(string.sub(filelines[i], commentstart, #filelines[i]))
                             end
-                            if tab.find(fileContents[currfile]["Multi-line comments"], i) then
+                            commentstart = 0
+                            commentstart = str.find(filelines[i], synt[7][2])
+                            if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
                                 setpos(1 - currXOffset + lineoffset, i - currFileOffset)
                                 setcolors(colors.black, colors.green)
                                 write(filelines[i])
+                            elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                setcolors(colors.black, colors.green)
+                                write(string.sub(filelines[i], 1, commentstart + 1))
                             end
                             --repeat the line number drawing since we just overwrote it
                             setpos(1, i)
@@ -432,7 +438,7 @@ local function drawFile(forcedredraw)
                                     end
                                     if inquotes then
                                         write(string.sub(filelines[i], j, j))
-                                        table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
+                                        table.insert(quotepoints, #quotepoints, j - 2)
                                     end
                                     if tab.find(quotationmarks, j) and not justset then
                                         if inquotes then
@@ -448,10 +454,16 @@ local function drawFile(forcedredraw)
                                     setcolors(colors.black, colors.green)
                                     write(string.sub(filelines[i], commentstart, #filelines[i]))
                                 end
-                                if tab.find(fileContents[currfile]["Multi-line comments"], i) then
+                                commentstart = 0
+                                commentstart = str.find(filelines[i], synt[7][2])
+                                if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
                                     setpos(1 - currXOffset + lineoffset, i - currFileOffset)
                                     setcolors(colors.black, colors.green)
                                     write(filelines[i])
+                                elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                    setcolors(colors.black, colors.green)
+                                    write(string.sub(filelines[i], 1, commentstart + 1))
                                 end
                                 --repeat the line number drawing since we just overwrote it
                                 setpos(1, i)
@@ -1245,7 +1257,7 @@ if #decargs["files"] > 0 then
                 fileContents[i]["filetype"] = nil
             end
         end
-        local multilinesInFile = {}
+        local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
         local synt
         if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
             if fs.exists("/vim/syntax/"..filenamestring..".lua") then
@@ -1270,7 +1282,7 @@ if #decargs["files"] > 0 then
                         end
                     end
                     if inquotes then
-                        table.insert(quotepoints, #quotepoints, k - 2) --Don't know why I need to subtract 2 but heck it works
+                        table.insert(quotepoints, #quotepoints, k - 2)
                     end
                     if tab.find(quotationmarks, k) and not justset then
                         if inquotes then
@@ -1286,13 +1298,15 @@ if #decargs["files"] > 0 then
                 if str.find(fileContents[i][j], "--[[", quotepoints) and not inmulti then
                     inmulti = true
                     justset = true
+                    table.insert(multilinesInFile[1], #multilinesInFile[1] + 1, j)
                 end
-                if inmulti then
-                    table.insert(multilinesInFile, #multilinesInFile + 1, j)
+                if inmulti and not (str.find(fileContents[i][j], "]]")) and not justset then
+                    table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
                 end
                 if str.find(fileContents[i][j], "]]") and not justset then
                     if inmulti then
                         inmulti = false
+                        table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
                     end
                 end
                 justset = false
