@@ -1182,9 +1182,9 @@ if #decargs["files"] > 0 then
             decargs["files"][i] = dirOpener(fil.topath(decargs["files"][i]), decargs["files"][i])
         end
         local nodirectories = fs.getName(decargs["files"][i])
+        local filenamestring = ""
         if fs.exists(fil.topath(decargs["files"][i])) then
             local doneGettingEnd = false
-            local filenamestring = ""
             for j=#nodirectories,1,-1 do
                 if string.sub(nodirectories, j, j) ~= "." and not doneGettingEnd then
                     filenamestring = string.sub(nodirectories, j, j) .. filenamestring
@@ -1212,7 +1212,6 @@ if #decargs["files"] > 0 then
             table.insert(fileContents, #fileContents + 1, {""})
             newfile = true
             local doneGettingEnd = false
-            local filenamestring = ""
             for j=#decargs["files"][i],1,-1 do
                 if string.sub(decargs["files"][i], j, j) ~= "." and not doneGettingEnd then
                     filenamestring = string.sub(decargs["files"][i], j, j) .. filenamestring
@@ -1231,8 +1230,61 @@ if #decargs["files"] > 0 then
                 fileContents[i]["filetype"] = nil
             end
         end
-        filelines = fileContents[1]
+        local multilinesInFile = {}
+        if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
+            if fs.exists("/vim/syntax/"..filenamestring) then
+                local synt = require("/vim/syntax/"..filenamestring)
+            end
+        end
+        if synt then
+            local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
+            local inquotes = false
+            local justset = false
+            local quotepoints = {}
+            for j=1,#filelines[i],1 do
+                if tab.find(quotationmarks, j) then
+                    if not inquotes then
+                        if j < quotationmarks[#quotationmarks] then
+                            inquotes = true
+                            justset = true
+                        end
+                    end
+                end
+                if inquotes then
+                    table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
+                end
+                if tab.find(quotationmarks, j) and not justset then
+                    if inquotes then
+                        inquotes = false
+                    end
+                end
+                justset = false
+            end
+            local inmulti = false
+            justset = false
+            for j=1,#fileContents[i],1 do
+                if str.find(fileContents[i][j], "--[[", quotepoints) and not inmulti then
+                    inmulti = true
+                    justset = true
+                end
+                if inmulti then
+                    table.insert(multilinesInFile, #multilinesInFile + 1, j)
+                end
+                if str.find(fileContents[i][j], "]]") and not inmulti then
+                    if inmulti then
+                        inmulti = false
+                    end
+                end
+                justset = false
+            end
+            fileContents[i]["Multi-line comments"] = multilinesInFile
+            for j=1,#multilinesInFile,1 do
+                print(multilinesInFile[j])
+            end
+            os.pullEvent("key")
+        end
     end
+    filelines = fileContents[1]
     filename = decargs["files"][1]
     if filelines[1] ~= nil then
         local tb = str.wordBeginnings(filelines[1])
