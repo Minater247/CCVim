@@ -9,7 +9,8 @@ local function syntax()
         "~"
     }
     local type = "code"
-    return {todos, keywords, stringchar, commentstring, removedpunctuation, type}
+    local multilinecommentstrings = {"--[[", "]]"}
+    return {todos, keywords, stringchar, commentstring, removedpunctuation, type, multilinecommentstrings}
 end
 
 return { syntax = syntax }
