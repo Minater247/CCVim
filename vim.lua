@@ -1,3 +1,8 @@
+--[[
+
+
+]]
+
 local args = {...}
 
 local validArgs = {
@@ -330,6 +335,11 @@ local function drawFile(forcedredraw)
                                 setcolors(colors.black, colors.green)
                                 write(string.sub(filelines[i], commentstart, #filelines[i]))
                             end
+                            if tab.find(fileContents[currfile]["Multi-line comments"], i) then
+                                setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                setcolors(colors.black, colors.green)
+                                write(filelines[i])
+                            end
                             --repeat the line number drawing since we just overwrote it
                             setpos(1, i)
                             setcolors(colors.black, colors.yellow)
@@ -437,6 +447,11 @@ local function drawFile(forcedredraw)
                                     setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
                                     setcolors(colors.black, colors.green)
                                     write(string.sub(filelines[i], commentstart, #filelines[i]))
+                                end
+                                if tab.find(fileContents[currfile]["Multi-line comments"], i) then
+                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                    setcolors(colors.black, colors.green)
+                                    write(filelines[i])
                                 end
                                 --repeat the line number drawing since we just overwrote it
                                 setpos(1, i)
@@ -1231,34 +1246,39 @@ if #decargs["files"] > 0 then
             end
         end
         local multilinesInFile = {}
+        local synt
         if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
-            if fs.exists("/vim/syntax/"..filenamestring) then
-                local synt = require("/vim/syntax/"..filenamestring)
+            if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                local tmp = require("/vim/syntax/"..filenamestring)
+                synt = tmp.syntax()
             end
         end
         if synt then
-            local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
-            local inquotes = false
-            local justset = false
             local quotepoints = {}
-            for j=1,#filelines[i],1 do
-                if tab.find(quotationmarks, j) then
-                    if not inquotes then
-                        if j < quotationmarks[#quotationmarks] then
-                            inquotes = true
-                            justset = true
+            local justset = false
+            for j=1,#fileContents[i],1 do
+                local quotationmarks = str.indicesOfLetter(fileContents[i][j], synt[3])
+                local inquotes = false
+                justset = false
+                for k=1,#fileContents[i][j],1 do
+                    if tab.find(quotationmarks, k) then
+                        if not inquotes then
+                            if k < quotationmarks[#quotationmarks] then
+                                inquotes = true
+                                justset = true
+                            end
                         end
                     end
-                end
-                if inquotes then
-                    table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
-                end
-                if tab.find(quotationmarks, j) and not justset then
                     if inquotes then
-                        inquotes = false
+                        table.insert(quotepoints, #quotepoints, k - 2) --Don't know why I need to subtract 2 but heck it works
                     end
+                    if tab.find(quotationmarks, k) and not justset then
+                        if inquotes then
+                            inquotes = false
+                        end
+                    end
+                    justset = false
                 end
-                justset = false
             end
             local inmulti = false
             justset = false
@@ -1270,7 +1290,7 @@ if #decargs["files"] > 0 then
                 if inmulti then
                     table.insert(multilinesInFile, #multilinesInFile + 1, j)
                 end
-                if str.find(fileContents[i][j], "]]") and not inmulti then
+                if str.find(fileContents[i][j], "]]") and not justset then
                     if inmulti then
                         inmulti = false
                     end
@@ -1278,10 +1298,6 @@ if #decargs["files"] > 0 then
                 justset = false
             end
             fileContents[i]["Multi-line comments"] = multilinesInFile
-            for j=1,#multilinesInFile,1 do
-                print(multilinesInFile[j])
-            end
-            os.pullEvent("key")
         end
     end
     filelines = fileContents[1]
