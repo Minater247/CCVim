@@ -335,14 +335,16 @@ local function drawFile(forcedredraw)
                             if not commentstart then
                                 commentstart = 0
                             end
-                            if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
-                                setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                                setcolors(colors.black, colors.green)
-                                write(filelines[i])
-                            elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
-                                setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                                setcolors(colors.black, colors.green)
-                                write(string.sub(filelines[i], 1, commentstart + 1))
+                            if not lowspec then
+                                if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
+                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                    setcolors(colors.black, colors.green)
+                                    write(filelines[i])
+                                elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                    setcolors(colors.black, colors.green)
+                                    write(string.sub(filelines[i], 1, commentstart + 1))
+                                end
                             end
                             --repeat the line number drawing since we just overwrote it
                             setpos(1, i)
@@ -456,14 +458,16 @@ local function drawFile(forcedredraw)
                                 if not commentstart then
                                     commentstart = 0
                                 end
-                                if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
-                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                                    setcolors(colors.black, colors.green)
-                                    write(filelines[i])
-                                elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
-                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                                    setcolors(colors.black, colors.green)
-                                    write(string.sub(filelines[i], 1, commentstart + 1))
+                                if not lowspec then
+                                    if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(filelines[i])
+                                    elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(string.sub(filelines[i], 1, commentstart + 1))
+                                    end
                                 end
                                 --repeat the line number drawing since we just overwrote it
                                 setpos(1, i)
@@ -770,8 +774,8 @@ local function insertMode()
                                 filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
                                 table.remove(filelines, currCursorY + currFileOffset)
                                 moveCursorUp(true)
-                                if currCursorX + currXOffset + lineoffset > wid then
-                                    while currCursorX + currXOffset + lineoffset > wid do
+                                if currCursorX + lineoffset > wid then
+                                    while currCursorX + lineoffset > wid do
                                         currXOffset = currXOffset + 1
                                         currCursorX = currCursorX - 1
                                     end
