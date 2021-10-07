@@ -1991,8 +1991,10 @@ while running == true do
                     mobile = false
                 elseif cmdtab[2] == "lowspec" then
                     lowspec = true
+                    drawFile(true)
                 elseif cmdtab[2] == "nolowspec" then
                     lowspec = false
+                    drawFile(true)
                 elseif str.find(cmdtab[2], "=") then
                     local tmp = str.split(cmdtab[2], "=")
                     local comm = tmp[1]

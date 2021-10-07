@@ -2,6 +2,8 @@
 
 LITTLE PROJECTS:
 -- Optimize the way it recalculates MLCs
+-- Fix line number drawing
+-- MLCs on one line
 
 BIG PROJECTS:
 -- Check if file opened in tab
