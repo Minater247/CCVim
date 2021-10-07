@@ -1,7 +1,6 @@
 //TODO
 
 LITTLE PROJECTS:
--- Consolidate redraw calculation to function
 -- Optimize the way it recalculates MLCs
 
 BIG PROJECTS:

@@ -49,8 +49,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.45
-local releasedate = "2021-10-02"
+local version = 0.5
+local releasedate = "2021-10-07"
 
 local fileEditorVer = 0.11
 
@@ -86,6 +86,7 @@ local lineoffset = 0
 local syntaxhighlighting = false
 local oldXOffset = 0
 local oldFileOffset = 0
+local lowspec = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -616,58 +617,65 @@ end
 
 --Recalculate where multi-line comments are, based on position in file
 local function recalcMLCs(force)
-    local tmp = require("/vim/syntax/"..fileContents[currfile]["filetype"])
-    local synt = tmp.syntax()
-    if ((tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or (not tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or force) and syntaxhighlighting then
-        local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
-        if synt then
-            local quotepoints = {}
-            local justset = false
-            for j=1,#fileContents[currfile],1 do
-                local quotationmarks = str.indicesOfLetter(fileContents[currfile][j], synt[3])
-                local inquotes = false
-                justset = false
-                for k=1,#fileContents[currfile][j],1 do
-                    if tab.find(quotationmarks, k) then
-                        if not inquotes then
-                            if k < quotationmarks[#quotationmarks] then
-                                inquotes = true
-                                justset = true
+    if fileContents[currfile]["Multi-line comments"] and not lowspec then
+        local synt
+        if fileContents[currfile]["filetype"] then
+            local tmp = require("/vim/syntax/"..fileContents[currfile]["filetype"])
+            synt = tmp.syntax()
+        end
+        if ((tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or (not tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or force) and syntaxhighlighting then
+            local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
+            if synt then
+                local quotepoints = {}
+                local justset = false
+                for j=1,#fileContents[currfile],1 do
+                    local quotationmarks = str.indicesOfLetter(fileContents[currfile][j], synt[3])
+                    local inquotes = false
+                    justset = false
+                    for k=1,#fileContents[currfile][j],1 do
+                        if tab.find(quotationmarks, k) then
+                            if not inquotes then
+                                if k < quotationmarks[#quotationmarks] then
+                                    inquotes = true
+                                    justset = true
+                                end
                             end
                         end
-                    end
-                    if inquotes then
-                        table.insert(quotepoints, #quotepoints, k - 2)
-                    end
-                    if tab.find(quotationmarks, k) and not justset then
                         if inquotes then
-                            inquotes = false
+                            table.insert(quotepoints, #quotepoints, k - 2)
+                        end
+                        if tab.find(quotationmarks, k) and not justset then
+                            if inquotes then
+                                inquotes = false
+                            end
+                        end
+                        justset = false
+                    end
+                end
+                local inmulti = false
+                justset = false
+                for j=1,#fileContents[currfile],1 do
+                    if str.find(fileContents[currfile][j], "--[[", quotepoints) and not inmulti then
+                        inmulti = true
+                        justset = true
+                        table.insert(multilinesInFile[1], #multilinesInFile[1] + 1, j)
+                    end
+                    if inmulti and not (str.find(fileContents[currfile][j], "]]")) and not justset then
+                        table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
+                    end
+                    if str.find(fileContents[currfile][j], "]]") and not justset then
+                        if inmulti then
+                            inmulti = false
+                            table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
                         end
                     end
                     justset = false
                 end
+                fileContents[currfile]["Multi-line comments"] = multilinesInFile
+                return true
             end
-            local inmulti = false
-            justset = false
-            for j=1,#fileContents[currfile],1 do
-                if str.find(fileContents[currfile][j], "--[[", quotepoints) and not inmulti then
-                    inmulti = true
-                    justset = true
-                    table.insert(multilinesInFile[1], #multilinesInFile[1] + 1, j)
-                end
-                if inmulti and not (str.find(fileContents[currfile][j], "]]")) and not justset then
-                    table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
-                end
-                if str.find(fileContents[currfile][j], "]]") and not justset then
-                    if inmulti then
-                        inmulti = false
-                        table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
-                    end
-                end
-                justset = false
-            end
-            fileContents[currfile]["Multi-line comments"] = multilinesInFile
-            return true
+        else
+            return false
         end
     else
         return false
@@ -913,6 +921,8 @@ if fs.exists("/vim/.vimrc") then
                     elseif rctable[2] == "number" then
                         linenumbers = true
                         lineoffset = 4
+                    elseif rctable[2] == "lowperformance" then
+                        lowspec = true
                     end
                 else
                     --set the things to values
@@ -1975,6 +1985,10 @@ while running == true do
                     drawFile(true)
                 elseif cmdtab[2] == "nomobile" then
                     mobile = false
+                elseif cmdtab[2] == "lowspec" then
+                    lowspec = true
+                elseif cmdtab[2] == "nolowspec" then
+                    lowspec = false
                 elseif str.find(cmdtab[2], "=") then
                     local tmp = str.split(cmdtab[2], "=")
                     local comm = tmp[1]

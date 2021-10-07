@@ -24,7 +24,7 @@ Features:
 
 What's currently being worked on:
 - The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
-
+- Optimizing the way multi-line comments are recalculated
 
 Fun fact - this README was written in the program!
 
