@@ -1,11 +1,10 @@
 //TODO
 
-LITTLE PROJECTS:
+SOON PROJECTS:
 -- Optimize the way it recalculates MLCs
--- Fix line number drawing
 -- MLCs on one line
 
-BIG PROJECTS:
+LATER PROJECTS:
 -- Check if file opened in tab
 -- Move command handling to its own function so it can be called outside of main loop
 -- Visual mode
