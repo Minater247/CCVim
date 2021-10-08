@@ -1,14 +1,14 @@
 --[[ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
                         CCVIM INSTALLER
-                          VERSION 0.13
+                          VERSION 0.14
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -]]
 
 local function initialMenu()
     term.clear()
     term.setCursorPos(1, 1)
-    print("CCVIM Installer v0.13")
+    print("CCVIM Installer v0.14")
     print() --skip a line
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
@@ -102,7 +102,7 @@ local function addToPath()
 end
 
 local function download(url, file, noerr)
-    local content = http.get(url).readAll()
+    local content = http.get(url)
     if not content then
         if not noerr then
             error("Failed to access resource " .. url)
@@ -110,6 +110,7 @@ local function download(url, file, noerr)
             return false
         end
     end
+    content = content.readAll()
     local fi = fs.open(file, "w")
     fi.write(content)
     fi.close()
@@ -206,7 +207,7 @@ local function syntax()
     print("Enter the file extension for the filetype: ")
     local fts = string.lower(read())
     print("Looking for extension \""..fts.."\" in repo...")
-    if download("https://raw.githubusercontent.com/Minater247/CCVim/main/syntax/"..fts..".lua", "/vim/syntax/"..fts..".lua") == false then
+    if download("https://raw.githubusercontent.com/Minater247/CCVim/main/syntax/"..fts..".lua", "/vim/syntax/"..fts..".lua", true) == false then
         print("Could not find file for extension \""..fts.."\"")
         print("Press any key to continue...")
         os.pullEvent("key")
