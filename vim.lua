@@ -615,15 +615,15 @@ local function recalcMLCs(force)
                 local inmulti = false
                 justset = false
                 for j=1,#fileContents[currfile],1 do
-                    if str.find(fileContents[currfile][j], "--[[", quotepoints) and not inmulti then
+                    if str.find(fileContents[currfile][j], synt[7][1], quotepoints) and not inmulti then
                         inmulti = true
                         justset = true
                         table.insert(multilinesInFile[1], #multilinesInFile[1] + 1, j)
                     end
-                    if inmulti and not (str.find(fileContents[currfile][j], "]]")) and not justset then
+                    if inmulti and not (str.find(fileContents[currfile][j], synt[7][2])) and not justset then
                         table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
                     end
-                    if str.find(fileContents[currfile][j], "]]") and not justset then
+                    if str.find(fileContents[currfile][j], synt[7][2]) then
                         if inmulti then
                             inmulti = false
                             table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
@@ -1335,15 +1335,15 @@ if #decargs["files"] > 0 then
             local inmulti = false
             justset = false
             for j=1,#fileContents[i],1 do
-                if str.find(fileContents[i][j], "--[[", quotepoints) and not inmulti then
+                if str.find(fileContents[i][j], synt[7][1], quotepoints) and not inmulti then
                     inmulti = true
                     justset = true
                     table.insert(multilinesInFile[1], #multilinesInFile[1] + 1, j)
                 end
-                if inmulti and not (str.find(fileContents[i][j], "]]")) and not justset then
+                if inmulti and not (str.find(fileContents[i][j], synt[7][2])) and not justset then
                     table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
                 end
-                if str.find(fileContents[i][j], "]]") and not justset then
+                if str.find(fileContents[i][j], synt[7][2]) then
                     if inmulti then
                         inmulti = false
                         table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
