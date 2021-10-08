@@ -49,8 +49,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.45
-local releasedate = "2021-10-02"
+local version = 0.5
+local releasedate = "2021-10-07"
 
 local fileEditorVer = 0.11
 
@@ -86,6 +86,7 @@ local lineoffset = 0
 local syntaxhighlighting = false
 local oldXOffset = 0
 local oldFileOffset = 0
+local lowspec = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -257,22 +258,6 @@ local function drawFile(forcedredraw)
             setpos(1, i - currFileOffset)
             if filelines then
                 if filelines[i] ~= nil then
-                    setcolors(colors.black, colors.yellow)
-                    if linenumbers then
-                        if i < 1000 then
-                            for i=1,3 - #(tostring(i)),1 do
-                                write(" ")
-                            end
-                        end
-                        if i < 10000 then
-                            write(i)
-                            if i < 1000 then
-                                write(" ")
-                            end
-                        else
-                            write("10k+")
-                        end
-                    end
                     setcolors(colors.black, colors.white)
                     if fileContents[currfile] then
                         if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
@@ -330,21 +315,19 @@ local function drawFile(forcedredraw)
                                 setcolors(colors.black, colors.green)
                                 write(string.sub(filelines[i], commentstart, #filelines[i]))
                             end
-                            --repeat the line number drawing since we just overwrote it
-                            setpos(1, i)
-                            setcolors(colors.black, colors.yellow)
-                            local _, yy = getWindSize()
-                            if yy ~= hig then
-                                if i < 1000 then
-                                    for i=1,3 - #(tostring(i)),1 do
-                                        write(" ")
-                                    end
-                                end
-                                if i < 10000 then
-                                    write(i)
-                                    write(" ")
-                                else
-                                    write("10k+")
+                            commentstart = str.find(filelines[i], synt[7][2])
+                            if not commentstart then
+                                commentstart = 0
+                            end
+                            if not lowspec then
+                                if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
+                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                    setcolors(colors.black, colors.green)
+                                    write(filelines[i])
+                                elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                    setcolors(colors.black, colors.green)
+                                    write(string.sub(filelines[i], 1, commentstart + 1))
                                 end
                             end
                         else
@@ -358,29 +341,13 @@ local function drawFile(forcedredraw)
             end
         end
     else
-        --only draw one line
+        --only draw 3 lines
         for i=currCursorY + currFileOffset - 1, currCursorY + currFileOffset + 2, 1 do
             if i - currFileOffset < hig then
                 clearScreenLine(i - currFileOffset)
                 setpos(1, i - currFileOffset)
                 if filelines then
                     if filelines[i] ~= nil then
-                        setcolors(colors.black, colors.yellow)
-                        if linenumbers then
-                            if i < 1000 then
-                                for i=1,3 - #(tostring(i)),1 do
-                                    write(" ")
-                                end
-                            end
-                            if i < 10000 then
-                                write(i)
-                                if i < 1000 then
-                                    write(" ")
-                                end
-                            else
-                                write("10k+")
-                            end
-                        end
                         setcolors(colors.black, colors.white)
                         if fileContents[currfile] then
                             if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
@@ -422,7 +389,7 @@ local function drawFile(forcedredraw)
                                     end
                                     if inquotes then
                                         write(string.sub(filelines[i], j, j))
-                                        table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
+                                        table.insert(quotepoints, #quotepoints, j - 2)
                                     end
                                     if tab.find(quotationmarks, j) and not justset then
                                         if inquotes then
@@ -438,21 +405,19 @@ local function drawFile(forcedredraw)
                                     setcolors(colors.black, colors.green)
                                     write(string.sub(filelines[i], commentstart, #filelines[i]))
                                 end
-                                --repeat the line number drawing since we just overwrote it
-                                setpos(1, i)
-                                setcolors(colors.black, colors.yellow)
-                                local _, yy = getWindSize()
-                                if yy ~= hig then
-                                    if i < 1000 then
-                                        for i=1,3 - #(tostring(i)),1 do
-                                            write(" ")
-                                        end
-                                    end
-                                    if i < 10000 then
-                                        write(i)
-                                        write(" ")
-                                    else
-                                        write("10k+")
+                                commentstart = str.find(filelines[i], synt[7][2])
+                                if not commentstart then
+                                    commentstart = 0
+                                end
+                                if not lowspec then
+                                    if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(filelines[i])
+                                    elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(string.sub(filelines[i], 1, commentstart + 1))
                                     end
                                 end
                             else
@@ -467,6 +432,7 @@ local function drawFile(forcedredraw)
             end
         end
     end
+    -- Draw the cursor
     local tmp
     if filelines then
         if filelines[currCursorY + currFileOffset] ~= nil then
@@ -484,6 +450,23 @@ local function drawFile(forcedredraw)
     else
         write(" ")
     end
+    if linenumbers then
+        setcolors(colors.black, colors.yellow)
+        for i=currFileOffset,(hig-1)+currFileOffset,1 do
+            setpos(1, i - currFileOffset)
+            if i < 1000 then
+                for i=1,3 - #(tostring(i)),1 do
+                    write(" ")
+                end
+            end
+            if i < 10000 then
+                write(i)
+                write(" ")
+            else
+                write("10k+")
+            end
+        end
+    end
 end
 
 local function moveCursorLeft()
@@ -492,8 +475,10 @@ local function moveCursorLeft()
         if currCursorX < 1 then
             currCursorX = currCursorX + 1
             currXOffset = currXOffset - 1
+            drawFile(true)
+        else
+            drawFile()
         end
-        drawFile()
     end
     oldx = nil
 end
@@ -508,15 +493,17 @@ local function moveCursorRight(endPad)
             if currCursorX + lineoffset > wid then
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
+                drawFile(true)
+            else
+                drawFile()
             end
-            drawFile()
         end
     end
     oldx = nil
 end
 
-local function moveCursorUp()
-    if oldx ~= nil then
+local function moveCursorUp(ignoreX)
+    if oldx ~= nil and not ignoreX then
         currCursorX = oldx - currXOffset
     else
         oldx = currCursorX + currXOffset
@@ -585,6 +572,73 @@ local function moveCursorDown()
             currCursorY = currCursorY - 1
         end
         drawFile()
+    end
+end
+
+--Recalculate where multi-line comments are, based on position in file
+local function recalcMLCs(force)
+    if fileContents[currfile]["Multi-line comments"] and not lowspec then
+        local synt
+        if fileContents[currfile]["filetype"] then
+            local tmp = require("/vim/syntax/"..fileContents[currfile]["filetype"])
+            synt = tmp.syntax()
+        end
+        if ((tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or (not tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or force) and syntaxhighlighting then
+            local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
+            if synt then
+                local quotepoints = {}
+                local justset = false
+                for j=1,#fileContents[currfile],1 do
+                    local quotationmarks = str.indicesOfLetter(fileContents[currfile][j], synt[3])
+                    local inquotes = false
+                    justset = false
+                    for k=1,#fileContents[currfile][j],1 do
+                        if tab.find(quotationmarks, k) then
+                            if not inquotes then
+                                if k < quotationmarks[#quotationmarks] then
+                                    inquotes = true
+                                    justset = true
+                                end
+                            end
+                        end
+                        if inquotes then
+                            table.insert(quotepoints, #quotepoints, k - 2)
+                        end
+                        if tab.find(quotationmarks, k) and not justset then
+                            if inquotes then
+                                inquotes = false
+                            end
+                        end
+                        justset = false
+                    end
+                end
+                local inmulti = false
+                justset = false
+                for j=1,#fileContents[currfile],1 do
+                    if str.find(fileContents[currfile][j], synt[7][1], quotepoints) and not inmulti then
+                        inmulti = true
+                        justset = true
+                        table.insert(multilinesInFile[1], #multilinesInFile[1] + 1, j)
+                    end
+                    if inmulti and not (str.find(fileContents[currfile][j], synt[7][2])) and not justset then
+                        table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
+                    end
+                    if str.find(fileContents[currfile][j], synt[7][2]) then
+                        if inmulti then
+                            inmulti = false
+                            table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
+                        end
+                    end
+                    justset = false
+                end
+                fileContents[currfile]["Multi-line comments"] = multilinesInFile
+                return true
+            end
+        else
+            return false
+        end
+    else
+        return false
     end
 end
 
@@ -665,23 +719,27 @@ local function insertMode()
                 if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil and currCursorX > 1 then
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
                     moveCursorLeft()
+                    local redrawhere = recalcMLCs()
                     fileContents[currfile]["unsavedchanges"] = true
-                    drawFile()
+                    drawFile(redrawhere)
                 else
                     if currCursorX + currXOffset < 2 then
-                        if #filelines > 1 then
-                            currCursorX = #(filelines[currCursorY + currFileOffset - 1]) + 1
-                            filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
-                            table.remove(filelines, currCursorY + currFileOffset)
-                            moveCursorUp()
-                            if currCursorX + lineoffset > wid then
-                                while currCursorX + lineoffset > wid do
-                                    currXOffset = currXOffset + 1
-                                    currCursorX = currCursorX - 1
+                        if currCursorY + currFileOffset > 1 then
+                            if #filelines > 1 then
+                                currCursorX = #(filelines[currCursorY + currFileOffset - 1]) + 1
+                                filelines[currCursorY + currFileOffset - 1] = filelines[currCursorY + currFileOffset - 1] .. filelines[currCursorY + currFileOffset]
+                                table.remove(filelines, currCursorY + currFileOffset)
+                                moveCursorUp(true)
+                                if currCursorX + lineoffset > wid then
+                                    while currCursorX + lineoffset > wid do
+                                        currXOffset = currXOffset + 1
+                                        currCursorX = currCursorX - 1
+                                    end
                                 end
+                                recalcMLCs()
+                                drawFile(true)
+                                fileContents[currfile]["unsavedchanges"] = true
                             end
-                            drawFile(true)
-                            fileContents[currfile]["unsavedchanges"] = true
                         end
                     else
                         filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
@@ -691,7 +749,8 @@ local function insertMode()
                             currCursorX = currXOffset + currCursorX
                             currXOffset = 0
                         end
-                        drawFile()
+                        local redrawhere = recalcMLCs()
+                        drawFile(redrawhere)
                         fileContents[currfile]["unsavedchanges"] = true
                     end
                 end
@@ -706,7 +765,8 @@ local function insertMode()
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
-                drawFile()
+                recalcMLCs()
+                drawFile(true)
             end
         elseif ev == "char" then
             if filelines[currCursorY + currFileOffset] == nil then
@@ -718,7 +778,8 @@ local function insertMode()
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
             end
-            drawFile()
+            local redrawhere = recalcMLCs()
+            drawFile(redrawhere)
             if not fileContents[currfile] then
                 fileContents[currfile] = {""}
             end
@@ -753,7 +814,8 @@ local function appendMode()
                 if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil and currCursorX > 1 then
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
                     moveCursorLeft()
-                    drawFile()
+                    local redrawhere = recalcMLCs()
+                    drawFile(redrawhere)
                     fileContents[currfile]["unsavedchanges"] = true
                 else
                     if currCursorX + currXOffset > 1 then
@@ -764,6 +826,7 @@ local function appendMode()
                             currCursorX = currXOffset + currCursorX + 1
                             currXOffset = 0
                         end
+                        recalcMLCs()
                         drawFile()
                         fileContents[currfile]["unsavedchanges"] = true
                     end
@@ -779,6 +842,7 @@ local function appendMode()
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
+                recalcMLCs()
                 drawFile(true)
             end
         elseif ev == "char" then
@@ -787,6 +851,7 @@ local function appendMode()
             end
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
             moveCursorRight(0)
+            recalcMLCs()
             drawFile()
             if not fileContents[currfile] then
                 fileContents[currfile] = filelines
@@ -816,6 +881,8 @@ if fs.exists("/vim/.vimrc") then
                     elseif rctable[2] == "number" then
                         linenumbers = true
                         lineoffset = 4
+                    elseif rctable[2] == "lowperformance" then
+                        lowspec = true
                     end
                 else
                     --set the things to values
@@ -1182,9 +1249,9 @@ if #decargs["files"] > 0 then
             decargs["files"][i] = dirOpener(fil.topath(decargs["files"][i]), decargs["files"][i])
         end
         local nodirectories = fs.getName(decargs["files"][i])
+        local filenamestring = ""
         if fs.exists(fil.topath(decargs["files"][i])) then
             local doneGettingEnd = false
-            local filenamestring = ""
             for j=#nodirectories,1,-1 do
                 if string.sub(nodirectories, j, j) ~= "." and not doneGettingEnd then
                     filenamestring = string.sub(nodirectories, j, j) .. filenamestring
@@ -1212,7 +1279,6 @@ if #decargs["files"] > 0 then
             table.insert(fileContents, #fileContents + 1, {""})
             newfile = true
             local doneGettingEnd = false
-            local filenamestring = ""
             for j=#decargs["files"][i],1,-1 do
                 if string.sub(decargs["files"][i], j, j) ~= "." and not doneGettingEnd then
                     filenamestring = string.sub(decargs["files"][i], j, j) .. filenamestring
@@ -1231,8 +1297,64 @@ if #decargs["files"] > 0 then
                 fileContents[i]["filetype"] = nil
             end
         end
-        filelines = fileContents[1]
+        local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
+        local synt
+        if filenamestring ~= decargs["files"][i] and filenamestring ~= string.sub(decargs["files"][i], 2, #decargs["files"][i]) then
+            if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                local tmp = require("/vim/syntax/"..filenamestring)
+                synt = tmp.syntax()
+            end
+        end
+        if synt then
+            local quotepoints = {}
+            local justset = false
+            for j=1,#fileContents[i],1 do
+                local quotationmarks = str.indicesOfLetter(fileContents[i][j], synt[3])
+                local inquotes = false
+                justset = false
+                for k=1,#fileContents[i][j],1 do
+                    if tab.find(quotationmarks, k) then
+                        if not inquotes then
+                            if k < quotationmarks[#quotationmarks] then
+                                inquotes = true
+                                justset = true
+                            end
+                        end
+                    end
+                    if inquotes then
+                        table.insert(quotepoints, #quotepoints, k - 2)
+                    end
+                    if tab.find(quotationmarks, k) and not justset then
+                        if inquotes then
+                            inquotes = false
+                        end
+                    end
+                    justset = false
+                end
+            end
+            local inmulti = false
+            justset = false
+            for j=1,#fileContents[i],1 do
+                if str.find(fileContents[i][j], synt[7][1], quotepoints) and not inmulti then
+                    inmulti = true
+                    justset = true
+                    table.insert(multilinesInFile[1], #multilinesInFile[1] + 1, j)
+                end
+                if inmulti and not (str.find(fileContents[i][j], synt[7][2])) and not justset then
+                    table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
+                end
+                if str.find(fileContents[i][j], synt[7][2]) then
+                    if inmulti then
+                        inmulti = false
+                        table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
+                    end
+                end
+                justset = false
+            end
+            fileContents[i]["Multi-line comments"] = multilinesInFile
+        end
     end
+    filelines = fileContents[1]
     filename = decargs["files"][1]
     if filelines[1] ~= nil then
         local tb = str.wordBeginnings(filelines[1])
@@ -1398,6 +1520,7 @@ while running == true do
                                 currFileOffset = fileContents[currfile]["cursor"][4]
                             end
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         clearScreenLine(hig)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
@@ -1446,6 +1569,7 @@ while running == true do
                                     currCursorY = fileContents[currfile]["cursor"][3]
                                     currFileOffset = fileContents[currfile]["cursor"][4]
                                 end
+                                recalcMLCs(true)
                                 drawFile(true)
                                 clearScreenLine(hig)
                             end
@@ -1541,6 +1665,7 @@ while running == true do
                     if newfile then
                         moveCursorRight()
                     end
+                    recalcMLCs(true)
                     drawFile(true)
                 else
                     err("No file name")
@@ -1559,6 +1684,7 @@ while running == true do
                         for i=1,#secondArr,1 do
                             table.insert(filelines, secondArr[i])
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         sendMsg("\""..name.."\" "..#secondArr.."L, "..#(tab.getLongestItem(secondArr)).."C")
                     else
@@ -1592,6 +1718,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                     end
+                    recalcMLCs(true)
                     drawFile(true)
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     filename = openfiles[currfile]
@@ -1621,6 +1748,7 @@ while running == true do
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
                     end
+                    recalcMLCs(true)
                     drawFile(true)
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     filename = openfiles[currfile]
@@ -1638,6 +1766,7 @@ while running == true do
                         currCursorY = fileContents[currfile]["cursor"][3]
                         currFileOffset = fileContents[currfile]["cursor"][4]
                     end
+                    recalcMLCs(true)
                     drawFile(true)
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                 end
@@ -1692,6 +1821,7 @@ while running == true do
                     currXOffset = 0
                     currCursorY = 1
                     currFileOffset = 0
+                    recalcMLCs(true)
                     drawFile(true)
                 else
                     if cmdtab[2] then
@@ -1724,6 +1854,7 @@ while running == true do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
+                            recalcMLCs(true)
                             drawFile(true)
                         else
                             local templines = fil.toArr(fil.topath(name))
@@ -1742,6 +1873,7 @@ while running == true do
                             currXOffset = 0
                             currCursorY = 1
                             currFileOffset = 0
+                            recalcMLCs(true)
                             drawFile(true)
                         end
                     else
@@ -1757,6 +1889,7 @@ while running == true do
                         currXOffset = 0
                         currCursorY = 1
                         currFileOffset = 0
+                        recalcMLCs(true)
                         drawFile(true)
                     end
                 end
@@ -1792,6 +1925,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         clearScreenLine(hig)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
@@ -1811,6 +1945,12 @@ while running == true do
                     drawFile(true)
                 elseif cmdtab[2] == "nomobile" then
                     mobile = false
+                elseif cmdtab[2] == "lowspec" then
+                    lowspec = true
+                    drawFile(true)
+                elseif cmdtab[2] == "nolowspec" then
+                    lowspec = false
+                    drawFile(true)
                 elseif str.find(cmdtab[2], "=") then
                     local tmp = str.split(cmdtab[2], "=")
                     local comm = tmp[1]
@@ -1839,6 +1979,7 @@ while running == true do
                     end
                     resetSize()
                     redrawTerm()
+                    recalcMLCs(true)
                     drawFile(true)
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
@@ -1858,6 +1999,7 @@ while running == true do
                 else
                     err("invalid :syntax subcommand: "..cmdtab[2])
                 end
+                recalcMLCs(true)
                 drawFile(true)
             elseif cmdtab[1] == ":control" or cmdtab[1] == ":ctrl" then --not yet working
                 local _, ch
@@ -1951,6 +2093,7 @@ while running == true do
         elseif var1 == "r" then
             local _, chr = pullChar()
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. chr .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
+            recalcMLCs()
             drawFile(true)
             if fileContents[currfile] then
                 fileContents[currfile]["unsavedchanges"] = true
@@ -1959,6 +2102,7 @@ while running == true do
             if filelines[currCursorY + currFileOffset] and filelines[currCursorY + currFileOffset + 1] then
                 filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. " " .. filelines[currCursorY + currFileOffset + 1]
                 table.remove(filelines, currCursorY + currFileOffset + 1)
+                recalcMLCs()
                 drawFile(true)
                 fileContents[currfile]["unsavedchanges"] = true
             end
@@ -1967,6 +2111,7 @@ while running == true do
             moveCursorDown()
             currCursorX = 1
             currXOffset = 0
+            recalcMLCs()
             drawFile(true)
             insertMode()
             if fileContents[currfile] then
@@ -1976,6 +2121,7 @@ while running == true do
             table.insert(filelines, currCursorY + currFileOffset, "")
             currCursorX = 1
             currXOffset = 0
+            recalcMLCs()
             drawFile(true)
             insertMode()
             fileContents[currfile]["unsavedchanges"] = true
@@ -2052,6 +2198,7 @@ while running == true do
             copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
             copytype = "text"
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
+            recalcMLCs()
             drawFile()
             if fileContents[currfile] then
                 fileContents[currfile]["unsavedchanges"] = true
@@ -2113,16 +2260,20 @@ while running == true do
             while currCursorX + currXOffset > #filelines[currCursorY + currFileOffset] do
                 currCursorX = currCursorX - 1
                 if currCursorX < 1 then
-                    currXOffset = currXOffset - 1
-                    currCursorX = currCursorX + 1
+                    while currCursorX < 1 do
+                        currXOffset = currXOffset - 1
+                        currCursorX = currCursorX + 1
+                    end
                 end
             end
+            recalcMLCs()
             drawFile(true)
         elseif var1 == "D" then
             copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
             copytype = "text"
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
             drawFile()
+            recalcMLCs()
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "p" then
             if copytype == "line" then
@@ -2139,6 +2290,7 @@ while running == true do
                     table.insert(filelines, currCursorY + currFileOffset + 1, copybuffer[i])
                 end
             end
+            recalcMLCs(true)
             drawFile(true)
             if fileContents[currfile] then
                 fileContents[currfile]["unsavedchanges"] = true
@@ -2163,6 +2315,7 @@ while running == true do
                     currFileOffset = currFileOffset + 1
                 end
             end
+            recalcMLCs(true)
             drawFile(true)
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "$" then
@@ -2211,6 +2364,7 @@ while running == true do
                         for i=1,tonumber(num),1 do
                             table.remove(filelines, currCursorY + currFileOffset)
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         fileContents[currfile]["unsavedchanges"] = true
                     end
@@ -2239,6 +2393,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
@@ -2421,6 +2576,7 @@ while running == true do
             if c == "J" then
                 filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. filelines[currCursorY + currFileOffset + 1]
                 table.remove(filelines, currCursorY + currFileOffset + 1)
+                recalcMLCs()
                 drawFile(true)
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "g" then
@@ -2475,6 +2631,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
@@ -2488,6 +2645,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
@@ -2506,6 +2664,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     else
@@ -2519,6 +2678,7 @@ while running == true do
                             currCursorY = fileContents[currfile]["cursor"][3]
                             currFileOffset = fileContents[currfile]["cursor"][4]
                         end
+                        recalcMLCs(true)
                         drawFile(true)
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
                     end
@@ -2708,11 +2868,13 @@ while running == true do
                 filelines[currCursorY + currFileOffset] = ""
                 currCursorX = 1
                 currXOffset = 0
+                recalcMLCs()
                 drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
                 insertMode()
             elseif c == "$" then
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
+                recalcMLCs()
                 drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
                 insertMode()
@@ -2727,6 +2889,7 @@ while running == true do
                         currCursorX = currCursorX - 1
                         currXOffset = currXOffset + 1
                     end
+                    recalcMLCs()
                     drawFile()
                     fileContents[currfile]["unsavedchanges"] = true
                     insertMode()
@@ -2734,17 +2897,20 @@ while running == true do
             elseif c == "w" or c == "e" then
                 local word, beg, ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1).. string.sub(filelines[currCursorY + currFileOffset], ed + 1, #filelines[currCursorY + currFileOffset])
+                recalcMLCs()
                 drawFile()
                 fileContents[currfile]["unsavedchanges"] = true
                 insertMode()
             end
         elseif var1 == "C" then
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
+            recalcMLCs()
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true
             insertMode()
         elseif var1 == "s" then
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #filelines[currCursorY + currFileOffset])
+            recalcMLCs()
             drawFile()
             if not fileContents[currfile] then
                 fileContents[currfile] = {""}
@@ -2755,6 +2921,7 @@ while running == true do
             filelines[currCursorY + currFileOffset] = ""
             currCursorX = 1
             currXOffset = 0
+            recalcMLCs()
             drawFile()
             fileContents[currfile]["unsavedchanges"] = true
             insertMode()

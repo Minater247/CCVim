@@ -1,12 +1,13 @@
 //TODO
 
-LITTLE PROJECTS:
--- Optimize when it reloads file contents (consolidate to function?)
+SOON PROJECTS:
+-- Optimize the way it recalculates MLCs
 
-BIG PROJECTS:
+LATER PROJECTS:
 -- Check if file opened in tab
--- Move command handling to its own function so it can be called outside of main loop
+-- Move command handling to its own function so it can be called outside of main loop (keys and : commands)
 -- Visual mode
 -- Undo tree
     - Better change detection 
 -- Look into more of the file explorer commands
+-- Multiple multi-line comments on one line
