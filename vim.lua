@@ -258,22 +258,6 @@ local function drawFile(forcedredraw)
             setpos(1, i - currFileOffset)
             if filelines then
                 if filelines[i] ~= nil then
-                    setcolors(colors.black, colors.yellow)
-                    if linenumbers then
-                        if i < 1000 then
-                            for i=1,3 - #(tostring(i)),1 do
-                                write(" ")
-                            end
-                        end
-                        if i < 10000 then
-                            write(i)
-                            if i < 1000 then
-                                write(" ")
-                            end
-                        else
-                            write("10k+")
-                        end
-                    end
                     setcolors(colors.black, colors.white)
                     if fileContents[currfile] then
                         if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
@@ -346,23 +330,6 @@ local function drawFile(forcedredraw)
                                     write(string.sub(filelines[i], 1, commentstart + 1))
                                 end
                             end
-                            --repeat the line number drawing since we just overwrote it
-                            setpos(1, i)
-                            setcolors(colors.black, colors.yellow)
-                            local _, yy = getWindSize()
-                            if yy ~= hig then
-                                if i < 1000 then
-                                    for i=1,3 - #(tostring(i)),1 do
-                                        write(" ")
-                                    end
-                                end
-                                if i < 10000 then
-                                    write(i)
-                                    write(" ")
-                                else
-                                    write("10k+")
-                                end
-                            end
                         else
                             write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
                         end
@@ -374,29 +341,13 @@ local function drawFile(forcedredraw)
             end
         end
     else
-        --only draw one line
+        --only draw 3 lines
         for i=currCursorY + currFileOffset - 1, currCursorY + currFileOffset + 2, 1 do
             if i - currFileOffset < hig then
                 clearScreenLine(i - currFileOffset)
                 setpos(1, i - currFileOffset)
                 if filelines then
                     if filelines[i] ~= nil then
-                        setcolors(colors.black, colors.yellow)
-                        if linenumbers then
-                            if i < 1000 then
-                                for i=1,3 - #(tostring(i)),1 do
-                                    write(" ")
-                                end
-                            end
-                            if i < 10000 then
-                                write(i)
-                                if i < 1000 then
-                                    write(" ")
-                                end
-                            else
-                                write("10k+")
-                            end
-                        end
                         setcolors(colors.black, colors.white)
                         if fileContents[currfile] then
                             if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
@@ -469,23 +420,6 @@ local function drawFile(forcedredraw)
                                         write(string.sub(filelines[i], 1, commentstart + 1))
                                     end
                                 end
-                                --repeat the line number drawing since we just overwrote it
-                                setpos(1, i)
-                                setcolors(colors.black, colors.yellow)
-                                local _, yy = getWindSize()
-                                if yy ~= hig then
-                                    if i < 1000 then
-                                        for i=1,3 - #(tostring(i)),1 do
-                                            write(" ")
-                                        end
-                                    end
-                                    if i < 10000 then
-                                        write(i)
-                                        write(" ")
-                                    else
-                                        write("10k+")
-                                    end
-                                end
                             else
                                 write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
                             end
@@ -498,6 +432,7 @@ local function drawFile(forcedredraw)
             end
         end
     end
+    -- Draw the cursor
     local tmp
     if filelines then
         if filelines[currCursorY + currFileOffset] ~= nil then
@@ -515,6 +450,23 @@ local function drawFile(forcedredraw)
     else
         write(" ")
     end
+    if linenumbers then
+        setcolors(colors.black, colors.yellow)
+        for i=currFileOffset,(hig-1)+currFileOffset,1 do
+            setpos(1, i - currFileOffset)
+            if i < 1000 then
+                for i=1,3 - #(tostring(i)),1 do
+                    write(" ")
+                end
+            end
+            if i < 10000 then
+                write(i)
+                write(" ")
+            else
+                write("10k+")
+            end
+        end
+    end
 end
 
 local function moveCursorLeft()
@@ -523,8 +475,10 @@ local function moveCursorLeft()
         if currCursorX < 1 then
             currCursorX = currCursorX + 1
             currXOffset = currXOffset - 1
+            drawFile(true)
+        else
+            drawFile()
         end
-        drawFile()
     end
     oldx = nil
 end
@@ -539,8 +493,10 @@ local function moveCursorRight(endPad)
             if currCursorX + lineoffset > wid then
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1
+                drawFile(true)
+            else
+                drawFile()
             end
-            drawFile()
         end
     end
     oldx = nil
