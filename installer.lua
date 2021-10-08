@@ -1,7 +1,7 @@
 --[[ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
                         CCVIM INSTALLER
-                          VERSION 0.14
+                          VERSION 0.141
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -]]
 
@@ -15,23 +15,6 @@ local function initialMenu()
     print("3. Add syntax to installation")
     print("4. Update CCVIM")
     print("5. Exit")
-end
-
-local function toArr(filePath)
-    local fileHandle = fs.open(filePath, "r")
-    local log
-    if fileHandle then
-        log = {}
-        local line = fileHandle.readLine()
-        while line do
-            table.insert(log, line)
-            line = fileHandle.readLine()
-        end
-        fileHandle.close()
-        return log
-    else
-        return false
-    end
 end
 
 local function find(table, query)
