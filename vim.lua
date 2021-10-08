@@ -331,6 +331,7 @@ local function drawFile(forcedredraw)
                                 end
                             end
                         else
+                            setpos(1 - currXOffset + lineoffset, i - currFileOffset)
                             write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
                         end
                     end
@@ -421,6 +422,7 @@ local function drawFile(forcedredraw)
                                     end
                                 end
                             else
+                                setpos(1 - currXOffset + lineoffset, i - currFileOffset)
                                 write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
                             end
                         end
@@ -583,7 +585,7 @@ local function recalcMLCs(force)
             local tmp = require("/vim/syntax/"..fileContents[currfile]["filetype"])
             synt = tmp.syntax()
         end
-        if ((tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or (not tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or force) and syntaxhighlighting then
+        if force then
             local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
             if synt then
                 local quotepoints = {}
@@ -634,6 +636,12 @@ local function recalcMLCs(force)
                 fileContents[currfile]["Multi-line comments"] = multilinesInFile
                 return true
             end
+        elseif (tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][2])) then
+            if currCursorY + currFileOffset > fileContents[currfile]["Multi-line comments"][3][1] then
+                error("ok we got something")
+            end
+        end
+        if ((tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or force) and syntaxhighlighting then
         else
             return false
         end
