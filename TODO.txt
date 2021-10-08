@@ -2,13 +2,12 @@
 
 SOON PROJECTS:
 -- Optimize the way it recalculates MLCs
--- MLCs on one line
 
 LATER PROJECTS:
 -- Check if file opened in tab
--- Move command handling to its own function so it can be called outside of main loop
+-- Move command handling to its own function so it can be called outside of main loop (keys and : commands)
 -- Visual mode
 -- Undo tree
     - Better change detection 
 -- Look into more of the file explorer commands
--- Multi-line comments
+-- Multiple multi-line comments on one line
