@@ -2,6 +2,7 @@
 
 SOON PROJECTS:
 -- Optimize the way it recalculates MLCs
+-- Get the file to only draw the line numbers for lines which are known
 
 LATER PROJECTS:
 -- Check if file opened in tab
