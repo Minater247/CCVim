@@ -748,14 +748,18 @@ local function recalcMLCs(force)
                                 justset = false
                             end
                         end
-                        justset = false
+                        for j=index,1,-1 do
+                            if not tab.find(fileContents[currfile]["Multi-line comments"][1], j) then
+                                index = index - 1
+                            end
+                        end
                         for j=index + 1,#filelines,1 do
-                            table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
                             if str.find(filelines[j], synt[7][2]) then
                                 table.insert(multilinesInFile[3], #multilinesInFile[3] + 1, j)
                                 break
+                            else
+                                table.insert(multilinesInFile[2], #multilinesInFile[2] + 1, j)
                             end
-                            justset = false
                         end
                         fileContents[currfile]["Multi-line comments"] = multilinesInFile
                         return true
