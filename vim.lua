@@ -690,6 +690,9 @@ local function recalcMLCs(force)
                             end
                             index = index + 1
                         end
+                        for i=currCursorY + currFileOffset + 1,1,-1 do
+                            index = i
+                        end
                         local inmulti = true
                         justset = false
                         for j=index + 1,#filelines,1 do
@@ -714,6 +717,14 @@ local function recalcMLCs(force)
                     --remove all the points between and the end point
                     local multilinesInFile = fileContents[currfile]["Multi-line comments"]
                     local index
+                    if currCursorY + currFileOffset > fileContents[currfile]["Multi-line comments"][1][#fileContents[currfile]["Multi-line comments"][1]] and not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset + 1) then
+                        index = currCursorY + currFileOffset + 1
+                        while tab.find(fileContents[currfile]["Multi-line comments"][2], index) do
+                            table.remove(fileContents[currfile]["Multi-line comments"][2], tab.find(fileContents[currfile]["Multi-line comments"][2], index))
+                            sendMsg(tab.find(fileContents[currfile]["Multi-line comments"][2], index))
+                            index = index + 1
+                        end
+                    end
                     if not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset - 1) then
                         index = currCursorY + currFileOffset - 1
                         while tab.find(fileContents[currfile]["Multi-line comments"][2], index) do
