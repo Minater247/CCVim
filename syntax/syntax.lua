@@ -194,7 +194,6 @@ local function multiLineComments(arr)
 
             if string.find(inarr[j][1], "%-%-%[%[") then
                 if not incomment then
-                    --TODO: split the comment and words
                     local precomment = inarr[j][1]:sub(1, string.find(inarr[j][1], "%-%-%[%[") - 1)
                     local comment = inarr[j][1]:sub(string.find(inarr[j][1], "%-%-%[%["))
                     table.remove(arr[i], j)
@@ -256,18 +255,17 @@ local keywords = {
 local function keyword(arr)
     for i=1,#arr do
         for j=1,#arr[i] do
-            if keywords[arr[i][j][1]] then
+            if keywords[arr[i][j][1]] and arr[i][j][2] == "text" then
                 arr[i][j][2] = "k"..keywords[arr[i][j][1]]
             end
         end
     end
-    print(textutils.serialize(arr))
     return arr
 end
 
 function parser.parse(arr, options)
     --options is an array
-    --TODO: options
+    --TODO IN FUTURE UPDATE: options
 
     local splitarr = {}
     for i=1,#arr do
@@ -277,13 +275,8 @@ function parser.parse(arr, options)
     splitarr = multiLineComments(splitarr)
     splitarr = strings(splitarr)
     splitarr = keyword(splitarr)
-    --multiLineComments(splitarr)
 
     return splitarr
 end
 
-local args = {...}
-local fil = require("/vim/lib/fil")
-local filearr = fil.toArr(args[1])
-parser.parse(filearr)
---print(textutils.serialise(parser.parse(filearr)))
+return parser
