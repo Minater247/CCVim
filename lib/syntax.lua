@@ -17,11 +17,14 @@ local parser = {}
 
 local output = io.open("/vim/syntax/synt.log", "w")
 io.output(output)
+print("This is a log file for the syntax module")
+local hasprinted = false
 local function print(...)
     local args = {...}
     io.write(os.date() .. " LOG: " .. table.concat(args, " "))
     io.write("\n")
     io.flush()
+    hasprinted = true
 end
 
 local function splitAtPunctuation(str)
@@ -277,6 +280,10 @@ function parser.parse(arr, options)
     splitarr = keyword(splitarr)
 
     return splitarr
+end
+
+if not hasprinted then
+    fs.delete("/vim/syntax/synt.log")
 end
 
 return parser

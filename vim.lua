@@ -58,6 +58,7 @@ local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
 local str = require("/vim/lib/str")
 local fil = require("/vim/lib/fil")
+local syn = require("/vim/lib/syntax")
 local monitor
 local decargs = argv.pull(args, validArgs, unimplementedArgs) --DecodedArguments
 local openfiles = {}
