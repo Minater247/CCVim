@@ -17,7 +17,6 @@ local parser = {}
 
 local output = io.open("/vim/syntax/synt.log", "w")
 io.output(output)
-print("This is a log file for the syntax module")
 local hasprinted = false
 local function print(...)
     local args = {...}

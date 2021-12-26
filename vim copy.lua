@@ -1,3 +1,5 @@
+--REFERENCE FILE
+--DELETE THIS BEFORE FINAL COMMIT
 local args = {...}
 
 local validArgs = {
@@ -255,7 +257,6 @@ local function drawFile(forcedredraw)
         end
         oldXOffset = currXOffset
         oldFileOffset = currFileOffset
-        local syntarray = syn.parse(filelines)
         for i=currFileOffset,(hig - 1) + currFileOffset,1 do
             setpos(1, i - currFileOffset)
             if filelines then
@@ -264,8 +265,76 @@ local function drawFile(forcedredraw)
                     if fileContents[currfile] then
                         if fileContents[currfile]["filetype"] and syntaxhighlighting and filetypearr[fileContents[currfile]["filetype"]] then
                             local synt = filetypearr[fileContents[currfile]["filetype"]].syntax()
+                            local wordsOfLine = str.split(filelines[i], " ")
                             setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                            write(string.sub(filelines[i], 1, #filelines[i]))
+                            for j=1,#wordsOfLine,1 do
+                                if tab.find(synt[1], wordsOfLine[j]) then
+                                    setcolors(colors.yellow, colors.blue)
+                                elseif tab.find(synt[2][1], wordsOfLine[j]) then
+                                    setcolors(colors.black, colors.lightBlue)
+                                elseif tab.find(synt[2][2], wordsOfLine[j]) then
+                                    setcolors(colors.black, colors.purple)
+                                else
+                                    setcolors(colors.black, colors.white)
+                                end
+                                write(wordsOfLine[j])
+                                if j ~= #wordsOfLine then
+                                    setcolors(colors.black, colors.white)
+                                    write(" ")
+                                end
+                            end
+                            --another loop for drawing strings
+                            setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                            local quotationmarks = str.indicesOfLetter(filelines[i], synt[3])
+                            local inquotes = false
+                            local justset = false
+                            local quotepoints = {}
+                            setcolors(colors.black, colors.red)
+                            for j=1,#filelines[i],1 do
+                                setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                                if tab.find(quotationmarks, j) then
+                                    if not inquotes then
+                                        if j < quotationmarks[#quotationmarks] then
+                                            inquotes = true
+                                            justset = true
+                                        end
+                                    end
+                                end
+                                if inquotes then
+                                    write(string.sub(filelines[i], j, j))
+                                    table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
+                                end
+                                if tab.find(quotationmarks, j) and not justset then
+                                    if inquotes then
+                                        inquotes = false
+                                    end
+                                end
+                                justset = false
+                            end
+                            local commentstart = 0
+                            commentstart = str.find(filelines[i], synt[4], quotepoints)
+                            if commentstart and commentstart ~= false then
+                                setpos(1 - currXOffset + lineoffset + commentstart - 1, i - currFileOffset)
+                                setcolors(colors.black, colors.green)
+                                write(string.sub(filelines[i], commentstart, #filelines[i]))
+                            end
+                            commentstart = str.find(filelines[i], synt[7][2])
+                            if not commentstart then
+                                commentstart = 0
+                            end
+                            if not lowspec then
+                                if fileContents[currfile]["Multi-line comments"] then
+                                    if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(filelines[i])
+                                    elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(string.sub(filelines[i], 1, commentstart + 1))
+                                    end
+                                end
+                            end
                         else
                             setpos(1 - currXOffset + lineoffset, i - currFileOffset)
                             write(string.sub(filelines[i], 1, #filelines[i]))
