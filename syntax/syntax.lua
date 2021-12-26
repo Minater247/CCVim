@@ -89,7 +89,7 @@ local function strings(arr)
         while j <= #inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
             
-            if string.find(inarr[j][1], "\"") then
+            if string.find(inarr[j][1], "\"") and inarr[j][2] ~= "comment" then
                 if skip > 0 then
                     skip = skip - 1
                 else
@@ -145,17 +145,15 @@ end
 
 local function comments(arr)
     local incomment = false
-    strarr = strings(arr) --do the strings here so we can skip them
     for i=1,#arr do
         --each item iterated in this layer is a line table
         incomment = false
         local inarr = arr[i]
-        local instrarr = strarr[i]
         local j = 1 --needs custom iterator, because we're splitting some sets of characters into 2 items
         while j <= #inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
-            if string.find(inarr[j][1], "%-%-") and instrarr[j][2] ~= "string" then
+            if string.find(inarr[j][1], "%-%-") then
                 if not incomment then
                     --if there's anything before the comment, break it up
                     local before
@@ -194,26 +192,75 @@ local function multiLineComments(arr)
         for j=1,#inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
-            print(textutils.serialise(inarr[j]))
-            if string.find(inarr[j][1], "%-%-%[%[") and not inarr[j][2] == "string" then
+            if string.find(inarr[j][1], "%-%-%[%[") then
                 if not incomment then
-                    print("found comment start")
-                    print(inarr[j][1])
                     --TODO: split the comment and words
+                    local precomment = inarr[j][1]:sub(1, string.find(inarr[j][1], "%-%-%[%[") - 1)
+                    local comment = inarr[j][1]:sub(string.find(inarr[j][1], "%-%-%[%["))
+                    table.remove(arr[i], j)
+                    if precomment ~= "" then
+                        table.insert(arr[i], j, {precomment, "text"})
+                        table.insert(arr[i], j + 1, {comment, "comment"})
+                    else
+                        table.insert(arr[i], j, {comment, "comment"})
+                    end
 
                     incomment = true
+                else
+                    arr[i][j][2] = "comment"
                 end
-            elseif string.find(inarr[j][1], "%-%-%]%]") and incomment then
-                print("found comment end")
-                print(inarr[j][1])
+            elseif string.find(inarr[j][1], "%]%]") and incomment then
+                local postcomment
+                local comment = inarr[j][1]:sub(1, string.find(inarr[j][1], "%]%]") + 1)
+                if string.find(inarr[j][1], "%]%]") < #inarr[j][1] - 1 then
+                    postcomment = inarr[j][1]:sub(string.find(inarr[j][1], "%]%]"))
+                end
+                table.remove(arr[i], j)
+                if postcomment and postcomment ~= "" then
+                    table.insert(arr[i], j, {comment, "comment"})
+                    table.insert(arr[i], j + 1, {postcomment, "text"})
+                else
+                    table.insert(arr[i], j, {comment, "comment"})
+                end
+
+                incomment = false
+            else
+                if incomment then
+                    arr[i][j][2] = "comment"
+                end
             end
-
         end
-
     end
+
+    print(textutils.serialise(arr))
+    return arr
 end
 
 --TODO: recheck strings to make sure the beginning isn't cut off by a comment
+
+
+
+local keywords = {
+    purple = {
+        "function",
+        "if",
+        "else",
+        "elseif",
+        "while",
+        "for",
+        "repeat",
+        "until",
+        "break",
+        "end",
+        "return"
+    },
+    blue = {
+        "local",
+        "true",
+        "false",
+        "nil"
+    },
+}
 
 function parser.parse(arr, options)
     --options is an array
