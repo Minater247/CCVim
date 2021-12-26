@@ -40,7 +40,7 @@ local function splitAtPunctuation(str)
             end
             ii = ii - 1
             if sect ~= "" then
-                sects[#sects+1] = {sect, "unmodified text"}
+                sects[#sects+1] = {sect, "text"}
                 sect = ""
             end
         else
@@ -52,7 +52,7 @@ local function splitAtPunctuation(str)
         end
     end
     if sect ~= "" then
-        sects[#sects+1] = {sect, "unmodified text"}
+        sects[#sects+1] = {sect, "text"}
     end
     return sects
 end
@@ -81,53 +81,92 @@ local function strings(arr)
         instring = false
         skip = 0
         local inarr = arr[i]
-        for j=1,#inarr do
+        local j = 1 --needs custom iterator, because we're splitting some sets of characters into 2 items
+        while j <= #inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
-            --print(textutils.serialise(inarr[j]))
             if string.find(inarr[j][1], "\"") then
-                print("found something at "..inarr[j][1])
                 if skip > 0 then
                     skip = skip - 1
-                    arr[i][j][2] = "skipped"
                 else
                     if not instring then
-                        print("found string "..inarr[j][1])
                         --if there's anything before the quotation mark, break it up
                         local before
                         local comment = inarr[j][1]
                         if string.find(inarr[j][1], "\"") > 1 then
                             before = inarr[j][1]:sub(1, string.find(inarr[j][1], "\"") - 1)
                             comment = inarr[j][1]:sub(string.find(inarr[j][1], "\""), #inarr[j][1])
-                            print("starts with " .. before.. " and ends with " .. comment)
                         end
                         table.remove(arr[i], j)
                         if before then
                             table.insert(arr[i], j, {before, "text"})
-                            table.insert(arr[i], j + 1, {comment, "stringa"})
+                            table.insert(arr[i], j + 1, {comment, "string"})
                             skip = 1
                         else
-                            table.insert(arr[i], j, {comment, "stringb"})
+                            table.insert(arr[i], j, {comment, "string"})
                         end
                         instring = true
                     else
                         --TODO: properly handle the end of the string
-                        print("end of string with " .. inarr[j][1])
                         instring = false
-                        arr[i][j][2] = "text EOS"
+                        arr[i][j][2] = "text"
                     end
                 end
             else
                 if instring then
-                    arr[i][j][2] = "stringd"
+                    arr[i][j][2] = "string"
                 end
             end
+
+            j = j + 1
 
         end
 
     end
-    print(textutils.serialise(arr))
     return arr
+end
+
+local function comments(arr)
+    local incomment = false
+    print("handling comments")
+    for i=1,#arr do
+        --each item iterated in this layer is a line table
+        incomment = false
+        local inarr = arr[i]
+        local j = 1 --needs custom iterator, because we're splitting some sets of characters into 2 items
+        while j <= #inarr do
+            --each item iterated in _this_ layer is a section table (text of section, type of section)
+
+            if string.find(inarr[j][1], "--") and not inarr[j][2] == "string" then
+                if not incomment then
+                    --if there's anything before the comment, break it up
+                    local before
+                    local comment = inarr[j][1]
+                    if string.find(inarr[j][1], "--") > 1 then
+                        before = inarr[j][1]:sub(1, string.find(inarr[j][1], "--") - 1)
+                        comment = inarr[j][1]:sub(string.find(inarr[j][1], "--"), #inarr[j][1])
+                    end
+                    table.remove(arr[i], j)
+                    if before then
+                        table.insert(arr[i], j, {before, "text"})
+                        table.insert(arr[i], j + 1, {comment, "comment"})
+                    else
+                        table.insert(arr[i], j, {comment, "comment"})
+                    end
+                    incomment = true
+                else
+                    arr[i][j][2] = "comment"
+                end
+            else
+                if incomment then
+                    arr[i][j][2] = "text"
+                end
+            end
+            j = j + 1
+        end
+    end
+    print(textutils.serialize(arr))
+    print("done handling comments")
 end
 
 local function multiLineComments(arr)
@@ -157,7 +196,8 @@ function parser.parse(arr, options)
     for i=1,#arr do
         splitarr[i] = splitAtPunctuation(popWhitespace(arr[i]))
     end
-    strings(splitarr)
+    splitarr = strings(splitarr)
+    splitarr = comments(splitarr)
     --multiLineComments(splitarr)
 
     return splitarr

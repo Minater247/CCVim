@@ -320,14 +320,16 @@ local function drawFile(forcedredraw)
                                 commentstart = 0
                             end
                             if not lowspec then
-                                if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
-                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                                    setcolors(colors.black, colors.green)
-                                    write(filelines[i])
-                                elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
-                                    setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                                    setcolors(colors.black, colors.green)
-                                    write(string.sub(filelines[i], 1, commentstart + 1))
+                                if fileContents[currfile]["Multi-line comments"] then
+                                    if tab.find(fileContents[currfile]["Multi-line comments"][2], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(filelines[i])
+                                    elseif tab.find(fileContents[currfile]["Multi-line comments"][3], i) then
+                                        setpos(1 - currXOffset + lineoffset, i - currFileOffset)
+                                        setcolors(colors.black, colors.green)
+                                        write(string.sub(filelines[i], 1, commentstart + 1))
+                                    end
                                 end
                             end
                         else
