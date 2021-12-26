@@ -8,7 +8,8 @@
         "shell",
         "window",
         "read",
-        "http"
+        "http",
+        "textutils"
     ],
     "Lua.diagnostics.disable": [
         "undefined-field"
