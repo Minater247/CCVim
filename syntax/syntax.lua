@@ -75,42 +75,56 @@ end
 
 local function strings(arr)
     local instring = false
+    local skip = 0
     for i=1,#arr do
         --each item iterated in this layer is a line table
+        skip = 0
         local inarr = arr[i]
         for j=1,#inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
-            print(textutils.serialise(inarr[j]))
+            --print(textutils.serialise(inarr[j]))
             if string.find(inarr[j][1], "\"") then
-                if not instring then
-                    print("found string")
-                    --if there's anything before the quotation mark, break it up
-                    local before
-                    local comment = inarr[j][1]
-                    if string.find(inarr[j][1], "\"") > 1 then
-                        before = inarr[j][1]:sub(1, string.find(inarr[j][1], "\"") - 1)
-                        comment = inarr[j][1]:sub(string.find(inarr[j][1], "\""), #inarr[j][1])
-                    end
-                    table.remove(arr[i], j)
-                    if before then
-                        table.insert(arr[i], j, {before, "text"})
-                        table.insert(arr[i], j, {comment, "comment"})
-                    else
-                        table.insert(arr[i], j, {comment, "comment"})
-                    end
-                    instring = true
-                    inarr[j][2] = "string"
+                if skip > 0 then
+                    skip = skip - 1
                 else
-                    print("end of string!")
-                    instring = false
-                    inarr[j][2] = "text"
+                    if not instring then
+                        print("found string "..inarr[j][1])
+                        --if there's anything before the quotation mark, break it up
+                        local before
+                        local comment = inarr[j][1]
+                        if string.find(inarr[j][1], "\"") > 1 then
+                            before = inarr[j][1]:sub(1, string.find(inarr[j][1], "\"") - 1)
+                            comment = inarr[j][1]:sub(string.find(inarr[j][1], "\""), #inarr[j][1])
+                            print("starts with " .. before.. " and ends with " .. comment)
+                        end
+                        table.remove(arr[i], j)
+                        if before then
+                            table.insert(arr[i], j, {before, "text"})
+                            table.insert(arr[i], j + 1, {comment, "string"})
+                            skip = 1
+                        else
+                            table.insert(arr[i], j, {comment, "string"})
+                        end
+                        instring = true
+                        inarr[j][2] = "string"
+                    else
+                        print("end of string with " .. inarr[j][1])
+                        instring = false
+                        inarr[j][2] = "text"
+                    end
+                end
+            else
+                if instring then
+                    arr[i][j][2] = "string"
                 end
             end
 
         end
 
     end
+    print(textutils.serialise(arr))
+    return arr
 end
 
 local function multiLineComments(arr)
