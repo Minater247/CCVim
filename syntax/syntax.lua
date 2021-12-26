@@ -40,7 +40,7 @@ local function splitAtPunctuation(str)
             end
             ii = ii - 1
             if sect ~= "" then
-                sects[#sects+1] = {sect, "text"}
+                sects[#sects+1] = {sect, "unmodified text"}
                 sect = ""
             end
         else
@@ -52,7 +52,7 @@ local function splitAtPunctuation(str)
         end
     end
     if sect ~= "" then
-        sects[#sects+1] = {sect, "text"}
+        sects[#sects+1] = {sect, "unmodified text"}
     end
     return sects
 end
@@ -78,6 +78,7 @@ local function strings(arr)
     local skip = 0
     for i=1,#arr do
         --each item iterated in this layer is a line table
+        instring = false
         skip = 0
         local inarr = arr[i]
         for j=1,#inarr do
@@ -85,8 +86,10 @@ local function strings(arr)
 
             --print(textutils.serialise(inarr[j]))
             if string.find(inarr[j][1], "\"") then
+                print("found something at "..inarr[j][1])
                 if skip > 0 then
                     skip = skip - 1
+                    arr[i][j][2] = "skipped"
                 else
                     if not instring then
                         print("found string "..inarr[j][1])
@@ -101,22 +104,22 @@ local function strings(arr)
                         table.remove(arr[i], j)
                         if before then
                             table.insert(arr[i], j, {before, "text"})
-                            table.insert(arr[i], j + 1, {comment, "string"})
+                            table.insert(arr[i], j + 1, {comment, "stringa"})
                             skip = 1
                         else
-                            table.insert(arr[i], j, {comment, "string"})
+                            table.insert(arr[i], j, {comment, "stringb"})
                         end
                         instring = true
                     else
                         --TODO: properly handle the end of the string
                         print("end of string with " .. inarr[j][1])
                         instring = false
-                        inarr[j][2] = "text"
+                        arr[i][j][2] = "text EOS"
                     end
                 end
             else
                 if instring then
-                    arr[i][j][2] = "string"
+                    arr[i][j][2] = "stringd"
                 end
             end
 

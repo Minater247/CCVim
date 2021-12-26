@@ -1,16 +1,50 @@
-Sun Dec 26 00:49:56 2021 LOG: found string --"
-Sun Dec 26 00:49:56 2021 LOG: starts with -- and ends with "
-Sun Dec 26 00:49:56 2021 LOG: end of string with "
-Sun Dec 26 00:49:56 2021 LOG: found string "
-Sun Dec 26 00:49:56 2021 LOG: end of string with "
-Sun Dec 26 00:49:56 2021 LOG: found string "
-Sun Dec 26 00:49:56 2021 LOG: end of string with -"
-Sun Dec 26 00:49:56 2021 LOG: found string "
-Sun Dec 26 00:49:56 2021 LOG: {
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: found something at --"
+Sun Dec 26 01:15:11 2021 LOG: found string --"
+Sun Dec 26 01:15:11 2021 LOG: starts with -- and ends with "
+Sun Dec 26 01:15:11 2021 LOG: found something at "
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: found something at "
+Sun Dec 26 01:15:11 2021 LOG: found string "
+Sun Dec 26 01:15:11 2021 LOG: found something at "
+Sun Dec 26 01:15:11 2021 LOG: end of string with "
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: found something at "
+Sun Dec 26 01:15:11 2021 LOG: found string "
+Sun Dec 26 01:15:11 2021 LOG: found something at "
+Sun Dec 26 01:15:11 2021 LOG: end of string with "
+Sun Dec 26 01:15:11 2021 LOG: reset string
+Sun Dec 26 01:15:11 2021 LOG: found something at -"
+Sun Dec 26 01:15:11 2021 LOG: found string -"
+Sun Dec 26 01:15:11 2021 LOG: starts with - and ends with "
+Sun Dec 26 01:15:11 2021 LOG: found something at "
+Sun Dec 26 01:15:11 2021 LOG: {
   {
     {
       "--[[",
-      "text",
+      "unmodified text",
     },
     {
       "test",
@@ -18,13 +52,13 @@ Sun Dec 26 00:49:56 2021 LOG: {
     },
     {
       "]]",
-      "text",
+      "unmodified text",
     },
   },
   {
     {
       "test",
-      "text",
+      "unmodified text",
     },
   },
   {
@@ -34,7 +68,7 @@ Sun Dec 26 00:49:56 2021 LOG: {
     },
     {
       "\"",
-      "stringa",
+      "skipped",
     },
     {
       "comment",
@@ -58,81 +92,81 @@ Sun Dec 26 00:49:56 2021 LOG: {
     },
     {
       "\"",
-      "text",
+      "unmodified text",
     },
   },
   {},
   {
     {
       "--[[",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "multiline",
-      "stringd",
+      "text",
     },
     {
       " ",
-      "stringd",
+      "unmodified text",
     },
     {
       "comment",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "]]",
-      "stringd",
+      "unmodified text",
     },
   },
   {},
   {
     {
       "--[[",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "multiline",
-      "stringd",
+      "text",
     },
     {
       " ",
-      "stringd",
+      "unmodified text",
     },
     {
       "comment",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "with",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "multiple",
-      "stringd",
+      "text",
     },
     {
       " ",
-      "stringd",
+      "unmodified text",
     },
     {
       "lines",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "]]",
-      "stringd",
+      "unmodified text",
     },
   },
   {},
@@ -140,129 +174,133 @@ Sun Dec 26 00:49:56 2021 LOG: {
   {
     {
       "--[[",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "multiline",
-      "stringd",
+      "text",
     },
     {
       " ",
-      "stringd",
+      "unmodified text",
     },
     {
       "comment",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "\"",
-      "text",
+      "stringb",
     },
     {
       "with",
-      "text",
+      "stringd",
     },
     {
       " ",
-      "text",
+      "stringd",
     },
     {
       "a",
-      "text",
+      "stringd",
     },
     {
       " ",
-      "text",
+      "stringd",
     },
     {
       "string",
-      "text",
+      "stringd",
     },
     {
       "\"",
-      "stringb",
+      "text EOS",
     },
   },
   {
     {
       "]]",
-      "stringd",
+      "unmodified text",
     },
   },
   {},
   {
     {
       "[[",
-      "stringd",
+      "unmodified text",
     },
     {
       "multi",
-      "stringd",
+      "text",
     },
     {
       " ",
-      "stringd",
+      "unmodified text",
     },
     {
       "line",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "string",
-      "stringd",
+      "unmodified text",
     },
   },
   {
     {
       "test",
-      "stringd",
+      "text",
     },
     {
       "]]",
-      "stringd",
+      "unmodified text",
     },
   },
   {},
   {
     {
       "\"",
-      "text",
+      "stringb",
     },
     {
       "test",
-      "text",
+      "stringd",
     },
     {
       "\"",
-      "stringb",
+      "text EOS",
     },
   },
   {
     {
-      "-\"",
-      "text",
-    },
-    {
-      "incorrect",
-      "text",
-    },
-    {
-      " ",
-      "text",
-    },
-    {
-      "syntax",
+      "-",
       "text",
     },
     {
       "\"",
-      "stringb",
+      "skipped",
+    },
+    {
+      "incorrect",
+      "stringd",
+    },
+    {
+      " ",
+      "stringd",
+    },
+    {
+      "syntax",
+      "stringd",
+    },
+    {
+      "\"",
+      "unmodified text",
     },
   },
 }
