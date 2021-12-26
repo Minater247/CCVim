@@ -9,9 +9,20 @@
     Then do numbers
     Then do identifiers
     Then do operators
+
+    comments can overwrite strings, but comments can't start in the middle of a string
 ]]
 
 local parser = {}
+
+local output = io.open("/vim/syntax/synt.log", "w")
+io.output(output)
+local function print(...)
+    local args = {...}
+    io.write(os.date() .. " LOG: " .. table.concat(args, " "))
+    io.write("\n")
+    io.flush()
+end
 
 local function splitAtPunctuation(str)
     local sects = {}
@@ -19,15 +30,19 @@ local function splitAtPunctuation(str)
     local ii = 1
     while true do
         if str:sub(ii, ii):match("%W") then
-            sects[#sects+1] = {sect, "text"}
-            sect = ""
+            if sect ~= "" then
+                sects[#sects+1] = {sect, "text"}
+                sect = ""
+            end
             while str:sub(ii, ii):match("%W") and ii <= #str do
                 sect = sect .. str:sub(ii, ii)
                 ii = ii + 1
             end
             ii = ii - 1
-            sects[#sects+1] = {sect, "text"}
-            sect = ""
+            if sect ~= "" then
+                sects[#sects+1] = {sect, "text"}
+                sect = ""
+            end
         else
             sect = sect .. str:sub(ii, ii)
         end
@@ -37,7 +52,7 @@ local function splitAtPunctuation(str)
         end
     end
     if sect ~= "" then
-        sects[#sects+1] = sect
+        sects[#sects+1] = {sect, "text"}
     end
     return sects
 end
@@ -58,60 +73,60 @@ local function popWhitespace(str)
     return ostr
 end
 
+local function strings(arr)
+    local instring = false
+    for i=1,#arr do
+        --each item iterated in this layer is a line table
+        local inarr = arr[i]
+        for j=1,#inarr do
+            --each item iterated in _this_ layer is a section table (text of section, type of section)
+
+            print(textutils.serialise(inarr[j]))
+            if string.find(inarr[j][1], "\"") then
+                if not instring then
+                    print("found string")
+                    --if there's anything before the quotation mark, break it up
+                    local before
+                    local comment = inarr[j][1]
+                    if string.find(inarr[j][1], "\"") > 1 then
+                        before = inarr[j][1]:sub(1, string.find(inarr[j][1], "\"") - 1)
+                        comment = inarr[j][1]:sub(string.find(inarr[j][1], "\""), #inarr[j][1])
+                    end
+                    table.remove(arr[i], j)
+                    if before then
+                        table.insert(arr[i], j, {before, "text"})
+                        table.insert(arr[i], j, {comment, "comment"})
+                    else
+                        table.insert(arr[i], j, {comment, "comment"})
+                    end
+                    instring = true
+                    inarr[j][2] = "string"
+                else
+                    print("end of string!")
+                    instring = false
+                    inarr[j][2] = "text"
+                end
+            end
+
+        end
+
+    end
+end
+
 local function multiLineComments(arr)
     local incomment = false
     for i=1,#arr do
+        --each item iterated in this layer is a line table
         local inarr = arr[i]
         for j=1,#inarr do
-            
-            --check if this contains the start of a multi-line comment
-            if not incomment then
-                local pos = inarr[j][1]:find("%-%-%[%[")
-                if pos then
-                    local endpos = inarr[j][1]:find("%]%]")
-                    incomment = true
-                    if endpos then
-                        local precomment = inarr[j][1]:sub(1, pos - 1)
-                        local comment = inarr[j][1]:sub(pos + 3, endpos - 1)
-                        local postcomment = inarr[j][1]:sub(endpos + 3, #inarr[j])
-                        --replace the existing item with the precomment, the comment, and the postcomment
-                        table.remove(arr, i)
-                        if precomment and precomment ~= "" then
-                            table.insert(arr, i, {precomment, "text"})
-                        end
-                        table.insert(arr, i + 1, {comment, "comment"})
-                        if postcomment and postcomment ~= "" then
-                            table.insert(arr, i + 2, {postcomment, "text"})
-                        end
-                        incomment = false
-                    else
-                        local precomment = inarr[j][1]:sub(1, pos - 1)
-                        local comment = inarr[j][1]:sub(pos + 3, #inarr[j])
-                        --replace the existing item with the precomment, the comment, and the postcomment
-                        table.remove(arr, i)
-                        if precomment and precomment ~= "" then
-                            table.insert(arr, i, {precomment, "text"})
-                        end
-                        table.insert(arr, i + 1, {comment, "comment"})
-                    end
-                end
-            else
-                print(textutils.serialise(inarr))
-                local pos = inarr[1]:find("%]%]")
-                if pos then
-                    local comment = inarr[j][1]:sub(1, #inarr[j])
-                    local postcomment = inarr[j][1]:sub(pos + 3, #inarr[j])
-                    --replace the existing item with the precomment, the end of comment, and the postcomment
-                    table.remove(arr, i)
-                    table.insert(arr, i, {comment, "comment"})
-                    if postcomment and postcomment ~= "" then
-                        table.insert(arr, i + 1, {postcomment, "text"})
-                    end
-                    incomment = false
-                else
-                    arr[i][j] = {inarr[j][1], "comment"}
-                end
+            --each item iterated in _this_ layer is a section table (text of section, type of section)
+
+            print(textutils.serialise(inarr[j]))
+            if string.find(inarr[j][1], "%-%-%[%[") then
+                print("found comment start")
+                print(inarr[j][1])
             end
+
         end
 
     end
@@ -125,13 +140,14 @@ function parser.parse(arr, options)
     for i=1,#arr do
         splitarr[i] = splitAtPunctuation(popWhitespace(arr[i]))
     end
-
-    multiLineComments(splitarr)
+    strings(splitarr)
+    --multiLineComments(splitarr)
 
     return splitarr
 end
 
 local args = {...}
 local fil = require("/vim/lib/fil")
-local filearr = fil.toArr("/vim/syntax/syntax.lua")
-print(textutils.serialise(parser.parse(filearr)))
+local filearr = fil.toArr(args[1])
+parser.parse(filearr)
+--print(textutils.serialise(parser.parse(filearr)))
