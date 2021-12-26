@@ -49,7 +49,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.61
+local version = 0.611
 local releasedate = "2021-12-26"
 
 local fileEditorVer = 0.11
@@ -659,6 +659,11 @@ local function redrawTerm()
     clearScreenLine(hig)
     if motd then
         clear()
+        for i=currFileOffset,(hig - 1) + currFileOffset,1 do
+            setpos(1, i - currFileOffset)
+            setcolors(colors.black, colors.purple)
+            write("~")
+        end
         setcolors(colors.black, colors.white)
         setpos((wid / 2) - (33 / 2), (hig / 2) - 3)
         write("CCVIM - ComputerCraft Vi Improved")
@@ -678,19 +683,6 @@ local function redrawTerm()
         write("<Enter>       ")
         setcolors(colors.black, colors.white)
         write("to exit")
-
-        for i=currFileOffset,(hig - 1) + currFileOffset,1 do
-            setpos(1, i - currFileOffset)
-            if filelines then
-                if filelines[i] ~= nil then
-                    setcolors(colors.black, colors.white)
-                    write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
-                elseif not motd then
-                    setcolors(colors.black, colors.purple)
-                    write("~")
-                end
-            end
-        end
     else
         drawFile(true)
     end
