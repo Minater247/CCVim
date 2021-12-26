@@ -101,14 +101,14 @@ local function strings(arr)
                         table.remove(arr[i], j)
                         if before then
                             table.insert(arr[i], j, {before, "text"})
-                            table.insert(arr[i], j + 1, {comment, "string"})
+                            table.insert(arr[i], j + 1, {comment, "stringa"})
                             skip = 1
                         else
-                            table.insert(arr[i], j, {comment, "string"})
+                            table.insert(arr[i], j, {comment, "stringb"})
                         end
                         instring = true
-                        inarr[j][2] = "string"
                     else
+                        --TODO: properly handle the end of the string
                         print("end of string with " .. inarr[j][1])
                         instring = false
                         inarr[j][2] = "text"
@@ -116,7 +116,7 @@ local function strings(arr)
                 end
             else
                 if instring then
-                    arr[i][j][2] = "string"
+                    arr[i][j][2] = "stringd"
                 end
             end
 
