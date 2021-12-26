@@ -423,7 +423,7 @@ local function drawFile(forcedredraw)
                                 end
                             else
                                 setpos(1 - currXOffset + lineoffset, i - currFileOffset)
-                                write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
+                                write(string.sub(filelines[i], 1, #filelines[i]))
                             end
                         end
                     else

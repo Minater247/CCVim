@@ -1,12 +1,12 @@
-Sun Dec 26 00:23:27 2021 LOG: found string --"
-Sun Dec 26 00:23:27 2021 LOG: starts with -- and ends with "
-Sun Dec 26 00:23:27 2021 LOG: end of string with "
-Sun Dec 26 00:23:27 2021 LOG: found string "
-Sun Dec 26 00:23:27 2021 LOG: end of string with "
-Sun Dec 26 00:23:27 2021 LOG: found string "
-Sun Dec 26 00:23:27 2021 LOG: end of string with -"
-Sun Dec 26 00:23:27 2021 LOG: found string "
-Sun Dec 26 00:23:27 2021 LOG: {
+Sun Dec 26 00:49:56 2021 LOG: found string --"
+Sun Dec 26 00:49:56 2021 LOG: starts with -- and ends with "
+Sun Dec 26 00:49:56 2021 LOG: end of string with "
+Sun Dec 26 00:49:56 2021 LOG: found string "
+Sun Dec 26 00:49:56 2021 LOG: end of string with "
+Sun Dec 26 00:49:56 2021 LOG: found string "
+Sun Dec 26 00:49:56 2021 LOG: end of string with -"
+Sun Dec 26 00:49:56 2021 LOG: found string "
+Sun Dec 26 00:49:56 2021 LOG: {
   {
     {
       "--[[",
@@ -30,31 +30,31 @@ Sun Dec 26 00:23:27 2021 LOG: {
   {
     {
       "--",
-      "string",
+      "text",
     },
     {
       "\"",
-      "string",
+      "stringa",
     },
     {
       "comment",
-      "string",
+      "stringd",
     },
     {
       " ",
-      "string",
+      "stringd",
     },
     {
       "with",
-      "string",
+      "stringd",
     },
     {
       " ",
-      "string",
+      "stringd",
     },
     {
       "string",
-      "string",
+      "stringd",
     },
     {
       "\"",
@@ -65,74 +65,74 @@ Sun Dec 26 00:23:27 2021 LOG: {
   {
     {
       "--[[",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "multiline",
-      "string",
+      "stringd",
     },
     {
       " ",
-      "string",
+      "stringd",
     },
     {
       "comment",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "]]",
-      "string",
+      "stringd",
     },
   },
   {},
   {
     {
       "--[[",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "multiline",
-      "string",
+      "stringd",
     },
     {
       " ",
-      "string",
+      "stringd",
     },
     {
       "comment",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "with",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "multiple",
-      "string",
+      "stringd",
     },
     {
       " ",
-      "string",
+      "stringd",
     },
     {
       "lines",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "]]",
-      "string",
+      "stringd",
     },
   },
   {},
@@ -140,21 +140,21 @@ Sun Dec 26 00:23:27 2021 LOG: {
   {
     {
       "--[[",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "multiline",
-      "string",
+      "stringd",
     },
     {
       " ",
-      "string",
+      "stringd",
     },
     {
       "comment",
-      "string",
+      "stringd",
     },
   },
   {
@@ -184,48 +184,48 @@ Sun Dec 26 00:23:27 2021 LOG: {
     },
     {
       "\"",
-      "string",
+      "stringb",
     },
   },
   {
     {
       "]]",
-      "string",
+      "stringd",
     },
   },
   {},
   {
     {
       "[[",
-      "string",
+      "stringd",
     },
     {
       "multi",
-      "string",
+      "stringd",
     },
     {
       " ",
-      "string",
+      "stringd",
     },
     {
       "line",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "string",
-      "string",
+      "stringd",
     },
   },
   {
     {
       "test",
-      "string",
+      "stringd",
     },
     {
       "]]",
-      "string",
+      "stringd",
     },
   },
   {},
@@ -240,7 +240,7 @@ Sun Dec 26 00:23:27 2021 LOG: {
     },
     {
       "\"",
-      "string",
+      "stringb",
     },
   },
   {
@@ -262,7 +262,7 @@ Sun Dec 26 00:23:27 2021 LOG: {
     },
     {
       "\"",
-      "string",
+      "stringb",
     },
   },
 }
