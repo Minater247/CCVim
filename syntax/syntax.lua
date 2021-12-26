@@ -37,6 +37,9 @@ local function splitAtPunctuation(str)
             while str:sub(ii, ii):match("%W") and ii <= #str do
                 sect = sect .. str:sub(ii, ii)
                 ii = ii + 1
+                if str:sub(ii, ii) == "\"" and sect:sub(#sect, #sect) == "\"" then
+                    break
+                end
             end
             ii = ii - 1
             if sect ~= "" then
@@ -71,11 +74,12 @@ local function popWhitespace(str)
         ostr = ostr:sub(1, #ostr - 1)
     end
     return ostr
-end
+end 
 
 local function strings(arr)
     local instring = false
     local skip = 0
+    --workaround: go through the array and split anything with multiple quitation marks next to each other
     for i=1,#arr do
         --each item iterated in this layer is a line table
         instring = false
@@ -84,7 +88,7 @@ local function strings(arr)
         local j = 1 --needs custom iterator, because we're splitting some sets of characters into 2 items
         while j <= #inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
-
+            
             if string.find(inarr[j][1], "\"") then
                 if skip > 0 then
                     skip = skip - 1
@@ -107,9 +111,22 @@ local function strings(arr)
                         end
                         instring = true
                     else
-                        --TODO: properly handle the end of the string
+                        --check if there's anything after the quotation mark
+                        local after
+                        local comment = inarr[j][1]
+                        if string.find(inarr[j][1], "\"") < #inarr[j][1] then
+                            after = inarr[j][1]:sub(string.find(inarr[j][1], "\""), #inarr[j][1])
+                            comment = inarr[j][1]:sub(1, string.find(inarr[j][1], "\"") - 1)
+                        end
+                        table.remove(arr[i], j)
+                        if after then
+                            table.insert(arr[i], j, {comment, "string"})
+                            table.insert(arr[i], j + 1, {after, "text"})
+                            skip = 1
+                        else
+                            table.insert(arr[i], j, {comment, "string"})
+                        end
                         instring = false
-                        arr[i][j][2] = "text"
                     end
                 end
             else
