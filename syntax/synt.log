@@ -1,320 +1,264 @@
-Sun Dec 26 11:45:43 2021 LOG: handling comments
-Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
-Sun Dec 26 11:45:43 2021 LOG: at 1
-Sun Dec 26 11:45:43 2021 LOG: handling comment --
-Sun Dec 26 11:45:43 2021 LOG: at 1
-Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
-Sun Dec 26 11:45:43 2021 LOG: at 1
-Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
-Sun Dec 26 11:45:43 2021 LOG: at 1
-Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
-Sun Dec 26 11:45:43 2021 LOG: at 1
-Sun Dec 26 11:45:43 2021 LOG: {
-  {
-    {
-      "--[[",
-      "comment",
-    },
-    {
-      "test",
-      "comment",
-    },
-    {
-      "]]",
-      "comment",
-    },
-  },
-  {
-    {
-      "test",
-      "text",
-    },
-  },
-  {
-    {
-      "--",
-      "comment",
-    },
-    {
-      "\"",
-      "comment",
-    },
-    {
-      "comment",
-      "comment",
-    },
-    {
-      " ",
-      "comment",
-    },
-    {
-      "with",
-      "comment",
-    },
-    {
-      " ",
-      "comment",
-    },
-    {
-      "string",
-      "comment",
-    },
-    {
-      "\"",
-      "comment",
-    },
-  },
-  {},
-  {
-    {
-      "--[[",
-      "comment",
-    },
-  },
-  {
-    {
-      "multiline",
-      "text",
-    },
-    {
-      " ",
-      "text",
-    },
-    {
-      "comment",
-      "text",
-    },
-  },
-  {
-    {
-      "]]",
-      "text",
-    },
-  },
-  {},
-  {
-    {
-      "--[[",
-      "comment",
-    },
-  },
-  {
-    {
-      "multiline",
-      "text",
-    },
-    {
-      " ",
-      "text",
-    },
-    {
-      "comment",
-      "text",
-    },
-  },
-  {
-    {
-      "with",
-      "text",
-    },
-  },
-  {
-    {
-      "multiple",
-      "text",
-    },
-    {
-      " ",
-      "text",
-    },
-    {
-      "lines",
-      "text",
-    },
-  },
-  {
-    {
-      "]]",
-      "text",
-    },
-  },
-  {},
-  {},
-  {
-    {
-      "--[[",
-      "comment",
-    },
-  },
-  {
-    {
-      "multiline",
-      "text",
-    },
-    {
-      " ",
-      "text",
-    },
-    {
-      "comment",
-      "text",
-    },
-  },
-  {
-    {
-      "\"",
-      "string",
-    },
-    {
-      "with",
-      "string",
-    },
-    {
-      " ",
-      "string",
-    },
-    {
-      "a",
-      "string",
-    },
-    {
-      " ",
-      "string",
-    },
-    {
-      "string",
-      "string",
-    },
-    {
-      "\"",
-      "string",
-    },
-  },
-  {
-    {
-      "]]",
-      "text",
-    },
-  },
-  {},
-  {
-    {
-      "[[",
-      "text",
-    },
-    {
-      "multi",
-      "text",
-    },
-    {
-      " ",
-      "text",
-    },
-    {
-      "line",
-      "text",
-    },
-  },
-  {
-    {
-      "string",
-      "text",
-    },
-  },
-  {
-    {
-      "test",
-      "text",
-    },
-    {
-      "]]",
-      "text",
-    },
-  },
-  {},
-  {
-    {
-      "\"",
-      "string",
-    },
-    {
-      "test",
-      "string",
-    },
-    {
-      "\"",
-      "string",
-    },
-  },
-  {
-    {
-      "\"",
-      "string",
-    },
-    {
-      "\"",
-      "string",
-    },
-    {
-      "texton",
-      "text",
-    },
-    {
-      " ",
-      "text",
-    },
-    {
-      "end",
-      "text",
-    },
-  },
-  {
-    {
-      "-",
-      "text",
-    },
-    {
-      "\"",
-      "string",
-    },
-    {
-      "incorrect",
-      "string",
-    },
-    {
-      " ",
-      "string",
-    },
-    {
-      "syntax",
-      "string",
-    },
-    {
-      "\"",
-      "string",
-    },
-  },
-  {
-    {
-      "\"-- ",
-      "string",
-    },
-    {
-      "in",
-      "string",
-    },
-    {
-      " ",
-      "string",
-    },
-    {
-      "string",
-      "string",
-    },
-    {
-      "\"",
-      "string",
-    },
-  },
+Sun Dec 26 12:06:18 2021 LOG: {
+  "--[[",
+  "comment",
 }
-Sun Dec 26 11:45:43 2021 LOG: done handling comments
+Sun Dec 26 12:06:18 2021 LOG: found comment start
+Sun Dec 26 12:06:18 2021 LOG: --[[
+Sun Dec 26 12:06:18 2021 LOG: {
+  "test",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "]]",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "test",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "--",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "comment",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "with",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "string",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "--[[",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: found comment start
+Sun Dec 26 12:06:18 2021 LOG: --[[
+Sun Dec 26 12:06:18 2021 LOG: {
+  "multiline",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "comment",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "]]",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "--[[",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: found comment start
+Sun Dec 26 12:06:18 2021 LOG: --[[
+Sun Dec 26 12:06:18 2021 LOG: {
+  "multiline",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "comment",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "with",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "multiple",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "lines",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "]]",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "--[[",
+  "comment",
+}
+Sun Dec 26 12:06:18 2021 LOG: found comment start
+Sun Dec 26 12:06:18 2021 LOG: --[[
+Sun Dec 26 12:06:18 2021 LOG: {
+  "multiline",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "comment",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "with",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "a",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "string",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "]]",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "[[",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "multi",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "line",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "string",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "test",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "]]",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "test",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "texton",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "end",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "-",
+  "text",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "incorrect",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "syntax",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"-- ",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "in",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  " ",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "string",
+  "string",
+}
+Sun Dec 26 12:06:18 2021 LOG: {
+  "\"",
+  "string",
+}

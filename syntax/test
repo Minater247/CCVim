@@ -16,6 +16,7 @@ test
 --[[
     multiline comment
     "with a string"
+    "and one with ]] an end"
 ]]
 
 [[multi line
@@ -26,3 +27,4 @@ test]]
 ""texton end
 -"incorrect syntax"
 "-- in string"
+"--[[ in string]]"

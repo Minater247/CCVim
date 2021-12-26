@@ -145,15 +145,17 @@ end
 
 local function comments(arr)
     local incomment = false
+    strarr = strings(arr) --do the strings here so we can skip them
     for i=1,#arr do
         --each item iterated in this layer is a line table
         incomment = false
         local inarr = arr[i]
+        local instrarr = strarr[i]
         local j = 1 --needs custom iterator, because we're splitting some sets of characters into 2 items
         while j <= #inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
-            if string.find(inarr[j][1], "%-%-") and inarr[j][2] ~= "string" then
+            if string.find(inarr[j][1], "%-%-") and instrarr[j][2] ~= "string" then
                 if not incomment then
                     --if there's anything before the comment, break it up
                     local before
@@ -211,6 +213,8 @@ local function multiLineComments(arr)
     end
 end
 
+--TODO: recheck strings to make sure the beginning isn't cut off by a comment
+
 function parser.parse(arr, options)
     --options is an array
     --TODO: options
@@ -219,9 +223,9 @@ function parser.parse(arr, options)
     for i=1,#arr do
         splitarr[i] = splitAtPunctuation(popWhitespace(arr[i]))
     end
-    splitarr = strings(splitarr)
     splitarr = comments(splitarr)
     splitarr = multiLineComments(splitarr)
+    splitarr = strings(splitarr)
     --multiLineComments(splitarr)
 
     return splitarr
