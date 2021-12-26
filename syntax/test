@@ -1,2 +1,26 @@
 --[[test]]
 test
+--"comment with string"
+
+--[[
+    multiline comment
+]]
+
+--[[
+    multiline comment
+    with
+    multiple lines
+]]
+
+
+--[[
+    multiline comment
+    "with a string"
+]]
+
+[[multi line
+string
+test]]
+
+"test"
+-"incorrect syntax"
