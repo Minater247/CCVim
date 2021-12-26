@@ -1691,7 +1691,7 @@ while running == true do
                         end
                         local secondArr = fil.toArr(fil.topath(name))
                         for i=1,#secondArr,1 do
-                            table.insert(filelines, secondArr[i])
+                            table.insert(filelines, #filelines + 1, secondArr[i])
                         end
                         recalcMLCs(true)
                         drawFile(true)
