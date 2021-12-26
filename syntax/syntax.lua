@@ -145,7 +145,6 @@ end
 
 local function comments(arr)
     local incomment = false
-    print("handling comments")
     for i=1,#arr do
         --each item iterated in this layer is a line table
         incomment = false
@@ -155,8 +154,6 @@ local function comments(arr)
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
             if string.find(inarr[j][1], "%-%-") and inarr[j][2] ~= "string" then
-                print("handling comment " .. inarr[j][1])
-                print("at "..string.find(inarr[j][1], "%-%-"))
                 if not incomment then
                     --if there's anything before the comment, break it up
                     local before
@@ -184,8 +181,7 @@ local function comments(arr)
             j = j + 1
         end
     end
-    print(textutils.serialize(arr))
-    print("done handling comments")
+    return arr
 end
 
 local function multiLineComments(arr)
@@ -197,8 +193,16 @@ local function multiLineComments(arr)
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
             print(textutils.serialise(inarr[j]))
-            if string.find(inarr[j][1], "%-%-%[%[") then
-                print("found comment start")
+            if string.find(inarr[j][1], "%-%-%[%[") and not inarr[j][2] == "string" then
+                if not incomment then
+                    print("found comment start")
+                    print(inarr[j][1])
+                    --TODO: split the comment and words
+
+                    incomment = true
+                end
+            elseif string.find(inarr[j][1], "%-%-%]%]") and incomment then
+                print("found comment end")
                 print(inarr[j][1])
             end
 
@@ -217,6 +221,7 @@ function parser.parse(arr, options)
     end
     splitarr = strings(splitarr)
     splitarr = comments(splitarr)
+    splitarr = multiLineComments(splitarr)
     --multiLineComments(splitarr)
 
     return splitarr
