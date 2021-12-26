@@ -101,10 +101,10 @@ local function strings(arr)
                         table.remove(arr[i], j)
                         if before then
                             table.insert(arr[i], j, {before, "text"})
-                            table.insert(arr[i], j + 1, {comment, "stringa"})
+                            table.insert(arr[i], j + 1, {comment, "string"})
                             skip = 1
                         else
-                            table.insert(arr[i], j, {comment, "stringb"})
+                            table.insert(arr[i], j, {comment, "string"})
                         end
                         instring = true
                     else
@@ -116,7 +116,7 @@ local function strings(arr)
                 end
             else
                 if instring then
-                    arr[i][j][2] = "stringd"
+                    arr[i][j][2] = "string"
                 end
             end
 
