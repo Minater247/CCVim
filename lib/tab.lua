@@ -29,4 +29,12 @@ local function removeDuplicates(table)
     end
 end
 
-return { find = find, getLongestItem = getLongestItem }
+local function countchars(tab)
+    local count = 0
+    for i=1,#tab,1 do
+        count = count + #tab[i]
+    end
+    return count
+end
+
+return { find = find, getLongestItem = getLongestItem, countchars = countchars }

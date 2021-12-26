@@ -457,15 +457,17 @@ local function drawFile(forcedredraw)
         for i=currFileOffset,(hig-1)+currFileOffset,1 do
             setpos(1, i - currFileOffset)
             if i < 1000 then
-                for i=1,3 - #(tostring(i)),1 do
-                    write(" ")
-                end
+                write(string.rep(" ", 3 - #tostring(i)))
             end
             if i < 10000 then
-                write(i)
+                if i <= #filelines then
+                    write(i)
+                end
                 write(" ")
             else
-                write("10k+")
+                if i <= #filelines then
+                    write("10k+")
+                end
             end
         end
     end
@@ -577,17 +579,26 @@ local function moveCursorDown()
     end
 end
 
+--TODO: fix this, it's not loading on file load
 --Recalculate where multi-line comments are, based on position in file
 local function recalcMLCs(force)
-    if fileContents[currfile]["Multi-line comments"] and not lowspec then
+    if not fileContents[currfile] then
+        return
+    end
+    if not fileContents[currfile]["Multi-line comments"] then
+        fileContents[currfile]["Multi-line comments"] = {{}, {}, {}}
+    end
+    if not lowspec then
         local synt
         if fileContents[currfile]["filetype"] then
-            local tmp = require("/vim/syntax/"..fileContents[currfile]["filetype"])
-            synt = tmp.syntax()
+            if fs.exists("/vim/syntax/"..fileContents[currfile]["filetype"]..".lua")then
+                local tmp = require("/vim/syntax/"..fileContents[currfile]["filetype"])
+                synt = tmp.syntax()
+            end
         end
-        if ((tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or (not tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or force) and syntaxhighlighting then
-            local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
-            if synt then
+        if synt then
+            if ((tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (not tab.find(fileContents[currfile]["Multi-line comments"][1], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][1])) or (tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and not str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or (not tab.find(fileContents[currfile]["Multi-line comments"][3], currCursorY + currFileOffset) and str.find(filelines[currCursorY + currFileOffset], synt[7][2])) or force) and syntaxhighlighting then
+                local multilinesInFile = {{}, {}, {}} --beginning quote points, regular quote points, end quote points
                 local quotepoints = {}
                 local justset = false
                 for j=1,#fileContents[currfile],1 do
@@ -635,9 +646,9 @@ local function recalcMLCs(force)
                 end
                 fileContents[currfile]["Multi-line comments"] = multilinesInFile
                 return true
+            else
+                return false
             end
-        else
-            return false
         end
     else
         return false
@@ -1415,7 +1426,7 @@ else
     if newfile then
         sendMsg("\""..filename.."\" [New File]")
     else
-        sendMsg("\""..filename.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+        sendMsg("\""..filename.."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
     end
 end
 
@@ -1525,7 +1536,7 @@ while running == true do
                         recalcMLCs(true)
                         drawFile(true)
                         clearScreenLine(hig)
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     end
                 end
             elseif cmdtab[1] == ":wq" or cmdtab[1] == ":x" then
@@ -1600,8 +1611,8 @@ while running == true do
                         end
                     end
                     if name then
-                        if fs.isDir(name) then
-                            filename = dirOpener(name)
+                        if fs.isDir(fil.topath(name)) then
+                            filename = dirOpener(fil.topath(name))
                         else
                             filename = name
                         
@@ -1617,7 +1628,7 @@ while running == true do
                     if fs.exists(fil.topath(filename)) then
                         filelines = fil.toArr(fil.topath(filename))
                         if filelines then
-                            sendMsg("\""..filename.."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            sendMsg("\""..filename.."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                         else
                             newfile = true
                             sendMsg("\""..filename.."\" [New File]")
@@ -1646,14 +1657,7 @@ while running == true do
                         end
                     end
                     local doneGettingEnd = false
-                    local filenamestring = ""
-                    for j=#openfiles[currfile],1,-1 do
-                        if string.sub(openfiles[currfile], j, j) ~= "." and not doneGettingEnd then
-                            filenamestring = string.sub(openfiles[currfile], j, j) .. filenamestring
-                        else
-                            doneGettingEnd = true
-                        end
-                    end
+                    local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
                     if filenamestring ~= openfiles[currfile] and filenamestring ~= string.sub(openfiles[currfile], 2, #openfiles[currfile]) then
                         fileContents[currfile]["filetype"] = filenamestring
                         if fs.exists("/vim/syntax/"..filenamestring..".lua") then
@@ -1682,13 +1686,16 @@ while running == true do
                         end
                     end
                     if fs.exists(fil.topath(name)) then
+                        if fs.isDir(fil.topath(name)) then
+                            name = dirOpener(fil.topath(name))
+                        end
                         local secondArr = fil.toArr(fil.topath(name))
                         for i=1,#secondArr,1 do
                             table.insert(filelines, secondArr[i])
                         end
                         recalcMLCs(true)
                         drawFile(true)
-                        sendMsg("\""..name.."\" "..#secondArr.."L, "..#(tab.getLongestItem(secondArr)).."C")
+                        sendMsg("\""..name.."\" "..#secondArr.."L, "..tab.countchars(secondArr).."C")
                     else
                         err("Can't open file "..name)
                     end
@@ -1722,7 +1729,7 @@ while running == true do
                     end
                     recalcMLCs(true)
                     drawFile(true)
-                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     filename = openfiles[currfile]
                 end
             elseif cmdtab[1] == ":tabp" or cmdtab[1] == ":tabprevious" then
@@ -1752,7 +1759,7 @@ while running == true do
                     end
                     recalcMLCs(true)
                     drawFile(true)
-                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     filename = openfiles[currfile]
                 end
             elseif cmdtab[1] == ":tabm" or cmdtab[1] == ":tabmove" then
@@ -1770,7 +1777,7 @@ while running == true do
                     end
                     recalcMLCs(true)
                     drawFile(true)
-                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                 end
                 clearScreenLine(hig)
             elseif cmdtab[1] == ":tabo" or cmdtab[1] == ":tabonly" or cmdtab[1] == ":tabo!" or cmdtab[1] == ":tabonly!" then
@@ -1799,7 +1806,7 @@ while running == true do
                     end
                     drawFile()
                     clearScreenLine(hig)
-                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                 end
             elseif cmdtab[1] == ":tabnew" then
                 if not cmdtab[2] then
@@ -1818,7 +1825,7 @@ while running == true do
                     fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                     currfile = currfile + 1
                     filelines = fileContents[currfile]
-                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     currCursorX = 1
                     currXOffset = 0
                     currCursorY = 1
@@ -1835,13 +1842,16 @@ while running == true do
                             end
                         end
                         if fs.exists(fil.topath(name)) then
+                            if fs.isDir(fil.topath(name)) then
+                                name = dirOpener(fil.topath(name))
+                            end
                             fileContents[currfile] = filelines
                             fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                             table.insert(fileContents, currfile + 1, fil.toArr(fil.topath(name)))
                             table.insert(openfiles, currfile + 1, name)
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
-                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                             currCursorX = 1
                             currXOffset = 0
                             currCursorY = 1
@@ -1856,6 +1866,13 @@ while running == true do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
+                            local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
+                            if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                                filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                            else
+                                fileContents[currfile]["filetype"] = nil
+                            end
+                            fileContents[currfile]["filetype"] = filenamestring
                             recalcMLCs(true)
                             drawFile(true)
                         else
@@ -1870,11 +1887,18 @@ while running == true do
                             fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
-                            sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                            sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..tab.countchars(filelines).."C")
                             currCursorX = 1
                             currXOffset = 0
                             currCursorY = 1
                             currFileOffset = 0
+                            local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
+                            if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                                filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                            else
+                                fileContents[currfile]["filetype"] = nil
+                            end
+                            fileContents[currfile]["filetype"] = filenamestring
                             recalcMLCs(true)
                             drawFile(true)
                         end
@@ -1886,7 +1910,7 @@ while running == true do
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                         currfile = currfile + 1
                         filelines = fileContents[currfile]
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                         currCursorX = 1
                         currXOffset = 0
                         currCursorY = 1
@@ -1896,15 +1920,7 @@ while running == true do
                     end
                 end
                 local doneGettingEnd = false
-                local filenamestring = ""
-                for j=#openfiles[currfile],1,-1 do
-                    if string.sub(openfiles[currfile], j, j) ~= "." and not doneGettingEnd then
-                        filenamestring = string.sub(openfiles[currfile], j, j) .. filenamestring
-                    else
-                        doneGettingEnd = true
-                    end
-                end
-                fileContents[currfile]["filetype"] = filenamestring
+                fileContents[currfile]["filetype"] = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
                     err("No write since last change (add ! to override)")
@@ -1930,7 +1946,7 @@ while running == true do
                         recalcMLCs(true)
                         drawFile(true)
                         clearScreenLine(hig)
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     end
                 end
             elseif cmdtab[1] == ":set" then
@@ -1980,8 +1996,8 @@ while running == true do
                         end
                     end
                     resetSize()
-                    redrawTerm()
                     recalcMLCs(true)
+                    redrawTerm()
                     drawFile(true)
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
@@ -2397,7 +2413,7 @@ while running == true do
                         end
                         recalcMLCs(true)
                         drawFile(true)
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     end
                 elseif ch == "e" or ch == "E" then
                     for i=1,tonumber(num),1 do
@@ -2635,7 +2651,7 @@ while running == true do
                         end
                         recalcMLCs(true)
                         drawFile(true)
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -2649,7 +2665,7 @@ while running == true do
                         end
                         recalcMLCs(true)
                         drawFile(true)
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     end
                     filename = openfiles[currfile]
                 end
@@ -2668,7 +2684,7 @@ while running == true do
                         end
                         recalcMLCs(true)
                         drawFile(true)
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     else
                         fileContents[currfile] = filelines
                         fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -2682,7 +2698,7 @@ while running == true do
                         end
                         recalcMLCs(true)
                         drawFile(true)
-                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..#(tab.getLongestItem(filelines)).."C")
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     end
                     filename = openfiles[currfile]
                 end
