@@ -1,105 +1,74 @@
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: found something at --"
-Sun Dec 26 01:15:11 2021 LOG: found string --"
-Sun Dec 26 01:15:11 2021 LOG: starts with -- and ends with "
-Sun Dec 26 01:15:11 2021 LOG: found something at "
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: found something at "
-Sun Dec 26 01:15:11 2021 LOG: found string "
-Sun Dec 26 01:15:11 2021 LOG: found something at "
-Sun Dec 26 01:15:11 2021 LOG: end of string with "
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: found something at "
-Sun Dec 26 01:15:11 2021 LOG: found string "
-Sun Dec 26 01:15:11 2021 LOG: found something at "
-Sun Dec 26 01:15:11 2021 LOG: end of string with "
-Sun Dec 26 01:15:11 2021 LOG: reset string
-Sun Dec 26 01:15:11 2021 LOG: found something at -"
-Sun Dec 26 01:15:11 2021 LOG: found string -"
-Sun Dec 26 01:15:11 2021 LOG: starts with - and ends with "
-Sun Dec 26 01:15:11 2021 LOG: found something at "
-Sun Dec 26 01:15:11 2021 LOG: {
+Sun Dec 26 11:45:43 2021 LOG: handling comments
+Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
+Sun Dec 26 11:45:43 2021 LOG: at 1
+Sun Dec 26 11:45:43 2021 LOG: handling comment --
+Sun Dec 26 11:45:43 2021 LOG: at 1
+Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
+Sun Dec 26 11:45:43 2021 LOG: at 1
+Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
+Sun Dec 26 11:45:43 2021 LOG: at 1
+Sun Dec 26 11:45:43 2021 LOG: handling comment --[[
+Sun Dec 26 11:45:43 2021 LOG: at 1
+Sun Dec 26 11:45:43 2021 LOG: {
   {
     {
       "--[[",
-      "unmodified text",
+      "comment",
     },
     {
       "test",
-      "text",
+      "comment",
     },
     {
       "]]",
-      "unmodified text",
+      "comment",
     },
   },
   {
     {
       "test",
-      "unmodified text",
+      "text",
     },
   },
   {
     {
       "--",
-      "text",
+      "comment",
     },
     {
       "\"",
-      "skipped",
+      "comment",
     },
     {
       "comment",
-      "stringd",
+      "comment",
     },
     {
       " ",
-      "stringd",
+      "comment",
     },
     {
       "with",
-      "stringd",
+      "comment",
     },
     {
       " ",
-      "stringd",
+      "comment",
     },
     {
       "string",
-      "stringd",
+      "comment",
     },
     {
       "\"",
-      "unmodified text",
+      "comment",
     },
   },
   {},
   {
     {
       "--[[",
-      "unmodified text",
+      "comment",
     },
   },
   {
@@ -109,24 +78,24 @@ Sun Dec 26 01:15:11 2021 LOG: {
     },
     {
       " ",
-      "unmodified text",
+      "text",
     },
     {
       "comment",
-      "unmodified text",
+      "text",
     },
   },
   {
     {
       "]]",
-      "unmodified text",
+      "text",
     },
   },
   {},
   {
     {
       "--[[",
-      "unmodified text",
+      "comment",
     },
   },
   {
@@ -136,17 +105,17 @@ Sun Dec 26 01:15:11 2021 LOG: {
     },
     {
       " ",
-      "unmodified text",
+      "text",
     },
     {
       "comment",
-      "unmodified text",
+      "text",
     },
   },
   {
     {
       "with",
-      "unmodified text",
+      "text",
     },
   },
   {
@@ -156,17 +125,17 @@ Sun Dec 26 01:15:11 2021 LOG: {
     },
     {
       " ",
-      "unmodified text",
+      "text",
     },
     {
       "lines",
-      "unmodified text",
+      "text",
     },
   },
   {
     {
       "]]",
-      "unmodified text",
+      "text",
     },
   },
   {},
@@ -174,7 +143,7 @@ Sun Dec 26 01:15:11 2021 LOG: {
   {
     {
       "--[[",
-      "unmodified text",
+      "comment",
     },
   },
   {
@@ -184,54 +153,54 @@ Sun Dec 26 01:15:11 2021 LOG: {
     },
     {
       " ",
-      "unmodified text",
+      "text",
     },
     {
       "comment",
-      "unmodified text",
+      "text",
     },
   },
   {
     {
       "\"",
-      "stringb",
+      "string",
     },
     {
       "with",
-      "stringd",
+      "string",
     },
     {
       " ",
-      "stringd",
+      "string",
     },
     {
       "a",
-      "stringd",
+      "string",
     },
     {
       " ",
-      "stringd",
+      "string",
     },
     {
       "string",
-      "stringd",
+      "string",
     },
     {
       "\"",
-      "text EOS",
+      "string",
     },
   },
   {
     {
       "]]",
-      "unmodified text",
+      "text",
     },
   },
   {},
   {
     {
       "[[",
-      "unmodified text",
+      "text",
     },
     {
       "multi",
@@ -239,17 +208,17 @@ Sun Dec 26 01:15:11 2021 LOG: {
     },
     {
       " ",
-      "unmodified text",
+      "text",
     },
     {
       "line",
-      "unmodified text",
+      "text",
     },
   },
   {
     {
       "string",
-      "unmodified text",
+      "text",
     },
   },
   {
@@ -259,22 +228,44 @@ Sun Dec 26 01:15:11 2021 LOG: {
     },
     {
       "]]",
-      "unmodified text",
+      "text",
     },
   },
   {},
   {
     {
       "\"",
-      "stringb",
+      "string",
     },
     {
       "test",
-      "stringd",
+      "string",
     },
     {
       "\"",
-      "text EOS",
+      "string",
+    },
+  },
+  {
+    {
+      "\"",
+      "string",
+    },
+    {
+      "\"",
+      "string",
+    },
+    {
+      "texton",
+      "text",
+    },
+    {
+      " ",
+      "text",
+    },
+    {
+      "end",
+      "text",
     },
   },
   {
@@ -284,23 +275,46 @@ Sun Dec 26 01:15:11 2021 LOG: {
     },
     {
       "\"",
-      "skipped",
+      "string",
     },
     {
       "incorrect",
-      "stringd",
+      "string",
     },
     {
       " ",
-      "stringd",
+      "string",
     },
     {
       "syntax",
-      "stringd",
+      "string",
     },
     {
       "\"",
-      "unmodified text",
+      "string",
+    },
+  },
+  {
+    {
+      "\"-- ",
+      "string",
+    },
+    {
+      "in",
+      "string",
+    },
+    {
+      " ",
+      "string",
+    },
+    {
+      "string",
+      "string",
+    },
+    {
+      "\"",
+      "string",
     },
   },
 }
+Sun Dec 26 11:45:43 2021 LOG: done handling comments

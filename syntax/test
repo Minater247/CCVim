@@ -23,4 +23,6 @@ string
 test]]
 
 "test"
+""texton end
 -"incorrect syntax"
+"-- in string"
