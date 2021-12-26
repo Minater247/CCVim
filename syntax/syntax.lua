@@ -231,36 +231,39 @@ local function multiLineComments(arr)
             end
         end
     end
-
-    print(textutils.serialise(arr))
     return arr
 end
 
---TODO: recheck strings to make sure the beginning isn't cut off by a comment
-
-
-
 local keywords = {
-    purple = {
-        "function",
-        "if",
-        "else",
-        "elseif",
-        "while",
-        "for",
-        "repeat",
-        "until",
-        "break",
-        "end",
-        "return"
-    },
-    blue = {
-        "local",
-        "true",
-        "false",
-        "nil"
-    },
+    ["function"] = colors.purple,
+    ["if"] = colors.purple,
+    ["else"] = colors.purple,
+    ["elseif"] = colors.purple,
+    ["while"] = colors.purple,
+    ["for"] = colors.purple,
+    ["repeat"] = colors.purple,
+    ["until"] = colors.purple,
+    ["break"] = colors.purple,
+    ["end"] = colors.purple,
+    ["return"] = colors.purple,
+    ["do"] = colors.purple,
+    ["local"] = colors.blue,
+    ["true"] = colors.blue,
+    ["false"] = colors.blue,
+    ["nil"] = colors.blue
 }
+
+local function keyword(arr)
+    for i=1,#arr do
+        for j=1,#arr[i] do
+            if keywords[arr[i][j][1]] then
+                arr[i][j][2] = "k"..keywords[arr[i][j][1]]
+            end
+        end
+    end
+    print(textutils.serialize(arr))
+    return arr
+end
 
 function parser.parse(arr, options)
     --options is an array
@@ -273,6 +276,7 @@ function parser.parse(arr, options)
     splitarr = comments(splitarr)
     splitarr = multiLineComments(splitarr)
     splitarr = strings(splitarr)
+    splitarr = keyword(splitarr)
     --multiLineComments(splitarr)
 
     return splitarr
