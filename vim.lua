@@ -49,7 +49,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.6
+local version = 0.61
 local releasedate = "2021-12-26"
 
 local fileEditorVer = 0.11
@@ -685,7 +685,7 @@ local function redrawTerm()
                 if filelines[i] ~= nil then
                     setcolors(colors.black, colors.white)
                     write(string.sub(filelines[i], currXOffset + 1, #filelines[i]))
-                else
+                elseif not motd then
                     setcolors(colors.black, colors.purple)
                     write("~")
                 end
