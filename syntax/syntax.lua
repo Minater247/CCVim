@@ -154,14 +154,16 @@ local function comments(arr)
         while j <= #inarr do
             --each item iterated in _this_ layer is a section table (text of section, type of section)
 
-            if string.find(inarr[j][1], "--") and not inarr[j][2] == "string" then
+            if string.find(inarr[j][1], "%-%-") and inarr[j][2] ~= "string" then
+                print("handling comment " .. inarr[j][1])
+                print("at "..string.find(inarr[j][1], "%-%-"))
                 if not incomment then
                     --if there's anything before the comment, break it up
                     local before
                     local comment = inarr[j][1]
-                    if string.find(inarr[j][1], "--") > 1 then
-                        before = inarr[j][1]:sub(1, string.find(inarr[j][1], "--") - 1)
-                        comment = inarr[j][1]:sub(string.find(inarr[j][1], "--"), #inarr[j][1])
+                    if string.find(inarr[j][1], "%-%-") > 1 then
+                        before = inarr[j][1]:sub(1, string.find(inarr[j][1], "%-%-") - 1)
+                        comment = inarr[j][1]:sub(string.find(inarr[j][1], "%-%-"), #inarr[j][1])
                     end
                     table.remove(arr[i], j)
                     if before then
@@ -176,7 +178,7 @@ local function comments(arr)
                 end
             else
                 if incomment then
-                    arr[i][j][2] = "text"
+                    arr[i][j][2] = "comment"
                 end
             end
             j = j + 1
