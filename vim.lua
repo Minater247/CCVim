@@ -87,6 +87,7 @@ local syntaxhighlighting = false
 local oldXOffset = 0
 local oldFileOffset = 0
 local lowspec = false
+local drawcrash = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -1685,9 +1686,13 @@ while running == true do
                         for i=1,#secondArr,1 do
                             table.insert(filelines, #filelines + 1, secondArr[i])
                         end
+                        if not fileContents[currfile] then
+                            fileContents[currfile] = filelines
+                        end
                         recalcMLCs(true)
                         drawFile(true)
                         sendMsg("\""..name.."\" "..#secondArr.."L, "..tab.countchars(secondArr).."C")
+                        motd = false
                     else
                         err("Can't open file "..name)
                     end
@@ -2073,6 +2078,12 @@ while running == true do
                     end
                 end
                 drawFile()
+            elseif cmdtab[1] == ":dbgex" then --debug 
+                local ff = fs.open("/vim/debug.exp", "w")
+                for i=1,#filelines,1 do
+                    ff.write(filelines[i].."\n")
+                end
+                ff.close()
             elseif cmdtab[1] ~= "" then
                 err("Not an editor command or unimplemented: "..cmdtab[1])
             end
