@@ -707,7 +707,7 @@ end
 
 
 local function insertMode()
-    drawFile()
+    drawFile(true)
     sendMsg("-- INSERT --")
     local ev, key
     while key ~= keys.tab do
