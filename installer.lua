@@ -1,14 +1,14 @@
 --[[ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
                         CCVIM INSTALLER
-                          VERSION 0.141
+                          VERSION 0.15
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -]]
 
 local function initialMenu()
     term.clear()
     term.setCursorPos(1, 1)
-    print("CCVIM Installer v0.14")
+    print("CCVIM Installer v0.15")
     print() --skip a line
     print("1. Install CCVIM")
     print("2. Add CCVIM to universal path")
@@ -224,12 +224,12 @@ local function update()
     end
     if fs.exists("/vim/.version") and con then
         f = toArr("/vim/.version")
-        vimver = f[1]
-        instver = f[2]
+        vimver = tonumber(f[1])
+        instver = tonumber(f[2])
         nf = http.get("https://raw.githubusercontent.com/Minater247/CCVim/main/.version").readAll()
         nft = split(nf, "\n")
-        nvimver = nft[1]
-        ninstver = nft[2]
+        nvimver = tonumber(nft[1])
+        ninstver = tonumber(nft[2])
         if ninstver > instver then
             print("This version of the installer is outdated. Please download a new version to continue.")
             print("Download now? [y/n]")

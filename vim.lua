@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.64
+local version = 0.65
 local releasedate = "2021-12-26"
 
 local fileEditorVer = 0.11
@@ -1920,13 +1920,15 @@ while running == true do
                             currXOffset = 0
                             currCursorY = 1
                             currFileOffset = 0
-                            local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
-                            if fs.exists("/vim/syntax/"..filenamestring..".lua") then
-                                filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
-                            else
-                                fileContents[currfile]["filetype"] = nil
+                            if string.find(openfiles[currfile], "%.") then
+                                local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
+                                if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                                    filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                                else
+                                    fileContents[currfile]["filetype"] = nil
+                                end
+                                fileContents[currfile]["filetype"] = filenamestring
                             end
-                            fileContents[currfile]["filetype"] = filenamestring
                             recalcMLCs(true)
                             drawFile(true)
                         end
