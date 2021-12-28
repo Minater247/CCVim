@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.651
+local version = 0.652
 local releasedate = "2021-12-26"
 
 local fileEditorVer = 0.11
@@ -1863,6 +1863,8 @@ while running == true do
                         if fs.exists(fil.topath(name)) then
                             if fs.isDir(fil.topath(name)) then
                                 name = dirOpener(fil.topath(name))
+                            else
+                                name = fil.topath(name)
                             end
                             fileContents[currfile] = filelines
                             fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
@@ -1907,7 +1909,8 @@ while running == true do
                             recalcMLCs(true)
                             drawFile(true)
                         else
-                            local templines = fil.toArr(fil.topath(name))
+                            name = fil.topath(name)
+                            local templines = fil.toArr(name)
                             if templines then
                                 table.insert(fileContents, currfile + 1, templines)
                             else
