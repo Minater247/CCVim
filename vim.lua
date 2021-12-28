@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.63
+local version = 0.64
 local releasedate = "2021-12-26"
 
 local fileEditorVer = 0.11
@@ -1840,7 +1840,11 @@ while running == true do
                     fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                     currfile = currfile + 1
                     filelines = fileContents[currfile]
-                    sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
+                    if openfiles[currfile] ~= "" then
+                        sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
+                    else
+                        sendMsg("[New File]  "..#filelines.."L, "..tab.countchars(filelines).."C")
+                    end
                     currCursorX = 1
                     currXOffset = 0
                     currCursorY = 1
@@ -1863,10 +1867,19 @@ while running == true do
                             fileContents[currfile] = filelines
                             fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                             table.insert(fileContents, currfile + 1, fil.toArr(fil.topath(name)))
+                            local newfile = false
+                            if not fileContents[#fileContents] then
+                                newfile = true
+                                fileContents[#fileContents] = {""}
+                            end
                             table.insert(openfiles, currfile + 1, name)
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
-                            sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
+                            if newfile then
+                                sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..tab.countchars(filelines).."C")
+                            else
+                                sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
+                            end
                             currCursorX = 1
                             currXOffset = 0
                             currCursorY = 1
@@ -1935,7 +1948,9 @@ while running == true do
                     end
                 end
                 local doneGettingEnd = false
-                fileContents[currfile]["filetype"] = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
+                if string.find(openfiles[currfile], "%.") then
+                    fileContents[currfile]["filetype"] = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
+                end
             elseif cmdtab[1] == ":tabc" or cmdtab[1] == ":tabclose" or cmdtab[1] == ":tabc!" or cmdtab[1] == ":tabclose!" then
                 if fileContents[currfile]["unsavedchanges"] and cmdtab[1] ~= ":tabc!" and cmdtab[1] ~= ":tabclose!" then
                     err("No write since last change (add ! to override)")

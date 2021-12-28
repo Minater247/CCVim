@@ -1,7 +1,7 @@
 //TODO
 
 SOON PROJECTS:
--- Optimize the way it recalculates MLCs
+-- Optimize the way it recalculates MLC
 
 LATER PROJECTS:
 -- Check if file opened in tab
