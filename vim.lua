@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.65
+local version = 0.651
 local releasedate = "2021-12-26"
 
 local fileEditorVer = 0.11
@@ -1660,7 +1660,7 @@ while running == true do
                         if tb[1] then
                             currCursorX = tb[1]
                         else
-                            currCursorX = 0
+                            currCursorX = 1
                         end
                         while currCursorX + lineoffset > wid do
                             currCursorX = currCursorX - 1
@@ -1843,7 +1843,7 @@ while running == true do
                     if openfiles[currfile] ~= "" then
                         sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                     else
-                        sendMsg("[New File]  "..#filelines.."L, "..tab.countchars(filelines).."C")
+                        sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..tab.countchars(filelines).."C")
                     end
                     currCursorX = 1
                     currXOffset = 0
@@ -1875,6 +1875,7 @@ while running == true do
                             table.insert(openfiles, currfile + 1, name)
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
+                            openfiles[currfile] = name
                             if newfile then
                                 sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..tab.countchars(filelines).."C")
                             else
@@ -1888,19 +1889,21 @@ while running == true do
                             if tb[1] then
                                 currCursorX = tb[1]
                             else
-                                currCursorX = 0
+                                currCursorX = 1
                             end
                             while currCursorX + lineoffset > wid do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
-                            local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
-                            if fs.exists("/vim/syntax/"..filenamestring..".lua") then
-                                filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
-                            else
-                                fileContents[currfile]["filetype"] = nil
+                            if string.find(openfiles[currfile], "^%.") then
+                                local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
+                                if fs.exists("/vim/syntax/"..filenamestring..".lua") then
+                                    filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
+                                else
+                                    fileContents[currfile]["filetype"] = nil
+                                end
+                                fileContents[currfile]["filetype"] = filenamestring
                             end
-                            fileContents[currfile]["filetype"] = filenamestring
                             recalcMLCs(true)
                             drawFile(true)
                         else
@@ -1915,6 +1918,7 @@ while running == true do
                             fileContents[currfile]["cursor"] = {currCursorX, currXOffset, currCursorY, currFileOffset}
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
+                            openfiles[currfile] = name
                             sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..tab.countchars(filelines).."C")
                             currCursorX = 1
                             currXOffset = 0
