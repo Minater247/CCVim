@@ -598,7 +598,6 @@ local function moveCursorDown()
     end
 end
 
---TODO: fix this, it's not loading on file load
 --Recalculate where multi-line comments are, based on position in file
 local function recalcMLCs(force)
     if not fileContents[currfile] then
