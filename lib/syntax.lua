@@ -14,6 +14,34 @@ local function print(...)
 end
 
 function parser.parse(arr, options)
+    local currentstate = "normal"
+    for i=1,#arr do
+
+        --split the string at punctuation
+        local words = {}
+        local word = ""
+        for j=1,#arr[i] do
+            if arr[i]:sub(j, j):match("%W") then
+                if word ~= "" then
+                    words[#words+1] = word
+                    print("got word: "..word)
+                end
+                words[#words+1] = arr[i]:sub(j, j)
+                if arr[i]:sub(j, j) ~= " " then
+                    print("split at: "..arr[i]:sub(j, j))
+                end
+                word = ""
+            else
+                word = word .. arr[i]:sub(j, j)
+            end
+        end
+        if word ~= "" then
+            words[#words+1] = word
+            print("got word: "..word)
+        end
+
+
+    end
     return arr
 end
 

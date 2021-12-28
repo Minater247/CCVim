@@ -1,4 +1,370 @@
-Tue Dec 28 14:46:05 2021 LOG: {
+Tue Dec 28 15:04:46 2021 LOG: split at: -
+Tue Dec 28 15:04:46 2021 LOG: split at: -
+Tue Dec 28 15:04:46 2021 LOG: got word: second
+Tue Dec 28 15:04:46 2021 LOG: got word: attempt
+Tue Dec 28 15:04:46 2021 LOG: got word: at
+Tue Dec 28 15:04:46 2021 LOG: got word: a
+Tue Dec 28 15:04:46 2021 LOG: got word: better
+Tue Dec 28 15:04:46 2021 LOG: got word: syntax
+Tue Dec 28 15:04:46 2021 LOG: got word: highlighter
+Tue Dec 28 15:04:46 2021 LOG: got word: for
+Tue Dec 28 15:04:46 2021 LOG: got word: the
+Tue Dec 28 15:04:46 2021 LOG: got word: vim
+Tue Dec 28 15:04:46 2021 LOG: got word: clone
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: parser
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: {
+Tue Dec 28 15:04:46 2021 LOG: split at: }
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: fil
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: require
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: /
+Tue Dec 28 15:04:46 2021 LOG: got word: vim
+Tue Dec 28 15:04:46 2021 LOG: split at: /
+Tue Dec 28 15:04:46 2021 LOG: got word: lib
+Tue Dec 28 15:04:46 2021 LOG: split at: /
+Tue Dec 28 15:04:46 2021 LOG: got word: fil
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: output
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: io
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: open
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: /
+Tue Dec 28 15:04:46 2021 LOG: got word: vim
+Tue Dec 28 15:04:46 2021 LOG: split at: /
+Tue Dec 28 15:04:46 2021 LOG: got word: syntax
+Tue Dec 28 15:04:46 2021 LOG: split at: /
+Tue Dec 28 15:04:46 2021 LOG: got word: synt
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: log
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: w
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: io
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: output
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: output
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: function
+Tue Dec 28 15:04:46 2021 LOG: got word: print
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: args
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: {
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: }
+Tue Dec 28 15:04:46 2021 LOG: got word: io
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: write
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: os
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: date
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: LOG
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: table
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: concat
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: args
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: io
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: write
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: \
+Tue Dec 28 15:04:46 2021 LOG: got word: n
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: io
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: flush
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: function
+Tue Dec 28 15:04:46 2021 LOG: got word: parser
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: parse
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: got word: options
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: currentstate
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: normal
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: for
+Tue Dec 28 15:04:46 2021 LOG: got word: i
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: 1
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: split at: #
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: got word: do
+Tue Dec 28 15:04:46 2021 LOG: split at: -
+Tue Dec 28 15:04:46 2021 LOG: split at: -
+Tue Dec 28 15:04:46 2021 LOG: got word: split
+Tue Dec 28 15:04:46 2021 LOG: got word: the
+Tue Dec 28 15:04:46 2021 LOG: got word: string
+Tue Dec 28 15:04:46 2021 LOG: got word: at
+Tue Dec 28 15:04:46 2021 LOG: got word: punctuation
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: words
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: {
+Tue Dec 28 15:04:46 2021 LOG: split at: }
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: for
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: 1
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: split at: #
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: got word: i
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: got word: do
+Tue Dec 28 15:04:46 2021 LOG: got word: if
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: got word: i
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: got word: sub
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: got word: match
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: %
+Tue Dec 28 15:04:46 2021 LOG: got word: W
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: then
+Tue Dec 28 15:04:46 2021 LOG: got word: if
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: ~
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: then
+Tue Dec 28 15:04:46 2021 LOG: got word: words
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: split at: #
+Tue Dec 28 15:04:46 2021 LOG: got word: words
+Tue Dec 28 15:04:46 2021 LOG: split at: +
+Tue Dec 28 15:04:46 2021 LOG: got word: 1
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: got word: print
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: got
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: words
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: split at: #
+Tue Dec 28 15:04:46 2021 LOG: got word: words
+Tue Dec 28 15:04:46 2021 LOG: split at: +
+Tue Dec 28 15:04:46 2021 LOG: got word: 1
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: got word: i
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: got word: sub
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: if
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: got word: i
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: got word: sub
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: ~
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: then
+Tue Dec 28 15:04:46 2021 LOG: got word: print
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: split
+Tue Dec 28 15:04:46 2021 LOG: got word: at
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: got word: i
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: got word: sub
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: else
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: got word: i
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: got word: sub
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: ,
+Tue Dec 28 15:04:46 2021 LOG: got word: j
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: if
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: ~
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: then
+Tue Dec 28 15:04:46 2021 LOG: got word: words
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: split at: #
+Tue Dec 28 15:04:46 2021 LOG: got word: words
+Tue Dec 28 15:04:46 2021 LOG: split at: +
+Tue Dec 28 15:04:46 2021 LOG: got word: 1
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: got word: print
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: got word: got
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: :
+Tue Dec 28 15:04:46 2021 LOG: split at: "
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: word
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: return
+Tue Dec 28 15:04:46 2021 LOG: got word: arr
+Tue Dec 28 15:04:46 2021 LOG: got word: end
+Tue Dec 28 15:04:46 2021 LOG: got word: local
+Tue Dec 28 15:04:46 2021 LOG: got word: args
+Tue Dec 28 15:04:46 2021 LOG: split at: =
+Tue Dec 28 15:04:46 2021 LOG: split at: {
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: split at: }
+Tue Dec 28 15:04:46 2021 LOG: got word: print
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: textutils
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: serialise
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: parser
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: parse
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: fil
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: toArr
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: fil
+Tue Dec 28 15:04:46 2021 LOG: split at: .
+Tue Dec 28 15:04:46 2021 LOG: got word: topath
+Tue Dec 28 15:04:46 2021 LOG: split at: (
+Tue Dec 28 15:04:46 2021 LOG: got word: args
+Tue Dec 28 15:04:46 2021 LOG: split at: [
+Tue Dec 28 15:04:46 2021 LOG: got word: 1
+Tue Dec 28 15:04:46 2021 LOG: split at: ]
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: split at: )
+Tue Dec 28 15:04:46 2021 LOG: {
   "--second attempt at a better syntax highlighter for the vim clone",
   "",
   "local parser = {}",
@@ -15,6 +381,34 @@ Tue Dec 28 14:46:05 2021 LOG: {
   "end",
   "",
   "function parser.parse(arr, options)",
+  "    local currentstate = \"normal\"",
+  "    for i=1,#arr do",
+  "",
+  "        --split the string at punctuation",
+  "        local words = {}",
+  "        local word = \"\"",
+  "        for j=1,#arr[i] do",
+  "            if arr[i]:sub(j, j):match(\"%W\") then",
+  "                if word ~= \"\" then",
+  "                    words[#words+1] = word",
+  "                    print(\"got word: \"..word)",
+  "                end",
+  "                words[#words+1] = arr[i]:sub(j, j)",
+  "                if arr[i]:sub(j, j) ~= \" \" then",
+  "                    print(\"split at: \"..arr[i]:sub(j, j))",
+  "                end",
+  "                word = \"\"",
+  "            else",
+  "                word = word .. arr[i]:sub(j, j)",
+  "            end",
+  "        end",
+  "        if word ~= \"\" then",
+  "            words[#words+1] = word",
+  "            print(\"got word: \"..word)",
+  "        end",
+  "",
+  "",
+  "    end",
   "    return arr",
   "end",
   "",
