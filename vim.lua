@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.652
+local version = 0.653
 local releasedate = "2021-12-26"
 
 local fileEditorVer = 0.11
@@ -1039,9 +1039,9 @@ end
 local function dirOpener(dir, inputname)
     local currSelection = dir.."/"
     if inputname then
-        sendMsg("\""..inputname.."\" is a directory")
+        sendMsg("\"/"..shell.resolve(inputname).."/\" is a directory")
     else
-        sendMsg("\""..dir.."\" is a direcotry")
+        sendMsg("\"/"..shell.resolve(dir).."/\" is a direcotry")
     end
     local sortType = "name"
     local currDirY = 1
@@ -1823,6 +1823,7 @@ while running == true do
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                 end
             elseif cmdtab[1] == ":tabnew" then
+                --TODO!! syntax highlighting not working on new files again
                 if not cmdtab[2] then
                     cmdtab[2] = 1
                 end
@@ -1877,6 +1878,7 @@ while running == true do
                             currfile = currfile + 1
                             filelines = fileContents[currfile]
                             openfiles[currfile] = name
+                            filename = openfiles[currfile]
                             if newfile then
                                 sendMsg("\""..openfiles[currfile].."\"  [New File] "..#filelines.."L, "..tab.countchars(filelines).."C")
                             else
@@ -1896,7 +1898,7 @@ while running == true do
                                 currCursorX = currCursorX - 1
                                 currXOffset = currXOffset + 1
                             end
-                            if string.find(openfiles[currfile], "^%.") then
+                            if string.find(openfiles[currfile], "%.") then
                                 local filenamestring = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
                                 if fs.exists("/vim/syntax/"..filenamestring..".lua") then
                                     filetypearr[filenamestring] = require("/vim/syntax/"..filenamestring)
@@ -1955,7 +1957,6 @@ while running == true do
                         drawFile(true)
                     end
                 end
-                local doneGettingEnd = false
                 if string.find(openfiles[currfile], "%.") then
                     fileContents[currfile]["filetype"] = string.sub(openfiles[currfile], string.find(openfiles[currfile], "%.") + 1, #openfiles[currfile])
                 end
