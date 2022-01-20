@@ -1,7 +1,6 @@
 //TODO
 
 SOON PROJECTS:
--- Pressing enter sometimes breaks MLC syntax highlighting
 
 LATER PROJECTS:
 -- Check if file opened in tab
