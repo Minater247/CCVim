@@ -20,6 +20,7 @@ Features:
 - Commands that require pressing control (type ```:ctrl``` to activate the emulated control key, or ```:ctrl X``` to emulate [control + key X].)
 - File explorer
 - Support for tapping/clicking bottom line to exit insert/append modes, for use on mobile
+- Autoindent
 
 
 What's currently being worked on:
