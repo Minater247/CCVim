@@ -778,17 +778,28 @@ local function insertMode()
                     end
                     table.insert(filelines, currCursorY + currFileOffset + 1, string.rep(" ", indentedamount) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset])))
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
-                    moveCursorDown()
-                    for i=1,indentedamount,1 do
-                        moveCursorRight()
+                    currCursorY = currCursorY + 1
+                    while currCursorY + currFileOffset > hig - 1 do
+                        currFileOffset = currFileOffset + 1
+                        currCursorY = currCursorY - 1
                     end
                     currCursorX = 1
                     currXOffset = 0
+                    for i=1,indentedamount,1 do
+                        currCursorX = currCursorX + 1
+                        while currCursorX + lineoffset > wid do
+                            currXOffset = currXOffset + 1
+                            currCursorX = currCursorX - 1
+                        end
+                        if currXOffset < 0 then
+                            currXOffset = 0
+                        end
+                    end
                     fileContents[currfile]["unsavedchanges"] = true
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
-                recalcMLCs()
+                recalcMLCs(true) --slow, but it works for now
                 drawFile(true)
             end
         elseif ev == "char" then
