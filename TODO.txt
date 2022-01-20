@@ -1,7 +1,7 @@
 //TODO
 
 SOON PROJECTS:
--- Optimize the way it recalculates MLC
+-- Pressing enter sometimes breaks MLC syntax highlighting
 
 LATER PROJECTS:
 -- Check if file opened in tab

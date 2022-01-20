@@ -105,6 +105,7 @@ local syntaxhighlighting = false
 local oldXOffset = 0
 local oldFileOffset = 0
 local lowspec = false
+local autoindent = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -764,27 +765,30 @@ local function insertMode()
                 end
             elseif key == keys.enter then
                 if filelines[currCursorY + currFileOffset] ~= nil then
-                    --check if current line is indented, if so, indent the new line
                     local indentedamount = 0
-                    for i=1,#(filelines[currCursorY + currFileOffset]),1 do
-                        if string.sub(filelines[currCursorY + currFileOffset], i, i) == " " then
-                            indentedamount = indentedamount + 1
-                        else
-                            break
+                    if autoindent then
+                        --check if current line is indented, if so, indent the new line
+                        for i=1,#(filelines[currCursorY + currFileOffset]),1 do
+                            if string.sub(filelines[currCursorY + currFileOffset], i, i) == " " then
+                                indentedamount = indentedamount + 1
+                            else
+                                break
+                            end
                         end
                     end
                     table.insert(filelines, currCursorY + currFileOffset + 1, string.rep(" ", indentedamount) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset])))
-                    print(string.rep(" ", indentedamount) .. indentedamount)
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
-                    os.pullEvent("key")
                     moveCursorDown()
+                    for i=1,indentedamount,1 do
+                        moveCursorRight()
+                    end
                     currCursorX = 1
                     currXOffset = 0
                     fileContents[currfile]["unsavedchanges"] = true
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
-                recalcMLCs(true)
+                recalcMLCs()
                 drawFile(true)
             end
         elseif ev == "char" then
@@ -902,6 +906,8 @@ if fs.exists("/vim/.vimrc") then
                         lineoffset = 4
                     elseif rctable[2] == "lowperformance" then
                         lowspec = true
+                    elseif rctable[2] == "autoindent" then
+                        autoindent = true
                     end
                 else
                     --set the things to values
@@ -2034,6 +2040,10 @@ while running == true do
                     recalcMLCs(true)
                     redrawTerm()
                     drawFile(true)
+                elseif cmdtab[2] == "autoindent" then
+                    autoindent = true
+                elseif cmdtab[2] == "noautoindent" then
+                    autoindent = false
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
                     seterror = true
