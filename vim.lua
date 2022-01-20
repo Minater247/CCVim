@@ -105,7 +105,6 @@ local syntaxhighlighting = false
 local oldXOffset = 0
 local oldFileOffset = 0
 local lowspec = false
-local drawcrash = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -116,14 +115,6 @@ local function resetSize()
         wid, hig = monitor.getSize()
     else
         wid, hig = term.getSize()
-    end
-end
-
-local function getWindSize()
-    if monitor then
-        return monitor.getSize()
-    else
-        return term.getSize()
     end
 end
 
@@ -176,12 +167,6 @@ local function pullEventWRMP()
         s = remappings[s]
     end
     return e, s, v2, v3
-end
-
-local function printarray(arr)
-    for i=1,#arr,1 do
-        print(arr[i])
-    end
 end
 
 local function pullCommand(input, numeric, len)
@@ -779,8 +764,19 @@ local function insertMode()
                 end
             elseif key == keys.enter then
                 if filelines[currCursorY + currFileOffset] ~= nil then
-                    table.insert(filelines, currCursorY + currFileOffset + 1, string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset])))
+                    --check if current line is indented, if so, indent the new line
+                    local indentedamount = 0
+                    for i=1,#(filelines[currCursorY + currFileOffset]),1 do
+                        if string.sub(filelines[currCursorY + currFileOffset], i, i) == " " then
+                            indentedamount = indentedamount + 1
+                        else
+                            break
+                        end
+                    end
+                    table.insert(filelines, currCursorY + currFileOffset + 1, string.rep(" ", indentedamount) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset])))
+                    print(string.rep(" ", indentedamount) .. indentedamount)
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
+                    os.pullEvent("key")
                     moveCursorDown()
                     currCursorX = 1
                     currXOffset = 0
@@ -788,7 +784,7 @@ local function insertMode()
                 else
                     table.insert(filelines, currCursorY + currFileOffset + 1, "")
                 end
-                recalcMLCs()
+                recalcMLCs(true)
                 drawFile(true)
             end
         elseif ev == "char" then

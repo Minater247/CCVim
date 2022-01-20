@@ -11,3 +11,4 @@ LATER PROJECTS:
     - Better change detection 
 -- Look into more of the file explorer commands
 -- Multiple multi-line comments on one line
+-- Change install, library and syntax folders
