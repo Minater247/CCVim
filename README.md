@@ -1,6 +1,8 @@
 # CCVim
 A newer Vim clone for ComputerCraft, made since I wanted some of the features the previous one didn't have.
 
+![2022-01-21_10 08 45](https://user-images.githubusercontent.com/45747191/150578475-108afa02-3acd-4019-b512-c47dd9546d1b.png)
+
 You can use [TAB] to exit editing mode.
 
 Features:
