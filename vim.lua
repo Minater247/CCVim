@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.661
+local version = 0.662
 local releasedate = "2022-01-21"
 
 local fileEditorVer = 0.11
@@ -807,7 +807,7 @@ local function insertMode()
                     table.insert(filelines, currCursorY + currFileOffset + 1, string.rep(" ", indentedamount) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset])))
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
                     currCursorY = currCursorY + 1
-                    while currCursorY + currFileOffset > hig - 1 do
+                    while currCursorY > hig - 1 do
                         currFileOffset = currFileOffset + 1
                         currCursorY = currCursorY - 1
                     end
