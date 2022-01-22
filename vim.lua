@@ -67,10 +67,10 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.663
-local releasedate = "2022-01-21"
+local version = 0.664
+local releasedate = "2022-01-22"
 
-local fileEditorVer = 0.11
+local fileExplorerVer = 0.12
 
 local tab = require("/vim/lib/tab")
 local argv = require("/vim/lib/args")
@@ -1005,8 +1005,8 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
         for i=1,wid-25,1 do
             write(" ")
         end
-        setpos(wid-#tostring(fileEditorVer)-6, 2)
-        write("ver. "..fileEditorVer)
+        setpos(wid-#tostring(fileExplorerVer)-6, 2)
+        write("ver. "..fileExplorerVer)
         setpos(1, 5)
         write("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by")
         for i=1,wid-#("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by"),1 do
@@ -1105,6 +1105,8 @@ local function dirOpener(dir, inputname)
     if fs.isDir(dir) then
         local stillInExplorer = true
         local redrawNext = false
+        local dothide = false
+        local reverseSort = false
         local e, k
         while stillInExplorer do
             local realFilesInDir = fs.list(currSelection)
@@ -1113,46 +1115,88 @@ local function dirOpener(dir, inputname)
                 filesInDir = {".."}
             end
             for i=1,#realFilesInDir,1 do
-                table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+                if dothide then
+                    if not (realFilesInDir[i]:sub(1, 1) == ".") then
+                        table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+                    end
+                else
+                    table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
+                end
             end
             if sortType == "name" then
                 table.sort(filesInDir, 
                     function (k1, k2)
-                        if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
-                            return true
-                        elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
-                            return k1 < k2
-                        elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
-                            return false
+                        if reverseSort then
+                            if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
+                                return false
+                            elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                                return k1 > k2
+                            elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                                return true
+                            else
+                                return k1 > k2
+                            end
                         else
-                            return k1 < k2
+                            if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
+                                return true
+                            elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                                return k1 < k2
+                            elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                                return false
+                            else
+                                return k1 < k2
+                            end
                         end
                     end)
             elseif sortType == "extension" then
                 table.sort(filesInDir, 
                     function (k1, k2)
-                        if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
-                            return true
-                        elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
-                            return k1 < k2
-                        elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
-                            return false
-                        else
-                            if str.getFileExtension(k1) == str.getFileExtension(k2) then
-                                return k1 < k2
-                            elseif str.getFileExtension(k1) == "" and str.getFileExtension(k2) ~= "" then
+                        if reverseSort then
+                            if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
                                 return false
-                            elseif str.getFileExtension(k1) ~= "" and str.getFileExtension(k2) == "" then
+                            elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                                return k1 > k2
+                            elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
                                 return true
                             else
-                                return str.getFileExtension(k1) < str.getFileExtension(k2)
+                                if str.getFileExtension(k1) == str.getFileExtension(k2) then
+                                    return k1 > k2
+                                elseif str.getFileExtension(k1) == "" and str.getFileExtension(k2) ~= "" then
+                                    return true
+                                elseif str.getFileExtension(k1) ~= "" and str.getFileExtension(k2) == "" then
+                                    return false
+                                else
+                                    return str.getFileExtension(k1) > str.getFileExtension(k2)
+                                end
+                            end
+                        else
+                            if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
+                                return true
+                            elseif fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                                return k1 < k2
+                            elseif not fs.isDir(currSelection .. "/" .. k1) and fs.isDir(currSelection .. "/" .. k2) then
+                                return false
+                            else
+                                if str.getFileExtension(k1) == str.getFileExtension(k2) then
+                                    return k1 < k2
+                                elseif str.getFileExtension(k1) == "" and str.getFileExtension(k2) ~= "" then
+                                    return false
+                                elseif str.getFileExtension(k1) ~= "" and str.getFileExtension(k2) == "" then
+                                    return true
+                                else
+                                    return str.getFileExtension(k1) < str.getFileExtension(k2)
+                                end
                             end
                         end
                     end)  --this whole large table.sort function sorts out the directories first and the extensionless files last
             elseif sortType == "size" then
                 table.sort(filesInDir,
                     function (k1, k2)
-                        return fs.getSize(currSelection.."/"..k1) < fs.getSize(currSelection.."/"..k2)
+                        if reverseSort then
+                            return fs.getSize(currSelection.."/"..k1) > fs.getSize(currSelection.."/"..k2)
+                        else
+                            return fs.getSize(currSelection.."/"..k1) < fs.getSize(currSelection.."/"..k2)
+                        end
                     end)
             end
             if redrawNext then
@@ -1247,6 +1291,19 @@ local function dirOpener(dir, inputname)
                         currDirY = currDirY + 1
                         currDirOffset = currDirOffset - 1
                     end
+                elseif k == "c" then
+                    shell.setDir(currSelection)
+                elseif k == "g" then
+                    e, k = os.pullEvent("char")
+                    if e == "char" then
+                        if k == "h" then
+                            dothide = not dothide
+                            redrawNext = true
+                        end
+                    end
+                elseif k == "r" then
+                    reverseSort = not reverseSort
+                    redrawNext = true
                 end
             elseif e == "key" then
                 if k == keys.enter then
