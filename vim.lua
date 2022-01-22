@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.662
+local version = 0.663
 local releasedate = "2022-01-21"
 
 local fileEditorVer = 0.11
@@ -293,7 +293,10 @@ local function drawFile(forcedredraw)
                             local quotepoints = {}
                             setcolors(colors.black, colors.red)
                             for j=1,#filelines[i],1 do
-                                setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                                local writechar = not ((1 - currXOffset - lineoffset + j - 1 < 1) or (1 - currXOffset + lineoffset + j - 1 > wid))
+                                if writechar then
+                                    setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                                end
                                 if tab.find(quotationmarks, j) then
                                     if not inquotes then
                                         if j < quotationmarks[#quotationmarks] then
@@ -303,7 +306,9 @@ local function drawFile(forcedredraw)
                                     end
                                 end
                                 if inquotes then
-                                    write(string.sub(filelines[i], j, j))
+                                    if writechar then
+                                        write(string.sub(filelines[i], j, j))
+                                    end
                                     table.insert(quotepoints, #quotepoints, j - 2) --Don't know why I need to subtract 2 but heck it works
                                 end
                                 if tab.find(quotationmarks, j) and not justset then
@@ -384,7 +389,10 @@ local function drawFile(forcedredraw)
                                 local quotepoints = {}
                                 setcolors(colors.black, colors.red)
                                 for j=1,#filelines[i],1 do
-                                    setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                                    local writechar = not ((1 - currXOffset - lineoffset + j - 1 < 1) or (1 - currXOffset + lineoffset + j - 1 > wid))
+                                    if writechar then
+                                        setpos(1 - currXOffset + lineoffset + j - 1, i - currFileOffset)
+                                    end
                                     if tab.find(quotationmarks, j) then
                                         if not inquotes then
                                             if j < quotationmarks[#quotationmarks] then
@@ -394,7 +402,9 @@ local function drawFile(forcedredraw)
                                         end
                                     end
                                     if inquotes then
-                                        write(string.sub(filelines[i], j, j))
+                                        if writechar then
+                                            write(string.sub(filelines[i], j, j))
+                                        end
                                         table.insert(quotepoints, #quotepoints, j - 2)
                                     end
                                     if tab.find(quotationmarks, j) and not justset then
@@ -468,7 +478,6 @@ local function drawFile(forcedredraw)
                 if i <= #filelines then
                     write(i)
                 end
-                write(" ")
             else
                 if i <= #filelines then
                     write("10k+")
@@ -1864,7 +1873,6 @@ while running == true do
                     sendMsg("\""..openfiles[currfile].."\" "..#filelines.."L, "..tab.countchars(filelines).."C")
                 end
             elseif cmdtab[1] == ":tabnew" then
-                --TODO!! syntax highlighting not working on new files again
                 if not cmdtab[2] then
                     cmdtab[2] = 1
                 end
@@ -2167,6 +2175,11 @@ while running == true do
                 drawFile()
             elseif cmdtab[1] == ":dbgex" then --debug 
                 local ff = fs.open("/vim/debug.exp", "w")
+                ff.write("Line offset: "..lineoffset.."\n")
+                ff.write("Cursor Y: "..currCursorY.."\n")
+                ff.write("Cursor X: "..currCursorX.."\n")
+                ff.write("File offset: "..currFileOffset.."\n")
+                ff.write("Cursor X offset: "..currXOffset.."\n")
                 for i=1,#filelines,1 do
                     ff.write(filelines[i].."\n")
                 end
@@ -2427,7 +2440,8 @@ while running == true do
             drawFile(true)
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "$" then
-            currCursorX = #filelines[currCursorY + currFileOffset]
+            currCursorX = #filelines[currCursorY + currFileOffset] + 1
+            currXOffset = 0
             while currCursorX + lineoffset > wid do
                 currCursorX = currCursorX - 1
                 currXOffset = currXOffset + 1

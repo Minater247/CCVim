@@ -1,6 +1,7 @@
 //TODO
 
 SOON PROJECTS:
+-- Polish up the installation instructions in the README
 
 LATER PROJECTS:
 -- Check if file opened in tab
