@@ -252,7 +252,6 @@ end
 
 local function drawFile(forcedredraw)
     motd = false
-    local length = #(tostring(currCursorY + currFileOffset + hig - 1))
     if currXOffset ~= oldXOffset or currFileOffset ~= oldFileOffset or forcedredraw then
         for i=1,hig-1,1 do
             clearScreenLine(i)
