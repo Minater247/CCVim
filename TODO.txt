@@ -1,7 +1,6 @@
 //TODO
 
 SOON PROJECTS:
--- Work on improving flickering
 
 LATER PROJECTS:
 -- Check if file opened in tab
