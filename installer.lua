@@ -14,7 +14,7 @@ local function download(url, file, noerr)
 end
 
 print("You seem to have been running a legacy version of this installer.")
-print("We'll have to download the new version before continuing.")
+print("You'll have to download the new version before continuing.")
 print("Download now? (y/n)")
 local input = read()
 if input == "y" then
@@ -22,8 +22,5 @@ if input == "y" then
     download("https://raw.githubusercontent.com/Minater247/CCVim/main/vim_installer.lua", "/vim/installer")
     fs.delete("/vim/installer.lua") --legacy installer no longer needed
     fs.move("/vim/installer", "/vim/vim_installer.lua")
-    print("Download complete.")
-    return
+    print("Done! Please re-run the installer using `vim_installer`.")
 end
-
-print("Done! Please re-run the installer using `vim_installer`.")
