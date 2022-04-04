@@ -1290,6 +1290,91 @@ local function dirOpener(dir, inputname)
     end
 end
 
+local lastSearch = ""
+local lastSearchLine = nil
+--search the current file for a string
+local function search(direction)
+    clearScreenLine(hig)
+    term.setTextColor(colors.white)
+    term.setBackgroundColor(colors.black)
+    term.setCursorPos(1, hig)
+    if direction == "forward" then
+        term.write("/")
+    else
+        term.write("?")
+    end
+    --get input
+    local currSearch = ""
+    local searching = true
+    while searching do
+        local e, k = os.pullEvent()
+        if e == "char" then
+            currSearch = currSearch .. k
+            --move cursor right one and write the next character
+            term.setCursorPos(#currSearch + 1, hig)
+            term.write(k)
+        elseif e == "key" then
+            if k == keys.enter then
+                searching = false
+            elseif k == keys.backspace then
+                --delete the last character
+                currSearch = string.sub(currSearch, 1, #currSearch - 1)
+                --move cursor left one and clear the last character
+                term.setCursorPos(#currSearch + 2, hig)
+                term.write(" ")
+            end
+        end
+    end
+    local currline = currCursorY + currFileOffset
+    --run through the filelines and find the first line that contains the search string
+    local found = false
+    local foundLine = nil
+    if direction == "forward" then
+        for i=currline + 1,#filelines,1 do
+            if string.find(filelines[i], currSearch) then
+                found = true
+                foundLine = i
+                break
+            end
+        end
+    else
+        for i=currline - 1,1,-1 do
+            if string.find(filelines[i], currSearch) then
+                found = true
+                foundLine = i
+                break
+            end
+        end
+    end
+    if found then
+        lastSearch = currSearch
+        lastSearchLine = foundLine
+        --if the search string is found, move the cursor to the line and scroll to the line
+        currCursorY = foundLine
+        currFileOffset = 0
+        while currCursorY > hig - 1 do
+            currCursorY = currCursorY - 1
+            currFileOffset = currFileOffset + 1
+        end
+        if currCursorY < 1 then
+            currCursorY = 1
+        end
+        --set cursor pos to start of the query string
+        currCursorX = string.find(filelines[currCursorY + currFileOffset], currSearch)
+        currXOffset = 0
+        while currCursorX + lineoffset > wid do
+            currCursorX = currCursorX - 1
+            currXOffset = currXOffset + 1
+        end
+        if currCursorX < 1 then
+            currCursorX = 1
+        end
+        redrawTerm()
+    else
+        err("Pattern not found: "..currSearch)
+    end
+end
+
 
 for i=1,#decargs,1 do
     if decargs[i] == "--version" then
@@ -3099,6 +3184,10 @@ while running == true do
                 currCursorY = startpos[3]
                 currFileOffset = startpos[4]
             end
+        elseif var1 == "/" then
+            search("forward")
+        elseif var1 == "?" then
+            search("backward")
         end
     elseif event == "key" then
         if var1 == keys.left then

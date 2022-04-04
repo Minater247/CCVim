@@ -1,7 +1,12 @@
 //TODO
 
-SOON PROJECTS:
--- Implement searching
+SOON PROJECTS:]
+-- Make it so searching works through multiple terms on one line
+-- Searching case sensitivity
+-- Repeat searches
+-- Word searches
+-- Search current word
+-- Search history of current session (up down arrow)
 
 LATER PROJECTS:
 -- Check if file opened in tab
