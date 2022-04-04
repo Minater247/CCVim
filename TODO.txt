@@ -1,6 +1,7 @@
 //TODO
 
 SOON PROJECTS:
+-- Implement searching
 
 LATER PROJECTS:
 -- Check if file opened in tab

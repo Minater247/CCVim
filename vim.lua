@@ -67,7 +67,7 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.664
+local version = 0.67
 local releasedate = "2022-01-22"
 
 local fileExplorerVer = 0.12
@@ -755,7 +755,7 @@ local function insertMode()
             if key == keys.left then
                 moveCursorLeft()
             elseif key == keys.right then
-                moveCursorRight(0)
+                moveCursorRight()
             elseif key == keys.up then
                 moveCursorUp()
             elseif key == keys.down then
@@ -858,79 +858,6 @@ local function insertMode()
             resetSize()
             redrawTerm()
             sendMsg("-- INSERT --")
-        elseif ev == "mouse_click" and mobile then
-            key = keys.tab --get out of the loop
-        end
-    end
-    sendMsg(" ")
-end
-
-local function appendMode()
-    drawFile()
-    sendMsg("-- APPEND --")
-    local ev, key
-    while key ~= keys.tab do
-        ev, key = pullEventWRMP()
-        if ev == "key" then
-            if key == keys.left then
-                moveCursorLeft()
-            elseif key == keys.right then
-                moveCursorRight(1)
-            elseif key == keys.up then
-                moveCursorUp()
-            elseif key == keys.down then
-                moveCursorDown()
-            elseif key == keys.backspace then
-                if filelines[currCursorY + currFileOffset] ~= "" and filelines[currCursorY + currFileOffset] ~= nil and currCursorX > 1 then
-                    filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
-                    moveCursorLeft()
-                    local redrawhere = recalcMLCs()
-                    drawFile(redrawhere)
-                    fileContents[currfile]["unsavedchanges"] = true
-                else
-                    if currCursorX + currXOffset > 1 then
-                        filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 2) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset]))
-                        currXOffset = currXOffset - math.floor(wid / 2)
-                        currCursorX = math.floor(wid / 2)
-                        if currXOffset < 0 then
-                            currCursorX = currXOffset + currCursorX + 1
-                            currXOffset = 0
-                        end
-                        recalcMLCs()
-                        drawFile()
-                        fileContents[currfile]["unsavedchanges"] = true
-                    end
-                end
-            elseif key == keys.enter then
-                if filelines[currCursorY + currFileOffset] ~= nil then
-                    table.insert(filelines, currCursorY + currFileOffset + 1, string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset])))
-                    filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset)
-                    moveCursorDown()
-                    currCursorX = 1
-                    currXOffset = 0
-                    fileContents[currfile]["unsavedchanges"] = true
-                else
-                    table.insert(filelines, currCursorY + currFileOffset + 1, "")
-                end
-                recalcMLCs()
-                drawFile(true)
-            end
-        elseif ev == "char" then
-            if filelines[currCursorY + currFileOffset] == nil then
-                filelines[currCursorY + currFileOffset] = ""
-            end
-            filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset) .. key ..string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset + 1, #(filelines[currCursorY + currFileOffset]))
-            moveCursorRight(0)
-            recalcMLCs()
-            drawFile()
-            if not fileContents[currfile] then
-                fileContents[currfile] = filelines
-            end
-            fileContents[currfile]["unsavedchanges"] = true
-        elseif ev == "term_resize" then
-            resetSize()
-            redrawTerm()
-            sendMsg("-- APPEND --")
         elseif ev == "mouse_click" and mobile then
             key = keys.tab --get out of the loop
         end
@@ -2257,7 +2184,7 @@ while running == true do
         elseif var1 == "k" then
             moveCursorUp()
         elseif var1 == "l" then
-            moveCursorRight(0)
+            moveCursorRight(1)
         elseif var1 == "H" then
             currCursorY = 1
             drawFile(true)
@@ -2303,7 +2230,8 @@ while running == true do
             insertMode()
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "a" then
-            appendMode()
+            moveCursorRight(0)
+            insertMode()
         elseif var1 == "A" then
             currCursorX = #filelines[currCursorY + currFileOffset]
             currXOffset = 0
@@ -2312,7 +2240,8 @@ while running == true do
                 currCursorX = currCursorX - 1
             end
             drawFile()
-            appendMode()
+            moveCursorRight(0)
+            insertMode()
         elseif var1 == "Z" then
             local _,c = pullChar()
             if c == "Q" then
@@ -2496,7 +2425,7 @@ while running == true do
             drawFile(true)
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "$" then
-            currCursorX = #filelines[currCursorY + currFileOffset] + 1
+            currCursorX = #filelines[currCursorY + currFileOffset]
             currXOffset = 0
             while currCursorX + lineoffset > wid do
                 currCursorX = currCursorX - 1
@@ -3175,7 +3104,7 @@ while running == true do
         if var1 == keys.left then
             moveCursorLeft()
         elseif var1 == keys.right then
-            moveCursorRight(0)
+            moveCursorRight(1)
         elseif var1 == keys.up then
             moveCursorUp()
         elseif var1 == keys.down then
