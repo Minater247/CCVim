@@ -1296,7 +1296,7 @@ end
 local lastSearch
 local lastSearchLine
 --search the current file for a string
-local function search(direction, research)
+local function search(direction, research, currword)
     local localcase = ignorecase
     clearScreenLine(hig)
     term.setTextColor(colors.white)
@@ -1313,6 +1313,9 @@ local function search(direction, research)
     if research then
         currSearch = lastSearch
         currline = lastSearchLine
+    elseif currword then
+        currSearch = currword
+        currline = currCursorY + currFileOffset
     else
     --get input
         while searching do
@@ -2280,6 +2283,8 @@ while running == true do
                 ff.write("Cursor X: "..currCursorX.."\n")
                 ff.write("File offset: "..currFileOffset.."\n")
                 ff.write("Cursor X offset: "..currXOffset.."\n")
+                ff.write("Last search: "..lastSearch.."\n")
+                ff.write("Last search line gotten: "..lastSearchLine.."\n")
                 for i=1,#filelines,1 do
                     ff.write(filelines[i].."\n")
                 end
@@ -3224,6 +3229,9 @@ while running == true do
             search("forward", true)
         elseif var1 == "N" then
             search("backward", true)
+        elseif var1 == "*" then
+            local currword = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, true)
+            search("forward", false, currword)
         end
     elseif event == "key" then
         if var1 == keys.left then

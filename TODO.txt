@@ -5,7 +5,9 @@ SOON PROJECTS:]
 -- Word searches
 -- Search current word
 -- Search history of current session (up down arrow)
---Wrap searches
+-- Wrap searches
+
+-- Make cursor text color the syntax color as an option
 
 LATER PROJECTS:
 -- Check if file opened in tab
