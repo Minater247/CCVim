@@ -67,8 +67,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.67
-local releasedate = "2022-01-22"
+local version = 0.7
+local releasedate = "2022-04-03"
 
 local fileExplorerVer = 0.12
 
@@ -3232,6 +3232,9 @@ while running == true do
         elseif var1 == "*" then
             local currword = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, true)
             search("forward", false, currword)
+        elseif var1 == "#" then
+            local currword = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, true)
+            search("backward", false, currword)
         end
     elseif event == "key" then
         if var1 == keys.left then
