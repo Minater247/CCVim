@@ -7,6 +7,8 @@ local function find(table, query)
     return false
 end
 
+local contains = find
+
 local function getLongestItem(table)
     local longest = ""
     for i=1,#table,1 do
@@ -37,4 +39,4 @@ local function countchars(tab)
     return count
 end
 
-return { find = find, getLongestItem = getLongestItem, countchars = countchars }
+return { find = find, getLongestItem = getLongestItem, countchars = countchars, contains = contains }

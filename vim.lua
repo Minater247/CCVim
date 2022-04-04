@@ -67,8 +67,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.67
-local releasedate = "2022-01-22"
+local version = 0.7
+local releasedate = "2022-04-03"
 
 local fileExplorerVer = 0.12
 
@@ -106,6 +106,7 @@ local oldXOffset = 0
 local oldFileOffset = 0
 local lowspec = false
 local autoindent = false
+local ignorecase = false
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -882,6 +883,8 @@ if fs.exists("/vim/.vimrc") then
                         lowspec = true
                     elseif rctable[2] == "autoindent" then
                         autoindent = true
+                    elseif rctable[2] == "ignorecase" or rctable[2] == "ic" then
+                        ignorecase = true
                     end
                 else
                     --set the things to values
@@ -1287,6 +1290,119 @@ local function dirOpener(dir, inputname)
         end
     else
         error("dirOpener got invalid path: "..dir.." is not a directory.")
+    end
+end
+
+local lastSearch
+local lastSearchLine
+--search the current file for a string
+local function search(direction, research, currword)
+    local localcase = ignorecase
+    clearScreenLine(hig)
+    term.setTextColor(colors.white)
+    term.setBackgroundColor(colors.black)
+    term.setCursorPos(1, hig)
+    if direction == "forward" then
+        term.write("/")
+    else
+        term.write("?")
+    end
+    local currSearch = ""
+    local searching = true
+    local currline
+    if research then
+        currSearch = lastSearch
+        currline = lastSearchLine
+    elseif currword then
+        currSearch = currword
+        currline = currCursorY + currFileOffset
+    else
+    --get input
+        while searching do
+            local e, k = os.pullEvent()
+            if e == "char" then
+                currSearch = currSearch .. k
+                --move cursor right one and write the next character
+                term.setCursorPos(#currSearch + 1, hig)
+                term.write(k)
+            elseif e == "key" then
+                if k == keys.enter then
+                    searching = false
+                elseif k == keys.backspace then
+                    --delete the last character
+                    currSearch = string.sub(currSearch, 1, #currSearch - 1)
+                    --move cursor left one and clear the last character
+                    term.setCursorPos(#currSearch + 2, hig)
+                    term.write(" ")
+                end
+            end
+        end
+        currline = currCursorY + currFileOffset
+    end
+    if currSearch ~= "" then
+        lastSearch = currSearch
+        lastSearchLine = currline
+    end
+    --check if the last 2 characters are \c or \C, adjust the ignorecase variable
+    if string.sub(currSearch, #currSearch - 1, #currSearch) == "\\c" then
+        localcase = true
+        --drop the last 2 characters
+        currSearch = string.sub(currSearch, 1, #currSearch - 2)
+    elseif string.sub(currSearch, #currSearch - 1, #currSearch) == "\\C" then
+        localcase = false
+        currSearch = string.sub(currSearch, 1, #currSearch - 2)
+    end
+    --run through the filelines and find the first line that contains the search string
+    local found = false
+    local foundLine = nil
+    local lowerfunc
+    if localcase then
+        lowerfunc = string.lower
+    else
+        lowerfunc = function(s) return s end
+    end
+    currline = currCursorY + currFileOffset
+    if direction == "forward" then
+        for i=currline + 1,#filelines,1 do
+            if string.find(lowerfunc(filelines[i]), lowerfunc(currSearch)) then
+                found = true
+                foundLine = i
+                break
+            end
+        end
+    else
+        for i=currline - 1,1,-1 do
+            if string.find(lowerfunc(filelines[i]), lowerfunc(currSearch)) then
+                found = true
+                foundLine = i
+                break
+            end
+        end
+    end
+    if found then
+        --if the search string is found, move the cursor to the line and scroll to the line
+        currCursorY = foundLine
+        currFileOffset = 0
+        while currCursorY > hig - 1 do
+            currCursorY = currCursorY - 1
+            currFileOffset = currFileOffset + 1
+        end
+        if currCursorY < 1 then
+            currCursorY = 1
+        end
+        --set cursor pos to start of the query string
+        currCursorX = string.find(lowerfunc(filelines[currCursorY + currFileOffset]), lowerfunc(currSearch))
+        currXOffset = 0
+        while currCursorX + lineoffset > wid do
+            currCursorX = currCursorX - 1
+            currXOffset = currXOffset + 1
+        end
+        if currCursorX < 1 then
+            currCursorX = 1
+        end
+        redrawTerm()
+    else
+        err("Pattern not found: "..currSearch)
     end
 end
 
@@ -2074,6 +2190,10 @@ while running == true do
                     autoindent = true
                 elseif cmdtab[2] == "noautoindent" then
                     autoindent = false
+                elseif cmdtab[2] == "ignorecase" or cmdtab[2] == "ic" then
+                    ignorecase = true
+                elseif cmdtab[2] == "noignorecase" or cmdtab[2] == "noic" then
+                    ignorecase = false
                 else
                     err("Variable " .. cmdtab[2] .. " not supported.")
                     seterror = true
@@ -2163,6 +2283,8 @@ while running == true do
                 ff.write("Cursor X: "..currCursorX.."\n")
                 ff.write("File offset: "..currFileOffset.."\n")
                 ff.write("Cursor X offset: "..currXOffset.."\n")
+                ff.write("Last search: "..lastSearch.."\n")
+                ff.write("Last search line gotten: "..lastSearchLine.."\n")
                 for i=1,#filelines,1 do
                     ff.write(filelines[i].."\n")
                 end
@@ -3099,6 +3221,20 @@ while running == true do
                 currCursorY = startpos[3]
                 currFileOffset = startpos[4]
             end
+        elseif var1 == "/" then
+            search("forward")
+        elseif var1 == "?" then
+            search("backward")
+        elseif var1 == "n" then
+            search("forward", true)
+        elseif var1 == "N" then
+            search("backward", true)
+        elseif var1 == "*" then
+            local currword = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, true)
+            search("forward", false, currword)
+        elseif var1 == "#" then
+            local currword = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, true)
+            search("backward", false, currword)
         end
     elseif event == "key" then
         if var1 == keys.left then

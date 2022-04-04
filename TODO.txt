@@ -1,7 +1,12 @@
 //TODO
 
-SOON PROJECTS:
--- Implement searching
+SOON PROJECTS:]
+-- Make it so searching works through multiple terms on one line
+-- Word searches
+-- Search history of current session (up down arrow)
+-- Wrap searches
+
+-- Make cursor text color the syntax color as an option
 
 LATER PROJECTS:
 -- Check if file opened in tab
