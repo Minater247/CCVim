@@ -23,6 +23,7 @@ Features:
 - File explorer
 - Support for tapping/clicking bottom line to exit insert/append modes, for use on mobile
 - Autoindent
+- Searching within file
 
 
 What's currently being worked on:
