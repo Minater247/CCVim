@@ -40,6 +40,6 @@ Run ```pastebin run eX0BrfjA``` on your computer.
 **Manual**
 Copy ```vim.lua```, ```.version``` and the ```libs``` folder with its contents to the ```/vim/``` folder of your computer.
 
-For syntax, put each syntax file according to extension (ex. ```XYZ.lua``` -> ```/syntax/lua.lua```, ```XYZ.swf``` -> ```/syntax/swf.lua```) in the ```/vim/syntax/``` folder.
+For syntax, put each syntax file according to extension (ex. ```XYZ.lua``` -> ```/vim/syntax/lua.lua```, ```XYZ.swf``` -> ```/vim/syntax/swf.lua```) in the ```/vim/syntax/``` folder.
 
 A basic ```.vimrc``` can also be found in the main directory of the repo. This can be placed in the ```/vim/``` folder.
