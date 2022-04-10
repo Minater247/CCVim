@@ -107,6 +107,8 @@ local oldFileOffset = 0
 local lowspec = false
 local autoindent = false
 local ignorecase = false
+local lastSearchPos
+local lastSearchLine
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -488,6 +490,8 @@ local function drawFile(forcedredraw)
 end
 
 local function moveCursorLeft()
+    lastSearchPos = nil
+    lastSearchLine = nil
     if currCursorX + currXOffset ~= 1 then
         currCursorX = currCursorX - 1
         if currCursorX < 1 then
@@ -502,6 +506,8 @@ local function moveCursorLeft()
 end
 
 local function moveCursorRight(endPad)
+    lastSearchPos = nil
+    lastSearchLine = nil
     if endPad == nil then
         endPad = 0
     end
@@ -521,6 +527,8 @@ local function moveCursorRight(endPad)
 end
 
 local function moveCursorUp(ignoreX)
+    lastSearchPos = nil
+    lastSearchLine = nil
     if oldx ~= nil and not ignoreX then
         currCursorX = oldx - currXOffset
     else
@@ -559,6 +567,8 @@ local function moveCursorUp(ignoreX)
 end
 
 local function moveCursorDown()
+    lastSearchPos = nil
+    lastSearchLine = nil
     if oldx ~= nil then
         currCursorX = oldx - currXOffset
     else
@@ -798,9 +808,13 @@ local function insertMode()
                         local redrawhere = recalcMLCs()
                         drawFile(redrawhere)
                         fileContents[currfile]["unsavedchanges"] = true
+                        lastSearchPos = nil
+                        lastSearchLine = nil
                     end
                 end
             elseif key == keys.enter then
+                lastSearchPos = nil
+                lastSearchLine = nil
                 if filelines[currCursorY + currFileOffset] ~= nil then
                     local indentedamount = 0
                     if autoindent then
@@ -840,6 +854,8 @@ local function insertMode()
                 drawFile(true)
             end
         elseif ev == "char" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             if filelines[currCursorY + currFileOffset] == nil then
                 filelines[currCursorY + currFileOffset] = ""
             end
@@ -1294,7 +1310,6 @@ local function dirOpener(dir, inputname)
 end
 
 local lastSearch
-local lastSearchLine
 --search the current file for a string
 local function search(direction, research, currword)
     local localcase = ignorecase
@@ -1356,26 +1371,61 @@ local function search(direction, research, currword)
     local found = false
     local foundLine = nil
     local lowerfunc
+    local foundpos
+    local currOffset = 0
     if localcase then
         lowerfunc = string.lower
     else
         lowerfunc = function(s) return s end
     end
     currline = currCursorY + currFileOffset
-    if direction == "forward" then
-        for i=currline + 1,#filelines,1 do
-            if string.find(lowerfunc(filelines[i]), lowerfunc(currSearch)) then
+    --check if there's another instance on the same line forwards or backwards from the word at lastSearchPos
+    if lastSearchPos then
+        if direction == "forward" then
+            local searchCurrLine = lowerfunc(string.sub(filelines[currline], lastSearchPos + 1, #filelines[currline]))
+            if string.find(lowerfunc(searchCurrLine), lowerfunc(currSearch)) then
                 found = true
-                foundLine = i
-                break
+                foundLine = currline
+                foundpos = string.find(searchCurrLine, lowerfunc(currSearch))
+                currOffset = lastSearchPos
+            end
+        else
+            local searchCurrLine = lowerfunc(string.sub(filelines[currline], 1, lastSearchPos - 1))
+            local foundat = #searchCurrLine
+            for i=foundat, 1, -1 do
+                if lowerfunc(searchCurrLine:sub(i, i + #currSearch - 1)) == lowerfunc(currSearch) then
+                    found = true
+                    foundLine = currline
+                    foundpos = i
+                    break
+                end
             end
         end
-    else
-        for i=currline - 1,1,-1 do
-            if string.find(lowerfunc(filelines[i]), lowerfunc(currSearch)) then
-                found = true
-                foundLine = i
-                break
+    end
+    if not found then
+        if direction == "forward" then
+            for i=currline + 1,#filelines,1 do
+                if string.find(lowerfunc(filelines[i]), lowerfunc(currSearch)) then
+                    found = true
+                    foundLine = i
+                    foundpos = string.find(lowerfunc(filelines[i]), lowerfunc(currSearch))
+                    break
+                end
+            end
+        else
+            for i=currline - 1,1,-1 do
+                local foundat = #filelines[i]
+                for j=foundat, 1, -1 do
+                    if lowerfunc(filelines[i]:sub(j, j + #currSearch - 1)) == lowerfunc(currSearch) then
+                        found = true
+                        foundLine = i
+                        foundpos = j
+                        break
+                    end
+                end
+                if found then
+                    break
+                end
             end
         end
     end
@@ -1391,7 +1441,8 @@ local function search(direction, research, currword)
             currCursorY = 1
         end
         --set cursor pos to start of the query string
-        currCursorX = string.find(lowerfunc(filelines[currCursorY + currFileOffset]), lowerfunc(currSearch))
+        currCursorX = foundpos + currOffset
+        lastSearchPos = currCursorX
         currXOffset = 0
         while currCursorX + lineoffset > wid do
             currCursorX = currCursorX - 1
@@ -1539,6 +1590,8 @@ if #decargs["files"] > 0 then
             currCursorX = currCursorX - 1
             currXOffset = currXOffset + 1
         end
+        lastSearchPos = nil
+        lastSearchLine = nil
     end
 else
     openfiles = {}
@@ -1597,6 +1650,8 @@ while running == true do
             clearScreenLine(hig)
             local cmd = pullCommand(":", false)
             local cmdtab = str.split(cmd, " ")
+            lastSearchPos = nil
+            lastSearchLine = nil
             if cmdtab[1] == ":sav" or cmdtab[1] == ":saveas" or cmdtab[1] == ":sav!" or cmdtab[1] == ":saveas!" then
                 local name = ""
                 for i=2,#cmdtab,1 do
@@ -2333,6 +2388,8 @@ while running == true do
                 fileContents[currfile]["unsavedchanges"] = true
             end
         elseif var1 == "o" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             table.insert(filelines, currCursorY + currFileOffset + 1, "")
             moveCursorDown()
             currCursorX = 1
@@ -2344,6 +2401,8 @@ while running == true do
                 fileContents[currfile]["unsavedchanges"] = true
             end
         elseif var1 == "O" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             table.insert(filelines, currCursorY + currFileOffset, "")
             currCursorX = 1
             currXOffset = 0
@@ -2355,6 +2414,8 @@ while running == true do
             moveCursorRight(0)
             insertMode()
         elseif var1 == "A" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             currCursorX = #filelines[currCursorY + currFileOffset]
             currXOffset = 0
             while currCursorX + lineoffset > wid do
@@ -2432,6 +2493,8 @@ while running == true do
                 fileContents[currfile]["unsavedchanges"] = true
             end
         elseif var1 == "d" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local _, c = pullChar()
             if c == "d" then
                 copybuffer = filelines[currCursorY + currFileOffset]
@@ -2497,6 +2560,8 @@ while running == true do
             recalcMLCs()
             drawFile(true)
         elseif var1 == "D" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             copybuffer = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #filelines[currCursorY + currFileOffset])
             copytype = "text"
             filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
@@ -2504,6 +2569,8 @@ while running == true do
             recalcMLCs()
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "p" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             if copytype == "line" then
                 table.insert(filelines, currCursorY + currFileOffset + 1, copybuffer)
             elseif copytype == "text" then
@@ -2524,6 +2591,8 @@ while running == true do
                 fileContents[currfile]["unsavedchanges"] = true
             end
         elseif var1 == "P" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             if copytype == "line" then
                 table.insert(filelines, currCursorY + currFileOffset, copybuffer)
             elseif copytype == "text" then
@@ -2547,6 +2616,8 @@ while running == true do
             drawFile(true)
             fileContents[currfile]["unsavedchanges"] = true
         elseif var1 == "$" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             currCursorX = #filelines[currCursorY + currFileOffset]
             currXOffset = 0
             while currCursorX + lineoffset > wid do
@@ -2555,10 +2626,14 @@ while running == true do
             end
             drawFile()
         elseif var1 == "0" then --must be before the number things so 0 isn't captured too
+            lastSearchPos = nil
+            lastSearchLine = nil
             currCursorX = 1
             currXOffset = 0
             drawFile()
         elseif tonumber(var1) ~= nil then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local num = var1 --num IS A STRING! Convert it to a number with tonumber() before use!
             local _, ch
             local var = 0
@@ -2801,6 +2876,8 @@ while running == true do
                 end
             end
         elseif var1 == "g" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local _,c = pullChar()
             if c == "J" then
                 filelines[currCursorY + currFileOffset] = filelines[currCursorY + currFileOffset] .. filelines[currCursorY + currFileOffset + 1]
@@ -2915,6 +2992,8 @@ while running == true do
                 end
             end
         elseif var1 == "G" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             currFileOffset = 0
             currCursorY = #filelines
             while currCursorY > hig - 1 do
@@ -2925,6 +3004,8 @@ while running == true do
             currXOffset = 0
             drawFile()
         elseif var1 == "w" or var1 == "W" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
             if begs[#begs] then
                 if currCursorX + currXOffset < begs[#begs] then
@@ -2941,6 +3022,8 @@ while running == true do
                 end
             end
         elseif var1 == "e" or var1 == "E" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local begs = str.wordEnds(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
             if begs[#begs] then
                 if currCursorX + currXOffset < begs[#begs] then
@@ -2956,6 +3039,8 @@ while running == true do
                 end
             end
         elseif var1 == "b" or var1 == "B" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local begs = str.wordBeginnings(filelines[currCursorY + currFileOffset], not string.match(var1, "%u"))
             if begs[1] then
                 if currCursorX + currXOffset > begs[1] then
@@ -2971,6 +3056,8 @@ while running == true do
                 end
             end
         elseif var1 == "^" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             currCursorX = 1
             currXOffset = 0
             local i = currCursorX
@@ -2984,6 +3071,8 @@ while running == true do
             end
             drawFile()
         elseif var1 == "f" or var1 == "t" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local _,c = pullChar()
             local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
             if #idx > 0 then
@@ -3013,6 +3102,8 @@ while running == true do
                 end
             end
         elseif var1 == "F" or var1 == "T" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local _,c = pullChar()
             local idx = str.indicesOfLetter(filelines[currCursorY + currFileOffset], c)
             if #idx > 0 then
@@ -3038,6 +3129,8 @@ while running == true do
                 end
             end
         elseif var1 == ";" or var1 == "," then
+            lastSearchPos = nil
+            lastSearchLine = nil
             if jumpbuffer[1] then
                 local tx = jumpbuffer[1]
                 if var1 == "," then
@@ -3092,6 +3185,8 @@ while running == true do
                 end
             end
         elseif var1 == "c" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local _, c = pullChar()
             if c == "c" then
                 filelines[currCursorY + currFileOffset] = ""
@@ -3147,6 +3242,8 @@ while running == true do
             fileContents[currfile]["unsavedchanges"] = true
             insertMode()
         elseif var1 == "S" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             filelines[currCursorY + currFileOffset] = ""
             currCursorX = 1
             currXOffset = 0
@@ -3155,6 +3252,8 @@ while running == true do
             fileContents[currfile]["unsavedchanges"] = true
             insertMode()
         elseif var1 == "%" then
+            lastSearchPos = nil
+            lastSearchLine = nil
             local startpos = {currCursorX, currXOffset, currCursorY, currFileOffset}
             local startbracket = string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, currCursorX + currXOffset)
             local endbracket = ""
