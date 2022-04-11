@@ -67,8 +67,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.7
-local releasedate = "2022-04-03"
+local version = 0.72
+local releasedate = "2022-04-11"
 
 local fileExplorerVer = 0.12
 
@@ -1311,16 +1311,18 @@ end
 
 local lastSearch
 --search the current file for a string
-local function search(direction, research, currword)
+local function search(direction, research, currword, wrapSearchPos)
     local localcase = ignorecase
     clearScreenLine(hig)
     term.setTextColor(colors.white)
     term.setBackgroundColor(colors.black)
     term.setCursorPos(1, hig)
-    if direction == "forward" then
-        term.write("/")
-    else
-        term.write("?")
+    if not wrapSearchPos then
+        if direction == "forward" then
+            term.write("/")
+        else
+            term.write("?")
+        end
     end
     local currSearch = ""
     local searching = true
@@ -1378,7 +1380,14 @@ local function search(direction, research, currword)
     else
         lowerfunc = function(s) return s end
     end
-    currline = currCursorY + currFileOffset
+    local lsp = lastSearchPos
+    if wrapSearchPos then
+        currline = wrapSearchPos
+        lsp = nil
+    else
+        currline = currCursorY + currFileOffset
+    end
+    local lastSearchPos = lsp --this way it can be reset only for this search
     --check if there's another instance on the same line forwards or backwards from the word at lastSearchPos
     if lastSearchPos then
         if direction == "forward" then
@@ -1453,7 +1462,17 @@ local function search(direction, research, currword)
         end
         redrawTerm()
     else
-        err("Pattern not found: "..currSearch)
+        if not wrapSearchPos then
+            if direction == "forward" then
+                search(direction, true, currSearch, 1)
+                sendMsg("search hit BOTTOM, continuing at TOP")
+            else
+                search(direction, true, currSearch, #filelines)
+                sendMsg("search hit TOP, continuing at BOTTOM")
+            end
+        else
+            err("Pattern not found: "..currSearch)
+        end
     end
 end
 
