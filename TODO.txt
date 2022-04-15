@@ -1,10 +1,7 @@
 //TODO
 
-SOON PROJECTS:]
+SOON PROJECTS:
 -- Word searches
--- Search history of current session (up down arrow)
--- Wrap searches
--- make sure scroll only resets if the position is offscreen after searching
 
 -- Make cursor text color the syntax color as an option
 

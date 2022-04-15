@@ -67,8 +67,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.72
-local releasedate = "2022-04-11"
+local version = 0.73
+local releasedate = "2022-04-15"
 
 local fileExplorerVer = 0.12
 
@@ -109,6 +109,7 @@ local autoindent = false
 local ignorecase = false
 local lastSearchPos
 local lastSearchLine
+local sessionSearches = {}
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
@@ -1334,11 +1335,15 @@ local function search(direction, research, currword, wrapSearchPos)
         currSearch = currword
         currline = currCursorY + currFileOffset
     else
-    --get input
+        --get input
+        local currHistoryItem = #sessionSearches + 1
+        table.insert(sessionSearches, #sessionSearches + 1, "")
         while searching do
             local e, k = os.pullEvent()
             if e == "char" then
                 currSearch = currSearch .. k
+                currHistoryItem = #sessionSearches
+                sessionSearches[#sessionSearches] = currSearch
                 --move cursor right one and write the next character
                 term.setCursorPos(#currSearch + 1, hig)
                 term.write(k)
@@ -1348,9 +1353,29 @@ local function search(direction, research, currword, wrapSearchPos)
                 elseif k == keys.backspace then
                     --delete the last character
                     currSearch = string.sub(currSearch, 1, #currSearch - 1)
+                    currHistoryItem = #sessionSearches
+                    sessionSearches[#sessionSearches] = currSearch
                     --move cursor left one and clear the last character
                     term.setCursorPos(#currSearch + 2, hig)
                     term.write(" ")
+                elseif k == keys.up then
+                    if currHistoryItem > 1 then
+                        currHistoryItem = currHistoryItem - 1
+                        currSearch = sessionSearches[currHistoryItem]
+                        term.setCursorPos(2, hig)
+                        term.write(string.rep(" ", wid - 1))
+                        term.setCursorPos(2, hig)
+                        term.write(currSearch)
+                    end
+                elseif k == keys.down then
+                    if currHistoryItem < #sessionSearches then
+                        currHistoryItem = currHistoryItem + 1
+                        currSearch = sessionSearches[currHistoryItem]
+                        term.setCursorPos(2, hig)
+                        term.write(string.rep(" ", wid - 1))
+                        term.setCursorPos(2, hig)
+                        term.write(currSearch)
+                    end
                 end
             end
         end
@@ -1359,6 +1384,9 @@ local function search(direction, research, currword, wrapSearchPos)
     if currSearch ~= "" then
         lastSearch = currSearch
         lastSearchLine = currline
+        if not sessionSearches[#sessionSearches] == currSearch then
+            table.insert(sessionSearches, #sessionSearches + 1, currSearch)
+        end
     end
     --check if the last 2 characters are \c or \C, adjust the ignorecase variable
     if string.sub(currSearch, #currSearch - 1, #currSearch) == "\\c" then
@@ -1380,7 +1408,7 @@ local function search(direction, research, currword, wrapSearchPos)
     else
         lowerfunc = function(s) return s end
     end
-    local lsp = lastSearchPos
+    local lsp = lastSearchPos or currCursorX + currXOffset
     if wrapSearchPos then
         currline = wrapSearchPos
         lsp = nil
@@ -1462,7 +1490,7 @@ local function search(direction, research, currword, wrapSearchPos)
         end
         redrawTerm()
     else
-        if not wrapSearchPos then
+        if not wrapSearchPos and research then
             if direction == "forward" then
                 search(direction, true, currSearch, 1)
                 sendMsg("search hit BOTTOM, continuing at TOP")
@@ -3288,7 +3316,6 @@ while running == true do
             if endbracket then
                 local extrabrackets = 0
                 local continuefor = true
-                local test = 0
                 currCursorX = currCursorX + 1
                 setcolors(colors.black, colors.white)
                 for i=currCursorY + currFileOffset,#filelines,1 do
