@@ -67,8 +67,8 @@ local unimplementedArgs = {
     "--help"
 }
 
-local version = 0.73
-local releasedate = "2022-04-15"
+local version = 0.733
+local releasedate = "2022-05-19"
 
 local fileExplorerVer = 0.12
 

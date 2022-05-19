@@ -1,7 +1,7 @@
 //TODO
 
 SOON PROJECTS:
--- Word searches
+-- Word searches (current job)
 
 -- Make cursor text color the syntax color as an option
 
