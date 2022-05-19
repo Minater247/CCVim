@@ -15,3 +15,4 @@ LATER PROJECTS:
 -- Multiple multi-line comments on one line
 -- Change install, library and syntax folders
 -- Undo/redo history
+-- External syntax parser

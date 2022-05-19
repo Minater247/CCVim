@@ -123,14 +123,6 @@ local function resetSize()
     end
 end
 
-local function setflash(bool)
-    if monitor then
-        monitor.setCursorBlink(bool)
-    else
-        term.setCursorBlink(bool)
-    end
-end
-
 local function clear()
     if monitor then
         monitor.clear()
@@ -1315,14 +1307,13 @@ local lastSearch
 local function search(direction, research, currword, wrapSearchPos)
     local localcase = ignorecase
     clearScreenLine(hig)
-    term.setTextColor(colors.white)
-    term.setBackgroundColor(colors.black)
-    term.setCursorPos(1, hig)
+    setcolors(colors.black, colors.white)
+    setpos(1, hig)
     if not wrapSearchPos then
         if direction == "forward" then
-            term.write("/")
+            write("/")
         else
-            term.write("?")
+            write("?")
         end
     end
     local currSearch = ""
@@ -1345,8 +1336,8 @@ local function search(direction, research, currword, wrapSearchPos)
                 currHistoryItem = #sessionSearches
                 sessionSearches[#sessionSearches] = currSearch
                 --move cursor right one and write the next character
-                term.setCursorPos(#currSearch + 1, hig)
-                term.write(k)
+                setpos(#currSearch + 1, hig)
+                write(k)
             elseif e == "key" then
                 if k == keys.enter then
                     searching = false
@@ -1356,25 +1347,25 @@ local function search(direction, research, currword, wrapSearchPos)
                     currHistoryItem = #sessionSearches
                     sessionSearches[#sessionSearches] = currSearch
                     --move cursor left one and clear the last character
-                    term.setCursorPos(#currSearch + 2, hig)
-                    term.write(" ")
+                    setpos(#currSearch + 2, hig)
+                    write(" ")
                 elseif k == keys.up then
                     if currHistoryItem > 1 then
                         currHistoryItem = currHistoryItem - 1
                         currSearch = sessionSearches[currHistoryItem]
-                        term.setCursorPos(2, hig)
-                        term.write(string.rep(" ", wid - 1))
-                        term.setCursorPos(2, hig)
-                        term.write(currSearch)
+                        setpos(2, hig)
+                        write(string.rep(" ", wid - 1))
+                        setpos(2, hig)
+                        write(currSearch)
                     end
                 elseif k == keys.down then
                     if currHistoryItem < #sessionSearches then
                         currHistoryItem = currHistoryItem + 1
                         currSearch = sessionSearches[currHistoryItem]
-                        term.setCursorPos(2, hig)
-                        term.write(string.rep(" ", wid - 1))
-                        term.setCursorPos(2, hig)
-                        term.write(currSearch)
+                        setpos(2, hig)
+                        write(string.rep(" ", wid - 1))
+                        setpos(2, hig)
+                        write(currSearch)
                     end
                 end
             end
