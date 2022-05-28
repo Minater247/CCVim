@@ -265,11 +265,11 @@ local function drawFile(forcedredraw)
                             local wordsOfLine = str.split(filelines[i], " ")
                             setpos(1 - currXOffset + lineoffset, i - currFileOffset)
                             for j=1,#wordsOfLine,1 do
-                                if tab.find(synt[1], wordsOfLine[j]) then
-                                    setcolors(colors.yellow, colors.blue)
-                                elseif tab.find(synt[2][1], wordsOfLine[j]) then
+                                if synt[1][string.lower(wordsOfLine[j])] then
+                                    setcolors(colors.yellow, colors.black)
+                                elseif synt[2][wordsOfLine[j]] == 1 then
                                     setcolors(colors.black, colors.lightBlue)
-                                elseif tab.find(synt[2][2], wordsOfLine[j]) then
+                                elseif synt[2][wordsOfLine[j]] then
                                     setcolors(colors.black, colors.purple)
                                 else
                                     setcolors(colors.black, colors.white)
@@ -361,11 +361,11 @@ local function drawFile(forcedredraw)
                                 local wordsOfLine = str.split(filelines[i], " ")
                                 setpos(1 - currXOffset + lineoffset, i - currFileOffset)
                                 for j=1,#wordsOfLine,1 do
-                                    if tab.find(synt[1], wordsOfLine[j]) then
-                                        setcolors(colors.yellow, colors.blue)
-                                    elseif tab.find(synt[2][1], wordsOfLine[j]) then
+                                    if synt[1][string.lower(wordsOfLine[j])] then
+                                        setcolors(colors.black, colors.yellow)
+                                    elseif synt[2][wordsOfLine[j]] == 1 then
                                         setcolors(colors.black, colors.lightBlue)
-                                    elseif tab.find(synt[2][2], wordsOfLine[j]) then
+                                    elseif synt[2][wordsOfLine[j]] == 2 then
                                         setcolors(colors.black, colors.purple)
                                     else
                                         setcolors(colors.black, colors.white)
@@ -614,21 +614,15 @@ local function recalcMLCs(force, offsetby)
         end
         if synt then
             if offsetby then
-                --move all multi-line comments after the current cursor Y by offsetby
-                for i=1,#fileContents[currfile]["Multi-line comments"][1],1 do
-                    if fileContents[currfile]["Multi-line comments"][1][i] > currCursorY + currFileOffset + offsetby[1] then
-                        fileContents[currfile]["Multi-line comments"][1][i] = fileContents[currfile]["Multi-line comments"][1][i] + offsetby[2]
-                    end
+                --move all multi-line comments after the current cursor Y by offsetby (TODO: FIGURE OUT IF THIS WORKS BECAUSE ENTER IS BROKE)
+                for i=currCursorY + currFileOffset + offsetby[1] + 1,#fileContents[currfile]["Multi-line comments"][1] do
+                    fileContents[currfile]["Multi-line comments"][1][i] = fileContents[currfile]["Multi-line comments"][1][i] + offsetby[2]
                 end
-                for i=1,#fileContents[currfile]["Multi-line comments"][2],1 do
-                    if fileContents[currfile]["Multi-line comments"][2][i] > currCursorY + currFileOffset + offsetby[1] then
-                        fileContents[currfile]["Multi-line comments"][2][i] = fileContents[currfile]["Multi-line comments"][2][i] + offsetby[2]
-                    end
+                for i=currCursorY + currFileOffset + offsetby[1] + 1,#fileContents[currfile]["Multi-line comments"][2] do
+                    fileContents[currfile]["Multi-line comments"][2][i] = fileContents[currfile]["Multi-line comments"][2][i] + offsetby[2]
                 end
-                for i=1,#fileContents[currfile]["Multi-line comments"][3],1 do
-                    if fileContents[currfile]["Multi-line comments"][3][i] > currCursorY + currFileOffset + offsetby[1] then
-                        fileContents[currfile]["Multi-line comments"][3][i] = fileContents[currfile]["Multi-line comments"][3][i] + offsetby[2]
-                    end
+                for i=currCursorY + currFileOffset + offsetby[1] + 1,#fileContents[currfile]["Multi-line comments"][3] do
+                    fileContents[currfile]["Multi-line comments"][3][i] = fileContents[currfile]["Multi-line comments"][3][i] + offsetby[2]
                 end
                 if tab.find(fileContents[currfile]["Multi-line comments"][2], currCursorY + currFileOffset - 1) then
                     --if the cursor - 1 is on a multi-line comment (type 2), then check if the current line contains the end of the comment.
@@ -820,6 +814,7 @@ local function insertMode()
                             end
                         end
                     end
+                    --TODO table.insert is super janky, this needs fixing
                     table.insert(filelines, currCursorY + currFileOffset + 1, string.rep(" ", indentedamount) .. string.sub(filelines[currCursorY + currFileOffset], currCursorX + currXOffset, #(filelines[currCursorY + currFileOffset])))
                     filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
                     currCursorY = currCursorY + 1
