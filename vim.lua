@@ -286,8 +286,9 @@ while running do
         if event[2] == ":" then
             local command = pullCommand(":")
             command = command:sub(2, #command)
-            if command == "q" then
-                if buffers[currBuf].unsavedChanges then
+            local cmdtab = str.split(command, " ")
+            if cmdtab[1] == "q" or cmdtab[1] == "q!" then
+                if buffers[currBuf].unsavedChanges and cmdtab[1] ~= ":q!" then
                     err("No write since last change (add ! to override)")
                 else
                     table.remove(buffers, currBuf)
@@ -300,6 +301,8 @@ while running do
                         running = false
                     end
                 end
+            else
+                err("Not an editor command: "..cmdtab[1])
             end
         end
     end
