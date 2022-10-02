@@ -1,11 +1,61 @@
 local str = require("/vim/lib/str")
 local fil = require("/vim/lib/fil")
+local argv = require("/vim/lib/args")
 
 local wid, hig = term.getSize()
 
 local vars = {
     syntax = true
 }
+local validArgs = {
+    "--version",
+    "--term"
+}
+
+local unimplementedArgs = {
+    "--",
+    "-v",
+    "-e",
+    "-E",
+    "-s",
+    "-d",
+    "-y",
+    "-R",
+    "-Z",
+    "-m",
+    "-M",
+    "-b",
+    "-l",
+    "-C",
+    "-N",
+    "-V",
+    "-D",
+    "-n",
+    "-r",
+    "-L",
+    "-T",
+    "--not-a-term",
+    "--ttyfail",
+    "-u",
+    "--noplugin",
+    "-p",
+    "-o",
+    "-O",
+    "+",
+    "--cmd",
+    "-c",
+    "-S",
+    "-s",
+    "-w",
+    "-W",
+    "-x",
+    "--startuptime",
+    "-i",
+    "--clean",
+    "-h",
+    "--help"
+}
+local args = argv.pull({...}, validArgs, unimplementedArgs)
 
 local buffers = {}
 
@@ -38,7 +88,7 @@ local function drawBuffer(buf)
         for i=buf.scrollY + 1, limit do
             local xpos = 1
             for j=1, #buf.lines.syntax[i] do
-                term.setCursorPos(xpos - buf.scrollX, i - buf.scrollY)
+                term.setCursorPos(xpos - buf.scrollX, i - buf.scrollY - 1)
                 term.setTextColor(buf.lines.syntax[i][j].color)
                 term.write(buf.lines.syntax[i][j].string)
                 xpos = xpos + #buf.lines.syntax[i][j].string
@@ -62,12 +112,16 @@ end
 
 
 
+if not args then
+    error("Something has gone very wrong with argument initialization!")
+end
+for i=1, #args.files do
+    buffers[#buffers+1] = newBuffer(args.files[i])
+end
 
 
 
-
-local buffer = newBuffer("/test.lua")
-drawBuffer(buffer)
+drawBuffer(buffers[1])
 term.setCursorPos(1, hig)
 
 os.pullEvent("key")
