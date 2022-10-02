@@ -14,7 +14,8 @@ local releasedate = "2022-08-02"
 local fileExplorerVer = 0.12
 
 local vars = {
-    syntax = true
+    syntax = true,
+    lineoffset = 4,
 }
 local validArgs = {
     "--version",
@@ -152,8 +153,9 @@ local function newBuffer(path)
         local givenpath = path
         path = shell.resolve(path)
         local buf = {}
-        buf.lines = {text = fil.toArray(path)}
-        buf.path = givenpath
+        buf.lines = {text = fil.toArray(path) or {""}}
+        buf.path = path
+        buf.name = givenpath
         buf.filetype = str.getFileExtension(path)
         buf = loadSyntax(buf)
 
@@ -162,6 +164,7 @@ local function newBuffer(path)
         end
 
         buf.cursorX, buf.cursorY = 1, 1
+        buf.oldCursorX = 1
         buf.scrollX, buf.scrollY = 0, 0
         buf.unsavedChanges = false
 
@@ -175,82 +178,99 @@ local function pullChar()
 end
 
 local function drawBuffer(buf)
-    if not buf then
-        clear()
-        setcolors(colors.black, colors.purple)
-        for i=1, hig - 1 do
-            setpos(1, i)
-            write("~")
-        end
-        setcolors(colors.black, colors.white)
-        setpos((wid / 2) - (33 / 2), (hig / 2) - 2)
-        write("CCVIM - ComputerCraft Vi Improved")
-        setpos((wid / 2) - (#("version ".. version) / 2), (hig / 2))
-        write("version "..version)
-        setpos((wid / 2) - (13 / 2), (hig / 2) + 1)
-        write("By Minater247")
-        if wid > 53 then
-            setpos((wid / 2) - (46 / 2), (hig / 2) + 2)
-            write("CCVIM is open source and freely distributable.")
-            setpos((wid / 2) - (28 / 2), (hig / 2) + 4)
-        else
-            setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
-        end
-        write("Type :q")
-        setcolors(colors.black, colors.lightBlue)
-        write("<Enter>       ")
-        setcolors(colors.black, colors.white)
-        write("to exit")
-    else
-        clear()
-        local cursorColor
-        if buf.lines.syntax then
-            local limit = hig + buf.scrollY - 1
-            if limit > #buf.lines.syntax then
-                limit = #buf.lines.syntax
+    if running then
+        if not buf then
+            clear()
+            setcolors(colors.black, colors.purple)
+            for i=1, hig - 1 do
+                setpos(1, i)
+                write("~")
             end
-            for i=buf.scrollY + 1, limit do
-                local xpos = 1
-                for j=1, #buf.lines.syntax[i] do
-                    --  TODO ! ! ! 
-                    -- This keeps dropping the period at the end of the second line of the last version.
-                    -- Need to fix! Color is there, and it should print!
-                    -- Cursor shows it too!
-                    setpos(xpos - buf.scrollX, i - buf.scrollY)
-                    setcolors(colors.black, buf.lines.syntax[i][j].color)
-                    write(buf.lines.syntax[i][j].string)
-                    xpos = xpos + #buf.lines.syntax[i][j].string
-                    if (xpos > buf.cursorX) and (not cursorColor) and i == buf.cursorY then
-                        cursorColor = buf.lines.syntax[i][j].color
+            setcolors(colors.black, colors.white)
+            setpos((wid / 2) - (33 / 2), (hig / 2) - 2)
+            write("CCVIM - ComputerCraft Vi Improved")
+            setpos((wid / 2) - (#("version ".. version) / 2), (hig / 2))
+            write("version "..version)
+            setpos((wid / 2) - (13 / 2), (hig / 2) + 1)
+            write("By Minater247")
+            if wid > 53 then
+                setpos((wid / 2) - (46 / 2), (hig / 2) + 2)
+                write("CCVIM is open source and freely distributable.")
+                setpos((wid / 2) - (28 / 2), (hig / 2) + 4)
+            else
+                setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
+            end
+            write("Type :q")
+            setcolors(colors.black, colors.lightBlue)
+            write("<Enter>       ")
+            setcolors(colors.black, colors.white)
+            write("to exit")
+        else
+            clear()
+            local cursorColor
+            if buf.lines.syntax and vars.syntax then
+                local limit = hig + buf.scrollY - 1
+                if limit > #buf.lines.syntax then
+                    limit = #buf.lines.syntax
+                end
+                for i=buf.scrollY + 1, limit do
+                    local xpos = 1 + vars.lineoffset
+                    for j=1, #buf.lines.syntax[i] do
+                        setpos(xpos - buf.scrollX, i - buf.scrollY)
+                        setcolors(colors.black, buf.lines.syntax[i][j].color)
+                        write(buf.lines.syntax[i][j].string)
+                        xpos = xpos + #buf.lines.syntax[i][j].string
+                        if (xpos > buf.cursorX) and (not cursorColor) and i == buf.cursorY then
+                            cursorColor = buf.lines.syntax[i][j].color
+                        end
+                        if xpos - buf.scrollX > wid then
+                            break
+                        end
                     end
-                    if xpos > wid then
-                        break
+                end
+                setpos(buf.cursorX - buf.scrollX + vars.lineoffset, buf.cursorY - buf.scrollY)
+                setcolors(colors.lightGray, cursorColor or colors.orange)
+                local st = buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX)
+                if st == "" then
+                    st = " "
+                end
+                write(st)
+            else
+                local limit = hig + buf.scrollY - 1
+                --todo: drop this and do the tilde when no file text on that line onwards
+                if limit > #buf.lines.text then
+                    limit = #buf.lines.text
+                end
+                for i=buf.scrollY + 1, limit do
+                    setpos(1 - buf.scrollX + vars.lineoffset, i - buf.scrollY)
+                    write(buf.lines.text[i])
+                end
+                setpos(buf.cursorX - buf.scrollX + vars.lineoffset, buf.cursorY - buf.scrollY)
+                setcolors(colors.lightGray, colors.white)
+                local st = buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX)
+                if st == "" then
+                    st = " "
+                end
+                write(st)
+            end
+            if vars.lineoffset > 0 then
+                setcolors(colors.black, colors.yellow)
+                for i=buf.scrollY,(hig-1)+buf.scrollY,1 do
+                    setpos(1, i - buf.scrollY)
+                    if i < 1000 then
+                        write(string.rep(" ", 3 - #tostring(i)))
+                    end
+                    if i < 10000 then
+                        if i <= #buf.lines.text then
+                            write(i)
+                        end
+                    else
+                        if i <= #buf.lines.text then
+                            write("10k+")
+                        end
                     end
                 end
             end
-            setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
-            setcolors(colors.lightGray, cursorColor or colors.orange)
-            local st = buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX)
-            if st == "" then
-                st = " "
-            end
-            write(st)
-        else
-            local limit = hig + buf.scrollY - 1
-            if limit > #buf.lines.text then
-                limit = #buf.lines.text
-            end
-            for i=buf.scrollY + 1, limit do
-                setpos(1 - buf.scrollX, i - buf.scrollY)
-                write(buf.lines.text[i])
-            end
-            setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
-            setcolors(colors.lightGray, colors.white)
-            local st = buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX)
-            if st == "" then
-                st = " "
-            end
-            write(st)
         end
     end
 end
@@ -458,7 +478,11 @@ end
 -- Display name can be passed to inputname, but is optional.
 commands.dirOpener = function(dir, inputname)
     local currSelection = dir.."/"
-    sendMsg("\"/"..shell.resolve(inputname or dir).."/\" is a directory")
+    local fname = shell.resolve(inputname or dir)
+    if fname:sub(#fname, #fname) ~= "/" then
+        fname = fname .. "/"
+    end
+    sendMsg("\"/"..fname.."\" is a directory")
     local sortType = "name"
     local currDirY = 1
     local currDirOffset = 0
@@ -732,14 +756,36 @@ commands.dirOpener = function(dir, inputname)
     end
 end
 
+local function validateCursor(buf)
+    if buf.cursorX - buf.scrollX < 1 then
+        buf.scrollX = buf.scrollX - 1
+    end
+    if buf.cursorX - buf.scrollX + vars.lineoffset > wid then
+        buf.scrollX = buf.scrollX + 1
+    end
+    if buf.cursorY - buf.scrollY < 1 then
+        buf.scrollY = buf.scrollY - 1
+    end
+    if buf.cursorY - buf.scrollY > hig - 1 then
+        buf.scrollY = buf.scrollY + 1
+    end
+    if buf.cursorX > #buf.lines.text[buf.cursorY] + 1 then
+        buf.cursorX = #buf.lines.text[buf.cursorY] + 1
+    end
+    return buf
+end
+
 
 clear()
 if not args then
     error("Something has gone very wrong with argument initialization!")
 end
 for i=1, #args.files do
-    if fs.isDir(args.files[i]) then
-        args.files[i] = commands.dirOpener(args.files[i])
+    local truepath = shell.resolve(args.files[i])
+    if fs.exists(truepath) then
+        if fs.isDir(truepath) then
+            args.files[i] = commands.dirOpener(args.files[i])
+        end
     end
     buffers[#buffers+1] = newBuffer(args.files[i])
 end
@@ -748,9 +794,13 @@ if #buffers > 0 then
     drawBuffer(buffers[currBuf])
 end
 
-local ff = fs.open("/out.test", "w")
-ff.write(textutils.serialise(buffers[currBuf].lines.syntax))
-ff.close()
+--[[ debug syntax output
+if running then
+    local ff = fs.open("/out.test", "w")
+    ff.write(textutils.serialise(buffers[currBuf].lines.syntax))
+    ff.close()
+end
+]]
 
 while running do
     if changedBuffers then
@@ -760,7 +810,7 @@ while running do
             for i=1, #buffers[currBuf].lines.text do
                 bytecount = bytecount + #buffers[currBuf].lines.text[i]
             end
-            sendMsg("\""..buffers[currBuf].path.."\" "..linecount.."L, "..bytecount.."B")
+            sendMsg("\""..buffers[currBuf].name.."\" "..linecount.."L, "..bytecount.."B")
             changedBuffers = false
         end
     end
@@ -777,33 +827,27 @@ while running do
         if event[2] == keys.left then
             if buffers[currBuf].cursorX > 1 then
                 buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
-                if buffers[currBuf].cursorX - buffers[currBuf].scrollX < 1 then
-                    buffers[currBuf].scrollX = buffers[currBuf].scrollX - 1
-                end
+                buffers[currBuf] = validateCursor(buffers[currBuf])
+                buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
                 redrawBuffer = true
             end
         elseif event[2] == keys.right then
-            if buffers[currBuf].cursorX < #buffers[currBuf].lines.text + 1 then
+            if buffers[currBuf].cursorX < #buffers[currBuf].lines.text[buffers[currBuf].cursorY] + 1 then
+                buffers[currBuf] = validateCursor(buffers[currBuf])
+                buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
                 buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
-                if buffers[currBuf].cursorX - buffers[currBuf].scrollX > wid then
-                    buffers[currBuf].scrollX = buffers[currBuf].scrollX + 1
-                end
                 redrawBuffer = true
             end
         elseif event[2] == keys.up then
             if buffers[currBuf].cursorY > 1 then
                 buffers[currBuf].cursorY = buffers[currBuf].cursorY - 1
-                if buffers[currBuf].cursorY - buffers[currBuf].scrollY < 1 then
-                    buffers[currBuf].scrollY = buffers[currBuf].scrollY - 1
-                end
                 redrawBuffer = true
+                buffers[currBuf] = validateCursor(buffers[currBuf])
             end
         elseif event[2] == keys.down then
             if buffers[currBuf].cursorY < #buffers[currBuf].lines.text then
                 buffers[currBuf].cursorY = buffers[currBuf].cursorY + 1
-                if buffers[currBuf].cursorY - buffers[currBuf].scrollY > hig - 1 then
-                    buffers[currBuf].scrollY = buffers[currBuf].scrollY + 1
-                end
+                buffers[currBuf] = validateCursor(buffers[currBuf])
                 redrawBuffer = true
             end
         end
