@@ -134,7 +134,7 @@ end
 local function clearScreenLine(line)
     setcolors(colors.black, colors.white)
     setpos(1, line)
-    for i=1,wid,1 do
+    for i=1,wid do
         write(" ")
     end
 end
@@ -260,7 +260,7 @@ local function drawBuffer(buf)
             end
             if vars.lineoffset > 0 then
                 setcolors(colors.black, colors.yellow)
-                for i=buf.scrollY,(hig-1)+buf.scrollY,1 do
+                for i=buf.scrollY,(hig-1)+buf.scrollY do
                     setpos(1, i - buf.scrollY)
                     if i < 1000 then
                         write(string.rep(" ", 3 - #tostring(i)))
@@ -364,12 +364,14 @@ commands.runCommand = function(command)
         if buffers[currBuf] then
             if buffers[currBuf].unsavedChanges and cmdtab[1] ~= ":q!" then
                 err("No write since last change (add ! to override)")
+                return false
             else
                 close()
             end
         else
             close()
         end
+        return true
     elseif cmdtab[1] == "e" then
         for i=2, #cmdtab do
             if fs.isDir(cmdtab[i]) then
@@ -378,27 +380,27 @@ commands.runCommand = function(command)
             buffers[#buffers+1] = newBuffer(cmdtab[i])
         end
         currBuf = #buffers
+        return true
     elseif cmdtab[1] == "sav" or cmdtab[1] == "saveas" or cmdtab[1] == "sav!" or cmdtab[1] == "saveas!" then
-        local name = ""
-        for i=2,#cmdtab,1 do
-            name = name .. cmdtab[i]
-            if i ~= #cmdtab then
-                name = name .. " "
-            end
-        end
+        local nametab = cmdtab
+        table.remove(nametab, 1)
+        local name = table.concat(nametab, " ")
         if #cmdtab < 2 then
             err("Argument required")
+            return false
         elseif fs.exists(fil.topath(name)) and not (cmdtab[1]:sub(#cmdtab[1], #cmdtab[1]) == "!") then
             err("File exists (add ! to override)")
+            return false
         elseif fs.isReadOnly(fil.topath(name)) then
             err("File is read-only")
+            return false
         else
             local new = true
             if fs.exists(fil.topath(name)) then
                 new = false
             end
             local file = fs.open(fil.topath(name), "w")
-            for i=1,#buffers[currBuf].lines.text,1 do
+            for i=1,#buffers[currBuf].lines.text do
                 file.writeLine(buffers[currBuf].lines.text[i])
             end
             file.close()
@@ -409,6 +411,47 @@ commands.runCommand = function(command)
             end
             write(" "..#buffers[currBuf].lines.text.."L written")
         end
+        return true
+    elseif cmdtab[1] == "w" or cmdtab[1] == "w!" then
+        local name = ""
+        if #cmdtab > 1 then
+            local nametab = cmdtab
+            table.remove(nametab, 1)
+            name = table.concat(nametab, " ")
+        else
+            name = buffers[currBuf].path
+        end
+        if #cmdtab < 2 and buffers[currBuf].path == "" then
+            err("No file name")
+            return false
+        elseif fs.isReadOnly(name) then
+            err("File is read-only")
+            return false
+        else
+            local new = true
+            if fs.exists(name) then
+                new = false
+            end
+            local fl = fs.open(name, "w")
+            for i=1,#buffers[currBuf].lines.text do
+                fl.writeLine(buffers[currBuf].lines.text[i])
+            end
+            fl.close()
+            buffers[currBuf].unsavedChanges = false
+            sendMsg("\""..name.."\" ")
+            if new then
+                write("[New]  ")
+            else
+                write(" ")
+            end
+            write(#buffers[currBuf].lines.text.."L written")
+        end
+        return true
+    elseif cmdtab[1] == "wq" or cmdtab[1] == "x" then
+        local ok = commands.runCommand(":w")
+        if ok then
+            commands.runCommand(":q")
+        end
     else
         err("Not an editor command: "..cmdtab[1])
     end
@@ -418,28 +461,28 @@ local oldyoff
 local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
     if initialDraw then
         setcolors(colors.black, colors.white)
-        for i=1,hig-1,1 do
+        for i=1,hig-1 do
             clearScreenLine(i)
         end
         setpos(1, 1)
         write("\" ")
-        for i=1,wid - 4,1 do
+        for i=1,wid - 4 do
             write("=")
         end
         setpos(1, 2)
         write("\" CCFXP Directory Listing")
-        for i=1,wid-25,1 do
+        for i=1,wid-25 do
             write(" ")
         end
         setpos(wid-#tostring(fileExplorerVer)-6, 2)
         write("ver. "..fileExplorerVer)
         setpos(1, 5)
         write("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by")
-        for i=1,wid-#("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by"),1 do
+        for i=1,wid-#("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by") do
             write(" ")
         end
     end
-    for i=1,wid-#("\"   "..shell.resolve(dir)),1 do
+    for i=1,wid-#("\"   "..shell.resolve(dir)) do
         write(" ")
     end
     setpos(1, 3)
@@ -451,17 +494,15 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
     setpos(1, 4)
     write("\"   Sorted by    ")
     write(sortType)
-    for i=1,wid-#("\"   Sorted by    "..sortType),1 do
-        write(" ")
-    end
+    write(string.rep(" ", wid-#("\"   Sorted by    "..sortType)))
     setpos(1, 6)
     setcolors(colors.black, colors.white)
     write("\" ")
-    for i=1,wid - 2,1 do
+    for i=1,wid - 2 do
         write("=")
     end
     if oldyoff ~= yoff or initialDraw then
-        for i=1+yoff,hig - 7 + yoff,1 do
+        for i=1+yoff,hig - 7 + yoff do
             clearScreenLine(6+i - yoff)
             setpos(1, 6+i - yoff)
             if i - yoff == ypos then
@@ -485,7 +526,7 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
         setcolors(colors.black, colors.white)
         oldyoff = yoff
     else
-        for i=-1,1,1 do
+        for i=-1,1 do
             setpos(1, 6 + ypos + i)
             if i == 0 then
                 setcolors(colors.lightGray, colors.white)
@@ -525,7 +566,7 @@ commands.dirOpener = function(dir, inputname)
     local realFilesInDir = fs.list(currSelection)
     local filesInDir = {".."}
     local firstDraw = true
-    for i=1,#realFilesInDir,1 do
+    for i=1,#realFilesInDir do
         table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
     end
     if fs.isDir(dir) then
@@ -540,7 +581,7 @@ commands.dirOpener = function(dir, inputname)
             if not (shell.resolve(currSelection) == "") then
                 filesInDir = {".."}
             end
-            for i=1,#realFilesInDir,1 do
+            for i=1,#realFilesInDir do
                 if dothide then
                     if not (realFilesInDir[i]:sub(1, 1) == ".") then
                         table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
@@ -746,7 +787,7 @@ commands.dirOpener = function(dir, inputname)
                         else
                             filesInDir = {}
                         end
-                        for i=1,#realFilesInDir,1 do
+                        for i=1,#realFilesInDir do
                             table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
                         end
                         redrawNext = true
@@ -841,6 +882,9 @@ end
 
 while running do
     resetSize()
+    if changedBuffers or redrawBuffer then
+        drawBuffer(buffers[currBuf])
+    end
     if changedBuffers then
         if buffers[currBuf] then
             local linecount = #buffers[currBuf].lines.text
@@ -852,14 +896,16 @@ while running do
             changedBuffers = false
         end
     end
-    if changedBuffers or redrawBuffer then
-        drawBuffer(buffers[currBuf])
-    end
 
     local event = {os.pullEvent()}
     if event[1] == "char" then
         if event[2] == ":" then
+            local oldBuf = currBuf
+            local oldBufLen = #buffers
             commands.runCommand(pullCommand(":"))
+            if (oldBuf ~= currBuf) or (oldBufLen ~= #buffers) then
+                changedBuffers = true
+            end
         end
     elseif event[1] == "key" then
         if event[2] == keys.left then
