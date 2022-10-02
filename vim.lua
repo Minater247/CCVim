@@ -7,6 +7,7 @@ local wid, hig = term.getSize()
 local currBuf = 0
 local running = true
 local changedBuffers = true
+local redrawBuffer = false
 
 local version = 0.734
 local releasedate = "2022-08-02"
@@ -202,32 +203,40 @@ local function drawBuffer(buf)
         write("to exit")
     else
         clear()
-        local writtenCursor = false
+        local cursorColor
         if buf.lines.syntax then
-            local limit = hig + buf.scrollY
+            local limit = hig + buf.scrollY - 1
             if limit > #buf.lines.syntax then
                 limit = #buf.lines.syntax
             end
             for i=buf.scrollY + 1, limit do
                 local xpos = 1
                 for j=1, #buf.lines.syntax[i] do
+                    --  TODO ! ! ! 
+                    -- This keeps dropping the period at the end of the second line of the last version.
+                    -- Need to fix! Color is there, and it should print!
+                    -- Cursor shows it too!
                     setpos(xpos - buf.scrollX, i - buf.scrollY)
                     setcolors(colors.black, buf.lines.syntax[i][j].color)
                     write(buf.lines.syntax[i][j].string)
                     xpos = xpos + #buf.lines.syntax[i][j].string
-                    if xpos >= buf.cursorX and not writtenCursor then
-                        setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
-                        setcolors(colors.lightGray, buf.lines.syntax[i][j].color)
-                        write(buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX))
-                        writtenCursor = true
+                    if (xpos > buf.cursorX) and (not cursorColor) and i == buf.cursorY then
+                        cursorColor = buf.lines.syntax[i][j].color
                     end
                     if xpos > wid then
                         break
                     end
                 end
             end
+            setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
+            setcolors(colors.lightGray, cursorColor or colors.orange)
+            local st = buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX)
+            if st == "" then
+                st = " "
+            end
+            write(st)
         else
-            local limit = hig + buf.scrollY
+            local limit = hig + buf.scrollY - 1
             if limit > #buf.lines.text then
                 limit = #buf.lines.text
             end
@@ -237,7 +246,11 @@ local function drawBuffer(buf)
             end
             setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
             setcolors(colors.lightGray, colors.white)
-            write(buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX))
+            local st = buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX)
+            if st == "" then
+                st = " "
+            end
+            write(st)
         end
     end
 end
@@ -735,15 +748,13 @@ if #buffers > 0 then
     drawBuffer(buffers[currBuf])
 end
 
-buffers[1].cursorX = 1
-buffers[1].cursorY = 1
-buffers[1].scrollX = 0
-buffers[1].scrollY = 0
+local ff = fs.open("/out.test", "w")
+ff.write(textutils.serialise(buffers[currBuf].lines.syntax))
+ff.close()
 
 while running do
     if changedBuffers then
         if buffers[currBuf] then
-            drawBuffer(buffers[currBuf])
             local linecount = #buffers[currBuf].lines.text
             local bytecount = 0
             for i=1, #buffers[currBuf].lines.text do
@@ -751,9 +762,10 @@ while running do
             end
             sendMsg("\""..buffers[currBuf].path.."\" "..linecount.."L, "..bytecount.."B")
             changedBuffers = false
-        else
-            drawBuffer()
         end
+    end
+    if changedBuffers or redrawBuffer then
+        drawBuffer(buffers[currBuf])
     end
 
     local event = {os.pullEvent()}
@@ -762,11 +774,41 @@ while running do
             commands.runCommand(pullCommand(":"))
         end
     elseif event[1] == "key" then
-        --todo next
-        --if event[2] == keys.up then
-        --    buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
-        --end
+        if event[2] == keys.left then
+            if buffers[currBuf].cursorX > 1 then
+                buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+                if buffers[currBuf].cursorX - buffers[currBuf].scrollX < 1 then
+                    buffers[currBuf].scrollX = buffers[currBuf].scrollX - 1
+                end
+                redrawBuffer = true
+            end
+        elseif event[2] == keys.right then
+            if buffers[currBuf].cursorX < #buffers[currBuf].lines.text + 1 then
+                buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                if buffers[currBuf].cursorX - buffers[currBuf].scrollX > wid then
+                    buffers[currBuf].scrollX = buffers[currBuf].scrollX + 1
+                end
+                redrawBuffer = true
+            end
+        elseif event[2] == keys.up then
+            if buffers[currBuf].cursorY > 1 then
+                buffers[currBuf].cursorY = buffers[currBuf].cursorY - 1
+                if buffers[currBuf].cursorY - buffers[currBuf].scrollY < 1 then
+                    buffers[currBuf].scrollY = buffers[currBuf].scrollY - 1
+                end
+                redrawBuffer = true
+            end
+        elseif event[2] == keys.down then
+            if buffers[currBuf].cursorY < #buffers[currBuf].lines.text then
+                buffers[currBuf].cursorY = buffers[currBuf].cursorY + 1
+                if buffers[currBuf].cursorY - buffers[currBuf].scrollY > hig - 1 then
+                    buffers[currBuf].scrollY = buffers[currBuf].scrollY + 1
+                end
+                redrawBuffer = true
+            end
+        end
     end
 end
 
 setpos(1, hig)
+--setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
