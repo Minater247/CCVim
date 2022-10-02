@@ -11,7 +11,7 @@ local redrawBuffer = false
 
 local version = 0.734
 local releasedate = "2022-08-02"
-local fileExplorerVer = 0.12
+local fileExplorerVer = 0.121
 
 local vars = {
     syntax = true,
