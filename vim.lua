@@ -8,6 +8,7 @@ local currBuf = 0
 local running = true
 local changedBuffers = true
 local redrawBuffer = false
+local lastBuffer
 
 local version = 0.734
 local releasedate = "2022-08-02"
@@ -122,6 +123,11 @@ local function setpos(xpos, ypos)
     else
         term.setCursorPos(xpos, ypos)
     end
+end
+
+local function setBuffer(new)
+    lastBuffer = currBuf
+    currBuf = new
 end
 
 local function loadSyntax(buf)
@@ -357,7 +363,8 @@ end
 local function close()
     table.remove(buffers, currBuf)
     if currBuf > #buffers then
-        currBuf = currBuf - 1
+        lastBuffer = currBuf
+        setBuffer(currBuf - 1)
         changedBuffers = true
     end
     if currBuf == 0 then
@@ -366,6 +373,7 @@ local function close()
         setpos(1, 1)
         running = false
         currBuf = 1
+        lastBuffer = 0
     end
 end
 
@@ -396,7 +404,7 @@ commands.runCommand = function(command)
             name = commands.dirOpener(shell.resolve(name), name)
         end
         buffers[#buffers+1] = newBuffer(name)
-        currBuf = #buffers
+        setBuffer(#buffers)
         return true
     elseif cmdtab[1] == "sav" or cmdtab[1] == "saveas" or cmdtab[1] == "sav!" or cmdtab[1] == "saveas!" then
         local nametab = cmdtab
@@ -480,13 +488,17 @@ commands.runCommand = function(command)
                     name = commands.dirOpener(shell.resolve(name), name)
                 end
                 local secondArr = fil.toArray(shell.resolve(name))
-                if not buffers[currBuf] then
-                    buffers[currBuf] = newBuffer()
+                if secondArr then
+                    if not buffers[currBuf] then
+                        buffers[currBuf] = newBuffer()
+                    end
+                    for i=1,#secondArr,1 do
+                        table.insert(buffers[currBuf].lines.text, secondArr[i])
+                    end
+                    sendMsg("\""..name.."\" "..#secondArr.."L, "..tab.countchars(secondArr).."C")
+                else
+                    err("Failed to read existing file "..name)
                 end
-                for i=1,#secondArr,1 do
-                    table.insert(buffers[currBuf].lines.text, secondArr[i])
-                end
-                sendMsg("\""..name.."\" "..#secondArr.."L, "..tab.countchars(secondArr).."C")
             else
                 err("Can't open file "..name)
             end
@@ -494,14 +506,46 @@ commands.runCommand = function(command)
             err("No file name")
         end
     elseif cmdtab[1] == "tabn" or cmdtab[1] == "tabnext" then
-        currBuf = currBuf + 1
+        setBuffer(currBuf + 1)
         if currBuf > #buffers then
             currBuf = 1
         end
     elseif cmdtab[1] == "tabp" or cmdtab[1] == "tabprevious" then
-        currBuf = currBuf - 1
+        setBuffer(currBuf - 1)
         if currBuf < 1 then
             currBuf = #buffers
+        end
+    elseif cmdtab[1] == "tabm" or cmdtab[1] == "tabmove" then
+        local tmp = buffers[currBuf]
+        table.remove(buffers, currBuf)
+        local location
+        if tonumber(cmdtab[2]) then
+            location = tonumber(cmdtab[2]) + 1
+        elseif cmdtab[2] == "#" then
+            location = lastBuffer + 1
+        elseif not cmdtab[2] then
+            location = #buffers + 1
+        else
+            err("Invalid argument: "..cmdtab[2])
+            return false
+        end
+        table.insert(buffers, location, tmp)
+        currBuf = location
+    elseif cmdtab[1] == "tabo" or cmdtab[1] == "tabonly" or cmdtab[1] == "tabo!" or cmdtab[1] == "tabonly" then
+        local unclosableBuf
+        for i=1, #buffers do
+            if i ~= currBuf then
+                if buffers[i].unsavedChanges == true then
+                    unclosableBuf = false
+                end
+            end
+        end
+        if unclosableBuf then
+            err("Unsaved work in \""..buffers[unclosableBuf].name.."\" (add ! to override)")
+            return false
+        else
+            buffers = {buffers[currBuf]}
+            setBuffer(1)
         end
     elseif cmdtab[1] == "set" then
         if string.find(cmdtab[2], "=") then
@@ -530,7 +574,9 @@ commands.runCommand = function(command)
         end
     else
         err("Not an editor command: "..cmdtab[1])
+        return false
     end
+    return true
 end
 
 local oldyoff
