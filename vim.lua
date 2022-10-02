@@ -127,7 +127,11 @@ end
 local function loadSyntax(buf)
     if fs.exists("/vim/syntax/" .. buf.filetype..".lua") then
         buf.highlighter = require("/vim/syntax/" .. buf.filetype)
+        if vars.syntax then
+            buf.lines.syntax = buf.highlighter.parseSyntax(buf.lines.text)
+        end
     end
+    redrawBuffer = true
     return buf
 end
 
@@ -136,6 +140,15 @@ local function clearScreenLine(line)
     setpos(1, line)
     for i=1,wid do
         write(" ")
+    end
+end
+
+local function clearbufarea(noreset)
+    if not noreset then
+        setcolors(colors.black, colors.white)
+    end
+    for i=1, hig - 1 do
+        clearScreenLine(i)
     end
 end
 
@@ -156,11 +169,13 @@ end
 local function newBuffer(path)
     if running then
         local givenpath = path
-        path = shell.resolve(path)
+        if path then
+            path = shell.resolve(path)
+        end
         local buf = {}
         buf.lines = {text = fil.toArray(path) or {""}}
         buf.path = path
-        buf.name = givenpath
+        buf.name = givenpath or ""
         buf.filetype = str.getFileExtension(path)
         buf = loadSyntax(buf)
 
@@ -185,7 +200,7 @@ end
 local function drawBuffer(buf)
     if running then
         if not buf then
-            clear()
+            clearbufarea()
             setcolors(colors.black, colors.purple)
             for i=1, hig - 1 do
                 setpos(1, i)
@@ -211,7 +226,7 @@ local function drawBuffer(buf)
             setcolors(colors.black, colors.white)
             write("to exit")
         else
-            clear()
+            clearbufarea()
             local cursorColor
             if buf.lines.syntax and vars.syntax then
                 local limit = hig + buf.scrollY - 1
@@ -347,9 +362,10 @@ local function close()
     end
     if currBuf == 0 then
         setcolors(colors.black, colors.white)
-        clear()
+        clearbufarea()
         setpos(1, 1)
         running = false
+        currBuf = 1
     end
 end
 
@@ -373,12 +389,13 @@ commands.runCommand = function(command)
         end
         return true
     elseif cmdtab[1] == "e" then
-        for i=2, #cmdtab do
-            if fs.isDir(cmdtab[i]) then
-                cmdtab[i] = commands.dirOpener(fil.topath(cmdtab[i]), cmdtab[i])
-            end
-            buffers[#buffers+1] = newBuffer(cmdtab[i])
+        local nametab = cmdtab
+        table.remove(nametab, 1)
+        local name = table.concat(nametab, " ")
+        if fs.isDir(name) then
+            name = commands.dirOpener(shell.resolve(name), name)
         end
+        buffers[#buffers+1] = newBuffer(name)
         currBuf = #buffers
         return true
     elseif cmdtab[1] == "sav" or cmdtab[1] == "saveas" or cmdtab[1] == "sav!" or cmdtab[1] == "saveas!" then
@@ -450,7 +467,56 @@ commands.runCommand = function(command)
     elseif cmdtab[1] == "wq" or cmdtab[1] == "x" then
         local ok = commands.runCommand(":w")
         if ok then
-            commands.runCommand(":q")
+            ok = commands.runCommand(":q")
+        end
+        return ok
+    elseif cmdtab[1] == "r" or cmdtab[1] == "read" then
+        if #cmdtab > 1 then
+            local nametab = cmdtab
+            table.remove(nametab, 1)
+            local name = table.concat(nametab, " ")
+            if fs.exists(shell.resolve(name)) then
+                if fs.isDir(shell.resolve(name)) then
+                    name = commands.dirOpener(shell.resolve(name), name)
+                end
+                local secondArr = fil.toArray(shell.resolve(name))
+                if not buffers[currBuf] then
+                    buffers[currBuf] = newBuffer()
+                end
+                for i=1,#secondArr,1 do
+                    table.insert(buffers[currBuf].lines.text, secondArr[i])
+                end
+                sendMsg("\""..name.."\" "..#secondArr.."L, "..tab.countchars(secondArr).."C")
+            else
+                err("Can't open file "..name)
+            end
+        else
+            err("No file name")
+        end
+    elseif cmdtab[1] == "set" then
+        if string.find(cmdtab[2], "=") then
+            local parts = str.split(cmdtab[2], "=")
+            local name, value = parts[1], parts[2]
+            local nametab = cmdtab
+            table.remove(cmdtab, 1)
+            table.remove(cmdtab, 1)
+            value = value .. table.concat(nametab)
+            if name == "syntax" then
+                buffers[currBuf].filetype = value
+                loadSyntax(buffers[currBuf])
+            end
+        else
+            if cmdtab[2] == "number" then
+                vars.lineoffset = 4
+            elseif cmdtab[2] == "nonumber" then
+                vars.lineoffset = 0
+            end
+        end
+    elseif cmdtab[1] == "syntax" then
+        if cmdtab[2] == "on" then
+            vars.syntax = true
+        else
+            vars.syntax = false
         end
     else
         err("Not an editor command: "..cmdtab[1])
