@@ -178,7 +178,7 @@ syntax.parseSyntax = function(subject)
                         words[i-1].color = syntax.colors["function"]
                     elseif (word.string == ".") or (word.string == ":") then
                         if words[i+1] then
-                            if words[i+1].string == "." then
+                            if tab.contains(syntax.punctuation, words[i+1].string) then
                                 words[i+1].color = syntax.colors.punctuation
                             else
                                 if tonumber(words[i+1].string) then

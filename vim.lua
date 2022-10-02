@@ -200,34 +200,44 @@ local function drawBuffer(buf)
         write("<Enter>       ")
         setcolors(colors.black, colors.white)
         write("to exit")
-        return
-    end
-    clear()
-    if buf.lines.syntax then
-        local limit = hig + buf.scrollY
-        if limit > #buf.lines.syntax then
-            limit = #buf.lines.syntax
-        end
-        for i=buf.scrollY + 1, limit do
-            local xpos = 1
-            for j=1, #buf.lines.syntax[i] do
-                setpos(xpos - buf.scrollX, i - buf.scrollY - 1)
-                setcolors(colors.black, buf.lines.syntax[i][j].color)
-                write(buf.lines.syntax[i][j].string)
-                xpos = xpos + #buf.lines.syntax[i][j].string
-                if xpos > wid then
-                    break
+    else
+        clear()
+        local writtenCursor = false
+        if buf.lines.syntax then
+            local limit = hig + buf.scrollY
+            if limit > #buf.lines.syntax then
+                limit = #buf.lines.syntax
+            end
+            for i=buf.scrollY + 1, limit do
+                local xpos = 1
+                for j=1, #buf.lines.syntax[i] do
+                    setpos(xpos - buf.scrollX, i - buf.scrollY)
+                    setcolors(colors.black, buf.lines.syntax[i][j].color)
+                    write(buf.lines.syntax[i][j].string)
+                    xpos = xpos + #buf.lines.syntax[i][j].string
+                    if xpos >= buf.cursorX and not writtenCursor then
+                        setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
+                        setcolors(colors.lightGray, buf.lines.syntax[i][j].color)
+                        write(buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX))
+                        writtenCursor = true
+                    end
+                    if xpos > wid then
+                        break
+                    end
                 end
             end
-        end
-    else
-        local limit = hig + buf.scrollY
-        if limit > #buf.lines.text then
-            limit = #buf.lines.text
-        end
-        for i=buf.scrollY + 1, limit do
-            setpos(1 - buf.scrollX, i)
-            write(buf.lines.text[i])
+        else
+            local limit = hig + buf.scrollY
+            if limit > #buf.lines.text then
+                limit = #buf.lines.text
+            end
+            for i=buf.scrollY + 1, limit do
+                setpos(1 - buf.scrollX, i - buf.scrollY)
+                write(buf.lines.text[i])
+            end
+            setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
+            setcolors(colors.lightGray, colors.white)
+            write(buf.lines.text[buf.cursorY]:sub(buf.cursorX, buf.cursorX))
         end
     end
 end
@@ -725,7 +735,10 @@ if #buffers > 0 then
     drawBuffer(buffers[currBuf])
 end
 
-
+buffers[1].cursorX = 1
+buffers[1].cursorY = 1
+buffers[1].scrollX = 0
+buffers[1].scrollY = 0
 
 while running do
     if changedBuffers then
