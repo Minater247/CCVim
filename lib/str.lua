@@ -141,6 +141,23 @@ local function find(inp, mtch, ignore)
     end
 end
 
+local function findAll(inp, mtch)
+    local results = {}
+    if inp then
+        for i=1,#inp,1 do
+            if string.sub(inp, i, i + #mtch - 1) == mtch then
+                table.insert(results, i)
+            end
+        end
+        if #results == 0 then
+            return false
+        end
+        return results
+    else
+        return false
+    end
+end
+
 local function getFileExtension(inpstring)
     local outputstring = ""
     local i = #inpstring
@@ -155,4 +172,4 @@ local function getFileExtension(inpstring)
     end
 end
 
-return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings, wordEnds = wordEnds, indicesOfLetter = indicesOfLetter, find = find, getFileExtension = getFileExtension }
+return { split = split, wordOfPos = wordOfPos, wordBeginnings = wordBeginnings, wordEnds = wordEnds, indicesOfLetter = indicesOfLetter, find = find, getFileExtension = getFileExtension, findAll = findAll }

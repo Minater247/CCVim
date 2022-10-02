@@ -1,15 +1,11 @@
-local function toArr(filePath)
+local str = require("/vim/lib/str")
+
+local function toArray(filePath)
     local fileHandle = fs.open(filePath, "r")
-    local log
     if fileHandle then
-        log = {}
-        local line = fileHandle.readLine()
-        while line do
-            table.insert(log, line)
-            line = fileHandle.readLine()
-        end
+        local text = fileHandle.readAll()
         fileHandle.close()
-        return log
+        return str.split(text, "\n")
     else
         return false
     end
@@ -23,4 +19,4 @@ local function topath(inp)
     end
 end
 
-return {toArr = toArr, topath = topath}
+return {toArray = toArray, topath = topath}
