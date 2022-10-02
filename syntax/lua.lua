@@ -83,6 +83,7 @@ syntax.punctuation = {
 syntax.parseSyntax = function(subject)
     local multiline = "none"
     local lines = {}
+    lines.multiline = {}
     for _, line in ipairs(subject) do
 
         local words = {}
@@ -165,7 +166,11 @@ syntax.parseSyntax = function(subject)
                                 multiline = "string"
                                 state = "multiline"
                                 words[i].color = syntax.colors.string
+                            else
+                                words[i].color = syntax.colors.punctuation
                             end
+                        else
+                            words[i].color = syntax.colors.punctuation
                         end
                     elseif word.string == "(" then
                         words[i].color = syntax.colors.punctuation
@@ -214,6 +219,19 @@ syntax.parseSyntax = function(subject)
             i = i + 1
         end
 
+        if multiline ~= "none" then
+            if lines.multiline[#lines.multiline] == "none" or not lines.multiline[#lines.multiline] then
+                lines.multiline[#lines.multiline+1] = "start"..multiline
+            else
+                lines.multiline[#lines.multiline+1] = multiline
+            end
+        else
+            if lines.multiline[#lines.multiline] and lines.multiline[#lines.multiline] ~= "none" and lines.multiline[#lines.multiline] ~= "endnone" and lines.multiline[#lines.multiline] ~= "endcomment" then
+                lines.multiline[#lines.multiline+1] = "end"..lines.multiline[#lines.multiline]
+            else
+                lines.multiline[#lines.multiline+1] = "none"
+            end
+        end
         lines[#lines+1] = words
         
     end

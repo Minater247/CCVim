@@ -21,21 +21,36 @@ local function newBuffer(path)
 end
 
 
-local buf = newBuffer("/test.lua")
+
+
+
+
+
+
+
+local buf = newBuffer("/vim/vim.lua")
 local xpos = 1
 term.clear()
 
---draw
+local wid, hig = term.getSize()
+
+--template drawing function to draw a buffer
 local ff = fs.open("/out.test", "w")
 ff.write(textutils.serialise(buf.lines.syntax))
 ff.close()
 for i=1, #buf.lines.syntax do
+    local locali = i
+    if i > hig then
+        term.scroll(1)
+        locali = hig
+    end
+
     local xpos = 1
     for j=1, #buf.lines.syntax[i] do
-        term.setCursorPos(xpos, i)
+        term.setCursorPos(xpos, locali)
         term.setTextColor(buf.lines.syntax[i][j].color)
         term.write(buf.lines.syntax[i][j].string)
         xpos = xpos + #buf.lines.syntax[i][j].string
     end
 end
-term.setCursorPos(1, #buf.lines.syntax + 1)
+term.setCursorPos(1, hig)
