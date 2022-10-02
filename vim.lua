@@ -1,6 +1,8 @@
 local str = require("/vim/lib/str")
 local fil = require("/vim/lib/fil")
 
+local wid, hig = term.getSize()
+
 local vars = {
     syntax = true
 }
@@ -20,48 +22,52 @@ local function newBuffer(path)
     end
 
     buf.cursorX, buf.cursorY = 1, 1
+    buf.scrollX, buf.scrollY = 0, 0
 
     return buf
 end
 
 
-
-
-
-
-
-
-
-local buf = newBuffer("/out.test")
-local xpos = 1
-term.clear()
-
-local wid, hig = term.getSize()
-
---template drawing function to draw a buffer
-local ff = fs.open("/out.test", "w")
-ff.write(textutils.serialise(buf.lines.syntax))
-ff.close()
-if buf.lines.syntax then
-    for i=1, #buf.lines.syntax do
-        local locali = i
-        if i > hig then
-            term.scroll(1)
-            locali = hig
+local function drawBuffer(buf)
+    term.clear()
+    if buf.lines.syntax then
+        local limit = hig + buf.scrollY
+        if limit > #buf.lines.syntax then
+            limit = #buf.lines.syntax
         end
-
-        local xpos = 1
-        for j=1, #buf.lines.syntax[i] do
-            term.setCursorPos(xpos, locali)
-            term.setTextColor(buf.lines.syntax[i][j].color)
-            term.write(buf.lines.syntax[i][j].string)
-            xpos = xpos + #buf.lines.syntax[i][j].string
+        for i=buf.scrollY + 1, limit do
+            local xpos = 1
+            for j=1, #buf.lines.syntax[i] do
+                term.setCursorPos(xpos - buf.scrollX, i - buf.scrollY)
+                term.setTextColor(buf.lines.syntax[i][j].color)
+                term.write(buf.lines.syntax[i][j].string)
+                xpos = xpos + #buf.lines.syntax[i][j].string
+                if xpos > wid then
+                    break
+                end
+            end
         end
-    end
-else
-    for i=1, #buf.lines.text do
-        term.setCursorPos(1, i)
-        term.write(buf.lines.text[i])
+    else
+        local limit = hig + buf.scrollY
+        if limit > #buf.lines.text then
+            limit = #buf.lines.text
+        end
+        for i=buf.scrollY + 1, limit do
+            term.setCursorPos(1 - buf.scrollX, i)
+            term.write(buf.lines.text[i])
+        end
     end
 end
+
+
+
+
+
+
+
+
+local buffer = newBuffer("/test.lua")
+drawBuffer(buffer)
 term.setCursorPos(1, hig)
+
+os.pullEvent("key")
