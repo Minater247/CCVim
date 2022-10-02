@@ -1,11 +1,15 @@
 local str = require("/vim/lib/str")
 
 local function toArray(filePath)
-    local fileHandle = fs.open(filePath, "r")
-    if fileHandle then
-        local text = fileHandle.readAll()
-        fileHandle.close()
-        return str.split(text, "\n")
+    if filePath then
+        local fileHandle = fs.open(filePath, "r")
+        if fileHandle then
+            local text = fileHandle.readAll()
+            fileHandle.close()
+            return str.split(text, "\n")
+        else
+            return false
+        end
     else
         return false
     end

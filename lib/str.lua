@@ -159,14 +159,18 @@ local function findAll(inp, mtch)
 end
 
 local function getFileExtension(inpstring)
-    local outputstring = ""
-    local i = #inpstring
-    while i > 0 and string.sub(inpstring, i, i) ~= "." do
-        outputstring = string.sub(inpstring, i, i) .. outputstring
-        i = i - 1
-    end
-    if i ~= 0 and outputstring ~= inpstring and outputstring ~= string.sub(inpstring, 2, #inpstring) then
-        return outputstring
+    if inpstring then
+        local outputstring = ""
+        local i = #inpstring
+        while i > 0 and string.sub(inpstring, i, i) ~= "." do
+            outputstring = string.sub(inpstring, i, i) .. outputstring
+            i = i - 1
+        end
+        if i ~= 0 and outputstring ~= inpstring and outputstring ~= string.sub(inpstring, 2, #inpstring) then
+            return outputstring
+        else
+            return ""
+        end
     else
         return ""
     end
