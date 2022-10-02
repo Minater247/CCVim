@@ -3,7 +3,7 @@ local fil = require("/vim/lib/fil")
 local argv = require("/vim/lib/args")
 local tab = require("/vim/lib/tab")
 
-local wid, hig = term.getSize()
+local wid, hig
 local currBuf = 0
 local running = true
 local changedBuffers = true
@@ -72,6 +72,11 @@ local monitor
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
+end
+
+if tab.contains(args, "--version") then
+    print("CCVIM - ComputerCraft Vi IMproved "..version.." ("..releasedate..")")
+    do return end
 end
 
 local function resetSize()
@@ -373,6 +378,37 @@ commands.runCommand = function(command)
             buffers[#buffers+1] = newBuffer(cmdtab[i])
         end
         currBuf = #buffers
+    elseif cmdtab[1] == "sav" or cmdtab[1] == "saveas" or cmdtab[1] == "sav!" or cmdtab[1] == "saveas!" then
+        local name = ""
+        for i=2,#cmdtab,1 do
+            name = name .. cmdtab[i]
+            if i ~= #cmdtab then
+                name = name .. " "
+            end
+        end
+        if #cmdtab < 2 then
+            err("Argument required")
+        elseif fs.exists(fil.topath(name)) and not (cmdtab[1]:sub(#cmdtab[1], #cmdtab[1]) == "!") then
+            err("File exists (add ! to override)")
+        elseif fs.isReadOnly(fil.topath(name)) then
+            err("File is read-only")
+        else
+            local new = true
+            if fs.exists(fil.topath(name)) then
+                new = false
+            end
+            local file = fs.open(fil.topath(name), "w")
+            for i=1,#buffers[currBuf].lines.text,1 do
+                file.writeLine(buffers[currBuf].lines.text[i])
+            end
+            file.close()
+            buffers[currBuf].unsavedChanges = false
+            sendMsg("\""..name.."\" ")
+            if new then
+                write("[New] ")
+            end
+            write(" "..#buffers[currBuf].lines.text.."L written")
+        end
     else
         err("Not an editor command: "..cmdtab[1])
     end
@@ -776,6 +812,7 @@ local function validateCursor(buf)
 end
 
 
+resetSize()
 clear()
 if not args then
     error("Something has gone very wrong with argument initialization!")
@@ -803,6 +840,7 @@ end
 ]]
 
 while running do
+    resetSize()
     if changedBuffers then
         if buffers[currBuf] then
             local linecount = #buffers[currBuf].lines.text
