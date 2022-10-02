@@ -11,7 +11,8 @@ syntax.colors = {
     table = colors.green,
     punctuation = colors.white,
     default = colors.lightBlue,
-    escaped = colors.yellow
+    escaped = colors.yellow,
+    number = colors.cyan
 }
 
 syntax.splitChars = {
@@ -177,10 +178,14 @@ syntax.parseSyntax = function(subject)
                         words[i-1].color = syntax.colors["function"]
                     elseif (word.string == ".") or (word.string == ":") then
                         if words[i+1] then
-                            if words[i+1].string ~= "." then
-                                words[i+1].color = syntax.colors.table
-                            else
+                            if words[i+1].string == "." then
                                 words[i+1].color = syntax.colors.punctuation
+                            else
+                                if tonumber(words[i+1].string) then
+                                    words[i+1].color = syntax.colors.number
+                                else
+                                    words[i+1].color = syntax.colors.table
+                                end
                             end
                         end
                         words[i].color = syntax.colors.punctuation
@@ -192,6 +197,8 @@ syntax.parseSyntax = function(subject)
                         words[i].color = syntax.colors.subword
                     elseif tab.contains(syntax.punctuation, word.string) then
                         words[i].color = syntax.colors.punctuation
+                    elseif tonumber(word.string) then
+                        words[i].color = syntax.colors.number
                     else
                         words[i].color = syntax.colors.default
                     end
