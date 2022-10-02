@@ -5,6 +5,10 @@ local tab = require("/vim/lib/tab")
 
 local wid, hig = term.getSize()
 local currBuf = 0
+local running = true
+
+local version = 0.734
+local releasedate = "2022-08-02"
 
 local vars = {
     syntax = true
@@ -159,6 +163,34 @@ end
 
 
 local function drawBuffer(buf)
+    if not buf then
+        clear()
+        setcolors(colors.black, colors.purple)
+        for i=1, hig - 1 do
+            setpos(1, i)
+            write("~")
+        end
+        setcolors(colors.black, colors.white)
+        setpos((wid / 2) - (33 / 2), (hig / 2) - 2)
+        write("CCVIM - ComputerCraft Vi Improved")
+        setpos((wid / 2) - (#("version ".. version) / 2), (hig / 2))
+        write("version "..version)
+        setpos((wid / 2) - (13 / 2), (hig / 2) + 1)
+        write("By Minater247")
+        if wid > 53 then
+            setpos((wid / 2) - (46 / 2), (hig / 2) + 2)
+            write("CCVIM is open source and freely distributable.")
+            setpos((wid / 2) - (28 / 2), (hig / 2) + 4)
+        else
+            setpos((wid / 2) - (28 / 2), (hig / 2) + 3)
+        end
+        write("Type :q")
+        setcolors(colors.black, colors.lightBlue)
+        write("<Enter>       ")
+        setcolors(colors.black, colors.white)
+        write("to exit")
+        return
+    end
     clear()
     if buf.lines.syntax then
         local limit = hig + buf.scrollY
@@ -254,7 +286,20 @@ local function exitclear()
     setpos(1, 1)
 end
 
+local function close()
+    table.remove(buffers, currBuf)
+    if currBuf > #buffers then
+        currBuf = currBuf - 1
+        changedBuffers = true
+    end
+    if currBuf == 0 then
+        exitclear()
+        running = false
+    end
+end
 
+
+clear()
 if not args then
     error("Something has gone very wrong with argument initialization!")
 end
@@ -267,18 +312,22 @@ if #buffers > 0 then
 end
 
 
-local running = true
+
 local changedBuffers = true
 while running do
     if changedBuffers then
-        drawBuffer(buffers[currBuf])
-        local linecount = #buffers[currBuf].lines.text
-        local bytecount = 0
-        for i=1, #buffers[currBuf].lines.text do
-            bytecount = bytecount + #buffers[currBuf].lines.text[i]
+        if buffers[currBuf] then
+            drawBuffer(buffers[currBuf])
+            local linecount = #buffers[currBuf].lines.text
+            local bytecount = 0
+            for i=1, #buffers[currBuf].lines.text do
+                bytecount = bytecount + #buffers[currBuf].lines.text[i]
+            end
+            sendMsg("\""..buffers[currBuf].path.."\" "..linecount.."L, "..bytecount.."B")
+            changedBuffers = false
+        else
+            drawBuffer()
         end
-        sendMsg("\""..buffers[currBuf].path.."\" "..linecount.."L, "..bytecount.."B")
-        changedBuffers = false
     end
 
     local event = {os.pullEvent()}
@@ -288,23 +337,24 @@ while running do
             command = command:sub(2, #command)
             local cmdtab = str.split(command, " ")
             if cmdtab[1] == "q" or cmdtab[1] == "q!" then
-                if buffers[currBuf].unsavedChanges and cmdtab[1] ~= ":q!" then
-                    err("No write since last change (add ! to override)")
+                if buffers[currBuf] then
+                    if buffers[currBuf].unsavedChanges and cmdtab[1] ~= ":q!" then
+                        err("No write since last change (add ! to override)")
+                    else
+                        close()
+                    end
                 else
-                    table.remove(buffers, currBuf)
-                    if currBuf > #buffers then
-                        currBuf = currBuf - 1
-                        changedBuffers = true
-                    end
-                    if currBuf == 0 then
-                        exitclear()
-                        running = false
-                    end
+                    close()
                 end
             else
                 err("Not an editor command: "..cmdtab[1])
             end
         end
+    elseif event[1] == "key" then
+        --todo next
+        --if event[2] == keys.up then
+        --    buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+        --end
     end
 end
 
