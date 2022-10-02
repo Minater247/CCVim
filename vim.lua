@@ -234,8 +234,8 @@ local function drawBuffer(buf)
         else
             clearbufarea()
             local cursorColor
+            local limit = hig + buf.scrollY - 1
             if buf.lines.syntax and vars.syntax then
-                local limit = hig + buf.scrollY - 1
                 if limit > #buf.lines.syntax then
                     limit = #buf.lines.syntax
                 end
@@ -262,7 +262,6 @@ local function drawBuffer(buf)
                 end
                 write(st)
             else
-                local limit = hig + buf.scrollY - 1
                 --todo: drop this and do the tilde when no file text on that line onwards
                 if limit > #buf.lines.text then
                     limit = #buf.lines.text
@@ -296,6 +295,11 @@ local function drawBuffer(buf)
                         end
                     end
                 end
+            end
+            for i=limit + 1, hig + buf.scrollY - 1 do
+                setpos(1, i - buf.scrollY)
+                setcolors(colors.black, colors.purple)
+                write("~")
             end
         end
     end
