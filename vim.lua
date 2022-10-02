@@ -493,6 +493,16 @@ commands.runCommand = function(command)
         else
             err("No file name")
         end
+    elseif cmdtab[1] == "tabn" or cmdtab[1] == "tabnext" then
+        currBuf = currBuf + 1
+        if currBuf > #buffers then
+            currBuf = 1
+        end
+    elseif cmdtab[1] == "tabp" or cmdtab[1] == "tabprevious" then
+        currBuf = currBuf - 1
+        if currBuf < 1 then
+            currBuf = #buffers
+        end
     elseif cmdtab[1] == "set" then
         if string.find(cmdtab[2], "=") then
             local parts = str.split(cmdtab[2], "=")
