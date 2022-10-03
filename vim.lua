@@ -12,6 +12,7 @@ local changedBuffers = true
 local redrawBuffer = false
 local lastBuffer
 local warnedOfClose
+local mode = "none"
 
 local version = 0.734
 local releasedate = "2022-08-02"
@@ -1053,10 +1054,40 @@ local function validateCursor(buf)
     if buf.cursorY - buf.scrollY > hig - 1 then
         buf.scrollY = buf.scrollY + 1
     end
-    if buf.cursorX > #buf.lines.text[buf.cursorY] + 1 then
-        buf.cursorX = #buf.lines.text[buf.cursorY] + 1
+    if mode == "none" then
+        if buf.cursorX > #buf.lines.text[buf.cursorY] then
+            buf.cursorX = #buf.lines.text[buf.cursorY]
+        end
+    else
+        if buf.cursorX > #buf.lines.text[buf.cursorY] + 1 then
+            buf.cursorX = #buf.lines.text[buf.cursorY] + 1
+        end
     end
     return buf
+end
+
+local function moveCursorLeft()
+    buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+    buffers[currBuf] = validateCursor(buffers[currBuf])
+    buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+end
+
+local function moveCursorRight()
+    buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+    buffers[currBuf] = validateCursor(buffers[currBuf])
+    buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+end
+
+local function moveCursorUp()
+    buffers[currBuf].cursorY = buffers[currBuf].cursorY - 1
+    buffers[currBuf].cursorX = buffers[currBuf].oldCursorX
+    buffers[currBuf] = validateCursor(buffers[currBuf])
+end
+
+local function moveCursorDown()
+    buffers[currBuf].cursorY = buffers[currBuf].cursorY + 1
+    buffers[currBuf].cursorX = buffers[currBuf].oldCursorX
+    buffers[currBuf] = validateCursor(buffers[currBuf])
 end
 
 
@@ -1116,39 +1147,46 @@ while running do
         warnedOfClose = false
     end
     if event[1] == "char" then
-        if event[2] == ":" then
+        local char = event[2]
+        if char == ":" then
             local oldBuf = currBuf
             local oldBufLen = #buffers
             commands.runCommand(pullCommand(":"))
             if (oldBuf ~= currBuf) or (oldBufLen ~= #buffers) then
                 changedBuffers = true
             end
+        elseif char == "i" then
+            --todo: editing mode
+        elseif char == "I" then
+            --todo: editing mode
+        elseif char == "h" then
+            moveCursorLeft()
+        elseif char == "j" then
+            moveCursorDown()
+        elseif char == "k" then
+            moveCursorUp()
+        elseif char == "l" then
+            moveCursorRight()
         end
     elseif event[1] == "key" then
         if event[2] == keys.left then
             if buffers[currBuf].cursorX > 1 then
-                buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
-                buffers[currBuf] = validateCursor(buffers[currBuf])
-                buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+                moveCursorLeft()
                 redrawBuffer = true
             end
         elseif event[2] == keys.right then
             if buffers[currBuf].cursorX < #buffers[currBuf].lines.text[buffers[currBuf].cursorY] + 1 then
-                buffers[currBuf] = validateCursor(buffers[currBuf])
-                buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
-                buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                moveCursorRight()
                 redrawBuffer = true
             end
         elseif event[2] == keys.up then
             if buffers[currBuf].cursorY > 1 then
-                buffers[currBuf].cursorY = buffers[currBuf].cursorY - 1
+                moveCursorUp()
                 redrawBuffer = true
-                buffers[currBuf] = validateCursor(buffers[currBuf])
             end
         elseif event[2] == keys.down then
             if buffers[currBuf].cursorY < #buffers[currBuf].lines.text then
-                buffers[currBuf].cursorY = buffers[currBuf].cursorY + 1
-                buffers[currBuf] = validateCursor(buffers[currBuf])
+                moveCursorDown()
                 redrawBuffer = true
             end
         end
