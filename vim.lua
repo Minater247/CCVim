@@ -252,7 +252,7 @@ local function drawBuffer(buf, viewednum)
                         setcolors(colors.black, buf.lines.syntax[i][j].color)
                         write(buf.lines.syntax[i][j].string)
                         xpos = xpos + #buf.lines.syntax[i][j].string
-                        if (xpos > buf.cursorX) and (not cursorColor) and i == buf.cursorY then
+                        if (xpos - vars.lineoffset > buf.cursorX) and (not cursorColor) and i == buf.cursorY then
                             cursorColor = buf.lines.syntax[i][j].color
                         end
                         if xpos - buf.scrollX > wid then
@@ -268,7 +268,6 @@ local function drawBuffer(buf, viewednum)
                 end
                 write(st)
             else
-                --todo: drop this and do the tilde when no file text on that line onwards
                 if limit > #buf.lines.text then
                     limit = #buf.lines.text
                 end
@@ -1055,12 +1054,16 @@ local function validateCursor(buf)
         buf.scrollY = buf.scrollY + 1
     end
     if mode == "none" then
-        if buf.cursorX > #buf.lines.text[buf.cursorY] then
+        if (buf.cursorX > #buf.lines.text[buf.cursorY]) and (#buf.lines.text[buf.cursorY] > 0) then
             buf.cursorX = #buf.lines.text[buf.cursorY]
+        elseif #buf.lines.text[buf.cursorY] == 0 then
+            buf.cursorX = 1
         end
     else
-        if buf.cursorX > #buf.lines.text[buf.cursorY] + 1 then
+        if buf.cursorX > #buf.lines.text[buf.cursorY] + 1 and (#buf.lines.text[buf.cursorY] + 1 > 0) then
             buf.cursorX = #buf.lines.text[buf.cursorY] + 1
+        elseif #buf.lines.text[buf.cursorY] == 0 then
+            buf.cursorX = 1
         end
     end
     return buf
@@ -1167,6 +1170,10 @@ while running do
             moveCursorUp()
         elseif char == "l" then
             moveCursorRight()
+        elseif char == "H" then
+            buffers[currBuf].cursorY = buffers[currBuf].scrollY + 1
+            buffers[currBuf] = validateCursor(buffers[currBuf])
+            redrawBuffer = true
         end
     elseif event[1] == "key" then
         if event[2] == keys.left then
