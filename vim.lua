@@ -1174,6 +1174,14 @@ while running do
             buffers[currBuf].cursorY = buffers[currBuf].scrollY + 1
             buffers[currBuf] = validateCursor(buffers[currBuf])
             redrawBuffer = true
+        elseif char == "M" then
+            buffers[currBuf].cursorY = buffers[currBuf].scrollY + math.floor((hig - 1) / 2) + 1
+            buffers[currBuf] = validateCursor(buffers[currBuf])
+            redrawBuffer = true
+        elseif char == "L" then
+            buffers[currBuf].cursorY = buffers[currBuf].scrollY + hig - 1
+            buffers[currBuf] = validateCursor(buffers[currBuf])
+            redrawBuffer = true
         end
     elseif event[1] == "key" then
         if event[2] == keys.left then
