@@ -537,7 +537,7 @@ commands.runCommand = function(command)
         end
         table.insert(buffers, location, tmp)
         currBuf = location
-    elseif cmdtab[1] == "tabo" or cmdtab[1] == "tabonly" or cmdtab[1] == "tabo!" or cmdtab[1] == "tabonly" then
+    elseif cmdtab[1] == "tabo" or cmdtab[1] == "tabonly" or cmdtab[1] == "tabo!" or cmdtab[1] == "tabonly!" then
         local unclosableBuf
         for i=1, #buffers do
             if i ~= currBuf then
@@ -546,7 +546,7 @@ commands.runCommand = function(command)
                 end
             end
         end
-        if unclosableBuf then
+        if unclosableBuf and cmdtab[1] ~= "tabo!" and cmdtab[1] ~= "tabonly!" then
             err("Unsaved work in \""..buffers[unclosableBuf].name.."\" (add ! to override)")
             return false
         else
