@@ -11,6 +11,7 @@ local running = true
 local changedBuffers = true
 local redrawBuffer = false
 local lastBuffer
+local warnedOfClose
 
 local version = 0.734
 local releasedate = "2022-08-02"
@@ -195,6 +196,7 @@ local function newBuffer(path)
         buf.oldCursorX = 1
         buf.scrollX, buf.scrollY = 0, 0
         buf.unsavedChanges = false
+        buf.viewed = false
 
         return buf
     end
@@ -205,7 +207,7 @@ local function pullChar()
     return _, tm
 end
 
-local function drawBuffer(buf)
+local function drawBuffer(buf, viewednum)
     if running then
         if not buf then
             clearbufarea()
@@ -237,6 +239,7 @@ local function drawBuffer(buf)
             clearbufarea()
             local cursorColor
             local limit = hig + buf.scrollY - 1
+            buffers[viewednum].viewed = true
             if buf.lines.syntax and vars.syntax then
                 if limit > #buf.lines.syntax then
                     limit = #buf.lines.syntax
@@ -390,17 +393,28 @@ local commands = {}
 commands.runCommand = function(command)
     command = command:sub(2, #command)
     local cmdtab = str.split(command, " ")
+    if not (cmdtab[1] == "q" or cmdtab[1] == "q!") then
+        warnedOfClose = false
+    end
     if cmdtab[1] == "q" or cmdtab[1] == "q!" then
-        if buffers[currBuf] then
-            if buffers[currBuf].unsavedChanges and cmdtab[1] ~= ":q!" then
-                err("No write since last change (add ! to override)")
-                return false
-            else
-                close()
+        local unseen = 0
+        if not warnedOfClose then
+            for i=1, #buffers do
+                if not buffers[i].viewed then
+                    unseen = unseen + 1
+                end
             end
-        else
-            close()
         end
+        if (unseen > 0) and (not warnedOfClose) and (cmdtab[1] ~= "q!") then
+            local ff = "file"
+            if unseen > 1 then
+                ff = "files"
+            end
+            err(unseen.." more "..ff.." left to edit")
+            warnedOfClose = true
+            return false
+        end
+        close()
         return true
     elseif cmdtab[1] == "e" or cmdtab[1] == "edit" then
         local nametab = cmdtab
@@ -483,6 +497,7 @@ commands.runCommand = function(command)
         if ok then
             ok = commands.runCommand(":q")
         end
+        clear()
         return ok
     elseif cmdtab[1] == "r" or cmdtab[1] == "read" then
         if #cmdtab > 1 then
@@ -594,6 +609,18 @@ commands.runCommand = function(command)
         else
             vars.syntax = false
         end
+    elseif cmdtab[1] == "tabc" or cmdtab[1] == "tabclose" or cmdtab[1] == "tabc!" or cmdtab[1] == "tabclose!" then
+        if buffers[currBuf] then
+            if buffers[currBuf].unsavedChanges and cmdtab[1] ~= "tabc!" and cmdtab[1] ~= "tabclose!" then
+                err("No write since last change (add ! to override)")
+                return false
+            else
+                close()
+            end
+        else
+            close()
+        end
+        return true
     else
         err("Not an editor command: "..cmdtab[1])
         return false
@@ -1029,7 +1056,7 @@ for i=1, #args.files do
 end
 if #buffers > 0 then
     currBuf = 1
-    drawBuffer(buffers[currBuf])
+    drawBuffer(buffers[currBuf], currBuf)
 end
 
 --[[ debug syntax output
@@ -1043,7 +1070,7 @@ end
 while running do
     resetSize()
     if changedBuffers or redrawBuffer then
-        drawBuffer(buffers[currBuf])
+        drawBuffer(buffers[currBuf], currBuf)
     end
     if changedBuffers then
         if buffers[currBuf] then
@@ -1065,6 +1092,9 @@ while running do
     end
 
     local event = {os.pullEvent()}
+    if event[1] ~= "char" or not ((event[1] == "char") and (event[2] == ":")) then
+        warnedOfClose = false
+    end
     if event[1] == "char" then
         if event[2] == ":" then
             local oldBuf = currBuf
@@ -1105,5 +1135,5 @@ while running do
     end
 end
 
-setpos(1, hig)
---setpos(buf.cursorX - buf.scrollX, buf.cursorY - buf.scrollY)
+clear()
+setpos(1, 1)
