@@ -585,22 +585,42 @@ commands.runCommand = function(command)
             setBuffer(currBuf + 1)
         end
     elseif cmdtab[1] == "set" then
-        if string.find(cmdtab[2], "=") then
-            local parts = str.split(cmdtab[2], "=")
-            local name, value = parts[1], parts[2]
-            local nametab = cmdtab
-            table.remove(cmdtab, 1)
-            table.remove(cmdtab, 1)
-            value = value .. table.concat(nametab)
-            if name == "syntax" then
-                buffers[currBuf].filetype = value
-                loadSyntax(buffers[currBuf])
-            end
-        else
-            if cmdtab[2] == "number" then
-                vars.lineoffset = 4
-            elseif cmdtab[2] == "nonumber" then
-                vars.lineoffset = 0
+        for i=2, #cmdtab do
+            local commandopt = cmdtab[i]
+            if string.find(commandopt, "=") then
+                local parts = str.split(commandopt, "=")
+                local name, value = parts[1], parts[2]
+                local nametab = cmdtab
+                table.remove(cmdtab, 1)
+                table.remove(cmdtab, 1)
+                value = value .. table.concat(nametab)
+                if name == "syntax" then
+                    buffers[currBuf].filetype = value
+                    loadSyntax(buffers[currBuf])
+                elseif name == "scale" then
+                    if monitor then
+                        if tonumber(value) then
+                            monitor.setTextScale(tonumber(value))
+                        else
+                            err("Scale must be number value")
+                        end
+                    else
+                        err("Cannot change scale of terminal")
+                        return false
+                    end
+                else
+                    err("Unknown option: "..name)
+                    return false
+                end
+            else
+                if commandopt == "number" then
+                    vars.lineoffset = 4
+                elseif commandopt == "nonumber" then
+                    vars.lineoffset = 0
+                else
+                    err("Unknown option: "..commandopt)
+                    return false
+                end
             end
         end
     elseif cmdtab[1] == "syntax" then
@@ -1043,7 +1063,7 @@ end
 resetSize()
 clear()
 if not args then
-    error("Something has gone very wrong with argument initialization!")
+    error("Something has gone very wrong with argument initialization.")
 end
 for i=1, #args.files do
     local truepath = shell.resolve(args.files[i])
