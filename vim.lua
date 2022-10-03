@@ -3,6 +3,8 @@ local fil = require("/vim/lib/fil")
 local argv = require("/vim/lib/args")
 local tab = require("/vim/lib/tab")
 
+local debug_printbufs = false
+
 local wid, hig
 local currBuf = 0
 local running = true
@@ -400,7 +402,7 @@ commands.runCommand = function(command)
             close()
         end
         return true
-    elseif cmdtab[1] == "e" then
+    elseif cmdtab[1] == "e" or cmdtab[1] == "edit" then
         local nametab = cmdtab
         table.remove(nametab, 1)
         local name = table.concat(nametab, " ")
@@ -450,7 +452,7 @@ commands.runCommand = function(command)
         else
             name = buffers[currBuf].path
         end
-        if #cmdtab < 2 and buffers[currBuf].path == "" then
+        if #cmdtab < 2 and (buffers[currBuf].path == "" or not buffers[currBuf].path) then
             err("No file name")
             return false
         elseif fs.isReadOnly(name) then
@@ -550,6 +552,22 @@ commands.runCommand = function(command)
         else
             buffers = {buffers[currBuf]}
             setBuffer(1)
+        end
+    elseif cmdtab[1] == "tabnew" then
+        if not cmdtab[2] then
+            table.insert(buffers, currBuf + 1, newBuffer())
+            setBuffer(currBuf + 1)
+        else
+            local nametab = cmdtab
+            table.remove(nametab, 1)
+            local name = table.concat(nametab, " ")
+            if fs.exists(shell.resolve(name)) then
+                if fs.isDir(shell.resolve(name)) then
+                    name = commands.dirOpener(shell.resolve(name), name)
+                end
+            end
+            table.insert(buffers, currBuf + 1, newBuffer(name))
+            setBuffer(currBuf + 1)
         end
     elseif cmdtab[1] == "set" then
         if string.find(cmdtab[2], "=") then
@@ -1020,6 +1038,13 @@ while running do
             end
             sendMsg("\""..buffers[currBuf].name.."\" "..linecount.."L, "..bytecount.."B")
             changedBuffers = false
+        end
+    end
+
+    if debug_printbufs then
+        sendMsg("")
+        for i=1, #buffers do
+            write(buffers[i].name.." ")
         end
     end
 
