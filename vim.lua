@@ -14,7 +14,7 @@ local lastBuffer
 
 local version = 0.734
 local releasedate = "2022-08-02"
-local fileExplorerVer = 0.121
+local fileExplorerVer = 0.122
 
 local vars = {
     syntax = true,
@@ -803,10 +803,26 @@ commands.dirOpener = function(dir, inputname)
             elseif sortType == "size" then
                 table.sort(filesInDir,
                     function (k1, k2)
+                        local k1isdir = fs.isDir(k1)
+                        local k2isdir = fs.isDir(k2)
                         if reverseSort then
-                            return fs.getSize(currSelection.."/"..k1) > fs.getSize(currSelection.."/"..k2)
-                        else
+                            if k1isdir and not k2isdir then
+                                return false
+                            elseif k2isdir and not k1isdir then
+                                return true
+                            elseif k1isdir and k2isdir then
+                                return k1 > k2
+                            end
                             return fs.getSize(currSelection.."/"..k1) < fs.getSize(currSelection.."/"..k2)
+                        else
+                            if k1isdir and not k2isdir then
+                                return true
+                            elseif k2isdir and not k1isdir then
+                                return false
+                            elseif k1isdir and k2isdir then
+                                return k1 < k2
+                            end
+                            return fs.getSize(currSelection.."/"..k1) > fs.getSize(currSelection.."/"..k2)
                         end
                     end)
             end
