@@ -1175,13 +1175,74 @@ while running do
             buffers[currBuf] = validateCursor(buffers[currBuf])
             redrawBuffer = true
         elseif char == "M" then
-            buffers[currBuf].cursorY = buffers[currBuf].scrollY + math.floor((hig - 1) / 2) + 1
+            buffers[currBuf].cursorY = buffers[currBuf].scrollY + math.floor((hig - 1) / 2)
             buffers[currBuf] = validateCursor(buffers[currBuf])
             redrawBuffer = true
         elseif char == "L" then
             buffers[currBuf].cursorY = buffers[currBuf].scrollY + hig - 1
             buffers[currBuf] = validateCursor(buffers[currBuf])
             redrawBuffer = true
+        elseif char == "w" or char == "W" then
+            local begs = str.wordBeginnings(buffers[currBuf].lines.text[buffers[currBuf].cursorY], not string.match(char, "%u"))
+            if begs[#begs] then
+                if buffers[currBuf].cursorX < begs[#begs] then
+                    buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                    while not tab.find(begs, buffers[currBuf].cursorX) do
+                        buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                    end
+                    buffers[currBuf].oldCursorX =  buffers[currBuf].cursorX
+                end
+            end
+            buffers[currBuf] = validateCursor(buffers[currBuf])
+            redrawBuffer = true
+        elseif char == "e" or char == "E" then
+            local begs = str.wordEnds(buffers[currBuf].lines.text[buffers[currBuf].cursorY], not string.match(char, "%u"))
+            if begs[#begs] then
+                if buffers[currBuf].cursorX < begs[#begs] then
+                    buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                    while not tab.find(begs, buffers[currBuf].cursorX) do
+                        buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                    end
+                    buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+                end
+            end
+            buffers[currBuf] = validateCursor(buffers[currBuf])
+            redrawBuffer = true
+        elseif char == "b" or char == "B" then
+            local begs = str.wordBeginnings(buffers[currBuf].lines.text[buffers[currBuf].cursorY], not string.match(char, "%u"))
+            if begs[1] then
+                if buffers[currBuf].cursorX > begs[1] then
+                    buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+                    while not tab.find(begs, buffers[currBuf].cursorX) do
+                        buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+                    end
+                    buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+                end
+            end
+            buffers[currBuf] = validateCursor(buffers[currBuf])
+            redrawBuffer = true
+        elseif char == "g" then
+            local _, char2 = pullChar()
+            if char2 == "e" or char2 == "E" then
+                local begs = str.wordEnds(buffers[currBuf].lines.text[buffers[currBuf].cursorY], not string.match(char, "%u"))
+                if begs[1] then
+                    if buffers[currBuf].cursorX > begs[1] then
+                        buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+                        while not tab.find(begs, buffers[currBuf].cursorX) do
+                            buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+                        end
+                        buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+                    end
+                end
+                buffers[currBuf] = validateCursor(buffers[currBuf])
+                redrawBuffer = true
+            end
+        elseif char == "%" then
+            --low on time so bracket matching is todo for now
+        elseif char == "0" then
+            buffers[currBuf].cursorX = 1
+            buffers[currBuf].oldCursorX = 1
+            buffers[currBuf] = validateCursor(buffers[currBuf])
         end
     elseif event[1] == "key" then
         if event[2] == keys.left then

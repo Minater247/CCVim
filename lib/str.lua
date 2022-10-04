@@ -15,7 +15,8 @@ local punctuation = {
     ")",
     "@",
     "-",
-    "\""
+    "\"",
+    "\\"
 }
 
 local escapable = {
