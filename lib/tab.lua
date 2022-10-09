@@ -39,4 +39,12 @@ local function countchars(tab)
     return count
 end
 
-return { find = find, getLongestItem = getLongestItem, countchars = countchars, contains = contains }
+local function sub(tab, startpos, endpos)
+    local output = {}
+    for i=startpos,endpos,1 do
+        output[#output+1] = tab[i]
+    end
+    return output
+end
+
+return { find = find, getLongestItem = getLongestItem, countchars = countchars, contains = contains, removeDuplicates = removeDuplicates, sub = sub }
