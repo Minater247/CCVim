@@ -50,8 +50,11 @@ syntax.mainWords = {
     "do",
     "while",
     "end",
+    "else",
     "elseif",
-    "then"
+    "then",
+    "return",
+    "function"
 }
 
 syntax.subWords = {
