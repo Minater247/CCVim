@@ -1041,16 +1041,24 @@ commands.dirOpener = function(dir, inputname)
 end
 
 local function validateCursor(buf)
-    if buf.cursorX - buf.scrollX < 1 then
+    if buf.cursorY < 1 then
+        buf.cursorY = 1
+    end
+    if buf.cursorY > #buf.lines.text then
+        buf.cursorY = #buf.lines.text
+    end
+    -- this could probably be a bit faster with some clever math
+    -- but it works with this, can replace with math if that becomes an issue
+    while buf.cursorX - buf.scrollX < 1 do
         buf.scrollX = buf.scrollX - 1
     end
-    if buf.cursorX - buf.scrollX + vars.lineoffset > wid then
+    while buf.cursorX - buf.scrollX + vars.lineoffset > wid do
         buf.scrollX = buf.scrollX + 1
     end
-    if buf.cursorY - buf.scrollY < 1 then
+    while buf.cursorY - buf.scrollY < 1 do
         buf.scrollY = buf.scrollY - 1
     end
-    if buf.cursorY - buf.scrollY > hig - 1 then
+    while buf.cursorY - buf.scrollY > hig - 1 do
         buf.scrollY = buf.scrollY + 1
     end
     if mode == "none" then
@@ -1120,6 +1128,8 @@ if running then
     ff.close()
 end
 ]]
+local heldnum = nil
+local heldnumstring = ""
 
 while running do
     resetSize()
@@ -1236,6 +1246,23 @@ while running do
                 end
                 buffers[currBuf] = validateCursor(buffers[currBuf])
                 redrawBuffer = true
+            elseif char2 == "_" then
+                buffers[currBuf].cursorX = #buffers[currBuf].lines.text[buffers[currBuf].cursorY]
+                while buffers[currBuf].lines.text[buffers[currBuf].cursorY]:sub(buffers[currBuf].cursorX, buffers[currBuf].cursorX) == " " do
+                    buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+                    if buffers[currBuf].cursorX == 1 then
+                        break
+                    end
+                end
+                buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+            elseif char2 == "g" then
+                if heldnum then
+                    buffers[currBuf].cursorY = heldnum
+                else
+                    buffers[currBuf].cursorY = 1
+                end
+                buffers[currBuf].scrollY = buffers[currBuf].cursorY - math.floor((hig - 1) / 2)
+                buffers[currBuf] = validateCursor(buffers[currBuf])
             end
         elseif char == "%" then
             local buffX = buffers[currBuf].cursorX
@@ -1297,6 +1324,33 @@ while running do
             buffers[currBuf].cursorX = 1
             buffers[currBuf].oldCursorX = 1
             buffers[currBuf] = validateCursor(buffers[currBuf])
+        elseif char == "^" then
+            buffers[currBuf].cursorX = 1
+            while buffers[currBuf].lines.text[buffers[currBuf].cursorY]:sub(buffers[currBuf].cursorX, buffers[currBuf].cursorX) == " " do
+                buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                if buffers[currBuf].cursorX == #buffers[currBuf].lines.text[buffers[currBuf].cursorY] then
+                    break
+                end
+            end
+            buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+        elseif char == "$" then
+            buffers[currBuf].cursorX = #buffers[currBuf].lines.text[buffers[currBuf].cursorY]
+            buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
+        elseif char == "G" then
+            if heldnum then
+                buffers[currBuf].cursorY = heldnum
+            else
+                buffers[currBuf].cursorY = #buffers[currBuf].lines.text
+            end
+            buffers[currBuf].scrollY = buffers[currBuf].cursorY - math.floor((hig - 1) / 2)
+            buffers[currBuf] = validateCursor(buffers[currBuf])
+        end
+        if tonumber(char) then
+            heldnumstring = heldnumstring .. char
+            heldnum = tonumber(heldnumstring)
+        else
+            heldnum = nil
+            heldnumstring = ""
         end
     elseif event[1] == "key" then
         if event[2] == keys.left then
