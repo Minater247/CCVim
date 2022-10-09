@@ -1238,7 +1238,61 @@ while running do
                 redrawBuffer = true
             end
         elseif char == "%" then
-            --low on time so bracket matching is todo for now
+            local buffX = buffers[currBuf].cursorX
+            local buffY = buffers[currBuf].cursorY
+            local brackets = {
+                ["("] = ")",
+                ["["] = "]",
+                ["{"] = "}",
+                reverse = {
+                    [")"] = "(",
+                    ["]"] = "[",
+                    ["}"] = "{"
+                }
+            }
+            local direction -- 0: forward, 1: backwards
+            local otherbracket
+            local depth = 1
+            if brackets[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)] then
+                otherbracket = brackets[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)]
+                direction = 0
+            elseif brackets.reverse[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)] then
+                otherbracket = brackets.reverse[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)]
+                direction = 1
+            end
+            if otherbracket then
+                while depth > 0 do
+                    if direction == 0 then
+                        buffX = buffX + 1
+                        if buffX > #buffers[currBuf].lines.text[buffY] then
+                            buffY = buffY + 1
+                            buffX = 1
+                        end
+                        if buffY > #buffers[currBuf].lines.text then
+                            break
+                        end
+                        if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == otherbracket then
+                            break
+                        end
+                    elseif direction == 1 then
+                        buffX = buffX - 1
+                        if buffX < 1 then
+                            buffY = buffY - 1
+                            buffX = #buffers[currBuf].lines.text[buffY]
+                        end
+                        if buffY < 1 then
+                            break
+                        end
+                        if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == otherbracket then
+                            break
+                        end
+                    end
+                end
+            end
+            if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == otherbracket then
+                buffers[currBuf].cursorX = buffX
+                buffers[currBuf].cursorY = buffY
+            end
         elseif char == "0" then
             buffers[currBuf].cursorX = 1
             buffers[currBuf].oldCursorX = 1
