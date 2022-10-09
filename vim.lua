@@ -1132,7 +1132,8 @@ local heldnum = nil
 local heldnumstring = ""
 -- Just did an t/T command, so move an extra char before searching again
 -- This is set to the letter used in the command
-local justtTd
+local lastFT
+local lastFTChar
 
 while running do
     resetSize()
@@ -1347,21 +1348,29 @@ while running do
             end
             buffers[currBuf].scrollY = buffers[currBuf].cursorY - math.floor((hig - 1) / 2)
             buffers[currBuf] = validateCursor(buffers[currBuf])
-        elseif char == "f" or char == "F" or char == "t" or char == "T" then
-            local _, char2 = pullChar()
+        elseif char == "f" or char == "F" or char == "t" or char == "T" or char == ";" or char == "," then
+            local _, char2
             local buffX = buffers[currBuf].cursorX
             local buffY = buffers[currBuf].cursorY
-            local direction = string.match(char, "%u") and 1 or 0
-            if char == "t" then
-                if justtTd == "t" then
-                    buffX = buffX + 1
+            local direction
+            if char == "f" or char == "F" or char == "t" or char == "T" then
+                _, char2 = pullChar()
+                direction = string.match(char, "%u") and 1 or 0
+                lastFT = char
+                lastFTChar = char2
+            else
+                if char == ";" then
+                    direction = string.match(char, "%u") and 1 or 0
+                else
+                    direction = string.match(char, "%u") and 0 or 1
                 end
-                justtTd = "t"
-            elseif char == "T" then
-                if justtTd == "T" then
-                    buffX = buffX - 1
-                end
-                justtTd = "T"
+                char = lastFT
+                char2 = lastFTChar
+            end
+            if char == "t" and lastFT == "t" then
+                buffX = buffX + 1
+            elseif char == "T" and lastFT == "T" then
+                buffX = buffX - 1
             end
             local didfind
             while (buffY > 0) and (buffY < #buffers[currBuf].lines.text) do
@@ -1415,7 +1424,7 @@ while running do
             heldnumstring = ""
         end
         if not (char == "t" or char == "T") then
-            justtTd = false
+            lastFT = false
         end
     elseif event[1] == "key" then
         local realKeyPressed = false
@@ -1446,7 +1455,7 @@ while running do
         end
         if realKeyPressed then
             --things that need to reset on other keypresses
-            justtTd = false
+            lastFT = false
             heldnum = nil
             heldnumstring = ""
         end
