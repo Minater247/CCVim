@@ -84,11 +84,14 @@ syntax.punctuation = {
     "-"
 }
 
-syntax.parseSyntax = function(subject)
-    local multiline = "none"
+local startedmultiline
+syntax.parseSyntax = function(subject, multilineStartState)
+    local multiline = multilineStartState or "none"
     local lines = {}
     lines.multiline = {}
+    local currLine = 0
     for _, line in ipairs(subject) do
+        currLine = currLine + 1
 
         local words = {}
         local word = ""
@@ -228,20 +231,28 @@ syntax.parseSyntax = function(subject)
             end
             i = i + 1
         end
-
+        
+        local new = {}
+        local prevtype = lines.multiline[#lines.multiline] and lines.multiline[#lines.multiline].type or "none"
         if multiline ~= "none" then
-            if lines.multiline[#lines.multiline] == "none" or not lines.multiline[#lines.multiline] then
-                lines.multiline[#lines.multiline+1] = "start"..multiline
+            if prevtype == "none" then
+                new.type = "start"..multiline
+                new.line = currLine
+                startedmultiline = currLine
             else
-                lines.multiline[#lines.multiline+1] = multiline
+                new.type = multiline
+                new.line = startedmultiline
             end
         else
-            if lines.multiline[#lines.multiline] and lines.multiline[#lines.multiline] ~= "none" and lines.multiline[#lines.multiline] ~= "endnone" and lines.multiline[#lines.multiline] ~= "endcomment" then
-                lines.multiline[#lines.multiline+1] = "end"..lines.multiline[#lines.multiline]
+            if prevtype and prevtype ~= "none" and prevtype ~= "endnone" and prevtype ~= "endcomment" and prevtype ~= "startcomment" and prevtype ~= "startstring" and prevtype ~= "endstring" then
+                new.type = "end"..prevtype
+                new.line = startedmultiline
             else
-                lines.multiline[#lines.multiline+1] = "none"
+                new.type = "none"
             end
         end
+        lines.multiline[#lines.multiline+1] = new
+
         lines[#lines+1] = words
         
     end
