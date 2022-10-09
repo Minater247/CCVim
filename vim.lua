@@ -1130,6 +1130,9 @@ end
 ]]
 local heldnum = nil
 local heldnumstring = ""
+-- Just did an t/T command, so move an extra char before searching again
+-- This is set to the letter used in the command
+local justtTd
 
 while running do
     resetSize()
@@ -1344,7 +1347,66 @@ while running do
             end
             buffers[currBuf].scrollY = buffers[currBuf].cursorY - math.floor((hig - 1) / 2)
             buffers[currBuf] = validateCursor(buffers[currBuf])
+        elseif char == "f" or char == "F" or char == "t" or char == "T" then
+            local _, char2 = pullChar()
+            local buffX = buffers[currBuf].cursorX
+            local buffY = buffers[currBuf].cursorY
+            local direction = string.match(char, "%u") and 1 or 0
+            if char == "t" then
+                if justtTd == "t" then
+                    buffX = buffX + 1
+                end
+                justtTd = "t"
+            elseif char == "T" then
+                if justtTd == "T" then
+                    buffX = buffX - 1
+                end
+                justtTd = "T"
+            end
+            local didfind
+            while (buffY > 0) and (buffY < #buffers[currBuf].lines.text) do
+                if direction == 0 then
+                    buffX = buffX + 1
+                    if buffX > #buffers[currBuf].lines.text[buffY] then
+                        buffY = buffY + 1
+                        buffX = 1
+                    end
+                    if buffY > #buffers[currBuf].lines.text then
+                        break
+                    end
+                    if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == char2 then
+                        didfind = true
+                        break
+                    end
+                elseif direction == 1 then
+                    buffX = buffX - 1
+                    if buffX < 1 then
+                        buffY = buffY - 1
+                        if buffY < 1 then
+                            break
+                        end
+                        buffX = #buffers[currBuf].lines.text[buffY]
+                    end
+                    if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == char2 then
+                        didfind = true
+                        break
+                    end
+                end
+            end
+            if didfind then
+                if (buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == char2) then
+                    buffers[currBuf].cursorX = buffX
+                    buffers[currBuf].cursorY = buffY
+                    if char == "t" then
+                        buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
+                    elseif char == "T" then
+                        buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+                    end
+                    buffers[currBuf] = validateCursor(buffers[currBuf])
+                end
+            end
         end
+        --things that reset on other keypresses
         if tonumber(char) then
             heldnumstring = heldnumstring .. char
             heldnum = tonumber(heldnumstring)
@@ -1352,27 +1414,41 @@ while running do
             heldnum = nil
             heldnumstring = ""
         end
+        if not (char == "t" or char == "T") then
+            justtTd = false
+        end
     elseif event[1] == "key" then
+        local realKeyPressed = false
         if event[2] == keys.left then
             if buffers[currBuf].cursorX > 1 then
                 moveCursorLeft()
                 redrawBuffer = true
             end
+            realKeyPressed = true
         elseif event[2] == keys.right then
             if buffers[currBuf].cursorX < #buffers[currBuf].lines.text[buffers[currBuf].cursorY] + 1 then
                 moveCursorRight()
                 redrawBuffer = true
             end
+            realKeyPressed = true
         elseif event[2] == keys.up then
             if buffers[currBuf].cursorY > 1 then
                 moveCursorUp()
                 redrawBuffer = true
             end
+            realKeyPressed = true
         elseif event[2] == keys.down then
             if buffers[currBuf].cursorY < #buffers[currBuf].lines.text then
                 moveCursorDown()
                 redrawBuffer = true
             end
+            realKeyPressed = true
+        end
+        if realKeyPressed then
+            --things that need to reset on other keypresses
+            justtTd = false
+            heldnum = nil
+            heldnumstring = ""
         end
     end
 end
