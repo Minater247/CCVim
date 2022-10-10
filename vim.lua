@@ -363,6 +363,10 @@ local function pullCommand(input, numeric, len)
             if p1 == keys.backspace then
                 input = input:sub(1, #input - 1)
                 backspace = true
+                if #input < 1 then
+                    finish = true
+                    clearScreenLine(hig)
+                end
             end
         end
     until (ev == 'key' and p1 == keys.enter) or (finish == true and ev == "key")
@@ -391,6 +395,9 @@ end
 local commands = {}
 
 commands.runCommand = function(command)
+    if command == nil or command == "" then
+        return
+    end
     command = command:sub(2, #command)
     local cmdtab = str.split(command, " ")
     if not (cmdtab[1] == "q" or cmdtab[1] == "q!") then
@@ -1101,6 +1108,27 @@ local function moveCursorDown()
     buffers[currBuf] = validateCursor(buffers[currBuf])
 end
 
+local function insertMode()
+    mode = "insert"
+    while mode == "insert" do
+        local event, key = os.pullEvent()
+        if event == "char" then
+            err("char "..key)
+        elseif event == "key" then
+            if key == 15 then
+                return
+            elseif key == 14 then
+                if buffers[currBuf].cursorX > 1 then
+                    buffers[currBuf].lines.text[buffers[currBuf].cursorY] = string.sub(buffers[currBuf].lines.text[buffers[currBuf].cursorY], 1, buffers[currBuf].cursorX - 2) .. string.sub(buffers[currBuf].lines.text[buffers[currBuf].cursorY], buffers[currBuf].cursorX)
+                    moveCursorLeft()
+                end
+            else
+                err(key)
+            end
+        end
+    end
+end
+
 
 resetSize()
 clear()
@@ -1124,10 +1152,11 @@ end
 --[[ debug syntax output
 if running then
     local ff = fs.open("/out.test", "w")
-    ff.write(textutils.serialise(buffers[currBuf].lines.syntax))
+    ff.write(textutils.serialise(buffers[currBuf].lines.syntax.multiline))
     ff.close()
 end
 ]]
+
 local heldnum = nil
 local heldnumstring = ""
 -- Just did an t/T command, so move an extra char before searching again
@@ -1172,10 +1201,6 @@ while running do
             if (oldBuf ~= currBuf) or (oldBufLen ~= #buffers) then
                 changedBuffers = true
             end
-        elseif char == "i" then
-            --todo: editing mode
-        elseif char == "I" then
-            --todo: editing mode
         elseif char == "h" then
             moveCursorLeft()
         elseif char == "j" then
@@ -1282,13 +1307,14 @@ while running do
                 }
             }
             local direction -- 0: forward, 1: backwards
+            local thisbracket = buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)
             local otherbracket
             local depth = 1
-            if brackets[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)] then
-                otherbracket = brackets[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)]
+            if brackets[thisbracket] then
+                otherbracket = brackets[thisbracket]
                 direction = 0
-            elseif brackets.reverse[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)] then
-                otherbracket = brackets.reverse[buffers[currBuf].lines.text[buffY]:sub(buffX, buffX)]
+            elseif brackets.reverse[thisbracket] then
+                otherbracket = brackets.reverse[thisbracket]
                 direction = 1
             end
             if otherbracket then
@@ -1303,7 +1329,9 @@ while running do
                             break
                         end
                         if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == otherbracket then
-                            break
+                            depth = depth - 1
+                        elseif buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == thisbracket then
+                            depth = depth + 1
                         end
                     elseif direction == 1 then
                         buffX = buffX - 1
@@ -1315,15 +1343,19 @@ while running do
                             break
                         end
                         if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == otherbracket then
-                            break
+                            depth = depth - 1
+                        elseif buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == thisbracket then
+                            depth = depth + 1
                         end
                     end
                 end
             end
             if buffers[currBuf].lines.text[buffY]:sub(buffX, buffX) == otherbracket then
                 buffers[currBuf].cursorX = buffX
+                buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
                 buffers[currBuf].cursorY = buffY
             end
+            buffers[currBuf] = validateCursor(buffers[currBuf])
         elseif char == "0" then
             buffers[currBuf].cursorX = 1
             buffers[currBuf].oldCursorX = 1
@@ -1414,6 +1446,27 @@ while running do
                     buffers[currBuf] = validateCursor(buffers[currBuf])
                 end
             end
+        elseif char == "i" or char == "I" or char == "a" or char == "A" or char == "o" or char == "O" then
+            if char == "I" then
+                buffers[currBuf].cursorX = 1
+            elseif char == "a" then
+                buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
+            elseif char == "A" then
+                buffers[currBuf].cursorX = #buffers[currBuf].lines.text[buffers[currBuf].cursorY] + 1
+            elseif char == "O" or char == "o" then
+                local pos = (char == "o") and (buffers[currBuf].cursorY + 1) or (buffers[currBuf].cursorY)
+                table.insert(buffers[currBuf].lines.text, pos, "")
+                table.insert(buffers[currBuf].lines.syntax, pos, {})
+                table.insert(buffers[currBuf].lines.syntax.multiline, pos, -1)
+                if char == "o" then
+                    buffers[currBuf].cursorY = pos
+                end
+                buffers[currBuf].cursorX = 1
+                buffers[currBuf].oldCursorX = 1
+                buffers[currBuf] = validateCursor(buffers[currBuf])
+                redrawBuffer = true
+            end
+            insertMode()
         end
         --things that reset on other keypresses
         if tonumber(char) then
