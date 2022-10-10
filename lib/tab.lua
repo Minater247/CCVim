@@ -47,4 +47,25 @@ local function sub(tab, startpos, endpos)
     return output
 end
 
-return { find = find, getLongestItem = getLongestItem, countchars = countchars, contains = contains, removeDuplicates = removeDuplicates, sub = sub }
+--Overwrites the items in tab1 with the items in tab2 at the given index
+local function insert(tab1, tab2, pos)
+    local output = {}
+    local lim
+    if #tab1 > #tab2 + pos then
+        lim = #tab1
+    else
+        lim = #tab2 + pos
+    end
+    for i=1,lim - 1,1 do
+        if i < pos then
+            output[i] = tab1[i]
+        elseif i >= pos and i < pos + #tab2 then
+            output[i] = tab2[i - pos + 1]
+        else
+            output[i] = tab1[i - #tab2]
+        end
+    end
+    return output
+end
+
+return { find = find, getLongestItem = getLongestItem, countchars = countchars, contains = contains, removeDuplicates = removeDuplicates, sub = sub, insert = insert }
