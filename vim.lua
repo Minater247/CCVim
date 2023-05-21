@@ -13,6 +13,7 @@ local redrawBuffer = false
 local lastBuffer
 local warnedOfClose
 local mode = "none"
+local cursorx, cursory = 1, 1
 
 local version = 0.734
 local releasedate = "2022-08-02"
@@ -75,6 +76,9 @@ local args = argv.pull({...}, validArgs, unimplementedArgs)
 local buffers = {}
 local monitor
 
+local buffer = {}
+local currcolors = {bg = colors.black, txt = colors.white}
+
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
 end
@@ -90,16 +94,18 @@ local function resetSize()
     else
         wid, hig = term.getSize()
     end
+    --reset buffer size
+    for i=1, hig do
+        buffer[i] = buffer[i] or {}
+        for j=1, wid do
+            buffer[i][j] = buffer[i][j] or {char = " ", bg = colors.black, txt = colors.white}
+        end
+    end
 end
 
 local function setcolors(bg, txt)
-    if monitor then
-        monitor.setBackgroundColor(bg)
-        monitor.setTextColor(txt)
-    else
-        term.setBackgroundColor(bg)
-        term.setTextColor(txt)
-    end
+    currcolors.bg = bg
+    currcolors.txt = txt
 end
 
 local function clear(noreset)
@@ -113,20 +119,42 @@ local function clear(noreset)
     end
 end
 
-local function write(message)
+local function flush()
     if monitor then
-        monitor.write(message)
+        for i=1, hig do
+            for j=1, wid do
+                monitor.setCursorPos(j, i)
+                monitor.setBackgroundColor(buffer[i][j].bg)
+                monitor.setTextColor(buffer[i][j].txt)
+                monitor.write(buffer[i][j].char)
+            end
+        end
     else
-        term.write(message)
+        for i=1, hig do
+            for j=1, wid do
+                term.setCursorPos(j, i)
+                term.setBackgroundColor(buffer[i][j].bg or colors.black)
+                term.setTextColor(buffer[i][j].txt or colors.white)
+                term.write(buffer[i][j].char)
+            end
+        end
+    end
+end
+
+local function write(message)
+    message = tostring(message)
+    for i=1, #message do
+        buffer[cursory] = buffer[cursory] or {}
+        buffer[cursory][cursorx] = {char = message:sub(i, i), bg = currcolors.bg, txt = currcolors.txt}
+        cursorx = cursorx + 1
+        if cursorx > wid then
+            break
+        end
     end
 end
 
 local function setpos(xpos, ypos)
-    if monitor then
-        monitor.setCursorPos(xpos, ypos)
-    else
-        term.setCursorPos(xpos, ypos)
-    end
+    cursorx, cursory = xpos, ypos
 end
 
 local function setBuffer(new)
@@ -167,6 +195,7 @@ local function err(message)
     setpos(1, hig)
     setcolors(colors.red, colors.white)
     write(message)
+    flush()
 end
 
 local function sendMsg(message)
@@ -174,6 +203,7 @@ local function sendMsg(message)
     setpos(1, hig)
     setcolors(colors.black, colors.white)
     write(message)
+    flush()
 end
 
 local function newBuffer(path)
@@ -307,6 +337,7 @@ local function drawBuffer(buf, viewednum)
             end
         end
     end
+    flush()
 end
 
 local function pullCommand(input, numeric, len)
@@ -337,7 +368,7 @@ local function pullCommand(input, numeric, len)
             write(" ")
         end
   
-      local ev, p1 = os.pullEvent()
+        local ev, p1 = os.pullEvent()
   
         if ev == 'char' then
             local send = true
@@ -368,6 +399,7 @@ local function pullCommand(input, numeric, len)
                 end
             end
         end
+        flush()
     until (ev == 'key' and p1 == keys.enter) or (finish == true and ev == "key")
     return input
 end
@@ -462,6 +494,7 @@ commands.runCommand = function(command)
             end
             write(" "..#buffers[currBuf].lines.text.."L written")
         end
+        flush()
         return true
     elseif cmdtab[1] == "w" or cmdtab[1] == "w!" then
         local name = ""
@@ -497,6 +530,7 @@ commands.runCommand = function(command)
             end
             write(#buffers[currBuf].lines.text.."L written")
         end
+        flush()
         return true
     elseif cmdtab[1] == "wq" or cmdtab[1] == "x" then
         local ok = commands.runCommand(":w")
@@ -745,6 +779,7 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
         end
         setcolors(colors.black, colors.white)
     end
+    flush()
 end
 
 -- Directory opener.
@@ -921,6 +956,7 @@ commands.dirOpener = function(dir, inputname)
                         setpos(1, hig)
                         write(string.sub(sst, wid, #sst))
                     end
+                    flush()
                     local _,op
                     while op ~= "y" and op ~= "n" and op ~= "a" and op ~= "q" do
                         _,op = pullChar()
@@ -1187,6 +1223,7 @@ while running do
         for i=1, #buffers do
             write(buffers[i].name.." ")
         end
+        flush()
     end
 
     local event = {os.pullEvent()}
