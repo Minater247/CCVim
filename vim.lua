@@ -71,20 +71,20 @@ local unimplementedArgs = {
     "-h",
     "--help"
 }
-local args = argv.pull({...}, validArgs, unimplementedArgs)
+local args = argv.pull({ ... }, validArgs, unimplementedArgs)
 
 local buffers = {}
 local monitor
 
 local buffer = {}
-local currcolors = {bg = colors.black, txt = colors.white}
+local currcolors = { bg = colors.black, txt = colors.white }
 
 if not tab.find(args, "--term") then
     monitor = peripheral.find("monitor")
 end
 
 if tab.contains(args, "--version") then
-    print("CCVIM - ComputerCraft Vi IMproved "..version.." ("..releasedate..")")
+    print("CCVIM - ComputerCraft Vi IMproved " .. version .. " (" .. releasedate .. ")")
     do return end
 end
 
@@ -95,10 +95,10 @@ local function resetSize()
         wid, hig = term.getSize()
     end
     --reset buffer size
-    for i=1, hig do
+    for i = 1, hig do
         buffer[i] = buffer[i] or {}
-        for j=1, wid do
-            buffer[i][j] = buffer[i][j] or {char = " ", bg = colors.black, txt = colors.white}
+        for j = 1, wid do
+            buffer[i][j] = buffer[i][j] or { char = " ", bg = colors.black, txt = colors.white }
         end
     end
 end
@@ -121,21 +121,27 @@ end
 
 local function flush()
     if monitor then
-        for i=1, hig do
-            for j=1, wid do
-                monitor.setCursorPos(j, i)
-                monitor.setBackgroundColor(buffer[i][j].bg)
-                monitor.setTextColor(buffer[i][j].txt)
-                monitor.write(buffer[i][j].char)
+        monitor.setBackgroundColor(colors.black)
+        monitor.setTextColor(colors.white)
+        for i = 1, hig do
+            monitor.setCursorPos(1, i)
+            local row = buffer[i]
+            for j = 1, wid do
+                local cell = row[j]
+                monitor.setBackgroundColor(cell.bg)
+                monitor.setTextColor(cell.txt)
+                monitor.write(cell.char)
             end
         end
     else
-        for i=1, hig do
-            for j=1, wid do
-                term.setCursorPos(j, i)
-                term.setBackgroundColor(buffer[i][j].bg or colors.black)
-                term.setTextColor(buffer[i][j].txt or colors.white)
-                term.write(buffer[i][j].char)
+        for i = 1, hig do
+            term.setCursorPos(1, i)
+            local row = buffer[i]
+            for j = 1, wid do
+                local cell = row[j]
+                term.setBackgroundColor(cell.bg or colors.black)
+                term.setTextColor(cell.txt or colors.white)
+                term.write(cell.char)
             end
         end
     end
@@ -143,15 +149,20 @@ end
 
 local function write(message)
     message = tostring(message)
-    for i=1, #message do
-        buffer[cursory] = buffer[cursory] or {}
-        buffer[cursory][cursorx] = {char = message:sub(i, i), bg = currcolors.bg, txt = currcolors.txt}
+    local row = buffer[cursory] or {}
+    for i = 1, #message do
+        local cell = row[cursorx] or {}
+        cell.char = message:sub(i, i)
+        cell.bg = currcolors.bg
+        cell.txt = currcolors.txt
         cursorx = cursorx + 1
         if cursorx > wid then
             break
         end
     end
+    buffer[cursory] = row
 end
+
 
 local function setpos(xpos, ypos)
     cursorx, cursory = xpos, ypos
@@ -163,7 +174,7 @@ local function setBuffer(new)
 end
 
 local function loadSyntax(buf)
-    if fs.exists("/vim/syntax/" .. buf.filetype..".lua") then
+    if fs.exists("/vim/syntax/" .. buf.filetype .. ".lua") then
         buf.highlighter = require("/vim/syntax/" .. buf.filetype)
         if vars.syntax then
             buf.lines.syntax = buf.highlighter.parseSyntax(buf.lines.text)
@@ -176,7 +187,7 @@ end
 local function clearScreenLine(line)
     setcolors(colors.black, colors.white)
     setpos(1, line)
-    for i=1,wid do
+    for i = 1, wid do
         write(" ")
     end
 end
@@ -185,7 +196,7 @@ local function clearbufarea(noreset)
     if not noreset then
         setcolors(colors.black, colors.white)
     end
-    for i=1, hig - 1 do
+    for i = 1, hig - 1 do
         clearScreenLine(i)
     end
 end
@@ -213,7 +224,7 @@ local function newBuffer(path)
             path = shell.resolve(path)
         end
         local buf = {}
-        buf.lines = {text = fil.toArray(path) or {""}}
+        buf.lines = { text = fil.toArray(path) or { "" } }
         buf.path = path
         buf.name = givenpath or ""
         buf.filetype = str.getFileExtension(path)
@@ -243,15 +254,15 @@ local function drawBuffer(buf, viewednum)
         clearbufarea()
         if not buf then
             setcolors(colors.black, colors.purple)
-            for i=1, hig - 1 do
+            for i = 1, hig - 1 do
                 setpos(1, i)
                 write("~")
             end
             setcolors(colors.black, colors.white)
             setpos((wid / 2) - (33 / 2), (hig / 2) - 2)
             write("CCVIM - ComputerCraft Vi Improved")
-            setpos((wid / 2) - (#("version ".. version) / 2), (hig / 2))
-            write("version "..version)
+            setpos((wid / 2) - (#("version " .. version) / 2), (hig / 2))
+            write("version " .. version)
             setpos((wid / 2) - (13 / 2), (hig / 2) + 1)
             write("By Minater247")
             if wid > 53 then
@@ -274,9 +285,9 @@ local function drawBuffer(buf, viewednum)
                 if limit > #buf.lines.syntax then
                     limit = #buf.lines.syntax
                 end
-                for i=buf.scrollY + 1, limit do
+                for i = buf.scrollY + 1, limit do
                     local xpos = 1 + vars.lineoffset
-                    for j=1, #buf.lines.syntax[i] do
+                    for j = 1, #buf.lines.syntax[i] do
                         setpos(xpos - buf.scrollX, i - buf.scrollY)
                         setcolors(colors.black, buf.lines.syntax[i][j].color)
                         write(buf.lines.syntax[i][j].string)
@@ -300,7 +311,7 @@ local function drawBuffer(buf, viewednum)
                 if limit > #buf.lines.text then
                     limit = #buf.lines.text
                 end
-                for i=buf.scrollY + 1, limit do
+                for i = buf.scrollY + 1, limit do
                     setpos(1 - buf.scrollX + vars.lineoffset, i - buf.scrollY)
                     write(buf.lines.text[i])
                 end
@@ -314,7 +325,7 @@ local function drawBuffer(buf, viewednum)
             end
             if vars.lineoffset > 0 then
                 setcolors(colors.black, colors.yellow)
-                for i=buf.scrollY,(hig-1)+buf.scrollY do
+                for i = buf.scrollY, (hig - 1) + buf.scrollY do
                     setpos(1, i - buf.scrollY)
                     if i < 1000 then
                         write(string.rep(" ", 3 - #tostring(i)))
@@ -330,7 +341,7 @@ local function drawBuffer(buf, viewednum)
                     end
                 end
             end
-            for i=limit + 1, hig + buf.scrollY - 1 do
+            for i = limit + 1, hig + buf.scrollY - 1 do
                 setpos(1, i - buf.scrollY)
                 setcolors(colors.black, colors.purple)
                 write("~")
@@ -345,14 +356,14 @@ local function pullCommand(input, numeric, len)
     if input == nil then
         input = ''
     end
-    local x,y = 1, hig
+    local x, y = 1, hig
 
     local backspace = false
     local finish = false
-  
+
     repeat
         setcolors(colors.black, colors.white)
-        setpos(x,y)
+        setpos(x, y)
         write(input)
         if backspace then
             write("  ")
@@ -367,9 +378,9 @@ local function pullCommand(input, numeric, len)
             setcolors(colors.lightGray, colors.white)
             write(" ")
         end
-  
+
         local ev, p1 = os.pullEvent()
-  
+
         if ev == 'char' then
             local send = true
             if #input < 1 then
@@ -437,7 +448,7 @@ commands.runCommand = function(command)
     if cmdtab[1] == "q" or cmdtab[1] == "q!" then
         local unseen = 0
         if not warnedOfClose then
-            for i=1, #buffers do
+            for i = 1, #buffers do
                 if not buffers[i].viewed then
                     unseen = unseen + 1
                 end
@@ -448,7 +459,7 @@ commands.runCommand = function(command)
             if unseen > 1 then
                 ff = "files"
             end
-            err(unseen.." more "..ff.." left to edit")
+            err(unseen .. " more " .. ff .. " left to edit")
             warnedOfClose = true
             return false
         end
@@ -461,17 +472,18 @@ commands.runCommand = function(command)
         if fs.isDir(name) then
             name = commands.dirOpener(shell.resolve(name), name)
         end
-        buffers[#buffers+1] = newBuffer(name)
+        buffers[#buffers + 1] = newBuffer(name)
         setBuffer(#buffers)
         return true
     elseif cmdtab[1] == "sav" or cmdtab[1] == "saveas" or cmdtab[1] == "sav!" or cmdtab[1] == "saveas!" then
         local nametab = cmdtab
+        local forced = (cmdtab[1] == "sav!" or cmdtab[1] == "saveas!")
         table.remove(nametab, 1)
         local name = table.concat(nametab, " ")
-        if #cmdtab < 2 then
+        if #cmdtab < 1 then
             err("Argument required")
             return false
-        elseif fs.exists(fil.topath(name)) and not (cmdtab[1]:sub(#cmdtab[1], #cmdtab[1]) == "!") then
+        elseif fs.exists(fil.topath(name)) and not forced then
             err("File exists (add ! to override)")
             return false
         elseif fs.isReadOnly(fil.topath(name)) then
@@ -483,16 +495,16 @@ commands.runCommand = function(command)
                 new = false
             end
             local file = fs.open(fil.topath(name), "w")
-            for i=1,#buffers[currBuf].lines.text do
+            for i = 1, #buffers[currBuf].lines.text do
                 file.writeLine(buffers[currBuf].lines.text[i])
             end
             file.close()
             buffers[currBuf].unsavedChanges = false
-            sendMsg("\""..name.."\" ")
+            sendMsg("\"" .. name .. "\" ")
             if new then
                 write("[New] ")
             end
-            write(" "..#buffers[currBuf].lines.text.."L written")
+            write(" " .. #buffers[currBuf].lines.text .. "L written")
         end
         flush()
         return true
@@ -517,18 +529,18 @@ commands.runCommand = function(command)
                 new = false
             end
             local fl = fs.open(name, "w")
-            for i=1,#buffers[currBuf].lines.text do
+            for i = 1, #buffers[currBuf].lines.text do
                 fl.writeLine(buffers[currBuf].lines.text[i])
             end
             fl.close()
             buffers[currBuf].unsavedChanges = false
-            sendMsg("\""..name.."\" ")
+            sendMsg("\"" .. name .. "\" ")
             if new then
                 write("[New]  ")
             else
                 write(" ")
             end
-            write(#buffers[currBuf].lines.text.."L written")
+            write(#buffers[currBuf].lines.text .. "L written")
         end
         flush()
         return true
@@ -553,15 +565,15 @@ commands.runCommand = function(command)
                     if not buffers[currBuf] then
                         buffers[currBuf] = newBuffer()
                     end
-                    for i=1,#secondArr,1 do
+                    for i = 1, #secondArr, 1 do
                         table.insert(buffers[currBuf].lines.text, secondArr[i])
                     end
-                    sendMsg("\""..name.."\" "..#secondArr.."L, "..tab.countchars(secondArr).."C")
+                    sendMsg("\"" .. name .. "\" " .. #secondArr .. "L, " .. tab.countchars(secondArr) .. "C")
                 else
-                    err("Failed to read existing file "..name)
+                    err("Failed to read existing file " .. name)
                 end
             else
-                err("Can't open file "..name)
+                err("Can't open file " .. name)
             end
         else
             err("No file name")
@@ -587,14 +599,14 @@ commands.runCommand = function(command)
         elseif not cmdtab[2] then
             location = #buffers + 1
         else
-            err("Invalid argument: "..cmdtab[2])
+            err("Invalid argument: " .. cmdtab[2])
             return false
         end
         table.insert(buffers, location, tmp)
         currBuf = location
     elseif cmdtab[1] == "tabo" or cmdtab[1] == "tabonly" or cmdtab[1] == "tabo!" or cmdtab[1] == "tabonly!" then
         local unclosableBuf
-        for i=1, #buffers do
+        for i = 1, #buffers do
             if i ~= currBuf then
                 if buffers[i].unsavedChanges == true then
                     unclosableBuf = false
@@ -602,10 +614,10 @@ commands.runCommand = function(command)
             end
         end
         if unclosableBuf and cmdtab[1] ~= "tabo!" and cmdtab[1] ~= "tabonly!" then
-            err("Unsaved work in \""..buffers[unclosableBuf].name.."\" (add ! to override)")
+            err("Unsaved work in \"" .. buffers[unclosableBuf].name .. "\" (add ! to override)")
             return false
         else
-            buffers = {buffers[currBuf]}
+            buffers = { buffers[currBuf] }
             setBuffer(1)
         end
     elseif cmdtab[1] == "tabnew" then
@@ -625,7 +637,7 @@ commands.runCommand = function(command)
             setBuffer(currBuf + 1)
         end
     elseif cmdtab[1] == "set" then
-        for i=2, #cmdtab do
+        for i = 2, #cmdtab do
             local commandopt = cmdtab[i]
             if string.find(commandopt, "=") then
                 local parts = str.split(commandopt, "=")
@@ -649,7 +661,7 @@ commands.runCommand = function(command)
                         return false
                     end
                 else
-                    err("Unknown option: "..name)
+                    err("Unknown option: " .. name)
                     return false
                 end
             else
@@ -658,7 +670,7 @@ commands.runCommand = function(command)
                 elseif commandopt == "nonumber" then
                     vars.lineoffset = 0
                 else
-                    err("Unknown option: "..commandopt)
+                    err("Unknown option: " .. commandopt)
                     return false
                 end
             end
@@ -682,7 +694,7 @@ commands.runCommand = function(command)
         end
         return true
     else
-        err("Not an editor command: "..cmdtab[1])
+        err("Not an editor command: " .. cmdtab[1])
         return false
     end
     return true
@@ -692,32 +704,32 @@ local oldyoff
 local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
     if initialDraw then
         setcolors(colors.black, colors.white)
-        for i=1,hig-1 do
+        for i = 1, hig - 1 do
             clearScreenLine(i)
         end
         setpos(1, 1)
         write("\" ")
-        for i=1,wid - 4 do
+        for i = 1, wid - 4 do
             write("=")
         end
         setpos(1, 2)
         write("\" CCFXP Directory Listing")
-        for i=1,wid-25 do
+        for i = 1, wid - 25 do
             write(" ")
         end
-        setpos(wid-#tostring(fileExplorerVer)-6, 2)
-        write("ver. "..fileExplorerVer)
+        setpos(wid - #tostring(fileExplorerVer) - 6, 2)
+        write("ver. " .. fileExplorerVer)
         setpos(1, 5)
         write("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by")
-        for i=1,wid-#("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by") do
+        for i = 1, wid - #("\"   Quick Help: -:go up dir  D:delete  R:rename  s:sort-by") do
             write(" ")
         end
     end
-    for i=1,wid-#("\"   "..shell.resolve(dir)) do
+    for i = 1, wid - #("\"   " .. shell.resolve(dir)) do
         write(" ")
     end
     setpos(1, 3)
-    write("\"   "..shell.resolve(dir))
+    write("\"   " .. shell.resolve(dir))
     if fs.isDir(shell.resolve(dir)) then
         write("/")
     end
@@ -725,17 +737,17 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
     setpos(1, 4)
     write("\"   Sorted by    ")
     write(sortType)
-    write(string.rep(" ", wid-#("\"   Sorted by    "..sortType)))
+    write(string.rep(" ", wid - #("\"   Sorted by    " .. sortType)))
     setpos(1, 6)
     setcolors(colors.black, colors.white)
     write("\" ")
-    for i=1,wid - 2 do
+    for i = 1, wid - 2 do
         write("=")
     end
     if oldyoff ~= yoff or initialDraw then
-        for i=1+yoff,hig - 7 + yoff do
-            clearScreenLine(6+i - yoff)
-            setpos(1, 6+i - yoff)
+        for i = 1 + yoff, hig - 7 + yoff do
+            clearScreenLine(6 + i - yoff)
+            setpos(1, 6 + i - yoff)
             if i - yoff == ypos then
                 setcolors(colors.lightGray, colors.white)
             else
@@ -757,7 +769,7 @@ local function drawDirInfo(dir, sortType, ypos, yoff, filesInDir, initialDraw)
         setcolors(colors.black, colors.white)
         oldyoff = yoff
     else
-        for i=-1,1 do
+        for i = -1, 1 do
             setpos(1, 6 + ypos + i)
             if i == 0 then
                 setcolors(colors.lightGray, colors.white)
@@ -786,19 +798,19 @@ end
 -- Make sure the path is passed through fil.path() before coming to this function.
 -- Display name can be passed to inputname, but is optional.
 commands.dirOpener = function(dir, inputname)
-    local currSelection = dir.."/"
+    local currSelection = dir .. "/"
     local fname = shell.resolve(inputname or dir)
     if fname:sub(#fname, #fname) ~= "/" then
         fname = fname .. "/"
     end
-    sendMsg("\"/"..fname.."\" is a directory")
+    sendMsg("\"/" .. fname .. "\" is a directory")
     local sortType = "name"
     local currDirY = 1
     local currDirOffset = 0
     local realFilesInDir = fs.list(currSelection)
-    local filesInDir = {".."}
+    local filesInDir = { ".." }
     local firstDraw = true
-    for i=1,#realFilesInDir do
+    for i = 1, #realFilesInDir do
         table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
     end
     if fs.isDir(dir) then
@@ -811,9 +823,9 @@ commands.dirOpener = function(dir, inputname)
             local realFilesInDir = fs.list(currSelection)
             local filesInDir = {}
             if not (shell.resolve(currSelection) == "") then
-                filesInDir = {".."}
+                filesInDir = { ".." }
             end
-            for i=1,#realFilesInDir do
+            for i = 1, #realFilesInDir do
                 if dothide then
                     if not (realFilesInDir[i]:sub(1, 1) == ".") then
                         table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
@@ -823,8 +835,8 @@ commands.dirOpener = function(dir, inputname)
                 end
             end
             if sortType == "name" then
-                table.sort(filesInDir, 
-                    function (k1, k2)
+                table.sort(filesInDir,
+                    function(k1, k2)
                         if reverseSort then
                             if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
                                 return false
@@ -848,8 +860,8 @@ commands.dirOpener = function(dir, inputname)
                         end
                     end)
             elseif sortType == "extension" then
-                table.sort(filesInDir, 
-                    function (k1, k2)
+                table.sort(filesInDir,
+                    function(k1, k2)
                         if reverseSort then
                             if fs.isDir(currSelection .. "/" .. k1) and not fs.isDir(currSelection .. "/" .. k2) then
                                 return false
@@ -887,10 +899,10 @@ commands.dirOpener = function(dir, inputname)
                                 end
                             end
                         end
-                    end)  --this whole large table.sort function sorts out the directories first and the extensionless files last
+                    end) --this whole large table.sort function sorts out the directories first and the extensionless files last
             elseif sortType == "size" then
                 table.sort(filesInDir,
-                    function (k1, k2)
+                    function(k1, k2)
                         local k1isdir = fs.isDir(k1)
                         local k2isdir = fs.isDir(k2)
                         if reverseSort then
@@ -901,7 +913,7 @@ commands.dirOpener = function(dir, inputname)
                             elseif k1isdir and k2isdir then
                                 return k1 > k2
                             end
-                            return fs.getSize(currSelection.."/"..k1) < fs.getSize(currSelection.."/"..k2)
+                            return fs.getSize(currSelection .. "/" .. k1) < fs.getSize(currSelection .. "/" .. k2)
                         else
                             if k1isdir and not k2isdir then
                                 return true
@@ -910,7 +922,7 @@ commands.dirOpener = function(dir, inputname)
                             elseif k1isdir and k2isdir then
                                 return k1 < k2
                             end
-                            return fs.getSize(currSelection.."/"..k1) > fs.getSize(currSelection.."/"..k2)
+                            return fs.getSize(currSelection .. "/" .. k1) > fs.getSize(currSelection .. "/" .. k2)
                         end
                     end)
             end
@@ -938,16 +950,18 @@ commands.dirOpener = function(dir, inputname)
                         if fs.isReadOnly(currSelection) then
                             err("Directory is read-only")
                         else
-                            fs.makeDir(currSelection.."/"..newdirname)
+                            fs.makeDir(currSelection .. "/" .. newdirname)
                         end
                     end
                     redrawNext = true
                 elseif k == "D" then
                     clearScreenLine(hig)
-                    local sst = "Confirm deletion of directory<"..shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]).."> [{y(es)},n(o),a(ll),q(uit)]"
+                    local sst = "Confirm deletion of directory<" ..
+                    shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]) ..
+                    "> [{y(es)},n(o),a(ll),q(uit)]"
                     if #sst > wid then
                         clearScreenLine(hig - 1)
-                        setpos(1, hig-1)
+                        setpos(1, hig - 1)
                     else
                         setpos(1, hig)
                     end
@@ -957,11 +971,11 @@ commands.dirOpener = function(dir, inputname)
                         write(string.sub(sst, wid, #sst))
                     end
                     flush()
-                    local _,op
+                    local _, op
                     while op ~= "y" and op ~= "n" and op ~= "a" and op ~= "q" do
-                        _,op = pullChar()
+                        _, op = pullChar()
                         if op == "y" then
-                            fs.delete(currSelection.."/"..filesInDir[currDirY + currDirOffset])
+                            fs.delete(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
                         elseif op == "a" then
                             fs.delete(currSelection)
                             fs.makeDir(currSelection)
@@ -974,18 +988,21 @@ commands.dirOpener = function(dir, inputname)
                     clearScreenLine(hig)
                     redrawNext = true
                 elseif k == "R" then
-                    sendMsg("Moving "..shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]).." to : "..shell.resolve(currSelection).."/")
-                    fs.move(shell.resolve(currSelection.."/"..filesInDir[currDirY + currDirOffset]), shell.resolve(currSelection).."/"..read())
+                    sendMsg("Moving " ..
+                    shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]) ..
+                    " to : " .. shell.resolve(currSelection) .. "/")
+                    fs.move(shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset]),
+                        shell.resolve(currSelection) .. "/" .. read())
                 elseif k == "%" then
                     sendMsg("Enter filename: ")
                     local filenamevar = read()
                     if filenamevar then
-                        if fs.isDir("/"..shell.resolve(currSelection .. "/" .. filenamevar)) then
-                            sendMsg("\"/"..shell.resolve(currSelection .. "/" .. filenamevar).. "\" is a directory")
+                        if fs.isDir("/" .. shell.resolve(currSelection .. "/" .. filenamevar)) then
+                            sendMsg("\"/" .. shell.resolve(currSelection .. "/" .. filenamevar) .. "\" is a directory")
                             currSelection = currSelection .. "/" .. filenamevar
                             drawDirInfo(currSelection, sortType, currDirY, currDirOffset, filesInDir, true)
                         else
-                            return "/"..shell.resolve(currSelection .. "/" .. filenamevar)
+                            return "/" .. shell.resolve(currSelection .. "/" .. filenamevar)
                         end
                     end
                 elseif k == "-" then
@@ -1034,16 +1051,16 @@ commands.dirOpener = function(dir, inputname)
                         --refresh file list
                         realFilesInDir = fs.list(currSelection)
                         if not (shell.resolve(currSelection) == "") then
-                            filesInDir = {".."}
+                            filesInDir = { ".." }
                         else
                             filesInDir = {}
                         end
-                        for i=1,#realFilesInDir do
+                        for i = 1, #realFilesInDir do
                             table.insert(filesInDir, #filesInDir + 1, realFilesInDir[i])
                         end
                         redrawNext = true
                     else
-                        return "/"..shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
+                        return "/" .. shell.resolve(currSelection .. "/" .. filesInDir[currDirY + currDirOffset])
                     end
                     redrawNext = true
                 elseif k == keys.down then
@@ -1080,7 +1097,7 @@ commands.dirOpener = function(dir, inputname)
             end
         end
     else
-        error("dirOpener got invalid path: "..dir.." is not a directory.")
+        error("dirOpener got invalid path: " .. dir .. " is not a directory.")
     end
 end
 
@@ -1147,21 +1164,40 @@ end
 
 local function insertMode()
     mode = "insert"
+    local doredraw = false
     while mode == "insert" do
         local event, key = os.pullEvent()
         if event == "char" then
-            err("char "..key)
+            err("char " .. key)
         elseif event == "key" then
             if key == 15 then
                 return
             elseif key == 14 then
                 if buffers[currBuf].cursorX > 1 then
-                    buffers[currBuf].lines.text[buffers[currBuf].cursorY] = string.sub(buffers[currBuf].lines.text[buffers[currBuf].cursorY], 1, buffers[currBuf].cursorX - 2) .. string.sub(buffers[currBuf].lines.text[buffers[currBuf].cursorY], buffers[currBuf].cursorX)
+                    buffers[currBuf].lines.text[buffers[currBuf].cursorY] = string.sub(
+                    buffers[currBuf].lines.text[buffers[currBuf].cursorY], 1, buffers[currBuf].cursorX - 2) ..
+                    string.sub(buffers[currBuf].lines.text[buffers[currBuf].cursorY], buffers[currBuf].cursorX)
                     moveCursorLeft()
                 end
+            elseif key == keys.down then
+                moveCursorDown()
+                doredraw = true
+            elseif key == keys.up then
+                moveCursorUp()
+                doredraw = true
+            elseif key == keys.left then
+                moveCursorLeft()
+                doredraw = true
+            elseif key == keys.right then
+                moveCursorRight()
+                doredraw = true
             else
-                err(key)
+                err("KEY " .. key)
             end
+        end
+        if doredraw then
+            drawBuffer(buffers[currBuf], currBuf)
+            doredraw = false
         end
     end
 end
@@ -1172,14 +1208,14 @@ clear()
 if not args then
     error("Something has gone very wrong with argument initialization.")
 end
-for i=1, #args.files do
+for i = 1, #args.files do
     local truepath = shell.resolve(args.files[i])
     if fs.exists(truepath) then
         if fs.isDir(truepath) then
             args.files[i] = commands.dirOpener(args.files[i])
         end
     end
-    buffers[#buffers+1] = newBuffer(args.files[i])
+    buffers[#buffers + 1] = newBuffer(args.files[i])
 end
 if #buffers > 0 then
     currBuf = 1
@@ -1193,7 +1229,6 @@ if running then
     ff.close()
 end
 ]]
-
 local heldnum = nil
 local heldnumstring = ""
 -- Just did an t/T command, so move an extra char before searching again
@@ -1210,23 +1245,23 @@ while running do
         if buffers[currBuf] then
             local linecount = #buffers[currBuf].lines.text
             local bytecount = 0
-            for i=1, #buffers[currBuf].lines.text do
+            for i = 1, #buffers[currBuf].lines.text do
                 bytecount = bytecount + #buffers[currBuf].lines.text[i]
             end
-            sendMsg("\""..buffers[currBuf].name.."\" "..linecount.."L, "..bytecount.."B")
+            sendMsg("\"" .. buffers[currBuf].name .. "\" " .. linecount .. "L, " .. bytecount .. "B")
             changedBuffers = false
         end
     end
 
     if debug_printbufs then
         sendMsg("")
-        for i=1, #buffers do
-            write(buffers[i].name.." ")
+        for i = 1, #buffers do
+            write(buffers[i].name .. " ")
         end
         flush()
     end
 
-    local event = {os.pullEvent()}
+    local event = { os.pullEvent() }
     if event[1] ~= "char" or not ((event[1] == "char") and (event[2] == ":")) then
         warnedOfClose = false
     end
@@ -1260,14 +1295,15 @@ while running do
             buffers[currBuf] = validateCursor(buffers[currBuf])
             redrawBuffer = true
         elseif char == "w" or char == "W" then
-            local begs = str.wordBeginnings(buffers[currBuf].lines.text[buffers[currBuf].cursorY], not string.match(char, "%u"))
+            local begs = str.wordBeginnings(buffers[currBuf].lines.text[buffers[currBuf].cursorY],
+                not string.match(char, "%u"))
             if begs[#begs] then
                 if buffers[currBuf].cursorX < begs[#begs] then
                     buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
                     while not tab.find(begs, buffers[currBuf].cursorX) do
                         buffers[currBuf].cursorX = buffers[currBuf].cursorX + 1
                     end
-                    buffers[currBuf].oldCursorX =  buffers[currBuf].cursorX
+                    buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
                 end
             end
             buffers[currBuf] = validateCursor(buffers[currBuf])
@@ -1286,7 +1322,8 @@ while running do
             buffers[currBuf] = validateCursor(buffers[currBuf])
             redrawBuffer = true
         elseif char == "b" or char == "B" then
-            local begs = str.wordBeginnings(buffers[currBuf].lines.text[buffers[currBuf].cursorY], not string.match(char, "%u"))
+            local begs = str.wordBeginnings(buffers[currBuf].lines.text[buffers[currBuf].cursorY],
+                not string.match(char, "%u"))
             if begs[1] then
                 if buffers[currBuf].cursorX > begs[1] then
                     buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
@@ -1301,7 +1338,8 @@ while running do
         elseif char == "g" then
             local _, char2 = pullChar()
             if char2 == "e" or char2 == "E" then
-                local begs = str.wordEnds(buffers[currBuf].lines.text[buffers[currBuf].cursorY], not string.match(char, "%u"))
+                local begs = str.wordEnds(buffers[currBuf].lines.text[buffers[currBuf].cursorY],
+                    not string.match(char, "%u"))
                 if begs[1] then
                     if buffers[currBuf].cursorX > begs[1] then
                         buffers[currBuf].cursorX = buffers[currBuf].cursorX - 1
