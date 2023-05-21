@@ -210,8 +210,8 @@ end
 
 local function drawBuffer(buf, viewednum)
     if running then
+        clearbufarea()
         if not buf then
-            clearbufarea()
             setcolors(colors.black, colors.purple)
             for i=1, hig - 1 do
                 setpos(1, i)
@@ -237,7 +237,6 @@ local function drawBuffer(buf, viewednum)
             setcolors(colors.black, colors.white)
             write("to exit")
         else
-            clearbufarea()
             local cursorColor
             local limit = hig + buf.scrollY - 1
             buffers[viewednum].viewed = true
@@ -954,8 +953,10 @@ commands.dirOpener = function(dir, inputname)
                         end
                     end
                 elseif k == "-" then
-                    currSelection = currSelection .. "/" .. ".."
-                    redrawNext = true
+                    if not (shell.resolve(currSelection) == "") then
+                        currSelection = currSelection .. "/" .. ".."
+                        redrawNext = true
+                    end
                 elseif k == "j" then
                     if currDirY + currDirOffset < #filesInDir then
                         currDirY = currDirY + 1
@@ -1286,6 +1287,7 @@ while running do
                 buffers[currBuf].oldCursorX = buffers[currBuf].cursorX
             elseif char2 == "g" then
                 if heldnum then
+                    --TODO: this function is presently being problematic, and likely needs bounds checking.
                     buffers[currBuf].cursorY = heldnum
                 else
                     buffers[currBuf].cursorY = 1
