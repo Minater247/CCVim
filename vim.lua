@@ -1379,6 +1379,10 @@ local function search(direction, research, currword, wrapSearchPos)
             table.insert(sessionSearches, #sessionSearches + 1, currSearch)
         end
     end
+    if currSearch == nil then
+        currSearch = ""
+        currline = currCursorY + currFileOffset
+    end
     --check if the last 2 characters are \c or \C, adjust the ignorecase variable
     if string.sub(currSearch, #currSearch - 1, #currSearch) == "\\c" then
         localcase = true
@@ -2538,6 +2542,9 @@ while running == true do
                 copybuffer = filelines[currCursorY + currFileOffset]
                 copytype = "line"
                 table.remove(filelines, currCursorY + currFileOffset)
+                if #filelines < 1 then
+                    filelines[1] = ""
+                end
                 fileContents[currfile]["unsavedchanges"] = true
             elseif c == "w" then
                 local word,beg,ed = str.wordOfPos(filelines[currCursorY + currFileOffset], currCursorX + currXOffset)
@@ -2585,6 +2592,15 @@ while running == true do
                 copytype = "text"
                 filelines[currCursorY + currFileOffset] = string.sub(filelines[currCursorY + currFileOffset], 1, currCursorX + currXOffset - 1)
                 fileContents[currfile]["unsavedchanges"] = true
+            end
+            while currCursorY + currFileOffset > #filelines do
+                currCursorY = currCursorY - 1
+                if currCursorY < 1 then
+                    while currCursorY < 1 do
+                        currFileOffset = currFileOffset - 1
+                        currCursorY = currCursorY + 1
+                    end
+                end
             end
             while currCursorX + currXOffset > #filelines[currCursorY + currFileOffset] do
                 currCursorX = currCursorX - 1
@@ -2705,6 +2721,9 @@ while running == true do
                         copytype = "linetable"
                         for i=1,tonumber(num),1 do
                             table.remove(filelines, currCursorY + currFileOffset)
+                        end
+                        if #filelines < 1 then
+                            filelines[1] = ""
                         end
                         recalcMLCs(true)
                         drawFile(true)
