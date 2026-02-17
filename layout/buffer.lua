@@ -1,0 +1,310 @@
+local Buffer = {}
+Buffer.__index = Buffer -- Share the instance methods
+
+local Error = loadModule("vim.lib.error")
+local ExMsg = loadModule("vim.lib.excmd.exmsg")
+local AutoCmd = loadModule("vim.lib.autocmd")
+local VimFs = loadModule("vim.lib.luaapi.fs")
+local Syntax = loadModule("vim.lib.syntax")
+
+local curr_bufno = 1
+
+---@class BufOpts
+---@field buflisted boolean Whether the buffer shows up in bufer lists.
+---@field modified boolean Whether the buffer has been modified
+
+---@class Buffer
+---@field state string The current buffer state: active, hidden, or inactive.
+---@field bufnr number The unique buffer number.
+---@field name  string The buffer name.
+---@field swapname string The swapfile name.
+---@field scratch boolean Whether the buffer is a scratch buffer.
+---@field opts BufOpts The options for each buffer.
+---@field lines string[] The raw lines of the file currently loaded into the buffer. `nil` if unloaded.
+---@field syntax_ctx table|nil Syntax engine context and caches for this buffer.
+---@field refcount number The number of windows referencing this buffer.
+---
+---@field signs table[] The signs present on this buffer, indexed by group name -> id.
+---@field signs_byln table[] The signs present on this buffer, indexed by line number.
+---@field signs_nextid number[] The next sign ID for a given group name. "" for global.
+
+
+--- Creates a new Buffer.
+---@param listed boolean Whether to use the buffer in buffer lists.
+---@param scratch boolean Whether the buffer is a scratch buffer, never saved.
+function Buffer:new(listed, scratch)
+    local obj = setmetatable({
+        scratch = scratch or false,
+        bufnr = curr_bufno,
+        opts = {
+            buflisted = listed or false,
+            modified  = false
+        },
+        state = "hidden",
+        lines = {},
+        refcount = 0,
+        signs = {},
+        signs_byln = {},
+    }, Buffer)
+
+    buffers[curr_bufno] = obj
+
+    curr_bufno = curr_bufno + 1
+
+    return obj
+end
+
+function Buffer:Load(read_contents)
+    self.syntax_ctx = nil
+
+    if read_contents then
+        local name = self.name or ""
+        local ctx = { bufnr = self.bufnr, bufname = name }
+
+        LOG_DEBUG("Buffer.Load bufnr=%d name=%s", self.bufnr, tostring(name))
+
+        local did_cmd = false
+        if name ~= "" then
+            local matched = AutoCmd.Run("BufReadCmd", ctx)
+            if matched and matched > 0 then
+                LOG_DEBUG("BufReadCmd matched bufnr=%d name=%s", self.bufnr, tostring(name))
+                did_cmd = true
+            end
+        end
+
+        if not did_cmd then
+            local resolved = VimFs.abspath(name)
+            if name ~= "" and fs.exists(resolved) then
+                LOG_DEBUG("BufRead path=%s bufnr=%d", tostring(resolved), self.bufnr)
+                AutoCmd.Run("BufReadPre", ctx)
+                local h = fs.open(resolved, "r")
+                if h then
+                    local s = h.readAll() or ""
+                    h.close()
+                    self.lines = {}
+                    local i = 1
+                    for l in (s .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+                        self.lines[i] = l
+                        i = i + 1
+                    end
+                else
+                    -- Treat unreadable entries (e.g., directories) as empty but continue.
+                    LOG_DEBUG("BufRead open failed (dir=%s) path=%s", tostring(fs.isDir(resolved)), tostring(resolved))
+                    self.lines = { "" }
+                end
+                if fs.isReadOnly(resolved) then
+                    self.opts.readonly = true
+                end
+                AutoCmd.Run("BufRead", ctx)
+                AutoCmd.Run("BufReadPost", ctx)
+            else
+                LOG_DEBUG("BufNewFile bufnr=%d name=%s", self.bufnr, tostring(name))
+                self.lines = { "" }
+                AutoCmd.Run("BufNewFile", ctx)
+            end
+        end
+    end
+end
+
+function Buffer:remove_lines(start1, end1, opts)
+    opts = opts or {}
+
+    local line_count = #self.lines
+
+    local s = start1 or 1
+    local e = end1 or s
+
+    if s < 1 then s = 1 end
+    if e > line_count then e = line_count end
+
+    if e < 1 or s > line_count or s > e then
+        return {}
+    end
+
+    local was_empty = (line_count == 1 and self.lines[1] == "")
+
+    local removed = {}
+    for i = s, e do
+        removed[#removed + 1] = self.lines[i]
+    end
+
+    local k_remove = e - s + 1
+    for _ = 1, k_remove do
+        table.remove(self.lines, s)
+    end
+
+    if #self.lines == 0 then
+        if not was_empty and not opts.silent_no_lines then
+            ExMsg.echo("--No lines in buffer--")
+        end
+    end
+
+    self.opts.modified = true
+    Syntax.ParseLinetypes(self, math.max(1, s - 1))
+
+    return removed
+end
+
+function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
+    local line_count = #self.lines
+
+    -- Normalize negatives relative to end+1, remaining 0-based for now
+    local s = start0 >= 0 and start0 or (line_count + 1 + start0)
+    local e = stop0 >= 0 and stop0 or (line_count + 1 + stop0)
+
+    -- Handle strict vs clamp, start/end relation
+    if strict_indexing then
+        if s < 0 or s > line_count or e < 0 or e > line_count then
+            error(("nvim_buf_set_lines: index out of bounds (s=%d,e=%d,count=%d)")
+                :format(s, e, line_count))
+        end
+        if s > e then
+            error(("nvim_buf_set_lines: start > end (s=%d,e=%d) with strict_indexing")
+                :format(s, e))
+        end
+    else
+        s = math.max(0, math.min(s, line_count))
+        e = math.max(0, math.min(e, line_count))
+        if s > e then
+            s = e
+        end
+    end
+
+    -- Convert to Lua 1-based for table ops
+    local start1 = s + 1
+    local k_remove = e - s        -- how many to remove
+    local m_insert = #replacement -- how many to insert
+
+    -- 1) Delete k_remove lines from self.lines at start1
+    if k_remove > 0 then
+        self:remove_lines(start1, start1 + k_remove - 1, { allow_empty = true, silent_no_lines = true })
+    end
+
+    -- 2) Insert m_insert replacement lines at start1
+    if m_insert > 0 then
+        for i = 1, m_insert do
+            table.insert(self.lines, start1 + i - 1, replacement[i])
+        end
+    end
+
+    -- 3) Ensure buffer has at least one (possibly empty) line
+    --    TODO: is this correct semantics for how neovim actually behaves?
+    if #self.lines == 0 then
+        self.lines = { "" }
+    end
+
+    -- Mark modified (like altering buffer contents)
+    self.opts.modified = true
+    Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
+end
+
+local function _autowrite_enabled(kind)
+    if kind == "autowrite" then
+        return options.get("autowrite") or options.get("autowriteall")
+    elseif kind == "autowriteall" then
+        return options.get("autowriteall")
+    end
+    return false
+end
+
+local function _autowrite_blocked_buftype(buf)
+    local bt = options.get("buftype", nil, buf)
+    return bt == "nowrite" or bt == "nofile" or bt == "terminal" or bt == "prompt"
+end
+
+-- TODO: implement the proper force semantics here, autowrite/all, etc.
+function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
+    local bufhidden = options.get("bufhidden", nil, self)
+    local hidden = options.get("hidden")
+
+    if not forceabandon and self.opts.modified and _autowrite_enabled(autowrite_kind) and not _autowrite_blocked_buftype(self) then
+        local status = self:write(false)
+        if status ~= true then
+            return status
+        end
+    end
+
+    if bufhidden ~= "" then
+        if bufhidden == "hide" then
+            -- Keep buffer loaded and listed regardless of global 'hidden'.
+        elseif bufhidden == "unload" then
+            -- Approximate unload semantics: keep the buffer object, but drop
+            -- transient parse context and mark as not active in a window.
+            self.syntax_ctx = nil
+        elseif bufhidden == "delete" then
+            -- Behave like :bdelete when last window reference is gone.
+            self.opts.buflisted = false
+            if self.refcount <= 1 then
+                buffers[self.bufnr] = nil
+            end
+        elseif bufhidden == "wipe" then
+            if self.refcount <= 1 then
+                buffers[self.bufnr] = nil
+            end
+        else
+            error("Unhandled: bufhidden = " .. bufhidden)
+        end
+    else
+        local check = (not hidden and self.refcount <= 1) or mustabandon
+        if check and self.opts.modified and not forceabandon then
+            return Error(37)
+        end
+    end
+
+    self.refcount = self.refcount - 1
+    return true
+end
+
+-- TODO: several options affect write, such as line endings via fileformat
+function Buffer:write(force, newname)
+    if not options.get("write") then
+        return Error(142)
+    end
+
+    local name
+    if newname and newname ~= "" then
+        name = newname
+        self.name = newname
+    else
+        name = self.name
+    end
+
+    if options.get("buftype", nil, self) ~= "" then
+        return Error(382)
+    end
+
+    if options.get("readonly", nil, self) and not force then
+        return Error(45)
+    end
+
+    if not name then
+        return Error(32)
+    end
+
+    local path = VimFs.abspath(name)
+    local f = fs.open(path, "w")
+    if not f then
+        return Error(212, name)
+    end
+
+    local writesz = 0
+    for i = 1, #self.lines - 1 do
+        f.write(self.lines[i] .. "\n")
+        writesz = writesz + #self.lines[i] + 1
+    end
+    f.write(self.lines[#self.lines])
+    writesz = writesz + #self.lines[#self.lines]
+
+    f.close()
+
+    self.opts.modified = false
+
+    ExMsg.echo("\"" .. self.name .. "\" " .. #self.lines .. "L, " .. writesz .. "B")
+
+    return true
+end
+
+setmetatable(Buffer, { __call = function(self, ...) return self:new(...) end })
+
+
+return Buffer
