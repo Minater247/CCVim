@@ -2,5 +2,5 @@ logfile.txt
 log/
 config/
 *.old
-*/.DS_STORE
+.DS_STORE
 .vscode
