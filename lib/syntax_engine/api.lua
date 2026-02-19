@@ -108,6 +108,14 @@ local function normal_blit_for_line(line)
     return { fg = fg, bg = bg }
 end
 
+local function buffer_line_count(buffer)
+    return buffer:line_count(true)
+end
+
+local function buffer_get_line(buffer, line_nr)
+    return buffer:get_line(line_nr, true) or ""
+end
+
 local function apply_match_slot(line, fg_chars, bg_chars, slot)
     local matched = false
     local pos = 1
@@ -146,7 +154,7 @@ local function apply_window_matches(win, buffer, first_line, last_line, blits)
     local out = blits or {}
 
     for ln = first_line, last_line do
-        local line = buffer.lines[ln] or ""
+        local line = buffer_get_line(buffer, ln)
         if line ~= "" then
             local entry = out[ln] or normal_blit_for_line(line)
             local fg_chars = {}
@@ -329,13 +337,13 @@ end
 function Api.syn_query(window, lnum, col)
     local win = active_window(window)
     local buffer = win.buffer
-    local line_count = #buffer.lines
+    local line_count = buffer_line_count(buffer)
 
     if lnum < 1 or lnum > line_count then
         return { ids = {}, top_id = 0, conceal = 0, cchar = "" }
     end
 
-    local line = buffer.lines[lnum] or ""
+    local line = buffer_get_line(buffer, lnum)
     if line == "" then
         return { ids = {}, top_id = 0, conceal = 0, cchar = "" }
     end

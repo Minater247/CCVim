@@ -1,76 +1,12 @@
-local function make_colors()
-    local order = {
-        "white", "orange", "magenta", "lightBlue",
-        "yellow", "lime", "pink", "gray",
-        "lightGray", "cyan", "purple", "blue",
-        "brown", "green", "red", "black",
-    }
-    local t = {}
-    local map = {}
-    for i = 1, #order do
-        local bit = 2 ^ (i - 1)
-        t[order[i]] = bit
-        map[bit] = string.format("%x", i - 1)
-    end
+local MockEnv = require("vim.tests.test_mocks")
+local mock = MockEnv.setup()
 
-    function t.toBlit(bit)
-        return map[bit] or "0"
-    end
-
-    function t.packRGB(r, g, b)
-        return { r, g, b }
-    end
-
-    function t.unpackRGB(rgb)
-        if type(rgb) == "table" then
-            return rgb[1] or 0, rgb[2] or 0, rgb[3] or 0
-        end
-        return 0, 0, 0
-    end
-
-    return t
-end
-
-_G.colors = make_colors()
-_G.term = {
-    getPaletteColor = function(_)
-        return 0, 0, 0
-    end,
-    setTextColor = function(_) end,
-    setBackgroundColor = function(_) end,
-}
-
-_G.LOG_ERROR = function(...) end
-_G.LOG_DEBUG = function(...) end
-_G.LOG_INTERNAL = function(...) end
-
-local MODULE_CACHE = {}
-function _G.loadModule(name)
-    if MODULE_CACHE[name] then
-        return MODULE_CACHE[name]
-    end
-
-    local path = name:gsub("%.", "/") .. ".lua"
-    local env = setmetatable({
-        _V = nil,
-        loadModule = _G.loadModule,
-    }, { __index = _G })
-
-    local chunk, err = loadfile(path, "t", env)
-    if not chunk then
-        error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
-    end
-
-    local mod = chunk()
-    MODULE_CACHE[name] = mod
-    return mod
-end
-
-local Runtime = loadModule("vim.lib.syntax_engine.runtime")
-local Parser = loadModule("vim.lib.syntax_engine.command_parser")
-local Compiler = loadModule("vim.lib.syntax_engine.compiler")
-local State = loadModule("vim.lib.syntax_engine.state")
-local Highlight = loadModule("vim.lib.highlight")
+local Runtime = mock.loadModule("vim.lib.syntax_engine.runtime")
+local Parser = mock.loadModule("vim.lib.syntax_engine.command_parser")
+local Compiler = mock.loadModule("vim.lib.syntax_engine.compiler")
+local State = mock.loadModule("vim.lib.syntax_engine.state")
+local Highlight = mock.loadModule("vim.lib.highlight")
+local Buffer = mock.loadModule("vim.layout.buffer")
 
 local function assert_eq(label, a, b)
     if a ~= b then
@@ -100,6 +36,20 @@ local function mk_ctx(commands)
     return ctx
 end
 
+local function mk_buf(lines)
+    local buf = Buffer(false, false, true)
+    local copied = {}
+    for i = 1, #lines do
+        copied[i] = lines[i]
+    end
+    if #copied == 0 then
+        copied[1] = ""
+    end
+    buf.lines = copied
+    buf.loaded = true
+    return buf
+end
+
 local function fg_at(blit, idx)
     return blit.fg:sub(idx, idx)
 end
@@ -119,7 +69,7 @@ do
     local ctx = mk_ctx({
         "keyword String test",
     })
-    local buf = { lines = { "a test z" } }
+    local buf = mk_buf({ "a test z" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_true("keyword blit exists", blit ~= nil)
     assert_eq("keyword start fg", fg_at(blit, 3), string_fg)
@@ -133,7 +83,7 @@ do
         "match Comment /foo/",
         "match String /foo/",
     })
-    local buf = { lines = { "foo" } }
+    local buf = mk_buf({ "foo" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("same-start match priority (later wins)", fg_at(blit, 1), string_fg)
 end
@@ -144,7 +94,7 @@ do
         "keyword String foo",
         "match Comment /foo/",
     })
-    local buf = { lines = { "foo" } }
+    local buf = mk_buf({ "foo" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("keyword over match priority", fg_at(blit, 1), string_fg)
 end
@@ -157,7 +107,7 @@ do
         "case match",
         "keyword String foo",
     })
-    local buf = { lines = { "foo" } }
+    local buf = mk_buf({ "foo" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("keyword case-sensitive over ignore-case", fg_at(blit, 1), string_fg)
 end
@@ -168,7 +118,7 @@ do
     local ctx = mk_ctx({
         'match Comment "--.*$"',
     })
-    local buf = { lines = { "-- hello" } }
+    local buf = mk_buf({ "-- hello" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("quoted punctuation pattern", fg_at(blit, 1), comment_fg)
 end
@@ -179,7 +129,7 @@ do
     local ctx = mk_ctx({
         'match String "\\<foo\\>"',
     })
-    local buf = { lines = { "foo" } }
+    local buf = mk_buf({ "foo" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("quoted backslash pattern", fg_at(blit, 1), string_fg)
 end
@@ -195,7 +145,7 @@ do
         'match Comment "--.*$"',
         'match String "\\<\\d\\+\\%([eE][-+]\\=\\d\\+\\)\\="',
     })
-    local buf = { lines = { "-- hello" } }
+    local buf = mk_buf({ "-- hello" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("quoted pattern with equals does not starve comment match", fg_at(blit, 1), comment_fg)
 end
@@ -214,7 +164,7 @@ do
     local ctx = mk_ctx({
         "keyword String hello contained",
     })
-    local buf = { lines = { "hello" } }
+    local buf = mk_buf({ "hello" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("contained top-level no highlight", fg_at(blit, 1), normal_fg)
 end
@@ -224,7 +174,7 @@ do
         "region Comment start=/\"/ end=/\"/ contains=String",
         "keyword String hello contained",
     })
-    local buf = { lines = { "\"hello\"" } }
+    local buf = mk_buf({ "\"hello\"" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("region start quote", fg_at(blit, 1), comment_fg)
     assert_eq("contained inside region", fg_at(blit, 2), string_fg)
@@ -237,7 +187,7 @@ do
         "match Comment /foo/ nextgroup=String skipwhite",
         "match String /bar/ contained",
     })
-    local buf = { lines = { "foo   bar" } }
+    local buf = mk_buf({ "foo   bar" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("nextgroup foo", fg_at(blit, 1), comment_fg)
     assert_eq("nextgroup bar", fg_at(blit, 7), string_fg)
@@ -251,7 +201,7 @@ do
         "match Structure /a/ nextgroup=String",
         "match String /b/ contained",
     })
-    local buf = { lines = { "{ab}" } }
+    local buf = mk_buf({ "{ab}" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("nextgroup contained target inside TOP container", fg_at(blit, 3), string_fg)
 end
@@ -263,7 +213,7 @@ do
         "match Comment /foo/ nextgroup=String",
         "match String /[^\\\\]w/lc=1 contained",
     })
-    local buf = { lines = { "foow" } }
+    local buf = mk_buf({ "foow" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("lc nextgroup anchor comment", fg_at(blit, 1), comment_fg)
     assert_eq("lc nextgroup anchor string", fg_at(blit, 4), string_fg)
@@ -274,7 +224,7 @@ do
     local ctx = mk_ctx({
         "region Comment start=/\\/\\*/ end=/\\*\\//",
     })
-    local buf = { lines = { "/* one", "two */", "tail" } }
+    local buf = mk_buf({ "/* one", "two */", "tail" })
 
     local blit2 = Runtime.line_to_blit(ctx, buf, 2)
     assert_eq("region carries to line2", fg_at(blit2, 1), comment_fg)
@@ -292,7 +242,7 @@ do
     local ctx = mk_ctx({
         'region Comment start=+^[ \\t:]*\\zs".*$+ skip=+\\n\\s*\\\\\\|\\n\\s*"\\\\ + end="$"',
     })
-    local buf = { lines = { '" one', "", "if x", '" two', "let y = 1" } }
+    local buf = mk_buf({ '" one', "", "if x", '" two', "let y = 1" })
 
     local blit1 = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("line comment first line", fg_at(blit1, 1), comment_fg)
@@ -313,7 +263,7 @@ do
         "match Error /}/",
         "region Structure start=/{/ end=/}/",
     })
-    local buf = { lines = { "{}" } }
+    local buf = mk_buf({ "{}" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("region end beats same-pos match", fg_at(blit, 2), structure_fg)
     assert_true("region end not Error background", bg_at(blit, 2) ~= error_bg)
@@ -325,7 +275,7 @@ do
         "region Structure start=/{/ end=/}/",
         "match Error /}/",
     })
-    local buf = { lines = { "{}" } }
+    local buf = mk_buf({ "{}" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("region end beats same-pos match (older region)", fg_at(blit, 2), structure_fg)
     assert_true("region end (older region) not Error background", bg_at(blit, 2) ~= error_bg)
@@ -338,7 +288,7 @@ do
         "region Comment start=/\\<if\\>/ end=/\\<then\\>/me=e-4 nextgroup=String",
         "match String /\\<then\\>/ contained",
     })
-    local buf = { lines = { "if then" } }
+    local buf = mk_buf({ "if then" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("region me offset preserves nextgroup hand-off", fg_at(blit, 4), string_fg)
 end
@@ -348,7 +298,7 @@ do
     local ctx = mk_ctx({
         "region Comment transparent matchgroup=Structure start=/{/ end=/}/",
     })
-    local buf = { lines = { "{}" } }
+    local buf = mk_buf({ "{}" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("transparent matchgroup start delimiter", fg_at(blit, 1), structure_fg)
     assert_eq("transparent matchgroup end delimiter", fg_at(blit, 2), structure_fg)
@@ -359,7 +309,7 @@ do
     local ctx = mk_ctx({
         "region Comment transparent start=/{/ end=/}/",
     })
-    local buf = { lines = { "{}" } }
+    local buf = mk_buf({ "{}" })
     local blit = Runtime.line_to_blit(ctx, buf, 1)
     assert_eq("transparent plain start stays Normal", fg_at(blit, 1), normal_fg)
     assert_eq("transparent plain end stays Normal", fg_at(blit, 2), normal_fg)

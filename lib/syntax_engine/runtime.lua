@@ -71,6 +71,14 @@ local function is_blank_line(line)
     return (line or ""):match("^%s*$") ~= nil
 end
 
+local function buffer_line_count(buffer)
+    return buffer:line_count(true)
+end
+
+local function buffer_get_line(buffer, line_nr)
+    return buffer:get_line(line_nr, true) or ""
+end
+
 local function bit_has(bits, id)
     if not bits or not id or id < 1 then return false end
     local word = math.floor((id - 1) / 32) + 1
@@ -969,7 +977,7 @@ local function resolve_resync_start(plan, buffer, target_line)
     if linecont and linecont.compiled then
         local probe = start
         while probe > 1 do
-            local prev = buffer.lines[probe - 1] or ""
+            local prev = buffer_get_line(buffer, probe - 1)
             local low = prev:lower()
             local hit = find_in_spec(prev, low, 1, linecont, false)
             if not hit or hit.match_end ~= #prev then
@@ -984,7 +992,7 @@ local function resolve_resync_start(plan, buffer, target_line)
     if #items > 0 then
         local anchor = nil
         for ln = target_line, start, -1 do
-            local text = buffer.lines[ln] or ""
+            local text = buffer_get_line(buffer, ln)
             local low = text:lower()
             for i = 1, #items do
                 local it = items[i]
@@ -1016,7 +1024,7 @@ local function resolve_resync_start(plan, buffer, target_line)
         local probe = target_line
         local bound = start
         while probe >= bound do
-            local text = buffer.lines[probe] or ""
+            local text = buffer_get_line(buffer, probe)
             if text:find("/%*") or text:find("%*/") then
                 start = probe
                 break
@@ -1644,7 +1652,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
     local prev_profile_ctx = PROFILE_CTX
     PROFILE_CTX = ctx
 
-    local line_count = #buffer.lines
+    local line_count = buffer_line_count(buffer)
     if line_count < 1 then
         PROFILE_CTX = prev_profile_ctx
         return
@@ -1689,7 +1697,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
         local before = state
         ctx.checkpoints[ln] = { state = before, hash = nil }
 
-        local text = buffer.lines[ln] or ""
+        local text = buffer_get_line(buffer, ln)
         local next_state, spans = highlight_line(plan, state, text, ctx.synmaxcol or 0)
         local after = next_state
         local after_hash = nil
@@ -1715,7 +1723,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
                     break
                 end
                 local target_cache = ctx.span_cache[target_line]
-                if target_cache and target_cache.line_text == (buffer.lines[target_line] or "") then
+                if target_cache and target_cache.line_text == buffer_get_line(buffer, target_line) then
                     break
                 end
             end
@@ -1740,7 +1748,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
 end
 
 local function line_blit_cached(ctx, plan, buffer, line)
-    local current_text = buffer.lines[line] or ""
+    local current_text = buffer_get_line(buffer, line)
     local cache = ctx.span_cache[line]
     if not cache or cache.line_text ~= current_text then
         return nil
@@ -1762,7 +1770,7 @@ function Runtime.line_to_blit(ctx, buffer, line)
     end
     ensure_highlight_version(ctx, plan)
 
-    local line_count = #buffer.lines
+    local line_count = buffer_line_count(buffer)
     if line_count == 0 then
         return nil
     end
@@ -1795,7 +1803,7 @@ function Runtime.lines_to_blit(ctx, buffer, first_line, last_line)
     end
     ensure_highlight_version(ctx, plan)
 
-    local line_count = #buffer.lines
+    local line_count = buffer_line_count(buffer)
     if line_count == 0 then
         return {}
     end

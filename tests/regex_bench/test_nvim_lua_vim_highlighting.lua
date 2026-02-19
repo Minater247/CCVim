@@ -1,76 +1,12 @@
-local function make_colors()
-    local order = {
-        "white", "orange", "magenta", "lightBlue",
-        "yellow", "lime", "pink", "gray",
-        "lightGray", "cyan", "purple", "blue",
-        "brown", "green", "red", "black",
-    }
-    local t = {}
-    local map = {}
-    for i = 1, #order do
-        local bit = 2 ^ (i - 1)
-        t[order[i]] = bit
-        map[bit] = string.format("%x", i - 1)
-    end
+local MockEnv = require("vim.tests.test_mocks")
+local mock = MockEnv.setup()
 
-    function t.toBlit(bit)
-        return map[bit] or "0"
-    end
-
-    function t.packRGB(r, g, b)
-        return { r, g, b }
-    end
-
-    function t.unpackRGB(rgb)
-        if type(rgb) == "table" then
-            return rgb[1] or 0, rgb[2] or 0, rgb[3] or 0
-        end
-        return 0, 0, 0
-    end
-
-    return t
-end
-
-_G.colors = make_colors()
-_G.term = {
-    getPaletteColor = function(_)
-        return 0, 0, 0
-    end,
-    setTextColor = function(_) end,
-    setBackgroundColor = function(_) end,
-}
-
-_G.LOG_ERROR = function(...) end
-_G.LOG_DEBUG = function(...) end
-_G.LOG_INTERNAL = function(...) end
-
-local MODULE_CACHE = {}
-function _G.loadModule(name)
-    if MODULE_CACHE[name] then
-        return MODULE_CACHE[name]
-    end
-
-    local path = name:gsub("%.", "/") .. ".lua"
-    local env = setmetatable({
-        _V = nil,
-        loadModule = _G.loadModule,
-    }, { __index = _G })
-
-    local chunk, err = loadfile(path, "t", env)
-    if not chunk then
-        error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
-    end
-
-    local mod = chunk()
-    MODULE_CACHE[name] = mod
-    return mod
-end
-
-local Runtime = loadModule("vim.lib.syntax_engine.runtime")
-local Parser = loadModule("vim.lib.syntax_engine.command_parser")
-local Compiler = loadModule("vim.lib.syntax_engine.compiler")
-local State = loadModule("vim.lib.syntax_engine.state")
-local Highlight = loadModule("vim.lib.highlight")
+local Runtime = mock.loadModule("vim.lib.syntax_engine.runtime")
+local Parser = mock.loadModule("vim.lib.syntax_engine.command_parser")
+local Compiler = mock.loadModule("vim.lib.syntax_engine.compiler")
+local State = mock.loadModule("vim.lib.syntax_engine.state")
+local Highlight = mock.loadModule("vim.lib.highlight")
+local Buffer = mock.loadModule("vim.layout.buffer")
 
 local function assert_eq(label, got, want)
     if got ~= want then
@@ -108,6 +44,20 @@ local function read_lines(path)
     return lines
 end
 
+local function mk_buf(lines)
+    local buf = Buffer(false, false, true)
+    local copied = {}
+    for i = 1, #lines do
+        copied[i] = lines[i]
+    end
+    if #copied == 0 then
+        copied[1] = ""
+    end
+    buf.lines = copied
+    buf.loaded = true
+    return buf
+end
+
 local function find_luaapi_in_nvim(lines)
     local needle = 'loadModule("vim.lib.luaapi.scopes")'
     for i = 1, #lines do
@@ -129,7 +79,7 @@ end
 
 local source_lines = read_lines("vim/nvim.lua")
 local target_line, token_start, token_end = find_luaapi_in_nvim(source_lines)
-local buf = { lines = source_lines }
+local buf = mk_buf(source_lines)
 local error_fg = colors.toBlit(Highlight.For("Error")[1])
 
 -- Lua-style form: contains=TOP,Group should add Group, not subtract it.

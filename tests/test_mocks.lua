@@ -3,6 +3,54 @@
 
 local MockEnv = {}
 
+local function make_default_colors()
+    local order = {
+        "white", "orange", "magenta", "lightBlue",
+        "yellow", "lime", "pink", "gray",
+        "lightGray", "cyan", "purple", "blue",
+        "brown", "green", "red", "black",
+    }
+    local t = {}
+    local map = {}
+    for i = 1, #order do
+        local bit = 2 ^ (i - 1)
+        t[order[i]] = bit
+        map[bit] = string.format("%x", i - 1)
+    end
+
+    function t.toBlit(bit)
+        return map[bit] or "0"
+    end
+
+    function t.packRGB(r, g, b)
+        return { r, g, b }
+    end
+
+    function t.unpackRGB(rgb)
+        if type(rgb) == "table" then
+            return rgb[1] or 0, rgb[2] or 0, rgb[3] or 0
+        end
+        return 0, 0, 0
+    end
+
+    return t
+end
+
+local function make_default_keys()
+    local next_code = 1
+    return setmetatable({}, {
+        __index = function(t, k)
+            local value = rawget(t, k)
+            if value == nil then
+                value = next_code
+                next_code = next_code + 1
+                rawset(t, k, value)
+            end
+            return value
+        end,
+    })
+end
+
 ---Setup basic mock environment
 ---@param config? table Optional configuration for custom globals
 ---@return table mock Helper object with metatable interfaces
@@ -18,7 +66,7 @@ function MockEnv.setup(config)
     _G.need_redraw = false
     _G.what_redraw = {}
     _G.registers = {}
-    _G.keys = setmetatable({}, { __index = function() return 0 end })
+    _G.keys = config.keys or make_default_keys()
     _G.ccvim_path = config.ccvim_path or "."
     
     -- bit32 compatibility
@@ -50,27 +98,7 @@ function MockEnv.setup(config)
     }
     
     -- ComputerCraft colors API
-    _G.colors = config.colors or {
-        white = 1,
-        orange = 2,
-        magenta = 4,
-        lightBlue = 8,
-        yellow = 16,
-        lime = 32,
-        pink = 64,
-        gray = 128,
-        lightGray = 256,
-        cyan = 512,
-        purple = 1024,
-        blue = 2048,
-        brown = 4096,
-        green = 8192,
-        red = 16384,
-        black = 32768,
-        toBlit = function() return "0" end,
-        packRGB = function(r, g, b) return { r, g, b } end,
-        unpackRGB = function(rgb) return rgb[1], rgb[2], rgb[3] end,
-    }
+    _G.colors = config.colors or make_default_colors()
     
     -- ComputerCraft term API
     _G.term = config.term or {
@@ -152,12 +180,55 @@ function MockEnv.setup(config)
     
     -- Helper to create a buffer
     function mock.create_buffer(bufnr, name, lines, opts)
+        local loaded = true
+        if opts and opts.loaded ~= nil then
+            loaded = not not opts.loaded
+        end
         local buf = {
             bufnr = bufnr,
             name = name or ("/tmp/buffer" .. bufnr),
             lines = lines or { "" },
             opts = opts or {},
+            loaded = loaded,
         }
+        buf.is_loaded = function(self)
+            return self.loaded == true
+        end
+        buf.ensure_loaded = function(self, read_contents)
+            if self.loaded == true then
+                return true
+            end
+            if type(self.Load) == "function" then
+                self:Load(read_contents ~= false)
+            end
+            self.loaded = true
+            if type(self.lines) ~= "table" then
+                self.lines = { "" }
+            elseif #self.lines == 0 then
+                self.lines = { "" }
+            end
+            return true
+        end
+        buf.line_count = function(self, load_if_unloaded)
+            if load_if_unloaded then
+                self:ensure_loaded(true)
+            end
+            if self.loaded ~= true then
+                return 0
+            end
+            return #(self.lines or {})
+        end
+        buf.lines_ref = function(self, load_if_unloaded)
+            if load_if_unloaded then
+                self:ensure_loaded(true)
+            end
+            self.lines = self.lines or {}
+            return self.lines
+        end
+        buf.get_line = function(self, line_nr, load_if_unloaded)
+            local lns = self:lines_ref(load_if_unloaded)
+            return lns[line_nr]
+        end
         _G.buffers[bufnr] = buf
         return buf
     end

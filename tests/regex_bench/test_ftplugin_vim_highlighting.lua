@@ -1,72 +1,11 @@
-local function make_colors()
-    local order = {
-        "white", "orange", "magenta", "lightBlue",
-        "yellow", "lime", "pink", "gray",
-        "lightGray", "cyan", "purple", "blue",
-        "brown", "green", "red", "black",
-    }
-    local t = {}
-    local map = {}
-    for i = 1, #order do
-        local bit = 2 ^ (i - 1)
-        t[order[i]] = bit
-        map[bit] = string.format("%x", i - 1)
-    end
+local MockEnv = require("vim.tests.test_mocks")
+local mock = MockEnv.setup()
 
-    function t.toBlit(bit)
-        return map[bit] or "0"
-    end
-
-    function t.packRGB(r, g, b)
-        return { r, g, b }
-    end
-
-    function t.unpackRGB(rgb)
-        if type(rgb) == "table" then
-            return rgb[1] or 0, rgb[2] or 0, rgb[3] or 0
-        end
-        return 0, 0, 0
-    end
-
-    return t
-end
-
-_G.colors = make_colors()
-_G.term = {
-    getPaletteColor = function(_) return 0, 0, 0 end,
-    setTextColor = function(_) end,
-    setBackgroundColor = function(_) end,
-}
-_G.LOG_ERROR = function(...) end
-_G.LOG_DEBUG = function(...) end
-_G.LOG_INTERNAL = function(...) end
-
-local MODULE_CACHE = {}
-function _G.loadModule(name)
-    if MODULE_CACHE[name] then
-        return MODULE_CACHE[name]
-    end
-
-    local path = name:gsub("%.", "/") .. ".lua"
-    local env = setmetatable({
-        _V = nil,
-        loadModule = _G.loadModule,
-    }, { __index = _G })
-
-    local chunk, err = loadfile(path, "t", env)
-    if not chunk then
-        error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
-    end
-
-    local mod = chunk()
-    MODULE_CACHE[name] = mod
-    return mod
-end
-
-local Runtime = loadModule("vim.lib.syntax_engine.runtime")
-local Parser = loadModule("vim.lib.syntax_engine.command_parser")
-local Compiler = loadModule("vim.lib.syntax_engine.compiler")
-local State = loadModule("vim.lib.syntax_engine.state")
+local Runtime = mock.loadModule("vim.lib.syntax_engine.runtime")
+local Parser = mock.loadModule("vim.lib.syntax_engine.command_parser")
+local Compiler = mock.loadModule("vim.lib.syntax_engine.compiler")
+local State = mock.loadModule("vim.lib.syntax_engine.state")
+local Buffer = mock.loadModule("vim.layout.buffer")
 
 local function assert_eq(label, got, want)
     if got ~= want then
@@ -84,6 +23,20 @@ local function read_lines(path)
         out[#out + 1] = line
     end
     return out
+end
+
+local function mk_buf(lines)
+    local buf = Buffer(false, false, true)
+    local copied = {}
+    for i = 1, #lines do
+        copied[i] = lines[i]
+    end
+    if #copied == 0 then
+        copied[1] = ""
+    end
+    buf.lines = copied
+    buf.loaded = true
+    return buf
 end
 
 local function read_logical_lines(path)
@@ -300,7 +253,7 @@ end
 local function painted_groups_for_line(ctx, buf, line_nr)
     Runtime.line_to_blit(ctx, buf, line_nr)
     local cache = ctx.span_cache[line_nr]
-    local text = buf.lines[line_nr] or ""
+    local text = buf:get_line(line_nr, true) or ""
     local painted = {}
 
     for i = 1, #text do
@@ -333,7 +286,7 @@ ctx.syntax_commands = syntax_cmds
 ctx.syntax_ir = Compiler.compile(syntax_cmds)
 ctx.syntax_ir_dirty = false
 
-local buf = { lines = read_lines("vim/runtime/ftplugin.vim") }
+local buf = mk_buf(read_lines("vim/runtime/ftplugin.vim"))
 
 do
     local g7 = painted_groups_for_line(ctx, buf, 7)
