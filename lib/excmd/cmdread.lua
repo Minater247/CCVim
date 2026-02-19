@@ -8,6 +8,7 @@ local Runtime = loadModule("vim.lib.excmd.runtime")
 local scopes = loadModule("vim.lib.luaapi.scopes")
 
 local pendingcmd = {}
+local active = false
 
 local crref = Key:new(keys.enter)
 local bkspref = Key:new(keys.backspace)
@@ -15,6 +16,7 @@ local tabref = Key:new(keys.tab)
 
 local function endRead()
     pendingcmd = {}
+    active = false
     table.remove(Command.override_emitter)
     table.remove(Command.emitter_names)
 end
@@ -63,10 +65,15 @@ function CmdRead.read()
     table.insert(Command.override_emitter, handler)
     table.insert(Command.emitter_names, "CmdRead.handler")
 
+    active = true
     pendingcmd = { Key:new(keys.semiColon, false, true) }
 
     what_redraw["commandline"] = true
     need_redraw = true
+end
+
+function CmdRead.is_active()
+    return active
 end
 
 function CmdRead.drawCmdline()

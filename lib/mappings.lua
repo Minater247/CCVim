@@ -84,7 +84,7 @@ Command.nmap_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(count or 1)
-        local line = win.buffer.lines[win.cursory]
+        local line = win.buffer:get_line(win.cursory, true)
         if options.get("startofline") and line then
             win:cursorSetX(line:find("%S"))
         else
@@ -112,8 +112,8 @@ Command.nmap_callback(
     function(count)
         local win = windows[curwin]
 	    local buf = win.buffer
-        win:cursorSetY(count or #buf.lines)
-	    local line = buf.lines[win.cursory]
+        win:cursorSetY(count or buf:line_count(true))
+	    local line = buf:get_line(win.cursory, true)
         if options.get("startofline") and line then
             win:cursorSetX(line:find("%S"))
         end
@@ -161,7 +161,7 @@ Command.nmap_callback(
     function(count)
         local win = windows[curwin]
         local buf = win.buffer
-        local lines = buf.lines
+        local lines = buf:lines_ref(true)
         local n = (count or 1)
         if n <= 0 then return end
 
@@ -215,7 +215,7 @@ Command.nmap_callback(
     {K(keys.apostrophe, false, true), K(keys.minus, false, true), K(keys.x)},
     function()
         local win = windows[curwin]
-        local lines = win.buffer.lines
+        local lines = win.buffer:lines_ref(true)
         lines[win.cursory] = lines[win.cursory]:sub(1, win.cursorx - 1) .. lines[win.cursory]:sub(win.cursorx + 1)
         Syntax.ParseLinetypes(win.buffer, win.cursory)
         win:cursorMove(0, 0)
@@ -228,8 +228,8 @@ Command.nmap_callback(
     function(count)
         if count then
             local win = windows[curwin]
-            win:cursorSetY(math.floor((count * #win.buffer.lines + 99) / 100))
-            local line = win.buffer.lines[win.cursory]
+            win:cursorSetY(math.floor((count * win.buffer:line_count(true) + 99) / 100))
+            local line = win.buffer:get_line(win.cursory, true)
             if options.get("startofline") and line then
                 win:cursorSetX(line:find("%S"))
             end
@@ -362,7 +362,7 @@ Command.nmap_callback(
     {K(keys.a, false, true)},
     function()
         local win = windows[curwin]
-        setMode("insert", #win.buffer.lines[win.cursory] + 1, win.cursory)
+        setMode("insert", #(win.buffer:get_line(win.cursory, true) or "") + 1, win.cursory)
     end
 )
 
@@ -372,7 +372,8 @@ Command.nmap_callback(
         local win = windows[curwin]
         local buf = win.buffer
         local new_line = win.cursory + 1
-        table.insert(buf.lines, new_line, "")
+        local buflines = buf:lines_ref(true)
+        table.insert(buflines, new_line, "")
 
         Syntax.ParseLinetypes(buf, new_line)
         if win:indentkeysHasOpenTrigger("o") or options.get("autoindent", nil, buf) then
@@ -392,7 +393,8 @@ Command.nmap_callback(
         local win = windows[curwin]
         local buf = win.buffer
         local new_line = win.cursory
-        table.insert(buf.lines, new_line, "")
+        local buflines = buf:lines_ref(true)
+        table.insert(buflines, new_line, "")
 
         Syntax.ParseLinetypes(buf, new_line)
         if win:indentkeysHasOpenTrigger("O") or options.get("autoindent", nil, buf) then
@@ -438,12 +440,13 @@ Command.nmap_callback(
 
         local win = windows[curwin]
         local buf = win.buffer
+        local buflines = buf:lines_ref(true)
 
         for i = 1, count do
-            local toinsert = buf.lines[win.cursory + 1]
+            local toinsert = buf.lines[win.cursory]
             if toinsert then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + 1)
-                buf.lines[win.cursory] = buf.lines[win.cursory] .. " " .. (removed[1] or toinsert)
+                buflines[win.cursory] = (buf.lines[win.cursory] or "") .. " " .. (removed[1] or toinsert)
             end
         end
 
@@ -462,12 +465,13 @@ Command.nmap_callback(
 
         local win = windows[curwin]
         local buf = win.buffer
+        local buflines = buf:lines_ref(true)
 
         for i = 1, count do
-            local toinsert = buf.lines[win.cursory + 1]
+            local toinsert = buf:get_line(win.cursory + 1, true)
             if toinsert then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + 1)
-                buf.lines[win.cursory] = buf.lines[win.cursory] .. (removed[1] or toinsert)
+                buflines[win.cursory] = (buf:get_line(win.cursory, true) or "") .. (removed[1] or toinsert)
             end
         end
 
@@ -482,7 +486,7 @@ Command.nmap_callback(
     {K(keys.four, false, true)},
     function(count)
         local win = windows[curwin]
-        local line = win.buffer.lines[win.cursory]
+        local line = win.buffer:get_line(win.cursory, true)
         if line then
             win:cursorMove(#line, math.max(0, count and (count - 1) or 0))
         end
@@ -496,7 +500,7 @@ Command.nmap_callback(
     {K(keys.six, false, true)},
     function()
         local win = windows[curwin]
-        local line = win.buffer.lines[win.cursory]
+        local line = win.buffer:get_line(win.cursory, true)
         if line then
             if idx then
                 win:cursorMove(line:find("%S") - win.cursorx, 0)
@@ -509,7 +513,7 @@ Command.nmap_callback(
     {K(keys.g), K(keys.minus, false, true)},
     function(count)
         local win = windows[curwin]
-        local line = win.buffer.lines[win.cursory] or ""
+        local line = win.buffer:get_line(win.cursory, true) or ""
         local idx = line:match("()%S%s*$")
         if idx then
             win:cursorMove(idx - win.cursorx, math.max(0, count and (count - 1) or 0))
@@ -685,7 +689,7 @@ Command.nmap_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(win.cursory - (count or 1))
-        local line = win.buffer.lines[win.cursory]
+        local line = win.buffer:get_line(win.cursory, true)
         if line then
             win:cursorSetX(line:find("%S"))
         end
@@ -697,7 +701,7 @@ Command.nmap_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(win.cursory + (count or 1))
-        local line = win.buffer.lines[win.cursory]
+        local line = win.buffer:get_line(win.cursory, true)
         if line then
             win:cursorSetX(line:find("%S"))
         end
@@ -709,7 +713,7 @@ Command.nmap_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(win.cursory + (count or 1) - 1)
-        local line = win.buffer.lines[win.cursory]
+        local line = win.buffer:get_line(win.cursory, true)
         if line then
             win:cursorSetX(line:find("%S"))
         end
@@ -753,7 +757,7 @@ Command.nmap_callback(
     {K(keys.y), K(keys.y)},
     function(count)
         local win = windows[curwin]
-        local buflines = win.buffer.lines
+        local buflines = win.buffer:lines_ref(true)
 
         local lines = {}
         for i = 1, count or 1 do
@@ -784,16 +788,17 @@ Command.nmap_callback(
         local buf = win.buffer
 
         local bn = "\"" .. (buf.name or "[No Name]") .. "\""
+        local line_count = buf:line_count(true)
         local lines
-        if #buf.lines > 0 then
-            lines = tostring(#buf.lines) .. " line" .. (#buf.lines > 1 and "s " or " ")
+        if line_count > 0 then
+            lines = tostring(line_count) .. " line" .. (line_count > 1 and "s " or " ")
         else
             lines = "--No lines in buffer--"
         end
 
         local scroll
-        if #buf.lines > 0 then
-            scroll = "--" .. tostring(math.floor(win.cursory / #buf.lines * 100)) .. "%--"
+        if line_count > 0 then
+            scroll = "--" .. tostring(math.floor(win.cursory / line_count * 100)) .. "%--"
         else
             scroll = ""
         end
@@ -816,8 +821,9 @@ Command.nmap_operator_with_motions(
 
         if motion_name == "$" then
             local lines = {}
-            lines[1] = buf.lines[win.cursory]:sub(win.cursorx)
-            buf.lines[win.cursory] = buf.lines[win.cursory]:sub(1, win.cursorx - 1)
+            lines[1] = (buf:get_line(win.cursory, true) or ""):sub(win.cursorx)
+            local buflines = buf:lines_ref(true)
+            buflines[win.cursory] = (buf:get_line(win.cursory, true) or ""):sub(1, win.cursorx - 1)
 
             if total > 1 then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + total - 1)
@@ -839,8 +845,9 @@ Command.nmap_operator_with_motions(
         elseif motion_name == "w" then
             local collected = {}
             local remaining = total
+            local buflines = buf:lines_ref(true)
             while remaining > 0 do
-                local line = buf.lines[win.cursory]
+                local line = buf:get_line(win.cursory, true)
                 if not line or win.cursorx > #line then break end
 
                 local ly, sx, ex = WordNav.wordUnder(win, false, win.cursory, win.cursorx)
@@ -852,7 +859,7 @@ Command.nmap_operator_with_motions(
                     win:cursorSetX(nx)
                     ly, sx, ex = WordNav.wordUnder(win, false, ny, nx)
                     if not ly then break end
-                    line = buf.lines[ly]
+                    line = buf:get_line(ly, true)
                 end
 
                 -- Deletion starts at current cursor position within the word
@@ -880,10 +887,10 @@ Command.nmap_operator_with_motions(
 
                 local removed = line:sub(del_start, del_end)
                 table.insert(collected, removed)
-                buf.lines[win.cursory] = line:sub(1, del_start - 1) .. line:sub(del_end + 1)
+                buflines[win.cursory] = line:sub(1, del_start - 1) .. line:sub(del_end + 1)
                 Syntax.ParseLinetypes(buf, win.cursory)
                 -- Keep cursor at del_start (or clamp to line length)
-                local new_line = buf.lines[win.cursory]
+                local new_line = buf:get_line(win.cursory, true)
                 if del_start > #new_line then
                     win:cursorSetX(#new_line + 1) -- allow position after end
                 else
@@ -924,8 +931,9 @@ Command.nmap_operator_with_motions(
 
         if motion_name == "$" then
             local lines = {}
-            lines[1] = buf.lines[win.cursory]:sub(win.cursorx)
-            buf.lines[win.cursory] = buf.lines[win.cursory]:sub(1, win.cursorx - 1)
+            lines[1] = (buf:get_line(win.cursory, true) or ""):sub(win.cursorx)
+            local buflines = buf:lines_ref(true)
+            buflines[win.cursory] = (buf:get_line(win.cursory, true) or ""):sub(1, win.cursorx - 1)
 
             if total > 1 then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + total - 1)

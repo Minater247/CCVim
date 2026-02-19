@@ -1437,6 +1437,42 @@ function Runtime.new(state, opts)
         return nil
     end
 
+    local function _cleanup_failed_split_window(win)
+        if not win then
+            return
+        end
+        if windows[win.winnr] == win then
+            windows[win.winnr] = nil
+        end
+        local buf = win.buffer
+        if buf and type(buf.refcount) == "number" then
+            buf.refcount = math.max(0, buf.refcount - 1)
+        end
+    end
+
+    local function _split_preflight(target_winnr, refwin, vertical)
+        local tabp = tabpages[curtp]
+        if not tabp then
+            return false
+        end
+        local probe = tabp:MakeSplitProbe(refwin)
+        return tabp:WinSplit(target_winnr, probe, vertical, { dry_run = true }) == true
+    end
+
+    local function _split_real(target_winnr, newwin, vertical)
+        local tabp = tabpages[curtp]
+        if not tabp then
+            _cleanup_failed_split_window(newwin)
+            return false
+        end
+        local ok = tabp:WinSplit(target_winnr, newwin, vertical)
+        if not ok then
+            _cleanup_failed_split_window(newwin)
+            return false
+        end
+        return true
+    end
+
     local function _edit_buffer_name(win, newname, bang)
         if newname == win.buffer.name or newname == "" then
             _syntax().OnWindowBufferChanged(win)
@@ -1450,6 +1486,9 @@ function Runtime.new(state, opts)
 
             local newbuf = _buffer_mod()(true, false)
             newbuf.name = newname
+            if newbuf.opts and newbuf.opts.buflisted then
+                Autocmd.Run("BufAdd", _buf_ctx_from(newbuf))
+            end
             _switch_current_buffer(win, newbuf, { skip_enter = true })
             newbuf:Load(true)
             Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
@@ -1518,7 +1557,7 @@ function Runtime.new(state, opts)
     end
 
     local function _cursor_parse_head(cursor, win)
-        local line_count = #win.buffer.lines
+        local line_count = win.buffer:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
@@ -1560,7 +1599,7 @@ function Runtime.new(state, opts)
             return false
         end
 
-        local line_count = #win.buffer.lines
+        local line_count = win.buffer:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
@@ -2146,7 +2185,7 @@ function Runtime.new(state, opts)
         local win = windows[curwin]
         local buf = win.buffer
         local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
-        local line_count = #buf.lines
+        local line_count = buf:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
@@ -2188,7 +2227,7 @@ function Runtime.new(state, opts)
         local changed = false
         local total_subs = 0
         for i = line1, line2 do
-            local current = buf.lines[i] or ""
+            local current = buf:get_line(i, true) or ""
             local next_line, subs, lerr = _substitute_line(compiled, current, replacement, case_sensitive, do_global)
             if Error.IsError(lerr) then
                 return lerr
@@ -2239,7 +2278,7 @@ function Runtime.new(state, opts)
         local win = windows[curwin]
         local buf = win.buffer
         local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
-        local line_count = #buf.lines
+        local line_count = buf:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
@@ -2254,7 +2293,7 @@ function Runtime.new(state, opts)
         local case_sensitive = not truthy(Options.get("ignorecase"))
         local matched_lines = {}
         for i = line1, line2 do
-            local s = VimRegex.find_compiled(buf.lines[i] or "", compiled, case_sensitive)
+            local s = VimRegex.find_compiled(buf:get_line(i, true) or "", compiled, case_sensitive)
             local matched = s ~= nil
             if bang then
                 matched = not matched
@@ -2268,7 +2307,7 @@ function Runtime.new(state, opts)
         local inner = cmd
         for i = 1, #matched_lines do
             local line_no = matched_lines[i] + line_bias
-            local before = #buf.lines
+            local before = buf:line_count(true)
             if before < 1 then
                 before = 1
             end
@@ -2281,7 +2320,7 @@ function Runtime.new(state, opts)
 
             win:cursorSet(win.cursorx, line_no)
             if inner == "" then
-                _exmsg().echo(buf.lines[line_no] or "")
+                _exmsg().echo(buf:get_line(line_no, true) or "")
             else
                 local ok, rv = pcall(function()
                     return self:exec_script(inner)
@@ -2291,7 +2330,7 @@ function Runtime.new(state, opts)
                 end
             end
 
-            local after = #buf.lines
+            local after = buf:line_count(true)
             line_bias = line_bias + (after - before)
         end
 
@@ -2323,7 +2362,7 @@ function Runtime.new(state, opts)
         local win = windows[curwin]
         local buf = win.buffer
         local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
-        local line_count = #buf.lines
+        local line_count = buf:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
@@ -2340,7 +2379,7 @@ function Runtime.new(state, opts)
 
         local rows = {}
         for i = line1, line2 do
-            local text = tostring(buf.lines[i] or "")
+            local text = tostring(buf:get_line(i, true) or "")
             local key = text
             local nkey = nil
             if numeric then
@@ -2422,7 +2461,7 @@ function Runtime.new(state, opts)
         if buf.opts.modified then
             out[#out + 1] = shortmess:find("m", 1, true) and "[+]" or "[Modified]"
         end
-        local line_count = #buf.lines
+        local line_count = buf:line_count(true)
         if line_count > 0 then
             if shortmess:find("l", 1, true) then
                 out[#out + 1] = tostring(line_count) .. "L"
@@ -2923,7 +2962,7 @@ function Runtime.new(state, opts)
         local curbuf = win.buffer
         local bufs = {}
         for _, b in pairs(buffers) do
-            if b and b.lines then bufs[#bufs + 1] = b end
+            if b and b.bufnr then bufs[#bufs + 1] = b end
         end
         table.sort(bufs, function(a, b) return (a.bufnr or 0) < (b.bufnr or 0) end)
         local ordered = {}
@@ -3264,13 +3303,7 @@ function Runtime.new(state, opts)
             local function run_normal_once()
                 local prev_mode = vimmode
                 vimmode = "normal"
-                local ok, rv = pcall(function()
-                    if type(CommandMod.execute_normal_keys) == "function" then
-                        return CommandMod.execute_normal_keys(seq, { remap = not bang })
-                    end
-                    local policy = (not bang) and (CommandMod.POLICY_FULL or 1) or (CommandMod.POLICY_CB_ONLY or 2)
-                    return CommandMod._feed_seq_with_policy(seq, policy, true)
-                end)
+                local ok, rv = pcall(CommandMod.execute_normal_keys, seq, { remap = not bang })
                 vimmode = prev_mode
                 if not ok then
                     error(rv)
@@ -3279,7 +3312,7 @@ function Runtime.new(state, opts)
             end
 
             if has_range then
-                local line_count = #win.buffer.lines
+                local line_count = win.buffer:line_count(true)
                 if line_count < 1 then line_count = 1 end
                 local first = tonumber(l1 or win.cursory or 1) or (win.cursory or 1)
                 local last = tonumber(l2 or first) or first
@@ -3337,6 +3370,31 @@ function Runtime.new(state, opts)
             for i = 1, #msg.messages do
                 msg._writeWithHL(msg.messages[i][2], msg.messages[i][1])
             end
+            return true
+        elseif cmd == "mode" or cmd == "redraw" then
+            what_redraw["all"] = true
+            need_redraw = true
+            return true
+        elseif cmd == "redrawstatus" then
+            if bang then
+                for _, win in pairs(windows) do
+                    win.need_redraw = true
+                end
+                what_redraw["windows"] = true
+            else
+                local win = windows[curwin]
+                if win then
+                    win.need_redraw = true
+                end
+            end
+            -- Also refresh commandline display (ruler/showcmd-style content).
+            what_redraw["commandline"] = true
+            need_redraw = true
+            return true
+        elseif cmd == "redrawtabline" then
+            -- We currently do not have a tabline-only redraw path.
+            what_redraw["all"] = true
+            need_redraw = true
             return true
         elseif cmd == "redir" then
             local spec, perr = _parse_redir_spec(argstr)
@@ -3466,6 +3524,9 @@ function Runtime.new(state, opts)
             if target_buf == curbuf then return true end
             local ok = curbuf:leave(bang, nil, "autowrite")
             if ok ~= true then error(ok) end
+            if target_buf.loaded ~= true then
+                target_buf:Load(true)
+            end
             _switch_current_buffer(win, target_buf)
             target_buf.refcount = target_buf.refcount + 1
             win:cursorSet(1, 1)
@@ -3512,7 +3573,7 @@ function Runtime.new(state, opts)
             if count then
                 line2 = line1 + count - 1
             end
-            local line_count = #buf.lines
+            local line_count = buf:line_count(true)
             if line_count < 1 then
                 line_count = 1
             end
@@ -3522,23 +3583,23 @@ function Runtime.new(state, opts)
 
             local removed = {}
             for i = line1, line2 do
-                removed[#removed + 1] = buf.lines[i] or ""
+                removed[#removed + 1] = buf:get_line(i, true) or ""
             end
             buf:set_lines(line1 - 1, line2, false, {})
             _store_deleted_lines(reg, explicit_reg, removed)
 
             local target_line = line1
-            if target_line > #buf.lines then
-                target_line = #buf.lines
+            if target_line > buf:line_count(true) then
+                target_line = buf:line_count(true)
             end
             if target_line < 1 then
                 target_line = 1
             end
             win:cursorSet(win.cursorx, target_line)
             if post_mode == "print" then
-                _exmsg().echo(buf.lines[target_line] or "")
+                _exmsg().echo(buf:get_line(target_line, true) or "")
             elseif post_mode == "list" then
-                _exmsg().echo(_delete_list_text(buf.lines[target_line] or ""))
+                _exmsg().echo(_delete_list_text(buf:get_line(target_line, true) or ""))
             end
             win.need_redraw = true
             need_redraw = true
@@ -3581,11 +3642,17 @@ function Runtime.new(state, opts)
         elseif cmd == "sfind" then
             local found, err = _resolve_find_name(argstr)
             if not found then error(err) end
+            local refwin = windows[curwin]
+            if not _split_preflight(0, refwin, false) then
+                error(Error(36))
+            end
             local targetbuf = _buffer_mod()(true, false)
             targetbuf.name = found
             targetbuf:Load(true)
-            local newwin = _window_mod()(targetbuf, windows[curwin])
-            tabpages[curtp]:WinSplit(0, newwin, false)
+            local newwin = _window_mod()(targetbuf, refwin)
+            if not _split_real(0, newwin, false) then
+                error(Error(36))
+            end
             enterWindow(newwin.winnr)
             newwin:cursorSet(1, 1)
             return true
@@ -3609,36 +3676,55 @@ function Runtime.new(state, opts)
             local ok = _edit_buffer_name(curwin_obj, target_raw, bang)
             if Error.IsError(ok) then
                 if ok.code ~= 37 then error(ok) end
+                if not _split_preflight(0, curwin_obj, false) then
+                    error(Error(36))
+                end
                 local newbuf = _buffer_mod()(true, false)
                 newbuf.name = target_raw
                 newbuf:Load(true)
                 local newwin = _window_mod()(newbuf, curwin_obj)
-                tabpages[curtp]:WinSplit(0, newwin, false)
+                if not _split_real(0, newwin, false) then
+                    error(Error(36))
+                end
                 enterWindow(newwin.winnr)
                 newwin:cursorSet(1, 1)
                 return true
             end
             return true
         elseif cmd == "split" then
-            local targetbuf = windows[curwin].buffer
+            local refwin = windows[curwin]
+            if not _split_preflight(0, refwin, false) then
+                error(Error(36))
+            end
+
+            local targetbuf = refwin.buffer
             if #split_ws(argstr) ~= 0 then
                 targetbuf = _buffer_mod()(true, false)
                 targetbuf.name = argstr
                 targetbuf:Load(true)
             end
-            local newwin = _window_mod()(targetbuf, windows[curwin])
-            tabpages[curtp]:WinSplit(0, newwin, false)
+            local newwin = _window_mod()(targetbuf, refwin)
+            if not _split_real(0, newwin, false) then
+                error(Error(36))
+            end
             enterWindow(newwin.winnr)
             return true
         elseif cmd == "vsplit" then
-            local targetbuf = windows[curwin].buffer
+            local refwin = windows[curwin]
+            if not _split_preflight(0, refwin, true) then
+                error(Error(36))
+            end
+
+            local targetbuf = refwin.buffer
             if #split_ws(argstr) ~= 0 then
                 targetbuf = _buffer_mod()(true, false)
                 targetbuf.name = argstr
                 targetbuf:Load(true)
             end
-            local newwin = _window_mod()(targetbuf, windows[curwin])
-            tabpages[curtp]:WinSplit(0, newwin, true)
+            local newwin = _window_mod()(targetbuf, refwin)
+            if not _split_real(0, newwin, true) then
+                error(Error(36))
+            end
             enterWindow(newwin.winnr)
             return true
         elseif cmd == "wincmd" then
@@ -3680,7 +3766,11 @@ function Runtime.new(state, opts)
                 end
             end
 
-            return windows[curwin]:wincmd(key, count)
+            local rv = windows[curwin]:wincmd(key, count)
+            if Error.IsError(rv) then
+                error(rv)
+            end
+            return rv
         elseif cmd == "windo" then
             local cmdline = argstr
             if cmdline == "" then error(Error(474, "Argument required")) end
@@ -3835,6 +3925,9 @@ function Runtime.new(state, opts)
                     target_win = tabwin
                 end
             end
+            if not target_win and not _split_preflight(-1, nil, false) then
+                error(Error(36))
+            end
             local newbuf = _buffer_mod()(true, false)
             newbuf.opts.buftype = "help"
             newbuf.opts.readonly = true
@@ -3845,7 +3938,9 @@ function Runtime.new(state, opts)
                 target_win.buffer = newbuf
             else
                 target_win = _window_mod()(newbuf)
-                tabpages[curtp]:WinSplit(-1, target_win, false)
+                if not _split_real(-1, target_win, false) then
+                    error(Error(36))
+                end
             end
             enterWindow(target_win.winnr)
             return true

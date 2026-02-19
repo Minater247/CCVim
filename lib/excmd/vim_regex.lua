@@ -146,6 +146,8 @@ local function tokenize_simple(pat)
     local function is_magic_char(ch)
         if mode == "verymagic" then
             return ch:match("[%^%$%.%*%+%?%[%]%(%){|}]") ~= nil
+        elseif mode == "nomagic" then
+            return ch == "^" or ch == "$"
         elseif mode == "verynomagic" then
             return ch == "." or ch == "^" or ch == "$"
         else
@@ -218,6 +220,16 @@ local function tokenize_simple(pat)
             end
             if e == "V" then
                 mode = "verynomagic"
+                i = i + 2
+                goto cont
+            end
+            if e == "m" then
+                mode = "magic"
+                i = i + 2
+                goto cont
+            end
+            if e == "M" then
+                mode = "nomagic"
                 i = i + 2
                 goto cont
             end
@@ -294,7 +306,7 @@ local function tokenize_simple(pat)
             goto cont
         end
 
-        if c == "[" and mode ~= "verynomagic" then
+        if c == "[" and (mode == "magic" or mode == "verymagic") then
             add("BCLASS", read_bracket_class())
             goto cont
         end
@@ -823,6 +835,8 @@ local VM_CLASS_CODES = {
 local function vm_is_magic_char(mode, ch)
     if mode == "verymagic" then
         return ch:match("[%^%$%.%*%+%?%[%]%(%){|}]") ~= nil
+    elseif mode == "nomagic" then
+        return ch == "^" or ch == "$"
     elseif mode == "verynomagic" then
         return ch == "." or ch == "^" or ch == "$"
     else
@@ -1063,6 +1077,16 @@ local function vm_tokenize(pat)
                 i = i + 2
                 goto cont
             end
+            if e == "m" then
+                mode = "magic"
+                i = i + 2
+                goto cont
+            end
+            if e == "M" then
+                mode = "nomagic"
+                i = i + 2
+                goto cont
+            end
 
             if e == "n" then
                 add("LIT", "\n")
@@ -1225,7 +1249,7 @@ local function vm_tokenize(pat)
             goto cont
         end
 
-        if c == "[" and mode ~= "verynomagic" then
+        if c == "[" and (mode == "magic" or mode == "verymagic") then
             local raw, after_or_err = read_bracket_class(i)
             if not raw then
                 return nil, after_or_err

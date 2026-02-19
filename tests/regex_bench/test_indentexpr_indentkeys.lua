@@ -11,7 +11,6 @@ local mock = MockEnv.setup({
         blit = function() end,
     },
     module_stubs = {
-        ["vim.layout.buffer"] = {},
         ["vim.lib.highlight"] = {
             SetFor = function() end,
             For = function() return { colors.white, colors.black } end,
@@ -52,6 +51,7 @@ local mock = MockEnv.setup({
 
 local Options = mock.loadModule("vim.lib.options")
 _G.options = Options
+local Buffer = mock.loadModule("vim.layout.buffer")
 local Window = mock.loadModule("vim.layout.window")
 
 local function assert_eq(label, got, want)
@@ -60,14 +60,10 @@ local function assert_eq(label, got, want)
     end
 end
 
-local buf = {
-    bufnr = 1,
-    name = "/tmp/test.lua",
-    opts = {},
-    lines = { "if true then" },
-    refcount = 0,
-}
-buffers[1] = buf
+local buf = Buffer(true, false)
+buf.name = "/tmp/test.lua"
+buf.lines = { "if true then" }
+buf.refcount = 0
 
 local win = Window:new(buf)
 windows[win.winnr] = win

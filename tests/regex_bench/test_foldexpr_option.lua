@@ -17,7 +17,6 @@ local mock = MockEnv.setup({
     module_stubs = {
         ["vim.lib.exmsg"] = exmsg_stub,
         ["vim.lib.excmd.exmsg"] = exmsg_stub,
-        ["vim.layout.buffer"] = {},
         ["vim.lib.highlight"] = {
             GroupExists = function() return false end,
             For = function() return { colors.white, colors.black } end,
@@ -43,6 +42,7 @@ _G.options = Options
 local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
 local Compiler = mock.loadModule("vim.lib.excmd.compiler")
 local Runtime = mock.loadModule("vim.lib.excmd.runtime")
+local Buffer = mock.loadModule("vim.layout.buffer")
 
 local durable_by_ctx = {}
 local function run_compiled(script, opts)
@@ -72,12 +72,11 @@ local function run_compiled(script, opts)
     return true, rv
 end
 
-local buf = {
-    bufnr = 1,
-    name = "/tmp/test.txt",
-    opts = {},
-    lines = { "" },
-}
+local buf = Buffer(true, false, true)
+buf.name = "/tmp/test.txt"
+buf.lines = { "" }
+buf.loaded = true
+buf.leave = function() return true end
 local win = {
     winnr = 1,
     buffer = buf,

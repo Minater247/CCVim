@@ -40,6 +40,8 @@ local opt_locs = {
     comments = "ltb",
     commentstring = "ltb",
     completefunc = "ltb",
+    concealcursor = "ltw",
+    conceallevel = "ltw",
     copyindent = "ltb",
     cpoptions = "ggg",
     cursorcolumn = "ltw",
@@ -63,6 +65,7 @@ local opt_locs = {
     foldmethod = "ltw",
     formatoptions = "ltb",
     gdefault = "ggg",
+    guicursor = "ggg",
     guioptions = "ggg",
     hidden = "ggg",
     include = "gob",
@@ -124,9 +127,12 @@ local opt_locs = {
     textwidth = "ltb",
     timeout = "ggg",
     timeoutlen = "ggg",
+    undofile = "gob",
+    undolevels = "gob",
     updatecount = "ggg",
     varsofttabstop = "ltb",
     vartabstop = "ltb",
+    winblend = "ltw",
     wildignore = "ggg",
     winfixheight = "ltw",
     winfixwidth = "ltw",
@@ -160,6 +166,8 @@ local opt_defaults = {
     comments = "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-",
     commentstring = "",
     completefunc = "",
+    concealcursor = "",
+    conceallevel = 0,
     copyindent = false,
     cpoptions = "aABceFs_",
     cursorcolumn = false,
@@ -183,6 +191,7 @@ local opt_defaults = {
     foldmethod = "manual",
     formatoptions = "tcqj",
     gdefault = false,
+    guicursor = "n-v-c-sm:block,i-ci-ve:ver25,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor",
     guioptions = "egmrLT",
     hidden = true,
     include = "",
@@ -244,10 +253,13 @@ local opt_defaults = {
     textwidth = 0,
     timeout = true,
     timeoutlen = 1000,
+    undofile = false,
+    undolevels = 1000,
     updatecount = 200,
     varsofttabstop = "",
     vartabstop = "",
     wildignore = "",
+    winblend = 0,
     winfixheight = false,
     winfixwidth = false,
     winheight = 1,
@@ -283,6 +295,8 @@ local opt_types = {
     comments = "string",
     commentstring = "string",
     completefunc = "stringfunc",
+    concealcursor = "string",
+    conceallevel = "number",
     copyindent = "boolean",
     cpoptions = "string",
     cursorcolumn = "boolean",
@@ -306,6 +320,7 @@ local opt_types = {
     foldmethod = "string",
     formatoptions = "string",
     gdefault = "boolean",
+    guicursor = "string",
     guioptions = "string",
     hidden = "boolean",
     include = "string",
@@ -367,10 +382,13 @@ local opt_types = {
     textwidth = "number",
     timeout = "boolean",
     timeoutlen = "number",
+    undofile = "boolean",
+    undolevels = "number",
     updatecount = "number",
     varsofttabstop = "string",
     vartabstop = "string",
     wildignore = "string",
+    winblend = "number",
     winfixheight = "boolean",
     winfixwidth = "boolean",
     winheight = "number",
@@ -571,6 +589,8 @@ local opt_aliases = {
     cino = "cinoptions",
     com = "comments",
     cms = "commentstring",
+    cocu = "concealcursor",
+    cole = "conceallevel",
     cfu = "completefunc",
     cpo = "cpoptions",
     cuc = "cursorcolumn",
@@ -592,6 +612,7 @@ local opt_aliases = {
     fde = "foldexpr",
     fdm = "foldmethod",
     fo = "formatoptions",
+    gcr = "guicursor",
     hid = "hidden",
     inc = "include",
     inex = "includeexpr",
@@ -648,9 +669,12 @@ local opt_aliases = {
     tgc = "termguicolors",
     to = "timeout",
     tm = "timeoutlen",
+    udf = "undofile",
+    ul = "undolevels",
     uc = "updatecount",
     vsts = "varsofttabstop",
     vts = "vartabstop",
+    winbl = "winblend",
     wfh = "winfixheight",
     wfw = "winfixwidth",
     wh = "winheight",
@@ -983,6 +1007,38 @@ local function split_name_value_raw(raw, sep_set)
     return raw, nil, nil
 end
 
+local function _request_window_redraw(win)
+    if win then
+        win.need_redraw = true
+    else
+        what_redraw["windows"] = true
+    end
+    need_redraw = true
+end
+
+local function _request_full_redraw()
+    what_redraw["all"] = true
+    need_redraw = true
+end
+
+local function _is_window_only_option_redraw(loc, setlocal, setglobal)
+    if setglobal then
+        return false
+    end
+    if not setlocal then
+        return false
+    end
+    return loc == "gob" or loc == "gow" or loc == "ltb" or loc == "ltw"
+end
+
+local function _request_option_redraw(loc, setlocal, setglobal, win)
+    if _is_window_only_option_redraw(loc, setlocal, setglobal) then
+        _request_window_redraw(win)
+    else
+        _request_full_redraw()
+    end
+end
+
 local keyed_csl_cache = {}
 --- Parse a keyed CSL into a named array
 function Options.ParseKeyedCSL(raw, sep_set)
@@ -1067,6 +1123,22 @@ local option_updatees = {
     end,
     listchars = function(_value, _win)
         what_redraw["windows"] = true
+        need_redraw = true
+    end,
+    concealcursor = function(_value, win)
+        if win then
+            win.need_redraw = true
+        else
+            what_redraw["windows"] = true
+        end
+        need_redraw = true
+    end,
+    conceallevel = function(_value, win)
+        if win then
+            win.need_redraw = true
+        else
+            what_redraw["windows"] = true
+        end
         need_redraw = true
     end,
     filetype = function(value, _win, buffer, _setlocal, _setglobal, oldvalue)
@@ -1212,6 +1284,7 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
 
     local updatee = option_updatees[name]
     if updatee then updatee(value, window, buffer, setlocal, setglobal, oldvalue) end
+    _request_option_redraw(loc, setlocal, setglobal, window)
 end
 
 local function _unescape(s) return (tostring(s or ""):gsub("\\(.)", "%1")) end
@@ -1253,7 +1326,6 @@ local function _apply_value(name, value, mode, window, buffer)
     local loc = opt_locs[name]
     if loc == "ggg" then
         global_opts[name] = value
-        return
     elseif loc == "gob" or loc == "gow" or loc == "got" then
         if mode == "global" then
             global_opts[name] = value
@@ -1275,7 +1347,6 @@ local function _apply_value(name, value, mode, window, buffer)
                 tabpages[curtp].opts[name] = value
             end
         end
-        return
     elseif loc == "ltb" then
         if mode == "global" then
             global_opts[name] = value
@@ -1313,6 +1384,7 @@ local function _apply_value(name, value, mode, window, buffer)
     if updatee then
         updatee(value, window, buffer, mode == "local", mode == "global", oldvalue)
     end
+    _request_option_redraw(loc, mode == "local", mode == "global", window)
 end
 
 -- =========================

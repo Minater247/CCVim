@@ -1032,9 +1032,6 @@ local function eval_node(node, vim9, env)
             local v = eval_node(node.args[i], vim9, env); if is_error(v) then return v end
             argv[i] = v
         end
-        if node.name == "exists" then
-            LOG_DEBUG("vimxpr exists() argv[1]=%s type=%s", tostring(argv[1]), type(argv[1]))
-        end
         local ok, rv = pcall(f, table.unpack(argv))
         if not ok then
             if (Error.IsError(rv)) then

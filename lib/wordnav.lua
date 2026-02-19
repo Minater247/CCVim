@@ -224,7 +224,7 @@ function WordNav.posNext(win, isWORD, to_end, count, y, x)
 	y           = y or win.cursory
 	x           = x or win.cursorx
 
-	local lines = win.buffer.lines
+	local lines = win.buffer:lines_ref(true)
 	if #lines == 0 then return nil end
 	local kwset = _build_iskeyword_set(win.buffer)
 
@@ -241,7 +241,7 @@ function WordNav.posPrev(win, isWORD, to_end, count, y, x)
 	y           = y or win.cursory
 	x           = x or win.cursorx
 
-	local lines = win.buffer.lines
+	local lines = win.buffer:lines_ref(true)
 	if #lines == 0 then return nil end
 	local kwset = _build_iskeyword_set(win.buffer)
 
@@ -261,7 +261,7 @@ function WordNav.wordUnder(win, isWORD, y, x)
 	y = y or win.cursory
 	x = x or win.cursorx
 
-	local lines = win.buffer.lines
+	local lines = win.buffer:lines_ref(true)
 	if #lines == 0 then return nil end
 	if y < 1 or y > #lines then return nil end
 	local line = lines[y] or ""
