@@ -128,6 +128,22 @@ function ApiBuild.Build()
         return (s:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1"))
     end
 
+    local function vim_trim(s)
+        vim_validate("s", s, "string")
+        return s:match("^%s*(.*%S)") or ""
+    end
+
+    local function vim_list_extend(dst, src, start, finish)
+        vim_validate("dst", dst, "table")
+        vim_validate("src", src, "table")
+        vim_validate("start", start, "number", true)
+        vim_validate("finish", finish, "number", true)
+        for i = start or 1, finish or #src do
+            table.insert(dst, src[i])
+        end
+        return dst
+    end
+
     local function vim_regex(re)
         local compiled, c_err = VimRegex.compile(re)
         if not compiled then
@@ -251,10 +267,13 @@ function ApiBuild.Build()
             schedule_wrap = timerutils.schedule_wrap,
             log = log,
             notify = notify.notify,
+            notify_once = notify.notify_once,
             tbl_contains = tblutils.contains,
             tbl_filter = tblutils.filter,
             tbl_isempty = tblutils.isempty,
+            tbl_keys = tblutils.keys,
             tbl_map = tblutils.map,
+            tbl_values = tblutils.values,
             deepcopy = tblutils.deepcopy,
             print = print.print,
             inspect = print.inspect,
@@ -262,11 +281,14 @@ function ApiBuild.Build()
             env = env,
             system = system,
             startswith = strutils.startswith,
+            endswith = strutils.endswith,
             fs = vimfs,
             F = F,
             filetype = filetype_proxy,
             treesitter = treesitter,
             validate = vim_validate,
+            trim = vim_trim,
+            list_extend = vim_list_extend,
             pesc = vim_pesc,
             regex = vim_regex,
             _with = vim_with,

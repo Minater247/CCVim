@@ -147,11 +147,11 @@ local function compute_root_end(bufnr)
     if not buf then
         return 0, 0
     end
-    local line_count = #buf.lines
+    local line_count = buf:line_count(false)
     if line_count < 1 then
         return 0, 0
     end
-    local last = buf.lines[line_count] or ""
+    local last = buf:get_line(line_count, false) or ""
     return line_count - 1, #last
 end
 

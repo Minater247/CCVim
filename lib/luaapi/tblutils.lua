@@ -174,4 +174,26 @@ function tbl.map(func, t)
     return t
 end
 
+function tbl.keys(t)
+    if type(t) ~= "table" then
+        error(("t: expected table, got %s"):format(type(t)))
+    end
+    local out = {}
+    for k in pairs(t) do
+        out[#out + 1] = k
+    end
+    return out
+end
+
+function tbl.values(t)
+    if type(t) ~= "table" then
+        error(("t: expected table, got %s"):format(type(t)))
+    end
+    local out = {}
+    for _, v in pairs(t) do
+        out[#out + 1] = v
+    end
+    return out
+end
+
 return tbl

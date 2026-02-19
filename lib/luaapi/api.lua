@@ -85,6 +85,29 @@ local function buf_for_bufnr(bufid)
     end
 end
 
+local function buffer_is_loaded(buf)
+    return buf ~= nil and buf.loaded == true
+end
+
+local function request_buffer_redraw(buf, full)
+    if not buf then
+        return
+    end
+    local has_attached_window = false
+    for _, win in pairs(windows) do
+        if win.buffer == buf then
+            win.need_redraw = true
+            has_attached_window = true
+        end
+    end
+    if full then
+        what_redraw["all"] = true
+    elseif not has_attached_window then
+        what_redraw["windows"] = true
+    end
+    need_redraw = true
+end
+
 -- ========================
 -- Namespace Management
 -- ========================
@@ -158,6 +181,20 @@ function api.nvim_win_get_cursor(...)
     return { win.cursory, win.cursorx - 1 }
 end
 
+function api.nvim_win_get_number(...)
+    local window = expect_args({ ... }, 1)
+    local win = win_for_id(window)
+    local tp = tabpages[win.tabpagenr]
+    if tp and tp.windows then
+        for i = 1, #tp.windows do
+            if tp.windows[i] == win then
+                return i
+            end
+        end
+    end
+    return win.winnr
+end
+
 function api.nvim_list_wins()
     local rv = {}
     for k in pairs(windows) do
@@ -173,6 +210,29 @@ function api.nvim_open_win(buffer, enter, config)
 
     local buf = buf_for_bufnr(buffer)
     assert(buf)
+
+    local function cleanup_failed_split_window(win)
+        if not win then
+            return
+        end
+        if windows[win.winnr] == win then
+            windows[win.winnr] = nil
+        end
+        local b = win.buffer
+        if b and type(b.refcount) == "number" then
+            b.refcount = math.max(0, b.refcount - 1)
+        end
+    end
+
+    local tabp = tabpages[curtp]
+    local split_target = config.win or 0
+
+    if not config.relative then
+        local probe = tabp:MakeSplitProbe(nil)
+        if not tabp:WinSplit(split_target, probe, false, { dry_run = true }) then
+            error(Error(36):toString())
+        end
+    end
 
     local newwin = Window(buf)
 
@@ -195,7 +255,10 @@ function api.nvim_open_win(buffer, enter, config)
         table.insert(tabpages[curtp].windows, newwin)
         newwin.tabpagenr = curtp
     else
-        tabpages[curtp]:WinSplit(config.win or 0, newwin, false)
+        if not tabpages[curtp]:WinSplit(split_target, newwin, false) then
+            cleanup_failed_split_window(newwin)
+            error(Error(36):toString())
+        end
     end
 
     if config.focusable ~= nil then
@@ -233,6 +296,36 @@ function api.nvim_win_is_valid(...)
     return windows[window] ~= nil
 end
 
+function api.nvim_win_set_buf(...)
+    local window, buffer = expect_args({ ... }, 2)
+    local win = win_for_id(window)
+    local newbuf = buf_for_bufnr(buffer)
+    assert(newbuf)
+
+    local oldbuf = win.buffer
+    if oldbuf == newbuf then
+        return
+    end
+
+    if not buffer_is_loaded(newbuf) then
+        newbuf:Load(true)
+    end
+
+    if oldbuf then
+        oldbuf.refcount = math.max(0, (oldbuf.refcount or 1) - 1)
+        win.altbuf = oldbuf
+    end
+    win.buffer = newbuf
+    newbuf.refcount = (newbuf.refcount or 0) + 1
+
+    local Syntax = loadModule("vim.lib.syntax")
+    Syntax.OnWindowBufferChanged(win)
+    scopes.w.current_syntax = nil
+    win.need_redraw = true
+    what_redraw["windows"] = true
+    need_redraw = true
+end
+
 function api.nvim_win_call(window, fun)
     window = win_for_id(window).winnr
 
@@ -267,6 +360,41 @@ function api.nvim_win_get_config(window)
         style = window.style,
         -- TODO: winborder
     }
+end
+
+function api.nvim_win_set_var(...)
+    local window, name, value = expect_args({ ... }, 3)
+    local win = win_for_id(window)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_win_set_var: name must be non-empty string")
+    end
+    scopes.w[win.winnr][name] = value
+end
+
+function api.nvim_win_get_var(...)
+    local window, name = expect_args({ ... }, 2)
+    local win = win_for_id(window)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_win_get_var: name must be non-empty string")
+    end
+    local value = scopes.w[win.winnr][name]
+    if value == nil then
+        error("nvim_win_get_var: Key not found: " .. name)
+    end
+    return value
+end
+
+function api.nvim_win_del_var(...)
+    local window, name = expect_args({ ... }, 2)
+    local win = win_for_id(window)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_win_del_var: name must be non-empty string")
+    end
+    local wscope = scopes.w[win.winnr]
+    if wscope[name] == nil then
+        error("nvim_win_del_var: Key not found: " .. name)
+    end
+    wscope[name] = nil
 end
 
 function api.nvim_win_get_width(window)
@@ -351,7 +479,7 @@ end
 -- =================
 
 function api.nvim_create_buf(listed, scratch)
-    local buf = Buffer(listed, scratch)
+    local buf = Buffer(listed, scratch, true)
     return buf.bufnr
 end
 
@@ -360,6 +488,7 @@ function api.nvim_buf_set_lines(buffer, start, end_, strict_indexing, replacemen
     assert(buf)
 
     buf:set_lines(start, end_, strict_indexing, replacement)
+    request_buffer_redraw(buf, true)
 end
 
 -- TODO: Translate from string to sequence
@@ -459,15 +588,15 @@ function api.nvim_set_option_value(name, value, opts)
     opts = opts or {}
 
     local win, buf
-    if opts.win then
+    if opts.win ~= nil then
         win = win_for_id(opts.win)
     else
         win = windows[curwin]
     end
-    if opts.buf then
-        buf = buffers[opts.buf]
+    if opts.buf ~= nil then
+        buf = buf_for_bufnr(opts.buf)
     else
-        buf = win.buffer
+        buf = win and win.buffer or buf_for_bufnr(0)
     end
 
     return options.set(name, value, opts.scope == "local", win, buf, opts.scope == "global")
@@ -480,15 +609,15 @@ function api.nvim_get_option_value(name, opts)
     opts = opts or {}
 
     local win, buf
-    if opts.win then
+    if opts.win ~= nil then
         win = win_for_id(opts.win)
     else
         win = windows[curwin]
     end
-    if opts.buf then
-        buf = buffers[opts.buf]
+    if opts.buf ~= nil then
+        buf = buf_for_bufnr(opts.buf)
     else
-        buf = win.buffer
+        buf = win and win.buffer or buf_for_bufnr(0)
     end
 
     return options.get(name, win, buf, opts.scope == "local", opts.scope == "global")
@@ -880,6 +1009,12 @@ function api.nvim_get_current_buf()
     return windows[curwin].buffer.bufnr
 end
 
+function api.nvim_set_current_buf(buffer)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    api.nvim_win_set_buf(0, buf.bufnr)
+end
+
 function api.nvim_buf_get_name(bufnr)
     local buf = buf_for_bufnr(bufnr)
     assert(buf)
@@ -899,18 +1034,299 @@ function api.nvim_buf_is_valid(bufnr)
     return buf_for_bufnr(bufnr) ~= nil -- TODO: wrong semantics, this is not what valid means!
 end
 
+function api.nvim_buf_set_var(buffer, name, value)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_buf_set_var: name must be non-empty string")
+    end
+    scopes.b[buf.bufnr][name] = value
+end
+
+function api.nvim_buf_get_var(buffer, name)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_buf_get_var: name must be non-empty string")
+    end
+    local value = scopes.b[buf.bufnr][name]
+    if value == nil then
+        error("nvim_buf_get_var: Key not found: " .. name)
+    end
+    return value
+end
+
+function api.nvim_buf_del_var(buffer, name)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_buf_del_var: name must be non-empty string")
+    end
+    local bscope = scopes.b[buf.bufnr]
+    if bscope[name] == nil then
+        error("nvim_buf_del_var: Key not found: " .. name)
+    end
+    bscope[name] = nil
+end
+
 function api.nvim_buf_set_name(bufnr, name)
     local buf = buf_for_bufnr(bufnr)
     assert(buf)
 
     buf.name = name
+    request_buffer_redraw(buf, false)
 end
 
 -- TODO: Proper swap file and load/store semantics
 function api.nvim_buf_is_loaded(bufnr)
     local buf = buf_for_bufnr(bufnr)
+    if not buf then
+        return false
+    end
+    return buffer_is_loaded(buf)
+end
 
-    return buf.lines ~= nil
+function api.nvim_buf_delete(buffer, opts)
+    opts = opts or {}
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+
+    local force = not not opts.force
+    local unload = not not opts.unload
+
+    if (buf.opts and buf.opts.modified) and not force then
+        error("nvim_buf_delete: buffer has unsaved changes (use force=true)")
+    end
+
+    local function normalize_altbuf(alt)
+        if type(alt) == "number" then
+            return buffers[alt]
+        elseif type(alt) == "table" then
+            return alt
+        end
+    end
+
+    local function pick_replacement(prefer_win)
+        local alt = normalize_altbuf(prefer_win and prefer_win.altbuf)
+        if alt and alt ~= buf and buffers[alt.bufnr] then
+            return alt
+        end
+
+        local ids = {}
+        for id, _ in pairs(buffers) do
+            ids[#ids + 1] = id
+        end
+        table.sort(ids)
+        for _, id in ipairs(ids) do
+            local candidate = buffers[id]
+            if candidate and candidate ~= buf then
+                return candidate
+            end
+        end
+
+        local created = Buffer(true, false, true)
+        created.name = ""
+        return created
+    end
+
+    for _, win in pairs(windows) do
+        if win.buffer == buf then
+            local replacement = pick_replacement(win)
+            if replacement ~= buf then
+                buf.refcount = math.max(0, (buf.refcount or 1) - 1)
+                win.buffer = replacement
+                replacement.refcount = (replacement.refcount or 0) + 1
+                if win.altbuf == buf or win.altbuf == buf.bufnr then
+                    win.altbuf = nil
+                end
+                local Syntax = loadModule("vim.lib.syntax")
+                Syntax.OnWindowBufferChanged(win)
+                win.need_redraw = true
+            end
+        elseif win.altbuf == buf or win.altbuf == buf.bufnr then
+            win.altbuf = nil
+        end
+    end
+
+    scopes._b_by_buf[buf.bufnr] = nil
+
+    if unload then
+        buf.lines = {}
+        buf.loaded = false
+        buf.syntax_ctx = nil
+        buf.state = "hidden"
+    else
+        buffers[buf.bufnr] = nil
+    end
+
+    what_redraw["windows"] = true
+    need_redraw = true
+end
+
+function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    buf._extmarks = buf._extmarks or {}
+
+    if ns_id == -1 then
+        buf._extmarks = {}
+        return
+    end
+
+    if not buf._extmarks[ns_id] then
+        return
+    end
+
+    local ns_marks = buf._extmarks[ns_id]
+    if line_start == nil then line_start = 0 end
+    if line_end == nil then line_end = -1 end
+
+    if line_start == 0 and line_end == -1 then
+        buf._extmarks[ns_id] = {}
+        return
+    end
+
+    for id, mark in pairs(ns_marks) do
+        local lnum = mark.line or 0
+        local in_range = lnum >= line_start and (line_end < 0 or lnum < line_end)
+        if in_range then
+            ns_marks[id] = nil
+        end
+    end
+end
+
+function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    opts = opts or {}
+    buf._extmarks = buf._extmarks or {}
+    buf._extmarks[ns_id] = buf._extmarks[ns_id] or {}
+
+    local ns_marks = buf._extmarks[ns_id]
+    buf._next_extmark_id = buf._next_extmark_id or {}
+    local id = opts.id
+    if not id then
+        local nextid = buf._next_extmark_id[ns_id] or 1
+        id = nextid
+        buf._next_extmark_id[ns_id] = nextid + 1
+    end
+
+    ns_marks[id] = {
+        line = line,
+        col = col,
+        opts = opts,
+    }
+    return id
+end
+
+function api.nvim_strwidth(text)
+    text = tostring(text or "")
+    local ok, width = pcall(utf8.len, text)
+    if ok and width then
+        return width
+    end
+    return #text
+end
+
+function api.nvim_echo(chunks, history, opts)
+    local parts = {}
+    if type(chunks) == "table" then
+        for i = 1, #chunks do
+            local item = chunks[i]
+            if type(item) == "table" then
+                parts[#parts + 1] = tostring(item[1] or "")
+            else
+                parts[#parts + 1] = tostring(item)
+            end
+        end
+    else
+        parts[#parts + 1] = tostring(chunks or "")
+    end
+    ExMsg.echo(table.concat(parts))
+end
+
+function api.nvim_list_tabpages()
+    local out = {}
+    for tabnr, _ in pairs(tabpages) do
+        out[#out + 1] = tabnr
+    end
+    table.sort(out)
+    return out
+end
+
+function api.nvim_win_get_height(window)
+    local win = win_for_id(window)
+    if win.frame then
+        return win.frame.height
+    end
+    return (win.floatpos and win.floatpos.h) or screen.height
+end
+
+function api.nvim_win_set_config(window, config)
+    local win = win_for_id(window)
+    config = config or {}
+    win.floatpos = win.floatpos or {
+        reltype = "",
+        y = 0,
+        x = 0,
+        w = screen.width,
+        h = screen.height,
+    }
+
+    if config.relative ~= nil then win.floatpos.reltype = config.relative end
+    if config.row ~= nil then win.floatpos.y = config.row end
+    if config.col ~= nil then win.floatpos.x = config.col end
+    if config.width ~= nil then win.floatpos.w = config.width end
+    if config.height ~= nil then win.floatpos.h = config.height end
+end
+
+function api.nvim_replace_termcodes(str, from_part, do_lt, special)
+    return tostring(str or "")
+end
+
+function api.nvim_feedkeys(keys, mode, escape_ks)
+    local seq = Key.strtoseq(tostring(keys or ""))
+    Command.emit_raw(seq)
+end
+
+local _term_next_chan_id = 1
+local _term_channels = {}
+
+function api.nvim_open_term(buffer, opts)
+    local bufnr = (buffer == 0) and windows[curwin].buffer.bufnr or buffer
+    local buf = buf_for_bufnr(bufnr)
+    assert(buf)
+
+    local chan = _term_next_chan_id
+    _term_next_chan_id = _term_next_chan_id + 1
+    _term_channels[chan] = { bufnr = buf.bufnr, on_input = opts and opts.on_input }
+    return chan
+end
+
+function api.nvim_chan_send(chan, data)
+    local entry = _term_channels[chan]
+    if not entry then
+        return 0
+    end
+    local buf = buffers[entry.bufnr]
+    if not buf then
+        return 0
+    end
+    local text = tostring(data or "")
+    buf:ensure_loaded(true)
+    local buflines = buf:lines_ref(true)
+    if #buflines == 1 and buflines[1] == "" then
+        buflines[1] = nil
+    end
+    for line in (text .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+        buflines[#buflines + 1] = line
+    end
+    if #buflines == 0 then
+        buflines[1] = ""
+    end
+    what_redraw["all"] = true
+    need_redraw = true
+    return #text
 end
 
 -- TODO: returning non-shell, non-error output if `output` is true
@@ -947,14 +1363,14 @@ function api.nvim_buf_line_count(bufnr)
     local buf = buf_for_bufnr(bufnr)
     assert(buf)
 
-    return #buf.lines
+    return buf:line_count(false)
 end
 
 function api.nvim_buf_get_lines(bufnr, start, _end, strict_indexing)
     local buf = buf_for_bufnr(bufnr)
     assert(buf)
 
-    local line_count = #buf.lines
+    local line_count = buf:line_count(false)
 
     -- Normalize negatives relative to end+1 (0-based)
     local s = start >= 0 and start or (line_count + 1 + start)
@@ -978,7 +1394,7 @@ function api.nvim_buf_get_lines(bufnr, start, _end, strict_indexing)
 
     local out = {}
     for i = start1, end1 do
-        out[#out + 1] = buf.lines[i]
+        out[#out + 1] = buf:get_line(i, false)
     end
 
     return out
