@@ -129,8 +129,6 @@ function ScriptSource.source_runtime(path)
 end
 
 function ScriptSource.source(path)
-    LOG_DEBUG("source: " .. path)
-
     local pre = os.epoch("utc")
 
     local internalpath = Filesystem.Expand(path)

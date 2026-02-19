@@ -892,6 +892,45 @@ function api.nvim_create_augroup(name, opts)
     return id
 end
 
+local function _split_autocmd_pattern_csv(raw)
+    if type(raw) ~= "string" then
+        return { raw }
+    end
+
+    local out = {}
+    local piece = {}
+    local i = 1
+    while i <= #raw do
+        local ch = raw:sub(i, i)
+        if ch == "\\" and i < #raw then
+            local nxt = raw:sub(i + 1, i + 1)
+            if nxt == "," then
+                piece[#piece + 1] = ","
+                i = i + 2
+            else
+                piece[#piece + 1] = ch
+                i = i + 1
+            end
+        elseif ch == "," then
+            local pat = table.concat(piece)
+            if pat ~= "" then
+                out[#out + 1] = pat
+            end
+            piece = {}
+            i = i + 1
+        else
+            piece[#piece + 1] = ch
+            i = i + 1
+        end
+    end
+
+    local tail = table.concat(piece)
+    if tail ~= "" then
+        out[#out + 1] = tail
+    end
+    return out
+end
+
 function api.nvim_create_autocmd(event, opts)
     opts = opts or {}
 
@@ -899,9 +938,32 @@ function api.nvim_create_autocmd(event, opts)
         event = { event }
     end
 
-    if opts.pattern then
-        if type(opts.pattern) == "string" then
-            opts.pattern = { opts.pattern }
+    local patterns = opts.pattern
+    if opts.buffer ~= nil then
+        if patterns ~= nil then
+            error("nvim_create_autocmd: cannot use both 'pattern' and 'buffer'")
+        end
+        local bufnr = opts.buffer
+        if bufnr == 0 then
+            bufnr = windows[curwin].buffer.bufnr
+        end
+        patterns = { ("<buffer=%d>"):format(bufnr) }
+    elseif patterns then
+        if type(patterns) == "string" then
+            patterns = _split_autocmd_pattern_csv(patterns)
+        elseif type(patterns) == "table" then
+            local expanded = {}
+            for _, p in ipairs(patterns) do
+                if type(p) == "string" then
+                    local parts = _split_autocmd_pattern_csv(p)
+                    for i = 1, #parts do
+                        expanded[#expanded + 1] = parts[i]
+                    end
+                else
+                    expanded[#expanded + 1] = p
+                end
+            end
+            patterns = expanded
         end
     end
 
@@ -909,8 +971,49 @@ function api.nvim_create_autocmd(event, opts)
     ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
     local script_ctx = ScriptSource.CurrentContext()
 
-    return AutoCmd.CreateAutocommand(event, opts.pattern, cb, opts.command, opts.group, opts.once, opts
+    return AutoCmd.CreateAutocommand(event, patterns, cb, opts.command, opts.group, opts.once, opts
         .nested, opts.desc, script_ctx)
+end
+
+function api.nvim_get_autocmds(opts)
+    opts = opts or {}
+    return AutoCmd.GetAutocommands(opts)
+end
+
+function api.nvim_del_autocmd(id)
+    if type(id) ~= "number" then
+        error("nvim_del_autocmd: id must be number", 2)
+    end
+    local ok = AutoCmd.RemoveById(id)
+    if not ok then
+        error("nvim_del_autocmd: no such autocmd id " .. tostring(id))
+    end
+end
+
+function api.nvim_clear_autocmds(opts)
+    opts = opts or {}
+    local events = opts.event
+    if type(events) == "string" then
+        events = { events }
+    end
+
+    local patterns = opts.pattern
+    if type(patterns) == "string" then
+        patterns = { patterns }
+    end
+
+    if opts.buffer ~= nil then
+        if patterns ~= nil then
+            error("nvim_clear_autocmds: cannot use both 'pattern' and 'buffer'")
+        end
+        local bufnr = opts.buffer
+        if bufnr == 0 then
+            bufnr = windows[curwin].buffer.bufnr
+        end
+        patterns = { ("<buffer=%d>"):format(bufnr) }
+    end
+
+    AutoCmd.RemoveAutocommands(opts.group, events, patterns)
 end
 
 -- Delete an augroup by its numeric id (mirrors :augroup! behavior, but by id).

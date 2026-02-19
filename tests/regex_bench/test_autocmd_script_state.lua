@@ -17,7 +17,6 @@ local mock = MockEnv.setup({
     module_stubs = {
         ["vim.lib.exmsg"] = exmsg_stub,
         ["vim.lib.excmd.exmsg"] = exmsg_stub,
-        ["vim.layout.buffer"] = {},
         ["vim.lib.highlight"] = {
             GroupExists = function() return false end,
             For = function() return { colors.white, colors.black } end,
@@ -41,6 +40,7 @@ local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
 local Compiler = mock.loadModule("vim.lib.excmd.compiler")
 local Runtime = mock.loadModule("vim.lib.excmd.runtime")
 local VimFn = mock.loadModule("vim.lib.luaapi.fn")
+local Buffer = mock.loadModule("vim.layout.buffer")
 
 local durable_by_ctx = {}
 local function run_compiled(script, opts)
@@ -71,12 +71,9 @@ local function run_compiled(script, opts)
 end
 local Autocmd = mock.loadModule("vim.lib.autocmd")
 
-local buf = {
-    bufnr = 1,
-    name = "/tmp/test.txt",
-    opts = {},
-    lines = { "" },
-}
+local buf = Buffer(true, false)
+buf.name = "/tmp/test.txt"
+buf.lines = { "" }
 local win = {
     winnr = 1,
     buffer = buf,
@@ -86,13 +83,12 @@ local win = {
     scrolly = { 1, 0 },
     scrollx = 0,
 }
-buffers[1] = buf
 windows[1] = win
 tabpages[1].windows = { win }
 curwin = 1
 
-assert_eq("bufnr('%') resolves current buffer", VimFn._proxy.bufnr("%"), 1)
-assert_eq("bufnr(0) resolves current buffer", VimFn._proxy.bufnr(0), 1)
+assert_eq("bufnr('%') resolves current buffer", VimFn._proxy.bufnr("%"), buf.bufnr)
+assert_eq("bufnr(0) resolves current buffer", VimFn._proxy.bufnr(0), buf.bufnr)
 
 do
     local prev_dir = shell.dir

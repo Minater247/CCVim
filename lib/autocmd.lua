@@ -472,6 +472,10 @@ local function _remove_by_id(id)
     return true
 end
 
+function Autocmd.RemoveById(id)
+    return _remove_by_id(id)
+end
+
 local function _glob_match(glob, text)
     -- Escape Lua pattern magic except * and ?
     local pat = glob:gsub("([%^%$%(%)%.%[%]%+%-])", "%%%1")
@@ -659,7 +663,7 @@ end
 
 local function _call_callback(cb, ac, event, ctx)
     -- Build v.event dict (best-effort subset depending on event)
-    local ve = {}
+    local ve = { event = event }
     if ctx then
         if ctx.match ~= nil then ve.match = ctx.match end
         if ctx.file ~= nil then ve.file = ctx.file end
@@ -862,6 +866,7 @@ function Autocmd.Run(event, ctx)
         end
     end
     -- Provide common v:event fields for <amatch>/<afile>/<abuf> expansion.
+    cb_ctx.event = event
     cb_ctx.match = match_ctx.pattern_target or match_ctx.bufname
     cb_ctx.file = cb_ctx.bufname
     cb_ctx.buf = cb_ctx.bufnr
@@ -1104,6 +1109,110 @@ function Autocmd.GetAugroupName(id)
     end
     if id == 1 then return "" end -- default unnamed group
     return nil
+end
+
+function Autocmd.GetAutocommands(opts)
+    opts = opts or {}
+
+    local group_filter = nil
+    if opts.group ~= nil then
+        group_filter = augroup_as_integer(opts.group)
+        if not group_filter then
+            return {}
+        end
+    end
+
+    local events = opts.event or opts.events
+    if type(events) == "string" then
+        events = { events }
+    end
+    local evset = nil
+    if type(events) == "table" and #events > 0 then
+        evset = {}
+        for _, ev in ipairs(events) do
+            evset[Autocmd.NormalizeEvent(ev)] = true
+        end
+    end
+
+    local patterns = opts.pattern
+    if type(patterns) == "string" then
+        patterns = { patterns }
+    end
+    local pset, anypat = nil, false
+    if type(patterns) == "table" and #patterns > 0 then
+        pset = {}
+        for _, p in ipairs(patterns) do
+            local np = normalize_pattern(p)
+            if np == "*" then
+                anypat = true
+            end
+            pset[np] = true
+        end
+    end
+
+    local buffer_pattern = nil
+    if opts.buffer ~= nil then
+        local bufnr = opts.buffer
+        if bufnr == 0 then
+            bufnr = windows[curwin].buffer.bufnr
+        end
+        buffer_pattern = ("<buffer=%d>"):format(bufnr)
+    end
+
+    local out = {}
+    for gid, list in pairs(autocommands_by_group) do
+        if (not group_filter) or gid == group_filter then
+            for _, ac in ipairs(list or {}) do
+                local matched_events = {}
+                for ev, _ in pairs(ac.event) do
+                    if not evset or evset[ev] then
+                        matched_events[#matched_events + 1] = ev
+                    end
+                end
+
+                if #matched_events > 0 then
+                    local matched_patterns = {}
+                    for pat, _ in pairs(ac.pattern) do
+                        local match = true
+                        if buffer_pattern ~= nil then
+                            match = (pat == buffer_pattern)
+                        end
+                        if match and pset then
+                            match = anypat or pset[pat] == true
+                        end
+                        if match then
+                            matched_patterns[#matched_patterns + 1] = pat
+                        end
+                    end
+
+                    for _, ev in ipairs(matched_events) do
+                        for _, pat in ipairs(matched_patterns) do
+                            out[#out + 1] = {
+                                id = ac.id,
+                                group = ac.group,
+                                event = ev,
+                                pattern = pat,
+                                command = ac.command,
+                                desc = ac.desc,
+                                once = ac.once,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(out, function(a, b)
+        if a.id == b.id then
+            if a.event == b.event then
+                return tostring(a.pattern) < tostring(b.pattern)
+            end
+            return tostring(a.event) < tostring(b.event)
+        end
+        return a.id < b.id
+    end)
+    return out
 end
 
 -- Delete by id wrapper (mirrors DeleteAugroup by name)

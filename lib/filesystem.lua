@@ -275,7 +275,15 @@ function Filesystem.Expand(str, nosuf)
             Scopes = Scopes or loadModule("vim.lib.luaapi.scopes")
             local ve = Scopes._v and Scopes._v.event or {}
             if brack_l == "amatch" then
-                local v = ve.match or ve.file or windows[curwin].buffer.name or ""
+                local v = ve.match
+                if v == nil or v == "" then
+                    v = ve.file or windows[curwin].buffer.name or ""
+                end
+                local ev = tostring(ve.event or "")
+                local is_path_event = ev:match("^Buf") ~= nil or (ev:match("^File") ~= nil and ev ~= "FileType")
+                if is_path_event and ve.match ~= nil and ve.file ~= nil and tostring(ve.match) == tostring(ve.file) then
+                    v = _normalize_autocmd_path(v)
+                end
                 expansions = { tostring(v) }
             elseif brack_l == "afile" then
                 local v = ve.file or windows[curwin].buffer.name or ""
