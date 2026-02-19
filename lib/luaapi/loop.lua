@@ -5,6 +5,19 @@ local Event = loadModule("vim.lib.event")
 local VimFs = loadModule("vim.lib.luaapi.fs")
 local EnvVars = loadModule("vim.lib.envvars")
 
+local function has_uri_scheme(path)
+    return type(path) == "string" and path:match("^[%w][%w%+%-%.]*://") ~= nil
+end
+
+local function log_fs_stat_miss(path, reason)
+    local trace = debug.traceback("fs_stat miss trace:", 3)
+    LOG_DEBUG("error maybe? loop.fs_stat miss path=%s reason=%s\n%s", tostring(path), tostring(reason), tostring(trace))
+end
+
+local function log_loop_fs(format, ...)
+    LOG_DEBUG("loop.fs " .. tostring(format), ...)
+end
+
 -- Convert a time in ms to the format a stat expects.
 local function modtimeconv(msec)
     return {
@@ -13,11 +26,19 @@ local function modtimeconv(msec)
     }
 end
 
--- todo: mode
-function loop.fs_stat(path)
+local function _fs_stat_impl(path)
+    if has_uri_scheme(path) then
+        log_fs_stat_miss(path, "uri-scheme")
+        return nil, "ENOENT: unsupported uri scheme"
+    end
+
     path = VimFs.abspath(path)
 
-    local attribs = fs.attributes(path)
+    local ok, attribs = pcall(fs.attributes, path)
+    if not ok or type(attribs) ~= "table" then
+        log_fs_stat_miss(path, ok and "invalid-attribs" or tostring(attribs))
+        return nil, ok and "ENOENT: invalid attribs" or tostring(attribs)
+    end
 
     return {
         path = path,
@@ -25,48 +46,377 @@ function loop.fs_stat(path)
         type = attribs.isDir and "directory" or "file",
         ctime = modtimeconv(attribs.created),
         mtime = modtimeconv(attribs.modified),
-    }
+    }, nil
 end
 
--- CC has no links, but if we ever port, this needs changing
-loop.fs_lstat = loop.fs_stat
+-- todo: mode
+function loop.fs_stat(path, callback)
+    local stat, err = _fs_stat_impl(path)
+    if type(callback) == "function" then
+        log_loop_fs("fs_stat(path=%s, cb=true) -> err=%s type=%s", tostring(path), tostring(err), tostring(stat and stat.type))
+        callback(err, stat)
+        return
+    end
+    return stat
+end
+
+function loop.fs_lstat(path, callback)
+    -- CC/OC have no links
+    return loop.fs_stat(path, callback)
+end
+
+local function join_path(base, name)
+    if base == "/" then
+        return "/" .. tostring(name)
+    end
+    if base:sub(-1) == "/" then
+        return base .. tostring(name)
+    end
+    return base .. "/" .. tostring(name)
+end
+
+function loop.fs_opendir(path, a2, a3)
+    local callback
+    local max_entries
+    if type(a2) == "function" then
+        callback = a2
+        max_entries = tonumber(a3)
+    elseif type(a3) == "function" then
+        max_entries = tonumber(a2)
+        callback = a3
+    end
+    max_entries = math.max(1, math.floor(max_entries or 256))
+
+    if has_uri_scheme(path) then
+        local err = "ENOENT: unsupported uri scheme"
+        log_loop_fs("fs_opendir(path=%s) -> %s", tostring(path), err)
+        if callback then
+            callback(err, nil)
+            return
+        end
+        return nil, err
+    end
+
+    local dir = VimFs.abspath(path)
+    if not fs.exists(dir) then
+        local err = "ENOENT: no such file or directory"
+        log_loop_fs("fs_opendir(path=%s) -> %s", tostring(dir), err)
+        if callback then
+            callback(err, nil)
+            return
+        end
+        return nil, err
+    end
+    if not fs.isDir(dir) then
+        local err = "ENOTDIR: not a directory"
+        log_loop_fs("fs_opendir(path=%s) -> %s", tostring(dir), err)
+        if callback then
+            callback(err, nil)
+            return
+        end
+        return nil, err
+    end
+
+    local handle = {
+        _path = dir,
+        _items = fs.list(dir) or {},
+        _idx = 1,
+        _max_entries = max_entries,
+        _closed = false,
+    }
+    log_loop_fs("fs_opendir(path=%s) -> ok items=%d max=%d", tostring(dir), #handle._items, max_entries)
+    if callback then
+        callback(nil, handle)
+        return
+    end
+    return handle
+end
+
+function loop.fs_readdir(handle, callback)
+    if type(handle) ~= "table" or not handle._path then
+        local err = "EBADF: bad directory handle"
+        log_loop_fs("fs_readdir(handle=%s) -> %s", tostring(handle), err)
+        if type(callback) == "function" then
+            callback(err, nil)
+            return
+        end
+        return nil, err
+    end
+    if handle._closed then
+        local err = "EBADF: directory handle closed"
+        log_loop_fs("fs_readdir(path=%s) -> %s", tostring(handle._path), err)
+        if type(callback) == "function" then
+            callback(err, nil)
+            return
+        end
+        return nil, err
+    end
+
+    if handle._idx > #handle._items then
+        log_loop_fs("fs_readdir(path=%s) -> eof", tostring(handle._path))
+        if type(callback) == "function" then
+            callback(nil, nil)
+            return
+        end
+        return nil
+    end
+
+    local out = {}
+    local max_entries = handle._max_entries or #handle._items
+    for _ = 1, max_entries do
+        local name = handle._items[handle._idx]
+        if not name then
+            break
+        end
+        handle._idx = handle._idx + 1
+        local abs = join_path(handle._path, name)
+        out[#out + 1] = {
+            name = name,
+            type = fs.isDir(abs) and "directory" or "file",
+        }
+    end
+    log_loop_fs("fs_readdir(path=%s) -> %d entries", tostring(handle._path), #out)
+    if type(callback) == "function" then
+        callback(nil, out)
+        return
+    end
+    return out
+end
+
+function loop.fs_closedir(handle, callback)
+    if type(handle) ~= "table" or not handle._path then
+        local err = "EBADF: bad directory handle"
+        log_loop_fs("fs_closedir(handle=%s) -> %s", tostring(handle), err)
+        if type(callback) == "function" then
+            callback(err)
+            return
+        end
+        return nil, err
+    end
+    handle._closed = true
+    log_loop_fs("fs_closedir(path=%s) -> ok", tostring(handle._path))
+    if type(callback) == "function" then
+        callback(nil)
+        return
+    end
+    return true
+end
 
 function loop.cwd()
     return "/" .. shell.dir()
 end
 
-function loop.fs_open(path, mode, permission)
+function loop.fs_open(path, mode, permission, callback)
     -- permission currently ignored as ComputerCraft doesn't handle that
+    if type(permission) == "function" and callback == nil then
+        callback = permission
+    end
 
-    return fs.open(path, mode)
+    local ok, handle_or_err, open_err = pcall(fs.open, path, mode)
+    local handle
+    local err
+    if ok then
+        handle = handle_or_err
+        if not handle then
+            err = open_err and tostring(open_err) or "ENOENT: no such file or directory"
+        end
+    else
+        err = tostring(handle_or_err)
+    end
+
+    if type(callback) == "function" then
+        callback(err, handle)
+        return {
+            _type = "uv_fs_t",
+            _op = "open",
+            _path = path,
+            _done = true,
+        }
+    end
+    return handle, err
 end
 
 function loop.fs_read(fd, size, offset, callback)
-    local initseek = fd.seek()
-
-    local rv = fd.read(size)
-
-    if offset and offset >= 0 then
-        fd.seek("set", initseek)
+    if type(offset) == "function" and callback == nil then
+        callback = offset
+        offset = nil
     end
 
-    return rv or ""
+    local ok, rv_or_err = pcall(function()
+        local initseek = fd.seek and fd.seek() or nil
+        if offset and offset >= 0 and fd.seek then
+            fd.seek("set", offset)
+        end
+
+        local data = fd.read and fd.read(size) or nil
+
+        if offset and offset >= 0 and initseek ~= nil and fd.seek then
+            fd.seek("set", initseek)
+        end
+        return data or ""
+    end)
+    local err
+    local data
+    if ok then
+        data = rv_or_err
+    else
+        err = tostring(rv_or_err)
+    end
+
+    if type(callback) == "function" then
+        callback(err, data)
+        return {
+            _type = "uv_fs_t",
+            _op = "read",
+            _done = true,
+        }
+    end
+    return data, err
 end
 
 function loop.fs_close(fd, callback)
-    fd.close()
+    local ok, close_err = pcall(function()
+        if fd.close then
+            fd.close()
+        end
+    end)
+    local err
+    if not ok then
+        err = tostring(close_err)
+    end
+    if type(callback) == "function" then
+        callback(err)
+        return {
+            _type = "uv_fs_t",
+            _op = "close",
+            _done = true,
+        }
+    end
+    return err == nil, err
+end
+
+local function _fs_unlink_impl(path)
+    if has_uri_scheme(path) then
+        return nil, "ENOENT: unsupported uri scheme", "ENOENT"
+    end
+
+    path = VimFs.abspath(path)
+    if not fs.exists(path) then
+        return nil, "ENOENT: no such file or directory", "ENOENT"
+    end
+    if fs.isDir(path) then
+        return nil, "EISDIR: illegal operation on a directory", "EISDIR"
+    end
+    if fs.isReadOnly and fs.isReadOnly(path) then
+        return nil, "EACCES: permission denied", "EACCES"
+    end
+
+    local ok, err = pcall(fs.delete, path)
+    if not ok then
+        return nil, "EPERM: operation not permitted (" .. tostring(err) .. ")", "EPERM"
+    end
+    return true, nil, nil
+end
+
+function loop.fs_unlink(path, callback)
+    local ok, err, errname = _fs_unlink_impl(path)
+    if type(callback) == "function" then
+        log_loop_fs("fs_unlink(path=%s, cb=true) -> err=%s ok=%s", tostring(path), tostring(err), tostring(ok))
+        callback(err, ok and true or nil)
+        return {
+            _type = "uv_fs_t",
+            _op = "unlink",
+            _path = path,
+            _done = true,
+        }
+    end
+    return ok, err, errname
+end
+
+local function _fs_rename_impl(path, new_path)
+    if has_uri_scheme(path) or has_uri_scheme(new_path) then
+        return nil, "ENOENT: unsupported uri scheme", "ENOENT"
+    end
+
+    path = VimFs.abspath(path)
+    new_path = VimFs.abspath(new_path)
+
+    if not fs.exists(path) then
+        return nil, "ENOENT: no such file or directory", "ENOENT"
+    end
+    if fs.isReadOnly and fs.isReadOnly(path) then
+        return nil, "EACCES: permission denied", "EACCES"
+    end
+    if path == new_path then
+        return true, nil, nil
+    end
+
+    local ok, moved_or_err, move_err = pcall(fs.move, path, new_path)
+    if not ok then
+        return nil, "EPERM: operation not permitted (" .. tostring(moved_or_err) .. ")", "EPERM"
+    end
+    if moved_or_err == false then
+        return nil, "EPERM: operation not permitted (" .. tostring(move_err) .. ")", "EPERM"
+    end
+    return true, nil, nil
+end
+
+function loop.fs_rename(path, new_path, callback)
+    local ok, err, errname = _fs_rename_impl(path, new_path)
+    if type(callback) == "function" then
+        log_loop_fs(
+            "fs_rename(path=%s, new_path=%s, cb=true) -> err=%s ok=%s",
+            tostring(path),
+            tostring(new_path),
+            tostring(err),
+            tostring(ok)
+        )
+        callback(err, ok and true or nil)
+        return {
+            _type = "uv_fs_t",
+            _op = "rename",
+            _path = path,
+            _new_path = new_path,
+            _done = true,
+        }
+    end
+    return ok, err, errname
 end
 
 -- =========
 -- timers
 -- =========
+local timer_mt = {
+    __index = {
+        start = function(self, timeout_ms, repeat_ms, callback)
+            return loop.timer_start(self, timeout_ms, repeat_ms, callback)
+        end,
+        again = function(self)
+            return loop.timer_again(self)
+        end,
+        stop = function(self)
+            return loop.timer_stop(self)
+        end,
+        close = function(self)
+            return loop.close(self)
+        end,
+        set_repeat = function(self, repeat_ms)
+            return loop.timer_set_repeat(self, repeat_ms)
+        end,
+        get_repeat = function(self)
+            return loop.timer_get_repeat(self)
+        end,
+    },
+}
+
 local function mk_timer()
-    return {
+    return setmetatable({
         id      = nil, -- backend id from Event.StartTimer
         _active = false,
         _closed = false,
         _repeat = 0,
-    }
+        _cb     = nil,
+    }, timer_mt)
 end
 
 function loop.new_timer()
@@ -78,12 +428,14 @@ function loop.timer_stop(timer)
         Event.CancelTimer(timer.id)
     end
     timer._active = false
+    timer.id = nil
 end
 
 function loop.close(timer)
     -- libuv requires closing; here we just stop and mark closed
     loop.timer_stop(timer)
     timer._closed = true
+    timer._cb = nil
 end
 
 function loop.timer_set_repeat(timer, repeat_ms)
@@ -96,37 +448,75 @@ end
 
 -- libuv-compatible signature:
 --   timer, timeout_ms, repeat_ms, callback
+local function _timer_schedule(timer, timeout_ms)
+    timer.id = Event.StartTimer(math.max(0, timeout_ms or 0) / 1000, function()
+        if timer._closed then
+            return
+        end
+        local cb = timer._cb
+        if type(cb) == "function" then
+            cb(timer)
+        end
+        if timer._closed then
+            return
+        end
+        if timer._active and (timer._repeat or 0) > 0 then
+            _timer_schedule(timer, timer._repeat)
+        else
+            timer._active = false
+            timer.id = nil
+        end
+    end)
+end
+
 function loop.timer_start(timer, timeout_ms, repeat_ms, callback)
     if timer._closed then return error("close on a closed timer") end
-    timer._repeat = math.max(0, repeat_ms or 0)
-
-    -- one tick function that reschedules itself for repeating timers
-    local function tick()
-        if timer._closed then return end
-        -- Pass the handle like libuv C does; Lua callbacks that don't take args will just ignore it
-        callback(timer)
-        if timer._repeat == 0 then
-            loop.timer_stop(timer)
-        else
-            -- schedule the next tick after repeat_ms
-            timer.id = Event.StartTimer(timer._repeat / 1000, tick)
-        end
+    if type(callback) ~= "function" then
+        return error("timer callback must be a function")
     end
+    timer._repeat = math.max(0, repeat_ms or 0)
+    timer._cb = callback
 
     loop.timer_stop(timer) -- if already running
     timer._active = true
-    timer.id = Event.StartTimer(math.max(0, (timeout_ms or 0)) / 1000, tick)
+    _timer_schedule(timer, timeout_ms or 0)
     return 0
 end
 
-function loop.fs_realpath(path)
-    path = VimFs.abspath(path)
-
-    if fs.exists(path) then
-        return path
-    else
-        error("File does not exist for fs_realpath: " .. path)
+function loop.timer_again(timer)
+    if timer._closed then return error("close on a closed timer") end
+    if type(timer._cb) ~= "function" then
+        return 0
     end
+    if (timer._repeat or 0) <= 0 then
+        return 0
+    end
+    loop.timer_stop(timer)
+    timer._active = true
+    _timer_schedule(timer, timer._repeat)
+    return 0
+end
+
+local function _fs_realpath_impl(path)
+    if has_uri_scheme(path) then
+        return nil, "ENOENT: unsupported uri scheme"
+    end
+
+    local abs = VimFs.abspath(path)
+    if fs.exists(abs) then
+        return abs, nil
+    end
+    return nil, "ENOENT: no such file or directory"
+end
+
+function loop.fs_realpath(path, callback)
+    local real, err = _fs_realpath_impl(path)
+    if type(callback) == "function" then
+        log_loop_fs("fs_realpath(path=%s, cb=true) -> err=%s real=%s", tostring(path), tostring(err), tostring(real))
+        callback(err, real)
+        return
+    end
+    return real
 end
 
 function loop.hrtime()
@@ -150,23 +540,24 @@ end
 function loop.fs_access(path, mode, callback)
     path = VimFs.abspath(path)
 
+    local ok
     if not fs.exists(path) then
-        return false
+        ok = false
+    elseif mode == "R" then
+        ok = true -- already did the existence check
+    elseif mode == "W" then
+        ok = not fs.isReadOnly(path) -- TODO: are dirs writable if entry list modifiable?
+    elseif mode == "X" then
+        ok = (not fs.isDir(path)) and (path:sub(-4) == ".lua")
+    else
+        error("INVALID MODE")
     end
 
-    if mode == "R" then
-        return true -- already did the existence check
+    if type(callback) == "function" then
+        callback(ok and nil or "EACCES: access denied", ok)
+        return
     end
-
-    if mode == "W" then
-        return not fs.isReadOnly(path) -- TODO: are dirs writable if entry list modifiable?
-    end
-
-    if mode == "X" then
-        return (not fs.isDir(path)) and (path:sub(-4) == ".lua")
-    end
-
-    error("INVALID MODE")
+    return ok
 end
 
 -- TODO: actually schedule this on a timer
@@ -174,6 +565,7 @@ function loop.fs_event_start(fs_event, path, flags, callback)
     fs_event.path = path
     fs_event.recursive = flags.recursive
     fs_event.callback = callback
+    LOG_DEBUG("FS_EVENT_START NOT ACTUALLY SCHEDULED")
     return 0
 end
 
