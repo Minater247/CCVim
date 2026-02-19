@@ -402,7 +402,7 @@ end
 
 local function _extract_cfile_text(win)
     if not win or not win.buffer then return "" end
-    local line = win.buffer.lines[win.cursory] or ""
+    local line = win.buffer:get_line(win.cursory, true) or ""
     if line == "" then return "" end
 
     local cx = win.cursorx
@@ -489,6 +489,53 @@ local function _prepare_match_pattern(pat, use_ignorecase_opt)
     return compiled, case_sensitive, nil
 end
 
+local function _search_set_cursor(win, lnum, col1)
+    if type(win._set_cursor_raw) == "function" then
+        win:_set_cursor_raw(lnum, col1)
+        return
+    end
+
+    local lines = (win.buffer and win.buffer.lines_ref and win.buffer:lines_ref(true)) or {}
+    local line_count = #lines
+    if line_count < 1 then
+        line_count = 1
+    end
+    if lnum < 1 then lnum = 1 end
+    if lnum > line_count then lnum = line_count end
+
+    local line = lines[lnum] or ""
+    local max_col = #line + 1
+    if col1 < 1 then col1 = 1 end
+    if col1 > max_col then col1 = max_col end
+
+    win.cursory = lnum
+    win.cursorx = col1
+end
+
+local function _search_truthy(v)
+    return not (v == nil or v == false or v == 0)
+end
+
+local function _search_submatch_nr(text, compiled, case_sensitive, match_s, match_e)
+    local s, e, caps = VimRegex.find_compiled_with_caps(text, compiled, case_sensitive, nil, match_s)
+    if not s or s ~= match_s or e ~= match_e or type(caps) ~= "table" then
+        return 1
+    end
+
+    local first_idx = nil
+    for k, v in pairs(caps) do
+        if type(k) == "number" and v ~= nil then
+            if first_idx == nil or k < first_idx then
+                first_idx = k
+            end
+        end
+    end
+    if first_idx == nil then
+        return 1
+    end
+    return first_idx + 1
+end
+
 -- Vim-like stringification for non-string values (minimal subset used by join())
 local function vim_string(v)
     local t = type(v)
@@ -566,7 +613,7 @@ function Builtins.winsaveview(...)
     end
 
     local win = windows[curwin]
-    local line = win.buffer.lines[win.cursory] or ""
+    local line = win.buffer:get_line(win.cursory, true) or ""
     local tcfg = Tab.get_tab_config(win.buffer)
 
     local want = win._held_vx
@@ -595,7 +642,7 @@ function Builtins.winrestview(dict, ...)
     end
 
     local win = windows[curwin]
-    local linecnt = #win.buffer.lines
+    local linecnt = win.buffer:line_count(true)
     if linecnt < 1 then linecnt = 1 end
 
     if dict.lnum ~= nil or dict.col ~= nil then
@@ -1221,7 +1268,7 @@ function Builtins.getpos(expr)
     if expr == "." then
         return { 0, windows[curwin].cursory, windows[curwin].cursorx, 0 } -- TODO: 'virtualedit'
     elseif expr == "$" then
-        return { 0, #windows[curwin].buffer.lines, 1, 0 }
+        return { 0, windows[curwin].buffer:line_count(true), 1, 0 }
     else
         LOG_INTERNAL("unimplemented", "Builtins.getpos: unhandled expr %s", (expr or "<<nil>>"))
     end
@@ -1265,11 +1312,30 @@ function Builtins.charcol(expr, winid)
     return rv[3]
 end
 
+function Builtins.winline(...)
+    if select("#", ...) > 0 then
+        error(Error(118, "winline"):toString())
+    end
+
+    local win = windows[curwin]
+    if not win then
+        return 0
+    end
+
+    local top = (win.scrolly and win.scrolly[1]) or 1
+    local wrap_off = (win.scrolly and win.scrolly[2]) or 0
+    local row = (tonumber(win.cursory) or 1) - top + 1 - wrap_off
+    if row < 1 then
+        row = 1
+    end
+    return math.floor(row)
+end
+
 -- Minimal getline({lnum} [, {end}]).
 -- Supports ".", "$", and numeric line numbers.
 function Builtins.getline(expr, last)
     local win = windows[curwin]
-    local lines = (win and win.buffer and win.buffer.lines) or {}
+    local lines = (win and win.buffer and win.buffer.lines_ref and win.buffer:lines_ref(true)) or {}
     local line_count = #lines
 
     local function resolve_lnum(v, fallback)
@@ -1323,7 +1389,7 @@ function Builtins.setline(lnum, text, ...)
 
     local win = windows[curwin]
     local buf = win.buffer
-    local lines = buf.lines
+    local lines = buf:lines_ref(true)
     local line_count = #lines
 
     local function resolve_lnum(v, fallback)
@@ -1755,6 +1821,381 @@ function Builtins.did_filetype()
         return 1
     end
     return 0
+end
+
+-- search({pattern} [, {flags} [, {stopline} [, {timeout} [, {skip}]]]])
+function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "search"):toString())
+    end
+
+    local win = windows[curwin]
+    local buf = win and win.buffer
+    if not win or not buf then
+        return 0
+    end
+
+    local lines = buf:lines_ref(true)
+    if #lines == 0 then
+        lines = { "" }
+    end
+
+    local pat = tostring(pattern or "")
+    if pat == "" then
+        return 0
+    end
+
+    local fl = tostring(flags or "")
+    local backward = fl:find("b", 1, true) ~= nil
+    local accept_cursor = fl:find("c", 1, true) ~= nil
+    local move_to_end = fl:find("e", 1, true) ~= nil
+    local no_move = fl:find("n", 1, true) ~= nil
+    local want_submatch = fl:find("p", 1, true) ~= nil
+    local start_at_cursor = fl:find("z", 1, true) ~= nil
+
+    local want_wrap
+    local has_w = fl:find("w", 1, true) ~= nil
+    local has_W = fl:find("W", 1, true) ~= nil
+    if has_w then
+        want_wrap = true
+    elseif has_W then
+        want_wrap = false
+    else
+        local ok, rv = pcall(function()
+            return options.get("wrapscan")
+        end)
+        if ok then
+            want_wrap = not not rv
+        else
+            want_wrap = true
+        end
+    end
+
+    local line_count = #lines
+    local stop = tonumber(stopline or 0) or 0
+    stop = math.floor(stop)
+    if stop < 0 then
+        stop = 0
+    end
+    if stop > line_count then
+        stop = line_count
+    end
+    if stop > 0 then
+        want_wrap = false
+    end
+
+    local timeout_ms = tonumber(timeout or 0) or 0
+    timeout_ms = math.floor(timeout_ms)
+    if timeout_ms < 0 then
+        timeout_ms = 0
+    end
+    local started_at = (timeout_ms > 0) and os.clock() or nil
+    local function timed_out()
+        if timeout_ms <= 0 then
+            return false
+        end
+        return (os.clock() - started_at) * 1000 > timeout_ms
+    end
+
+    local compiled, case_sensitive, c_err = _prepare_match_pattern(pat)
+    if not compiled then
+        error("search(): pattern compile failed: " .. tostring(c_err))
+    end
+
+    local line_starts = {}
+    local abs_pos = 1
+    for i = 1, line_count do
+        line_starts[i] = abs_pos
+        abs_pos = abs_pos + #(lines[i] or "")
+        if i < line_count then
+            abs_pos = abs_pos + 1
+        end
+    end
+    local text = table.concat(lines, "\n")
+    local text_len = #text
+
+    local function abs_to_line_col(abs_idx)
+        if abs_idx < 1 then
+            abs_idx = 1
+        elseif abs_idx > text_len + 1 then
+            abs_idx = text_len + 1
+        end
+
+        local lo, hi = 1, line_count
+        local found = 1
+        while lo <= hi do
+            local mid = math.floor((lo + hi) / 2)
+            if line_starts[mid] <= abs_idx then
+                found = mid
+                lo = mid + 1
+            else
+                hi = mid - 1
+            end
+        end
+
+        local col1 = abs_idx - line_starts[found] + 1
+        local max_col = #(lines[found] or "") + 1
+        if col1 < 1 then
+            col1 = 1
+        elseif col1 > max_col then
+            col1 = max_col
+        end
+        return found, col1
+    end
+
+    local cur_lnum = math.floor(tonumber(win.cursory) or 1)
+    if cur_lnum < 1 then
+        cur_lnum = 1
+    elseif cur_lnum > line_count then
+        cur_lnum = line_count
+    end
+    local cur_col = math.floor(tonumber(win.cursorx) or 1)
+    local cur_max_col = #(lines[cur_lnum] or "") + 1
+    if cur_col < 1 then
+        cur_col = 1
+    elseif cur_col > cur_max_col then
+        cur_col = cur_max_col
+    end
+    local cur_abs = line_starts[cur_lnum] + cur_col - 1
+
+    local matches = {}
+    -- For ordinary patterns, search each line independently so ^/$ anchor to
+    -- line boundaries like Vim's search(). Fall back to full-buffer matching
+    -- when the pattern explicitly includes newline-aware atoms.
+    local newline_aware = pat:find("\\_", 1, true) ~= nil
+        or pat:find("\\n", 1, true) ~= nil
+
+    if not newline_aware then
+        for lnum = 1, line_count do
+            local line_text = lines[lnum] or ""
+            local from = 1
+            local max_from = #line_text + 1
+            while from <= max_from do
+                if timed_out() then
+                    return 0
+                end
+                local s, e = VimRegex.find_compiled(line_text, compiled, case_sensitive, from)
+                if not s then
+                    break
+                end
+                local ee = e or s
+                matches[#matches + 1] = {
+                    s = line_starts[lnum] + s - 1,
+                    e = line_starts[lnum] + ee - 1,
+                }
+                local next_from
+                if ee < s then
+                    next_from = s + 1
+                else
+                    next_from = ee + 1
+                end
+                if next_from <= from then
+                    next_from = from + 1
+                end
+                from = next_from
+            end
+        end
+    else
+        local from = 1
+        while from <= text_len + 1 do
+            if timed_out() then
+                return 0
+            end
+            local s, e = VimRegex.find_compiled(text, compiled, case_sensitive, from)
+            if not s then
+                break
+            end
+            matches[#matches + 1] = { s = s, e = e or s }
+            local next_from = s + 1
+            if next_from <= from then
+                next_from = from + 1
+            end
+            from = next_from
+        end
+    end
+
+    local skip_kind = type(skip)
+    local check_skip = (skip_kind == "function") or (skip_kind == "string" and skip ~= "")
+    local function should_skip(candidate_line, candidate_col)
+        if not check_skip then
+            return false, nil
+        end
+
+        local save_line = win.cursory
+        local save_col = win.cursorx
+        _search_set_cursor(win, candidate_line, candidate_col)
+
+        local ok, rv
+        if skip_kind == "function" then
+            ok, rv = pcall(skip)
+            if not ok then
+                _search_set_cursor(win, save_line, save_col)
+                return nil, rv
+            end
+        else
+            local rt_ok, eval_ok, eval_rv = pcall(function()
+                Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+                return Runtime.EvalExpression(skip, {
+                    state = Runtime._CURRENT_STATE,
+                    ctrl = Runtime._CURRENT_CTRL,
+                })
+            end)
+            if not rt_ok then
+                _search_set_cursor(win, save_line, save_col)
+                return nil, eval_ok
+            end
+            if not eval_ok then
+                _search_set_cursor(win, save_line, save_col)
+                return nil, eval_rv
+            end
+            ok, rv = true, eval_rv
+        end
+
+        _search_set_cursor(win, save_line, save_col)
+        return _search_truthy(rv), nil
+    end
+
+    local selected = nil
+    local function pick_candidate(idx)
+        local m = matches[idx]
+        local match_lnum, match_col = abs_to_line_col(m.s)
+        local skip_it, skip_err = should_skip(match_lnum, match_col)
+        if skip_err ~= nil then
+            return nil, skip_err
+        end
+        if skip_it then
+            return false, nil
+        end
+        selected = {
+            s = m.s,
+            e = m.e,
+            line = match_lnum,
+            col = match_col,
+        }
+        return true, nil
+    end
+
+    if not backward then
+        local lower = cur_abs + (accept_cursor and 0 or 1)
+
+        for i = 1, #matches do
+            if timed_out() then
+                return 0
+            end
+            local m = matches[i]
+            if m.s >= lower then
+                local lnum = abs_to_line_col(m.s)
+                if stop > 0 and lnum > stop then
+                    break
+                end
+                local ok, err = pick_candidate(i)
+                if err ~= nil then
+                    return -1
+                end
+                if ok then
+                    break
+                end
+            end
+        end
+
+        if not selected and want_wrap and stop == 0 then
+            for i = 1, #matches do
+                if timed_out() then
+                    return 0
+                end
+                local m = matches[i]
+                if m.s >= lower then
+                    break
+                end
+                local ok, err = pick_candidate(i)
+                if err ~= nil then
+                    return -1
+                end
+                if ok then
+                    break
+                end
+            end
+        end
+    else
+        local upper
+        if start_at_cursor then
+            upper = line_starts[cur_lnum]
+        else
+            upper = cur_abs + (accept_cursor and 1 or 0)
+        end
+        local lower = 1
+        if stop > 0 then
+            lower = line_starts[stop]
+        end
+
+        for i = #matches, 1, -1 do
+            if timed_out() then
+                return 0
+            end
+            local m = matches[i]
+            if m.s >= upper then
+                -- continue
+            elseif m.s < lower then
+                break
+            else
+                local ok, err = pick_candidate(i)
+                if err ~= nil then
+                    return -1
+                end
+                if ok then
+                    break
+                end
+            end
+        end
+
+        if not selected and want_wrap and stop == 0 then
+            local wrap_lower = start_at_cursor and line_starts[cur_lnum] or (cur_abs + 1)
+            for i = #matches, 1, -1 do
+                if timed_out() then
+                    return 0
+                end
+                local m = matches[i]
+                if m.s < wrap_lower then
+                    break
+                end
+                local ok, err = pick_candidate(i)
+                if err ~= nil then
+                    return -1
+                end
+                if ok then
+                    break
+                end
+            end
+        end
+    end
+
+    if not selected then
+        return 0
+    end
+
+    local rv
+    if want_submatch then
+        rv = _search_submatch_nr(text, compiled, case_sensitive, selected.s, selected.e)
+    else
+        rv = selected.line
+    end
+
+    if not no_move then
+        local dest_lnum = selected.line
+        local dest_col = selected.col
+        if move_to_end then
+            local end_abs = selected.e
+            if end_abs < selected.s then
+                end_abs = selected.s
+            end
+            dest_lnum, dest_col = abs_to_line_col(end_abs)
+        end
+        _search_set_cursor(win, dest_lnum, dest_col)
+        win.need_redraw = true
+        need_redraw = true
+    end
+
+    return rv
 end
 
 function Builtins.getcwd(winnr, tabnr)
@@ -2356,6 +2797,23 @@ local function _resolve_buffer_ref(expr)
     return nil
 end
 
+local function _has_uri_scheme(path)
+    return type(path) == "string" and path:match("^[%w][%w%+%-%.]*://") ~= nil
+end
+
+local function _find_buffer_by_name(name)
+    for _, buf in pairs(buffers) do
+        if buf and buf.name == name then
+            return buf
+        end
+    end
+    return nil
+end
+
+local function _buffer_is_loaded(buf)
+    return buf ~= nil and buf.loaded == true
+end
+
 -- TODO: handle create
 function Builtins.bufnr(expr, create)
     if expr == nil or expr == "" or expr == "%" then
@@ -2408,7 +2866,53 @@ function Builtins.bufloaded(expr)
     if not buf then
         return 0
     end
-    return (buf.lines ~= nil) and 1 or 0
+    return _buffer_is_loaded(buf) and 1 or 0
+end
+
+-- bufadd({name}): add/get an (unloaded, unlisted) buffer by name.
+function Builtins.bufadd(name)
+    name = tostring(name or "")
+
+    if name ~= "" then
+        local existing = _find_buffer_by_name(name)
+        if existing then
+            return existing.bufnr
+        end
+
+        if not _has_uri_scheme(name) then
+            local abs = VimFs.abspath(name)
+            existing = _find_buffer_by_name(abs)
+            if existing then
+                return existing.bufnr
+            end
+            name = abs
+        end
+    end
+
+    local ok, buf = pcall(Buffer, false, false, false)
+    if not ok or not buf then
+        return 0
+    end
+
+    buf.name = name
+    buf.lines = {} -- bufadd creates an unloaded buffer
+    buf.loaded = false
+    buf.state = "hidden"
+
+    return buf.bufnr
+end
+
+-- bufload({buf}): ensure an existing buffer is loaded.
+function Builtins.bufload(expr)
+    local buf = _resolve_buffer_ref(expr)
+    if not buf then
+        return 0
+    end
+    if _buffer_is_loaded(buf) then
+        return 1
+    end
+    buf:Load(true)
+    return _buffer_is_loaded(buf) and 1 or 0
 end
 
 local function _bufname_from_buf(buf)
@@ -2517,6 +3021,215 @@ local function _is_list(t)
         count = count + 1
     end
     return count == maxk
+end
+
+local function _register_storage_key(regname)
+    if regname == '"' then
+        return "unnamed"
+    end
+    if regname:match("^%a$") then
+        return regname:lower()
+    end
+    if regname:match("^%d$") then
+        return tonumber(regname)
+    end
+    return regname
+end
+
+local function _register_entry_to_text(entry)
+    if entry == nil then
+        return ""
+    end
+    if type(entry) ~= "table" then
+        return tostring(entry)
+    end
+    local payload = entry[2]
+    if type(payload) == "table" then
+        return table.concat(payload, "\n")
+    end
+    return tostring(payload or "")
+end
+
+local function _split_lines_for_register(text)
+    if text == "" then
+        return { "" }
+    end
+    local out = {}
+    local start = 1
+    while true do
+        local idx = text:find("\n", start, true)
+        if not idx then
+            out[#out + 1] = text:sub(start)
+            break
+        end
+        out[#out + 1] = text:sub(start, idx - 1)
+        start = idx + 1
+    end
+    return out
+end
+
+local function _register_entry_to_lines(entry)
+    if entry == nil then
+        return {}
+    end
+    if type(entry) ~= "table" then
+        return _split_lines_for_register(tostring(entry))
+    end
+    local payload = entry[2]
+    if type(payload) == "table" then
+        local out = {}
+        for i = 1, #payload do
+            out[#out + 1] = tostring(payload[i] or "")
+        end
+        return out
+    end
+    return _split_lines_for_register(tostring(payload or ""))
+end
+
+local function _register_mode_from_options(value, options)
+    options = tostring(options or "")
+    if options:find("[vc]") then
+        return "charwise"
+    end
+    if options:find("[lV]") then
+        return "linewise"
+    end
+    if options:find("b", 1, true) or options:find(string.char(22), 1, true) then
+        return "blockwise"
+    end
+
+    if type(value) == "table" and _is_list(value) then
+        return "linewise"
+    end
+    if type(value) == "string" and value:sub(-1) == "\n" then
+        return "linewise"
+    end
+    return "charwise"
+end
+
+local function _normalize_register_value(value, mode)
+    if type(value) == "table" and (not _is_list(value)) then
+        local info = value
+        if type(info.regcontents) == "table" then
+            value = info.regcontents
+        elseif type(info.regcontents) == "string" then
+            value = info.regcontents
+        end
+        if type(info.regtype) == "string" and info.regtype ~= "" then
+            local prefix = info.regtype:sub(1, 1)
+            if prefix == "V" or prefix == "l" then
+                mode = "linewise"
+            elseif prefix == "b" or prefix == string.char(22) then
+                mode = "blockwise"
+            else
+                mode = "charwise"
+            end
+        end
+    end
+
+    if mode == "linewise" then
+        local lines = {}
+        if type(value) == "table" and _is_list(value) then
+            for i = 1, #value do
+                lines[#lines + 1] = tostring(value[i] or "")
+            end
+        else
+            local text = tostring(value or "")
+            lines = _split_lines_for_register(text)
+            if text:sub(-1) == "\n" and #lines > 0 and lines[#lines] == "" then
+                table.remove(lines, #lines)
+            end
+        end
+        return { "linewise", lines }
+    end
+
+    if mode == "blockwise" then
+        mode = "charwise" -- width tracking not implemented yet
+    end
+    return { "charwise", tostring(value or "") }
+end
+
+function Builtins.setreg(regname, value, options)
+    local reg = tostring(regname or "")
+    if reg == "" or reg == "@" then
+        reg = '"'
+    end
+    reg = reg:sub(1, 1)
+
+    local opts = tostring(options or "")
+    local append = opts:find("a", 1, true) ~= nil
+    if reg:match("^%u$") then
+        append = true
+        reg = reg:lower()
+    end
+
+    if reg == "_" then
+        return 0
+    end
+
+    if reg == "#" then
+        local win = windows[curwin]
+        local alt = nil
+        if type(value) == "number" then
+            alt = buffers[value]
+        elseif type(value) == "string" then
+            if value ~= "" then
+                alt = _resolve_buffer_ref(value)
+                if not alt then
+                    local bufnr = Builtins.bufadd(value)
+                    alt = buffers[bufnr]
+                end
+            end
+        elseif type(value) == "table" and type(value.bufnr) == "number" then
+            alt = buffers[value.bufnr]
+        end
+        if win then
+            win.altbuf = alt
+        end
+        registers["#"] = { "charwise", tostring((alt and alt.name) or "") }
+        return 0
+    end
+
+    local mode = _register_mode_from_options(value, opts)
+    local key = _register_storage_key(reg)
+    local entry
+    if type(value) == "table" and (not _is_list(value)) and type(value.points_to) == "string" then
+        local target = value.points_to
+        if target == "" or target == "@" then
+            target = '"'
+        end
+        target = target:sub(1, 1)
+        entry = registers[_register_storage_key(target)] or { "charwise", "" }
+    else
+        entry = _normalize_register_value(value, mode)
+    end
+
+    if append then
+        local prev = registers[key]
+        if entry[1] == "linewise" then
+            local merged = _register_entry_to_lines(prev)
+            local add = entry[2]
+            for i = 1, #add do
+                merged[#merged + 1] = add[i]
+            end
+            entry = { "linewise", merged }
+        else
+            entry = { "charwise", _register_entry_to_text(prev) .. _register_entry_to_text(entry) }
+        end
+    end
+
+    registers[key] = entry
+    if reg == '"' then
+        registers.unnamed = entry
+    else
+        registers.unnamed = entry
+    end
+
+    if opts:find("u", 1, true) or opts:find('"', 1, true) then
+        registers.unnamed = entry
+    end
+
+    return 0
 end
 
 function Builtins.len(x)
@@ -3190,7 +3903,6 @@ function Builtins.histdel(_history, _item, ...)
     return 1
 end
 
--- TODO: implement this properly
 function Builtins.substitute(expr, pat, sub, flags)
     local s = tostring(expr or "")
     local p = tostring(pat or "")
@@ -3200,26 +3912,104 @@ function Builtins.substitute(expr, pat, sub, flags)
     local g = f:find("g", 1, true) ~= nil
     local ic = f:find("i", 1, true) ~= nil
 
-    local function repl(match)
-        local out = r
-        out = out:gsub("\\0", match)
-        out = out:gsub("&", match)
-        return out
+    local compiled = VimRegex.compile(p)
+    if not compiled then
+        return s
+    end
+
+    local has_num_ref = r:find("\\[0-9]") ~= nil
+    local caps_compiled = nil
+    if has_num_ref then
+        -- VimRegex simple mode drops \(...\) captures; build a capture-annotated
+        -- pattern using \z( ... \) to recover \1..\9 replacement semantics.
+        local out = {}
+        local i, n = 1, #p
+        while i <= n do
+            local ch = p:sub(i, i)
+            if ch == "\\" and i < n then
+                local nxt = p:sub(i + 1, i + 1)
+                if nxt == "z" and p:sub(i + 2, i + 2) == "(" then
+                    out[#out + 1] = "\\z("
+                    i = i + 3
+                elseif nxt == "(" then
+                    out[#out + 1] = "\\z("
+                    i = i + 2
+                else
+                    out[#out + 1] = "\\" .. nxt
+                    i = i + 2
+                end
+            else
+                out[#out + 1] = ch
+                i = i + 1
+            end
+        end
+        caps_compiled = VimRegex.compile(table.concat(out))
+    end
+
+    local function repl(match, caps)
+        local out = {}
+        local i, n = 1, #r
+        while i <= n do
+            local ch = r:sub(i, i)
+            if ch == "\\" and i < n then
+                local nxt = r:sub(i + 1, i + 1)
+                local d = tonumber(nxt)
+                if d ~= nil then
+                    if d == 0 then
+                        out[#out + 1] = match
+                    else
+                        local cap = (type(caps) == "table") and caps[d] or nil
+                        out[#out + 1] = cap == nil and "" or tostring(cap)
+                    end
+                elseif nxt == "&" then
+                    out[#out + 1] = "&"
+                elseif nxt == "\\" then
+                    out[#out + 1] = "\\"
+                else
+                    out[#out + 1] = nxt
+                end
+                i = i + 2
+            elseif ch == "&" then
+                out[#out + 1] = match
+                i = i + 1
+            else
+                out[#out + 1] = ch
+                i = i + 1
+            end
+        end
+        return table.concat(out)
     end
 
     local out = {}
     local idx = 1
+    local case_sensitive = not ic
     while idx <= #s do
         local sub_s = s:sub(idx)
-        local ss, ee = VimRegex.find(sub_s, p, not ic)
+        local ss, ee, caps
+        if caps_compiled then
+            ss, ee, caps = VimRegex.find_compiled_with_caps(sub_s, caps_compiled, case_sensitive)
+        end
+        if not ss then
+            ss, ee = VimRegex.find_compiled(sub_s, compiled, case_sensitive)
+        end
         if not ss then
             out[#out + 1] = sub_s
             break
         end
         out[#out + 1] = sub_s:sub(1, ss - 1)
         local match = sub_s:sub(ss, ee)
-        out[#out + 1] = repl(match)
-        idx = idx + ee
+        out[#out + 1] = repl(match, caps)
+
+        local prev_idx = idx
+        if ee < ss then
+            idx = idx + ss
+        else
+            idx = idx + ee
+        end
+        if idx <= prev_idx then
+            idx = prev_idx + 1
+        end
+
         if not g then
             out[#out + 1] = sub_s:sub(ee + 1)
             break

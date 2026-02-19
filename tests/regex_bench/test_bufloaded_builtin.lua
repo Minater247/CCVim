@@ -23,7 +23,8 @@ end
 
 local loaded = mock.create_buffer(1, "/tmp/loaded.txt", { "" }, {})
 local unloaded = mock.create_buffer(2, "/tmp/unloaded.txt", { "" }, {})
-unloaded.lines = nil
+unloaded.loaded = false
+unloaded.lines = {}
 
 local win = mock.create_window(1, loaded, {})
 win.altbuf = 2

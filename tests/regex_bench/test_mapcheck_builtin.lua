@@ -78,6 +78,13 @@ Command.remap_keys("select", Key.strtoseq("ss"), Key.strtoseq("selrhs"))
 assert_eq("v mode includes select", Fn.mapcheck("ss", "v"), "selrhs")
 assert_eq("x mode excludes select-only", Fn.mapcheck("ss", "x"), "")
 
+Command.remap_keys("", Key.strtoseq("mm"), Key.strtoseq("emptymap"))
+assert_eq("empty mode maps in normal", Fn.mapcheck("mm", "n"), "emptymap")
+assert_eq("empty mode maps in visual", Fn.mapcheck("mm", "x"), "emptymap")
+assert_eq("empty mode maps in select", Fn.mapcheck("mm", "s"), "emptymap")
+assert_eq("empty mode maps in operator-pending", Fn.mapcheck("mm", "o"), "emptymap")
+assert_eq("empty mode does not map in insert", Fn.mapcheck("mm", "i"), "")
+
 Command.remap_keys("normal", Key.strtoseq("xx"), Key.strtoseq("globalrhs"))
 Command.remap_keys("normal", Key.strtoseq("xx"), Key.strtoseq("localrhs"), { buffer_local = true })
 assert_eq("buffer-local checked before global", Fn.mapcheck("xx", "n"), "localrhs")

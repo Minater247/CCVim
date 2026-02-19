@@ -90,6 +90,14 @@ local function expand_modes(modes)
     local out, seen = {}, {}
     local t = type(modes)
     if t == "string" then
+        if modes == "" then
+            -- Match Neovim `:map` semantics for empty mode.
+            out[1] = "normal"
+            out[2] = "visual"
+            out[3] = "select"
+            out[4] = "operator"
+            return out
+        end
         if VALID_MODES[modes] then
             out[1] = modes
         else

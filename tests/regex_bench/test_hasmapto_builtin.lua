@@ -75,6 +75,13 @@ Command.remap_keys("select", seq("s"), seq("SelectOnly"))
 assert_eq("v mode includes select", Fn.hasmapto("SelectOnly", "v"), 1)
 assert_eq("x mode excludes select-only mapping", Fn.hasmapto("SelectOnly", "x"), 0)
 
+Command.remap_keys("", seq("m"), seq("MapEmptyMode"))
+assert_eq("empty mode includes normal", Fn.hasmapto("MapEmptyMode", "n"), 1)
+assert_eq("empty mode includes visual", Fn.hasmapto("MapEmptyMode", "x"), 1)
+assert_eq("empty mode includes select", Fn.hasmapto("MapEmptyMode", "s"), 1)
+assert_eq("empty mode includes operator", Fn.hasmapto("MapEmptyMode", "o"), 1)
+assert_eq("empty mode excludes insert", Fn.hasmapto("MapEmptyMode", "i"), 0)
+
 Command.remap_keys("normal", seq("b"), seq("BufLocalOnly"), { buffer_local = true })
 assert_eq("buffer-local mappings are searched", Fn.hasmapto("BufLocalOnly", "n"), 1)
 

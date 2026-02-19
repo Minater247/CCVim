@@ -113,6 +113,8 @@ local printables = {
     [keys.multiply] = "kMultiply",
     [keys.numPadEnter] = "kEnter",
     [keys.numPadDivide] = "kDivide",
+
+    plug = "Plug",
 }
 
 local shiftables = {
@@ -482,19 +484,41 @@ local function push_char(seq, ch)
     table.insert(seq, Key:new(base, false, shifted, false))
 end
 
+local function push_literal_angle(seq, content)
+    push_char(seq, "<")
+    for i = 1, #content do
+        push_char(seq, content:sub(i, i))
+    end
+    push_char(seq, ">")
+end
+
 local function push_angle(seq, content)
     -- Handle <...> blocks like <CR>, <S-Tab>, <C-a>, <lt>, etc.
-    if content:lower() == "lt" then
+    local clower = content:lower()
+
+    if clower == "lt" then
         -- Literal '<'
         push_char(seq, "<")
+        return
+    elseif clower == "bar" then
+        -- Mapping-special literal '|'
+        push_char(seq, "|")
+        return
+    elseif clower == "plug" then
+        -- Preserve as canonical <Plug> text token.
+        push_literal_angle(seq, "Plug")
         return
     end
 
     local ctrl, shift, alt = false, false, false -- 'alt' parsed but ignored
-    local base_token = nil
-
+    local parts = {}
     for token in content:gmatch("[^%-]+") do
-        local tl = token:lower()
+        parts[#parts + 1] = token
+    end
+
+    local base_token = parts[#parts]
+    for i = 1, (#parts - 1) do
+        local tl = parts[i]:lower()
         if tl == "c" or tl == "ctrl" or tl == "control" then
             ctrl = true
         elseif tl == "s" or tl == "shift" then
@@ -502,8 +526,7 @@ local function push_angle(seq, content)
         elseif tl == "m" or tl == "meta" or tl == "alt" then
             alt = true -- parsed but intentionally ignored when constructing Key
         else
-            -- Last non-mod token wins as the base
-            base_token = token
+            error(("Malformed angle key notation: <%s>"):format(content))
         end
     end
 
