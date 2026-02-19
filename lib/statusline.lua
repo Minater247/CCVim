@@ -98,7 +98,7 @@ local function parse_segment(fmt, window)
     local buf                   = window.buffer
     local bopts                 = buf.opts
     local wopts                 = window.opts
-    local lines                 = buf.lines
+    local lines                 = buf:lines_ref(true)
 
     local chunks                = {}
 

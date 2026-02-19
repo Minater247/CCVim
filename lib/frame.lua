@@ -1,6 +1,59 @@
 local FrameTree = {}
+local Error = loadModule("vim.lib.error")
+local AutoCmd
 
 ---@class FrameTree
+
+local function trunc_int(n)
+    n = tonumber(n) or 0
+    if n > 0 then
+        return math.floor(n)
+    elseif n < 0 then
+        return math.ceil(n)
+    end
+    return 0
+end
+
+local function clamp_nonnegative(n)
+    if n < 0 then
+        return 0
+    end
+    return n
+end
+
+local function split_int_even(delta)
+    delta = trunc_int(delta)
+    local a = math.floor(delta / 2)
+    local b = delta - a
+    return a, b
+end
+
+local function allocate_even_shrink(need, cap1, cap2)
+    need = clamp_nonnegative(trunc_int(need))
+    cap1 = clamp_nonnegative(trunc_int(cap1))
+    cap2 = clamp_nonnegative(trunc_int(cap2))
+
+    local take1, take2 = 0, 0
+    while (take1 + take2) < need do
+        local progressed = false
+        if take1 < cap1 and (take1 <= take2 or take2 >= cap2) then
+            take1 = take1 + 1
+            progressed = true
+        elseif take2 < cap2 then
+            take2 = take2 + 1
+            progressed = true
+        elseif take1 < cap1 then
+            take1 = take1 + 1
+            progressed = true
+        end
+
+        if not progressed then
+            break
+        end
+    end
+
+    return take1, take2
+end
 
 local function new_frame(parent, window, width, height)
     return {
@@ -27,8 +80,9 @@ local function get_horizontal_resizability(node)
             return math.min(get_horizontal_resizability(node.children[1]), get_horizontal_resizability(node.children[2]))
         end
     else
-        LOG_INTERNAL("frametree", "Horizontal resizability: %d is %d (%d - %d)", node.window.winnr, node.width - node.window:minwidth(), node.width, node.window:minwidth())
-        return node.width - node.window:minwidth()
+        local can = node.width - node.window:minwidth()
+        LOG_INTERNAL("frametree", "Horizontal resizability: %d is %d (%d - %d)", node.window.winnr, can, node.width, node.window:minwidth())
+        return clamp_nonnegative(can)
     end
 end
 
@@ -42,11 +96,12 @@ local function get_vertical_resizability(node)
             return get_vertical_resizability(node.children[1]) + get_vertical_resizability(node.children[2])
         end
     else
-        return node.height - node.window:minheight()
+        return clamp_nonnegative(node.height - node.window:minheight())
     end
 end
 
 local function push_width_resize(node, delta)
+    delta = trunc_int(delta)
     if node.split_type then
         if node.split_type == "v" then
             -- left-right
@@ -62,7 +117,8 @@ local function push_width_resize(node, delta)
         elseif node.split_type == "h" then
             -- top-bottom
             if delta < 0 then
-                delta = math.max(delta, -get_horizontal_resizability(node))
+                local shrink_cap = clamp_nonnegative(get_horizontal_resizability(node))
+                delta = math.max(delta, -shrink_cap)
             end
             push_width_resize(node.children[1], delta)
             push_width_resize(node.children[2], delta)
@@ -71,8 +127,11 @@ local function push_width_resize(node, delta)
         end
     else
         -- basic case - this is a leaf
-        if node.width + delta < node.window:minwidth() then
-            delta = -(node.width - node.window:minwidth())
+        if delta < 0 then
+            local max_shrink = clamp_nonnegative(node.width - node.window:minwidth())
+            if -delta > max_shrink then
+                delta = -max_shrink
+            end
         end
         node.width = node.width + delta
         return delta
@@ -80,11 +139,13 @@ local function push_width_resize(node, delta)
 end
 
 local function push_height_resize(node, delta)
+    delta = trunc_int(delta)
     if node.split_type then
         if node.split_type == "v" then
             -- left-right
             if delta < 0 then
-                delta = math.max(delta, -get_vertical_resizability(node))
+                local shrink_cap = clamp_nonnegative(get_vertical_resizability(node))
+                delta = math.max(delta, -shrink_cap)
             end
             push_height_resize(node.children[1], delta)
             push_height_resize(node.children[2], delta)
@@ -104,8 +165,11 @@ local function push_height_resize(node, delta)
         end
     else
         -- basic case - this is a leaf
-        if node.height + delta < node.window:minheight() then
-            delta = -(node.height - node.window:minheight())
+        if delta < 0 then
+            local max_shrink = clamp_nonnegative(node.height - node.window:minheight())
+            if -delta > max_shrink then
+                delta = -max_shrink
+            end
         end
         node.height = node.height + delta
         return delta
@@ -167,6 +231,7 @@ end
 -- Negative delta = shrink subtree width, distributing across all shrinkable leaves.
 -- Positive delta = (rarely used here) we split evenly for v-splits; for h-splits it broadcasts.
 local function apply_width_delta_even(node, delta)
+    delta = trunc_int(delta)
     if delta == 0 then return 0 end
 
     if not node.split_type then
@@ -174,7 +239,7 @@ local function apply_width_delta_even(node, delta)
         local want = delta
         if want < 0 then
             local minw = node.window:minwidth()
-            local max_shrink = node.width - minw
+            local max_shrink = clamp_nonnegative(node.width - minw)
             if -want > max_shrink then want = -max_shrink end
         end
         node.width = node.width + want
@@ -185,7 +250,8 @@ local function apply_width_delta_even(node, delta)
         -- Stacked (top/bottom): width change must apply equally to both children.
         local want = delta
         if want < 0 then
-            want = math.max(want, -get_horizontal_resizability(node))
+            local shrink_cap = clamp_nonnegative(get_horizontal_resizability(node))
+            want = math.max(want, -shrink_cap)
         end
         if want ~= 0 then
             local a = apply_width_delta_even(node.children[1], want)
@@ -200,42 +266,11 @@ local function apply_width_delta_even(node, delta)
         -- Side-by-side: split shrink *evenly* across children (water-filling).
         if delta < 0 then
             local need = -delta
-            local caps = {
-                get_horizontal_resizability(node.children[1]),
-                get_horizontal_resizability(node.children[2]),
-            }
-            local take = { 0, 0 }
-            local alive = { true, true }
-            local remaining = need
-            local alive_count = 2
-
-            while remaining > 0 and alive_count > 0 do
-                local share = remaining / alive_count
-                for i = 1, 2 do
-                    if alive[i] then
-                        local room = caps[i] - take[i]
-                        local t = (room < share) and room or share
-                        take[i] = take[i] + t
-                    end
-                end
-                -- Drop saturated children and recompute remaining
-                local new_alive_count = 0
-                local sum_take = 0
-                for i = 1, 2 do
-                    sum_take = sum_take + take[i]
-                    if take[i] + 1e-9 < caps[i] then
-                        alive[i] = true
-                        new_alive_count = new_alive_count + 1
-                    else
-                        alive[i] = false
-                    end
-                end
-                remaining = need - sum_take
-                alive_count = new_alive_count
-            end
-
-            local a = -take[1]
-            local b = -take[2]
+            local cap1 = clamp_nonnegative(get_horizontal_resizability(node.children[1]))
+            local cap2 = clamp_nonnegative(get_horizontal_resizability(node.children[2]))
+            local take1, take2 = allocate_even_shrink(need, cap1, cap2)
+            local a = -take1
+            local b = -take2
             local got1 = apply_width_delta_even(node.children[1], a)
             local got2 = apply_width_delta_even(node.children[2], b)
             local applied = got1 + got2 -- both negative, sum negative
@@ -243,9 +278,9 @@ local function apply_width_delta_even(node, delta)
             return applied
         else
             -- Growing this subtree (not the stealing side): split evenly by default.
-            local half = delta / 2
-            local a = apply_width_delta_even(node.children[1], half)
-            local b = apply_width_delta_even(node.children[2], delta - half)
+            local a_half, b_half = split_int_even(delta)
+            local a = apply_width_delta_even(node.children[1], a_half)
+            local b = apply_width_delta_even(node.children[2], b_half)
             local applied = a + b
             node.width = node.width + applied
             return applied
@@ -257,6 +292,7 @@ end
 -- Negative delta = shrink subtree height, distributing across all shrinkable leaves.
 -- Positive delta = (rarely used here) we split evenly for h-splits; for v-splits it broadcasts.
 local function apply_height_delta_even(node, delta)
+    delta = trunc_int(delta)
     if delta == 0 then return 0 end
 
     if not node.split_type then
@@ -264,7 +300,7 @@ local function apply_height_delta_even(node, delta)
         local want = delta
         if want < 0 then
             local minh = node.window:minheight()
-            local max_shrink = node.height - minh
+            local max_shrink = clamp_nonnegative(node.height - minh)
             if -want > max_shrink then want = -max_shrink end
         end
         node.height = node.height + want
@@ -275,7 +311,8 @@ local function apply_height_delta_even(node, delta)
         -- Side-by-side: height change must apply equally to both children.
         local want = delta
         if want < 0 then
-            want = math.max(want, -get_vertical_resizability(node))
+            local shrink_cap = clamp_nonnegative(get_vertical_resizability(node))
+            want = math.max(want, -shrink_cap)
         end
         if want ~= 0 then
             local a = apply_height_delta_even(node.children[1], want)
@@ -289,42 +326,11 @@ local function apply_height_delta_even(node, delta)
         -- Stacked (top/bottom): split shrink *evenly* across children (water-filling).
         if delta < 0 then
             local need = -delta
-            local caps = {
-                get_vertical_resizability(node.children[1]),
-                get_vertical_resizability(node.children[2]),
-            }
-            local take = { 0, 0 }
-            local alive = { true, true }
-            local remaining = need
-            local alive_count = 2
-
-            while remaining > 0 and alive_count > 0 do
-                local share = remaining / alive_count
-                for i = 1, 2 do
-                    if alive[i] then
-                        local room = caps[i] - take[i]
-                        local t = (room < share) and room or share
-                        take[i] = take[i] + t
-                    end
-                end
-                -- Drop saturated children and recompute remaining
-                local new_alive_count = 0
-                local sum_take = 0
-                for i = 1, 2 do
-                    sum_take = sum_take + take[i]
-                    if take[i] + 1e-9 < caps[i] then
-                        alive[i] = true
-                        new_alive_count = new_alive_count + 1
-                    else
-                        alive[i] = false
-                    end
-                end
-                remaining = need - sum_take
-                alive_count = new_alive_count
-            end
-
-            local a = -take[1]
-            local b = -take[2]
+            local cap1 = clamp_nonnegative(get_vertical_resizability(node.children[1]))
+            local cap2 = clamp_nonnegative(get_vertical_resizability(node.children[2]))
+            local take1, take2 = allocate_even_shrink(need, cap1, cap2)
+            local a = -take1
+            local b = -take2
             local got1 = apply_height_delta_even(node.children[1], a)
             local got2 = apply_height_delta_even(node.children[2], b)
             local applied = got1 + got2 -- negative
@@ -332,9 +338,9 @@ local function apply_height_delta_even(node, delta)
             return applied
         else
             -- Growing this subtree (not the stealing side): split evenly by default.
-            local half = delta / 2
-            local a = apply_height_delta_even(node.children[1], half)
-            local b = apply_height_delta_even(node.children[2], delta - half)
+            local a_half, b_half = split_int_even(delta)
+            local a = apply_height_delta_even(node.children[1], a_half)
+            local b = apply_height_delta_even(node.children[2], b_half)
             local applied = a + b
             node.height = node.height + applied
             return applied
@@ -344,6 +350,7 @@ end
 
 
 FrameTree.ResizeWidth = function(node, delta)
+    delta = trunc_int(delta)
     if delta == 0 then
         return true
     end
@@ -361,12 +368,15 @@ FrameTree.ResizeWidth = function(node, delta)
 
         -- Climb toward the root; whenever we encounter a vertical split,
         -- take space from the opposite subtree *evenly* across its leaves.
-        while delta > 0 do
+        while delta > 0 and node.parent do
             if node.parent.split_type == "v" then
                 local sibling = getOtherChild(node)
                 -- Ask sibling to *shrink* evenly by up to 'delta'
                 local did = apply_width_delta_even(sibling, -delta) -- <= 0
-                assert(did <= 0)
+                if did > 0 then
+                    LOG_ERROR("ResizeWidth: sibling shrink returned positive delta " .. did)
+                    return false
+                end
                 local gained = -did
                 if gained > 0 then
                     -- Give the gained width to our target subtree
@@ -384,6 +394,9 @@ FrameTree.ResizeWidth = function(node, delta)
             end
             node = node.parent
             LOG_INTERNAL("frametree", "Moving to " .. (node.window and node.window.winnr or "frame"))
+        end
+        if delta > 0 then
+            return false
         end
     elseif delta < 0 then
         -- Shrinking the target: validate minima along vertical ancestry as before.
@@ -423,6 +436,7 @@ end
 
 
 FrameTree.ResizeHeight = function(node, delta)
+    delta = trunc_int(delta)
     if delta == 0 then
         return true
     end
@@ -440,12 +454,15 @@ FrameTree.ResizeHeight = function(node, delta)
 
         -- Climb; whenever we encounter a horizontal split,
         -- take space from the opposite subtree *evenly* across its leaves.
-        while delta > 0 do
+        while delta > 0 and node.parent do
             if node.parent.split_type == "h" then
                 local sibling = getOtherChild(node)
                 -- Ask sibling to *shrink* evenly by up to 'delta'
                 local did = apply_height_delta_even(sibling, -delta) -- <= 0
-                assert(did <= 0)
+                if did > 0 then
+                    LOG_ERROR("ResizeHeight: sibling shrink returned positive delta " .. did)
+                    return false
+                end
                 local gained = -did
                 if gained > 0 then
                     -- Give the gained height to our target subtree
@@ -462,6 +479,9 @@ FrameTree.ResizeHeight = function(node, delta)
             end
             node = node.parent
             LOG_INTERNAL("frametree", "Moving to " .. (node.window and node.window.winnr or "frame"))
+        end
+        if delta > 0 then
+            return false
         end
     elseif delta < 0 then
         -- Shrinking the target: validate minima along horizontal ancestry as before.
@@ -551,6 +571,10 @@ FrameTree.VerticalSplit = function(node, new_win, place_right)
     local new_node  = { parent = parent, width = total_w, height = node.height, split_type = "v" }
     local new_frame = { parent = new_node, window = new_win }
 
+    if node.height < subtree_min_height(node) or node.height < new_win:minheight() then
+        return false
+    end
+
     -- Compute feasible target for the existing subtree.
     local half      = math.ceil(total_w / 2)
     local min_existing  = subtree_min_width(node)
@@ -633,6 +657,10 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
     local total_h    = node.height
     local new_node   = { parent = parent, width = node.width, height = total_h, split_type = "h" }
     local new_frame  = { parent = new_node, window = new_win }
+
+    if node.width < subtree_min_width(node) or node.width < new_win:minwidth() then
+        return false
+    end
 
     -- Compute feasible target for the existing subtree.
     local half       = math.ceil(total_h / 2)
@@ -937,14 +965,21 @@ FrameTree.Close = function(node)
             gparent.children[2] = sibling
         end
         sibling.parent = gparent
+        if node.window then
+            node.window.frame = nil
+        end
         return true
     else
         sibling.parent = nil
+        if node.window then
+            node.window.frame = nil
+        end
         return true, sibling
     end
 end
 
 function FrameTree.RootResizeWidth(root, dw)
+    dw = trunc_int(dw)
     assert(root and not root.parent, "RootResizeWidth expects the root node")
     if dw == 0 then return true end
 
@@ -964,6 +999,7 @@ function FrameTree.RootResizeWidth(root, dw)
 end
 
 function FrameTree.RootResizeHeight(root, dh)
+    dh = trunc_int(dh)
     assert(root and not root.parent, "RootResizeHeight expects the root node")
     if dh == 0 then return true end
 
@@ -983,6 +1019,8 @@ function FrameTree.RootResizeHeight(root, dh)
 end
 
 function FrameTree.RootResize(root, dw, dh)
+    dw = trunc_int(dw)
+    dh = trunc_int(dh)
     assert(root and not root.parent, "RootResizeDelta expects the root node")
     if (dw == 0) and (dh == 0) then return true end
 
@@ -1004,6 +1042,119 @@ function FrameTree.RootResize(root, dw, dh)
         return false
     end
     return true
+end
+
+local function _window_size_snapshot(win)
+    if not win then
+        return nil
+    end
+    if win.frame then
+        return { width = win.frame.width, height = win.frame.height }
+    end
+    if win.floatpos then
+        return { width = win.floatpos.w, height = win.floatpos.h }
+    end
+    return nil
+end
+
+local function _snapshot_tab_windows(tabp)
+    local out = {}
+    if not tabp or not tabp.windows then
+        return out
+    end
+
+    for i = 1, #tabp.windows do
+        local win = tabp.windows[i]
+        local snap = _window_size_snapshot(win)
+        if snap then
+            out[win.winnr] = snap
+        end
+    end
+    return out
+end
+
+local function _collect_changed_window_ids(tabp, before)
+    local changed = {}
+    if not tabp or not tabp.windows then
+        return changed
+    end
+
+    for i = 1, #tabp.windows do
+        local win = tabp.windows[i]
+        local now = _window_size_snapshot(win)
+        local prev = before and before[win.winnr] or nil
+        if now and prev and (now.width ~= prev.width or now.height ~= prev.height) then
+            changed[#changed + 1] = win.winnr
+        end
+    end
+    return changed
+end
+
+function FrameTree.RebalanceCurrentTab()
+    local tabp = tabpages[curtp]
+    if not tabp or not tabp.tree then
+        return false
+    end
+
+    local ok = FrameTree.Equalize(tabp.tree)
+    what_redraw["all"] = true
+    need_redraw = true
+    return ok
+end
+
+function FrameTree.ApplyTerminalResize(new_w, new_h, source_event)
+    new_w = math.floor(tonumber(new_w) or -1)
+    new_h = math.floor(tonumber(new_h) or -1)
+    if new_w < 1 or new_h < 1 then
+        return false, Error(474, "Invalid terminal size")
+    end
+
+    if screen.width == new_w and screen.height == new_h then
+        return true, false
+    end
+
+    local current_tab = tabpages[curtp]
+    local before = _snapshot_tab_windows(current_tab)
+
+    screen.width = new_w
+    screen.height = new_h
+
+    options.set("columns", new_w)
+    options.set("lines", new_h)
+
+    local strict_failure = false
+    for _, tabp in pairs(tabpages) do
+        local ok = tabp:updateFrameview()
+        if not ok then
+            strict_failure = true
+        end
+    end
+
+    FrameTree.RebalanceCurrentTab()
+
+    local changed_ids = _collect_changed_window_ids(tabpages[curtp], before)
+
+    AutoCmd = AutoCmd or loadModule("vim.lib.autocmd")
+    AutoCmd.Run("VimResized", { force = true })
+    if #changed_ids > 0 then
+        local first = tostring(changed_ids[1])
+        AutoCmd.Run("WinResized", {
+            force = true,
+            pattern = first,
+            bufname = first,
+            data = { windows = changed_ids },
+        })
+    end
+
+    what_redraw["all"] = true
+    need_redraw = true
+
+    if strict_failure then
+        LOG_DEBUG("terminal resize strict failure event=%s size=%dx%d", tostring(source_event), new_w, new_h)
+        return false, Error(36)
+    end
+
+    return true, true
 end
 
 function FrameTree.IsLeftChild(node)
@@ -1106,7 +1257,7 @@ FrameTree.self_tests = function()
 
         -- split should succeed
         local success, new_root = FrameTree.VerticalSplit(root,
-            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end })
+            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success and new_root, me .. "Split should succeed")
         root = new_root
 
@@ -1141,7 +1292,7 @@ FrameTree.self_tests = function()
 
         -- split should succeed
         local success, new_root = FrameTree.HorizontalSplit(root,
-            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end })
+            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success and new_root, me .. "Split should succeed")
         root = new_root
 
@@ -1175,12 +1326,12 @@ FrameTree.self_tests = function()
             80, 25)
 
         local success, new_root = FrameTree.VerticalSplit(root,
-            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end })
+            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success and new_root, me .. "Split should succeed")
         root = new_root
 
         success, new_root = FrameTree.VerticalSplit(root.children[2],
-            { winnr = 2, minwidth = function() return 1 end, minheight = function() return 1 end })
+            { winnr = 2, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success, me .. "Second split should succeed")
 
         assert(root.children, me .. "Root should have children")
@@ -1233,7 +1384,7 @@ FrameTree.self_tests = function()
             80, 25)
 
         local success, new_root = FrameTree.VerticalSplit(root,
-            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end })
+            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success and new_root, me .. "Split should succeed")
         root = new_root
 
@@ -1269,12 +1420,12 @@ FrameTree.self_tests = function()
             80, 25)
 
         local success, new_root = FrameTree.VerticalSplit(root,
-            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end })
+            { winnr = 1, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success and new_root, me .. "Split should succeed")
         root = new_root
 
         local success, new_root = FrameTree.HorizontalSplit(root.children[2],
-            { winnr = 2, minwidth = function() return 1 end, minheight = function() return 1 end })
+            { winnr = 2, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success, me .. "Split should succeed")
 
         FrameTree.DumpTree(root)

@@ -15,6 +15,7 @@ local Autocmd = loadModule("vim.lib.autocmd")
 local VimExpr
 local VimFn
 local Scopes
+local CmdRead
 
 local curr_winno = 1
 
@@ -46,7 +47,7 @@ local curr_winno = 1
 function Window:new(buffer, refwin)
     local obj = setmetatable({
         winnr     = curr_winno,
-        buffer    = buffer or Buffer(true, false),
+        buffer    = buffer or Buffer(true, false, true),
         altbuf    = refwin and refwin.altbuf or nil,
         opts      = {},
         scrollx   = refwin and refwin.scrollx or 1,
@@ -82,14 +83,9 @@ function Window:new(buffer, refwin)
 end
 
 function Window:minwidth()
-    local base
-    if windows[curwin] == self then
-        base = options.get("winminwidth")
-    else
-        base = options.get("winwidth")
-    end
+    local base = options.get("winminwidth")
 
-    if (self.style ~= "minimal") and options.get("number", self) or options.get("relativenumber", self) then
+    if (self.style ~= "minimal") and (options.get("number", self) or options.get("relativenumber", self)) then
         base = math.max(base, options.get("numberwidth", self) + 1)
     end
 
@@ -97,11 +93,7 @@ function Window:minwidth()
 end
 
 function Window:minheight()
-    if windows[curwin] == self then
-        return options.get("winminheight")
-    else
-        return options.get("winheight")
-    end
+    return options.get("winminheight")
 end
 
 -- Map a desired visual column to a byte index (1..#line  in normal mode,
@@ -163,7 +155,8 @@ function Window:_wrap_params()
 end
 
 function Window:_wrap_row_count(line_idx, params)
-    local line = self.buffer.lines[line_idx] or ""
+    self.buffer:ensure_loaded(true)
+    local line = self.buffer:get_line(line_idx, true) or ""
     local rendered = TexRen.parse(line, params)
     local n = #rendered
     if n < 1 then n = 1 end
@@ -182,14 +175,15 @@ function Window:_wrap_row_count_with_cursor(line_idx, params)
 end
 
 function Window:_wrap_layout(line_idx, params, bytepos)
-    local line = self.buffer.lines[line_idx] or ""
+    self.buffer:ensure_loaded(true)
+    local line = self.buffer:get_line(line_idx, true) or ""
     local lines, ranges, gsrc, pos = TexRen.layout(line, params, bytepos)
     if #lines < 1 then lines[1] = "" end
     return lines, ranges, gsrc, pos
 end
 
 function Window:_wrap_clamp_scroll(params)
-    local linecnt = #self.buffer.lines
+    local linecnt = self.buffer:line_count(true)
     local line = self.scrolly[1]
     if line < 1 then line = 1 end
     if line > linecnt then line = linecnt end
@@ -241,7 +235,7 @@ end
 function Window:_wrap_scroll_rows(delta, params)
     if delta == 0 then return end
 
-    local linecnt = #self.buffer.lines
+    local linecnt = self.buffer:line_count(true)
     local line = self.scrolly[1]
     local off = self.scrolly[2] or 0
 
@@ -302,7 +296,7 @@ function Window:_wrap_scroll_rows(delta, params)
 end
 
 function Window:_wrap_pos_from_row_offset(row_offset, params, include_virtual)
-    local linecnt = #self.buffer.lines
+    local linecnt = self.buffer:line_count(true)
     local line = self.scrolly[1]
     local off = self.scrolly[2] or 0
 
@@ -378,7 +372,7 @@ function Window:_wrap_pos_from_row_offset(row_offset, params, include_virtual)
 end
 
 function Window:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lines, ranges, gsrc, allow_eol)
-    local line_str = self.buffer.lines[line_idx] or ""
+    local line_str = self.buffer:get_line(line_idx, true) or ""
     local line_count = #lines
     if row_in_line > line_count then
         return allow_eol and (#line_str + 1) or math.max(1, #line_str)
@@ -405,11 +399,11 @@ function Window:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lin
 end
 
 function Window:_set_cursor_raw(line_idx, col1)
-    local linecnt = #self.buffer.lines
+    local linecnt = self.buffer:line_count(true)
     if line_idx < 1 then line_idx = 1 end
     if line_idx > linecnt then line_idx = linecnt end
 
-    local line = self.buffer.lines[line_idx] or ""
+    local line = self.buffer:get_line(line_idx, true) or ""
     local ll = #line
 
     local newx = col1 or self.cursorx
@@ -444,16 +438,16 @@ function Window:cursorSetScreenRow(row_offset, opts)
 
     if not self.opts.wrap then
         local line = self.scrolly[1] + (row_offset or 0)
-        local linecnt = #self.buffer.lines
+        local linecnt = self.buffer:line_count(true)
         if line < 1 then line = 1 end
         if line > linecnt then line = linecnt end
 
         local col = self.cursorx
         if start_of_line and options.get("startofline") then
-            local idx = (self.buffer.lines[line] or ""):find("%S")
+            local idx = (self.buffer:get_line(line, true) or ""):find("%S")
             col = idx or 1
         elseif opts.screen_col then
-            col = self:_col1_for_visual_col(self.buffer.lines[line] or "", opts.screen_col, vimmode == "insert")
+            col = self:_col1_for_visual_col(self.buffer:get_line(line, true) or "", opts.screen_col, vimmode == "insert")
         end
 
         self:cursorSet(col, line, true)
@@ -495,6 +489,7 @@ end
 
 -- TODO: Scroll validation only functions properly on screen lines. Tabs bork things pretty bad
 function Window:cursorMove(deltax, deltay, force_reset_held_x)
+    self.buffer:ensure_loaded(true)
     deltax = deltax or 0
     deltay = deltay or 0
 
@@ -506,7 +501,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
 
     if (deltax == 0) and had_y_move and (self._held_vx == nil) and (not force_reset_held_x) then
         local tcfg    = Tab.get_tab_config(self.buffer)
-        local line    = self.buffer.lines[self.cursory] or ""
+        local line    = self.buffer:get_line(self.cursory, true) or ""
         self._held_vx = Tab.vcol_of_prefix(line, self.cursorx, tcfg)
         if self._held_vx < 1 then self._held_vx = 1 end
     end
@@ -516,14 +511,14 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
     end
 
     local newy = self.cursory + deltay
-    newy = math.max(1, math.min(newy, #self.buffer.lines))
+    newy = math.max(1, math.min(newy, self.buffer:line_count(true)))
 
     local newx
 
     if deltax ~= 0 then
         newx = self.cursorx + deltax
     elseif had_y_move and self._held_vx then
-        local line = self.buffer.lines[newy] or ""
+        local line = self.buffer:get_line(newy, true) or ""
         local insert_mode = (vimmode == "insert")
         newx = self:_col1_for_visual_col(line, self._held_vx, insert_mode)
     else
@@ -533,7 +528,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
     if newx < 1 then
         newx = 1
     else
-        local ll = #(self.buffer.lines[newy] or "")
+        local ll = #(self.buffer:get_line(newy, true) or "")
         if vimmode == "normal" then
             if newx > ll then
                 newx = math.max(1, ll)
@@ -605,6 +600,7 @@ function Window:cursorSetY(y, force_reset_held_x)
 end
 
 function Window:scroll(deltax, deltay)
+    self.buffer:ensure_loaded(true)
     if deltay ~= 0 then
         if self.opts.wrap then
             local height = self:textheight()
@@ -627,7 +623,7 @@ function Window:scroll(deltax, deltay)
         else
             local newy = self.scrolly[1] + deltay
 
-            newy = math.max(1, math.min(#self.buffer.lines, newy))
+            newy = math.max(1, math.min(self.buffer:line_count(true), newy))
 
             self.scrolly[1] = newy
             if self.cursory < newy then
@@ -645,7 +641,7 @@ function Window:scroll(deltax, deltay)
         if deltax ~= 0 then
             local newx = self.scrollx + deltax
 
-            newx = math.max(1, math.min(newx, #self.buffer.lines[self.cursory]))
+            newx = math.max(1, math.min(newx, #(self.buffer:get_line(self.cursory, true) or "")))
 
             self.scrollx = newx
             if self.cursorx < newx then
@@ -666,19 +662,68 @@ function Window:scroll(deltax, deltay)
     self.need_redraw = true
 end
 
+function Window:hasLocalStatusline()
+    if self.floatpos or not self.frame then
+        return false
+    end
+
+    local tabp = tabpages[curtp]
+    if not tabp or not tabp.tree then
+        return false
+    end
+
+    local laststat = options.get("laststatus")
+    local _, y = FrameTree.GetXY(self.frame)
+    local frame_bottom = y + self.frame.height - 1
+    local touches_bottom = frame_bottom >= tabp.tree.height
+    if not touches_bottom then
+        if laststat == 3 then
+            return false
+        end
+        return true
+    end
+
+    if laststat == 2 then
+        return true
+    end
+
+    if laststat == 1 and #tabp.windows > 1 then
+        return true
+    end
+
+    return false
+end
+
+function Window:hasHorizontalSeparator()
+    if self.floatpos or not self.frame then
+        return false
+    end
+
+    local tabp = tabpages[curtp]
+    if not tabp or not tabp.tree then
+        return false
+    end
+
+    local _, y = FrameTree.GetXY(self.frame)
+    local frame_bottom = y + self.frame.height - 1
+    if frame_bottom < tabp.tree.height then
+        return true
+    end
+
+    return self:hasLocalStatusline()
+end
+
 --- Compute how many rows are available for text, accounting for the statusline.
 --- Returns:
 ---   rows     -- drawable rows for buffer text (excludes statusline if shown)
 ---   dostatus -- whether the statusline is currently shown (for the caller to draw)
 function Window:textheight()
     local frame = self.frame
-
-    local laststat = options.get("laststatus")
-    local dostatus = (laststat == 2) or (laststat == 1 and #tabpages[curtp].windows > 1)
+    local has_sep = self:hasHorizontalSeparator()
 
     local rows
     if frame then
-        rows = frame.height - (dostatus and 1 or 0)
+        rows = frame.height - (has_sep and 1 or 0)
     elseif self.floatpos then
         rows = self.floatpos.h
     else
@@ -686,7 +731,7 @@ function Window:textheight()
     end
     if rows < 0 then rows = 0 end
 
-    return rows, dostatus
+    return rows, has_sep
 end
 
 --- Compute the on-screen text region for this window.
@@ -698,6 +743,7 @@ end
 ---   pane_w        -- drawable pane width after a possible vertical split line
 ---   view_rows     -- drawable rows after statusline handling
 function Window:textwidth()
+    self.buffer:ensure_loaded(true)
     local frame = self.frame
 
     local pane_w
@@ -722,7 +768,7 @@ function Window:textwidth()
     local use_right_col       = false
     if show_numbers and gutter_w > 0 and view_rows > 0 then
         local start_idx = self.scrolly[1]
-        local lines     = self.buffer.lines
+        local lines     = self.buffer:lines_ref(true)
         local linecnt   = #lines
         local stop      = math.min(linecnt, start_idx + view_rows - 1)
 
@@ -754,6 +800,7 @@ end
 
 -- xoff and yoff are for global windows using frames. ignored otherwise
 function Window:render(xoff, yoff)
+    self.buffer:ensure_loaded(true)
     local frame    = self.frame
     local floatpos = self.floatpos
     local baseheight
@@ -786,11 +833,14 @@ function Window:render(xoff, yoff)
     end
 
     local extendstatus = 0
+    local has_sep = self:hasHorizontalSeparator()
+    local dostatus = self:hasLocalStatusline()
     if frame and FrameTree.IsLeftChild(frame) then
         Highlight.SetFor("VertSplit")
         local fc = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).vert or "|"
-        for i = 0, height - 2 do
-            setPos(width, 1 + i)
+        local split_rows = height - (has_sep and 1 or 0)
+        for i = 1, split_rows do
+            setPos(width, i)
             term.write(fc)
         end
         width = width - 1
@@ -798,10 +848,7 @@ function Window:render(xoff, yoff)
     end
 
     -- Statusline prechecks
-    local laststat                                          = options.get("laststatus")
-    local dostatus                                          = (laststat == 2) or
-        (laststat == 1 and #tabpages[curtp].windows > 1)
-    local lines                                             = self.buffer.lines
+    local lines                                             = self.buffer:lines_ref(true)
     local linecnt                                           = #lines
     local start_idx                                         = self.scrolly[1]
     local text_w, text_x, gutter_w, use_right_col, max_rows = self:textwidth()
@@ -852,6 +899,8 @@ function Window:render(xoff, yoff)
     local hscroll = self.scrollx or 1
     if hscroll < 1 then hscroll = 1 end
 
+    CmdRead = CmdRead or loadModule("vim.lib.excmd.cmdread")
+
     local tabcfg = Tab.get_tab_config(self.buffer)
     local listcfg = nil
     if options.get("list", self) then
@@ -859,6 +908,7 @@ function Window:render(xoff, yoff)
     end
     local visual_y = 0
     local pending_cursor = nil
+    local show_cursor = (self.winnr == curwin) and (not CmdRead.is_active())
     local last_visible_idx = math.min(linecnt, start_idx + max_rows - 1)
     local prefetched_blits = Syntax.LinesToBlit(self.buffer, start_idx, last_visible_idx, self)
 
@@ -884,7 +934,7 @@ function Window:render(xoff, yoff)
         local have_blit = blitLines and blitLines.fg and blitLines.bg
 
         local cursor_virtual = false
-        if (self.cursory == i) and cursorPos then
+        if show_cursor and (self.cursory == i) and cursorPos then
             if cursorPos.line == (#rendered + 1) then
                 cursor_virtual = true
             elseif self.opts.wrap and (vimmode == "insert") then
@@ -960,7 +1010,7 @@ function Window:render(xoff, yoff)
             end
 
             -- Draw cursor using Cursor highlight
-            if (not cursor_virtual) and (self.cursory == i) and cursorPos and (cursorPos.line == j) and text_w > 0 then
+            if show_cursor and (not cursor_virtual) and (self.cursory == i) and cursorPos and (cursorPos.line == j) and text_w > 0 then
                 local cx_abs = cursorPos.column       -- 1-based in wrapped piece
                 local cx_vis = cx_abs - (hscroll - 1) -- 1-based in visible slice
 
@@ -978,7 +1028,7 @@ function Window:render(xoff, yoff)
             visual_y = visual_y + 1
         end
 
-        if cursor_virtual then
+        if show_cursor and cursor_virtual then
             -- Cursor is on the virtual wrap row (EOL exactly at width).
             -- Defer drawing so it can overlay the next visible row.
             pending_cursor = { row_offset = visual_y, col = 1 }
@@ -999,7 +1049,7 @@ function Window:render(xoff, yoff)
     end
 
     -- Deferred cursor overlay for the virtual wrap row.
-    if pending_cursor and text_w > 0 then
+    if show_cursor and pending_cursor and text_w > 0 then
         local row_offset = pending_cursor.row_offset or 0
         if row_offset >= 0 and row_offset < max_rows then
             local cx_abs = pending_cursor.col or 1
@@ -1046,13 +1096,20 @@ function Window:render(xoff, yoff)
             term.write(spans[s][1])
         end
         Highlight.SetFor("Normal")
+    elseif has_sep and not self.floatpos then
+        local fcs = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true })
+        local hc = fcs.horiz or "-"
+        Highlight.SetFor("VertSplit")
+        setPos(1, baseheight)
+        term.write(string.rep(hc, math.max(0, width)))
+        Highlight.SetFor("Normal")
     end
 end
 
 function Window:drawStatus(xoff, yoff)
     term.setCursorPos(xoff, yoff + self.frame.height - 1)
 
-    local spans = Statusline.Parse(options.get("statusline"), self)
+    local spans = Statusline.Parse(options.get("statusline", self), self)
     for s = 1, #spans do
         Highlight.SetFor(spans[s][2])
         term.write(spans[s][1])
@@ -1063,7 +1120,8 @@ end
 
 function Window:matchPairs()
     local win   = windows[curwin]
-    local lines = win.buffer.lines
+    win.buffer:ensure_loaded(true)
+    local lines = win.buffer:lines_ref(true)
     local y     = win.cursory
     local x     = win.cursorx
 
@@ -1260,6 +1318,7 @@ local function _parse_indentkeys(raw)
 end
 
 function Window:_eval_indentexpr(lnum)
+    self.buffer:ensure_loaded(true)
     local expr = tostring(options.get("indentexpr", nil, self.buffer) or "")
     if expr == "" then
         return nil, false
@@ -1270,9 +1329,9 @@ function Window:_eval_indentexpr(lnum)
     Scopes = Scopes or loadModule("vim.lib.luaapi.scopes")
 
     local save_y, save_x = self.cursory, self.cursorx
-    local max_line = math.max(1, #self.buffer.lines)
+    local max_line = math.max(1, self.buffer:line_count(true))
     local target_y = math.max(1, math.min(max_line, lnum))
-    local target_line = self.buffer.lines[target_y] or ""
+    local target_line = self.buffer:get_line(target_y, true) or ""
 
     self.cursory = target_y
     if self.cursorx > #target_line + 1 then
@@ -1326,7 +1385,8 @@ function Window:_build_indent_prefix(vcols)
 end
 
 function Window:reindentLine(lnum, want_vcol, cursor_col1)
-    local lines = self.buffer.lines
+    self.buffer:ensure_loaded(true)
+    local lines = self.buffer:lines_ref(true)
     local ln = math.max(1, math.min(lnum, #lines))
     local line = lines[ln] or ""
 
@@ -1353,7 +1413,8 @@ function Window:reindentLine(lnum, want_vcol, cursor_col1)
 end
 
 function Window:computeIndentForLine(lnum)
-    local lines = self.buffer.lines
+    self.buffer:ensure_loaded(true)
+    local lines = self.buffer:lines_ref(true)
     if #lines == 0 then return 0 end
 
     local ind, ok = self:_eval_indentexpr(lnum)
@@ -1390,6 +1451,7 @@ end
 
 -- TODO: handle the delete character
 function Window:insertText(text, line, offset, insetoff, cursor_on_end)
+    self.buffer:ensure_loaded(true)
     line           = line or self.cursory
     local ln       = line
     local col1     = (offset or self.cursorx) + (insetoff or 0)
@@ -1428,9 +1490,9 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         return i + 1, at_col1 - 2 -- 0-based inclusive span
     end
 
-    local lines = self.buffer.lines
+    local lines = self.buffer:lines_ref(true)
     if ln < 1 then ln = 1 end
-    if ln > #lines then ln = #lines end
+    if ln > self.buffer:line_count(true) then ln = self.buffer:line_count(true) end
     local cur = lines[ln] or ""
     if col1 < 1 then col1 = 1 end
     if col1 > #cur + 1 then col1 = #cur + 1 end
@@ -1664,6 +1726,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
 end
 
 function Window:pasteRegister(reg_name, line, offset, isBefore)
+    self.buffer:ensure_loaded(true)
     line = line or self.cursory
     offset = offset or self.cursorx
 
@@ -1674,15 +1737,16 @@ function Window:pasteRegister(reg_name, line, offset, isBefore)
         elseif regval[1] == "linewise" then
             local lines = regval[2]
             local desty
+            local buflines = self.buffer:lines_ref(true)
 
             if isBefore then
                 for i = 1, #lines do
-                    table.insert(self.buffer.lines, line + i - 1, lines[i])
+                    table.insert(buflines, line + i - 1, lines[i])
                 end
                 desty = line
             else
                 for i = 1, #lines do
-                    table.insert(self.buffer.lines, line + 1, lines[#lines - i + 1])
+                    table.insert(buflines, line + 1, lines[#lines - i + 1])
                 end
                 desty = line + 1
             end
@@ -1692,7 +1756,7 @@ function Window:pasteRegister(reg_name, line, offset, isBefore)
             self:cursorMove(-self.cursorx, desty - self.cursory)
         elseif regval[1] == "inline" then
             local to_paste = regval[2]
-            local buflines = self.buffer.lines
+            local buflines = self.buffer:lines_ref(true)
 
             local cur = buflines[line]
             local cur_len = #cur
@@ -1767,19 +1831,48 @@ function Window:resizeHeight(delta)
     return false
 end
 
+local function cleanup_failed_split_window(win)
+    if not win then
+        return
+    end
+    if windows[win.winnr] == win then
+        windows[win.winnr] = nil
+    end
+    local buf = win.buffer
+    if buf and type(buf.refcount) == "number" then
+        buf.refcount = math.max(0, buf.refcount - 1)
+    end
+end
+
 -- Functions for moving around windows.
 function Window:wincmd(command, count)
     local tp = tabpages[curtp]
 
     if command == "s" then
+        local probe = tp:MakeSplitProbe(self)
+        if not tp:WinSplit(0, probe, false, { dry_run = true }) then
+            return Error(36)
+        end
+
         -- TODO: set-width split
         local newwin = Window(self.buffer, self)
-        tp:WinSplit(0, newwin, false)
+        if not tp:WinSplit(0, newwin, false) then
+            cleanup_failed_split_window(newwin)
+            return Error(36)
+        end
         enterWindow(newwin.winnr)
     elseif command == "v" then
+        local probe = tp:MakeSplitProbe(self)
+        if not tp:WinSplit(0, probe, true, { dry_run = true }) then
+            return Error(36)
+        end
+
         -- TODO: set-width split
         local newwin = Window(self.buffer, self)
-        tp:WinSplit(0, newwin, true)
+        if not tp:WinSplit(0, newwin, true) then
+            cleanup_failed_split_window(newwin)
+            return Error(36)
+        end
         enterWindow(newwin.winnr)
     elseif command == "w" then
         local tabwins = tp.windows

@@ -7,6 +7,7 @@ local Command
 local Key    = loadModule("vim.lib.key")
 local OnKey = loadModule("vim.lib.luaapi.on_key")
 local ExMsg  = loadModule("vim.lib.excmd.exmsg")
+local Error = loadModule("vim.lib.error")
 
 function Event.StartTimer(time, callback)
     local id = os.startTimer(time)
@@ -95,6 +96,18 @@ function Event.RunLoop()
             end
         elseif ev[1] == "timer" then
             if timers[ev[2]] then timers[ev[2]](ev[2]) end
+        elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
+            local w, h = term.getSize()
+            local ok, err = _V.apply_terminal_resize(w, h, ev[1])
+            if not ok and err then
+                local msg
+                if Error.IsError(err) then
+                    msg = err:toString()
+                else
+                    msg = tostring(err)
+                end
+                ExMsg.echoerr(msg)
+            end
         end
         ExMsg.Finalize()
     end

@@ -14,6 +14,43 @@ local AutoCmd = loadModule("vim.lib.autocmd")
 local Event = loadModule("vim.lib.event")
 local ExMsg = loadModule("vim.lib.excmd.exmsg")
 
+local function statusline_rows_for_frame(laststatus, window_count, frame_bottom, root_height)
+    if frame_bottom < root_height then
+        return 1
+    end
+
+    if laststatus == 2 then
+        return 1
+    end
+
+    if laststatus == 1 and window_count > 1 then
+        return 1
+    end
+
+    return 0
+end
+
+local function compute_layout_metrics()
+    local winyoff = 0
+    local displayheight = screen.height - options.get("cmdheight")
+    local stal = options.get("showtabline")
+    if stal == 2 or (stal == 1 and #tabpages > 1) then
+        displayheight = displayheight - 1
+        winyoff = winyoff + 1
+    end
+
+    local global_statusline = options.get("laststatus") == 3
+    if global_statusline then
+        displayheight = displayheight - 1
+    end
+
+    if displayheight < 1 then
+        displayheight = 1
+    end
+
+    return displayheight, winyoff, global_statusline
+end
+
 ---@class TabOpts
 
 ---@class Tabpage
@@ -29,12 +66,7 @@ local ExMsg = loadModule("vim.lib.excmd.exmsg")
 function Tabpage:new(window)
     window = window or Window()
 
-    local winyoff = 0
-    local displayheight = screen.height -
-        options.get("cmdheight") -- height of the windows
-    if options.get("showtabline") == 2 then
-        displayheight = displayheight - 1; winyoff = winyoff + 1
-    end -- we know the tabpage will only have one window, so we can ignore the `1` case
+    local displayheight, winyoff = compute_layout_metrics()
 
     local obj = setmetatable({
         tabnr = curr_tabno,
@@ -58,6 +90,138 @@ end
 
 function Tabpage:equalize()
     FrameTree.Equalize(self.tree)
+end
+
+local function clone_frame_tree(node, map)
+    local copy = {
+        parent = nil,
+        window = node.window,
+        width = node.width,
+        height = node.height,
+        split_type = node.split_type,
+    }
+    map[node] = copy
+
+    if node.children then
+        local left = clone_frame_tree(node.children[1], map)
+        local right = clone_frame_tree(node.children[2], map)
+        left.parent = copy
+        right.parent = copy
+        copy.children = { left, right }
+    end
+
+    return copy
+end
+
+local function resolve_split_target(self, target_winnr)
+    if target_winnr == 0 then
+        target_winnr = curwin
+    end
+
+    if target_winnr == -1 then
+        return self.tree
+    end
+
+    local window = windows[target_winnr]
+    if not window then
+        return nil
+    end
+    return window.frame
+end
+
+function Tabpage:MakeSplitProbe(refwin)
+    local opts = {}
+    if refwin and refwin.opts then
+        for k, v in pairs(refwin.opts) do
+            opts[k] = v
+        end
+    end
+
+    local probe = {
+        opts = opts,
+        style = refwin and refwin.style or nil,
+    }
+
+    function probe:minwidth()
+        local base = options.get("winminwidth")
+        if (self.style ~= "minimal") and (options.get("number", self) or options.get("relativenumber", self)) then
+            base = math.max(base, options.get("numberwidth", self) + 1)
+        end
+        return base
+    end
+
+    function probe:minheight()
+        return options.get("winminheight")
+    end
+
+    return probe
+end
+
+function Tabpage:CanWinSplit(target_winnr, new_win, vertical)
+    local frame = resolve_split_target(self, target_winnr)
+    if not frame then
+        return false
+    end
+
+    local frame_map = {}
+    local root_clone = clone_frame_tree(self.tree, frame_map)
+    local probe_frame = frame_map[frame]
+    if not probe_frame then
+        return false
+    end
+
+    local ok, split_anchor
+    if vertical then
+        ok, split_anchor = FrameTree.VerticalSplit(probe_frame, new_win)
+    else
+        ok, split_anchor = FrameTree.HorizontalSplit(probe_frame, new_win)
+    end
+    if not ok then
+        return false
+    end
+
+    local root_after = split_anchor or probe_frame or root_clone
+    while root_after and root_after.parent do
+        root_after = root_after.parent
+    end
+    if not root_after then
+        return false
+    end
+
+    local laststatus = options.get("laststatus")
+    local post_split_window_count = #self.windows + 1
+
+    local function has_text_capacity(node, yoff)
+        if node.split_type then
+            if node.split_type == "h" then
+                if not has_text_capacity(node.children[1], yoff) then
+                    return false
+                end
+                return has_text_capacity(node.children[2], yoff + node.children[1].height)
+            end
+            if not has_text_capacity(node.children[1], yoff) then
+                return false
+            end
+            return has_text_capacity(node.children[2], yoff)
+        end
+
+        local frame_bottom = yoff + node.height - 1
+        local status_rows = statusline_rows_for_frame(laststatus, post_split_window_count, frame_bottom, root_after.height)
+        local text_rows = node.height - status_rows
+        if text_rows < 1 then
+            return false
+        end
+
+        local min_text_rows = 1
+        min_text_rows = tonumber(node.window:minheight()) or 1
+        if text_rows < min_text_rows then
+            return false
+        end
+
+        return true
+    end
+
+    return has_text_capacity(root_after, 1)
 end
 
 -- Keep a full-screen screen buffer for this tabpage
@@ -134,6 +298,22 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
 
     local idx = self:_win_local_index(window)
     if idx then
+        -- If closing the current window may wipe/delete its buffer, switch to another
+        -- window first so BufLeave callbacks run with a valid current buffer context.
+        local switched_before_close = false
+        if not frameonly and window.winnr == curwin and #self.windows > 1 then
+            local bufhidden = options.get("bufhidden", nil, window.buffer)
+            local may_drop_from_registry = (bufhidden == "wipe" or bufhidden == "delete")
+                and ((window.buffer.refcount or 0) <= 1)
+            if may_drop_from_registry then
+                local target = (self.windows[1] ~= window) and self.windows[1] or self.windows[2]
+                if target then
+                    enterWindow(target.winnr)
+                    switched_before_close = true
+                end
+            end
+        end
+
         local bufnr = window.buffer.bufnr
         local name = window.buffer.name
         local closeok
@@ -150,6 +330,9 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
                 end
             end
         else
+            if switched_before_close and windows[window.winnr] then
+                enterWindow(window.winnr)
+            end
             return closeok
         end
     end
@@ -178,36 +361,38 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
     if not frameonly then
         windows[window.winnr] = nil
     end
+
+    return true
 end
 
 function Tabpage:updateFrameview()
-    local winyoff = 0
-    local displayheight = screen.height - options.get("cmdheight") -- height of the windows
-    local stal = options.get("showtabline")
-    if stal == 2 or (stal == 1 and #tabpages > 1) then
-        displayheight = displayheight - 1; winyoff = winyoff + 1
-    end
+    local displayheight, winyoff = compute_layout_metrics()
 
     self.winyoff = winyoff
 
-    if self.tree.height ~= displayheight then
-        assert(FrameTree.RootResizeHeight(self.tree, displayheight - self.tree.height))
+    local ok = true
+
+    if self.tree.width ~= screen.width then
+        ok = FrameTree.RootResizeWidth(self.tree, screen.width - self.tree.width) and ok
     end
+
+    if self.tree.height ~= displayheight then
+        ok = FrameTree.RootResizeHeight(self.tree, displayheight - self.tree.height) and ok
+    end
+
+    return ok
 end
 
-function Tabpage:WinSplit(target_winnr, new_win, vertical)
-    if target_winnr == 0 then
-        target_winnr = curwin
+function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
+    opts = opts or {}
+
+    if opts.dry_run then
+        return self:CanWinSplit(target_winnr, new_win, vertical)
     end
 
-    local frame
-
-    if target_winnr == -1 then
-        frame = self.tree
-    else
-        local window = windows[target_winnr]
-        if not window then return end
-        frame = window.frame
+    local frame = resolve_split_target(self, target_winnr)
+    if not frame then
+        return false
     end
 
     local set_root = frame == self.tree
@@ -291,9 +476,9 @@ function Tabpage:render()
     end
 
     if options.get("laststatus") == 3 then
-        term.setCursorPos(1, self.winyoff + self.tree.height)
+        term.setCursorPos(1, self.winyoff + self.tree.height + 1)
 
-        local spans = Statusline.Parse(options.get("statusline"), windows[curwin], self.tree.width)
+        local spans = Statusline.Parse(options.get("statusline", windows[curwin]), windows[curwin], self.tree.width)
         for i = 1, #spans do
             Highlight.SetFor(spans[i][2])
             term.write(spans[i][1])

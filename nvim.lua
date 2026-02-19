@@ -157,6 +157,7 @@ end
 _V.writestartup("--- NVIM STARTING ---")
 
 Tabpage = loadModule("vim.layout.tabpage")
+local FrameTree = loadModule("vim.lib.frame")
 _V.options = loadModule("vim.lib.options")
 _V.options.set("lines", h)
 _V.options.set("columns", w)
@@ -166,6 +167,9 @@ Event.LoadCommandModule()
 loadModule("vim.lib.mappings")
 
 local AutoCmd = loadModule("vim.lib.autocmd")
+_V.rebalance_current_window_soft = FrameTree.RebalanceCurrentTab
+_V.apply_terminal_resize = FrameTree.ApplyTerminalResize
+
 function _V.setMode(newmode, newx, newy)
     local oldmode = _V.vimmode
     _V.vimmode = newmode
@@ -175,8 +179,12 @@ function _V.setMode(newmode, newx, newy)
     if newx then
         _V.windows[_V.curwin]:cursorSetX(newx)
     end
-    if (newmode == "insert") and (#_V.windows[_V.curwin].buffer.lines == 0) then
-        _V.windows[_V.curwin].buffer.lines = {""}
+    if newmode == "insert" then
+        local buf = _V.windows[_V.curwin].buffer
+        local lines = buf:lines_ref(true)
+        if #lines == 0 then
+            lines[1] = ""
+        end
     end
     if newmode ~= oldmode then
         AutoCmd.Run("ModeChanged", { old_mode = oldmode, new_mode = newmode })
@@ -266,6 +274,8 @@ function _V.enterWindow(winnr)
     if buf_changed then
         AutoCmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
     end
+
+    _V.rebalance_current_window_soft()
 end
 
 -- Set up the emitter

@@ -194,6 +194,8 @@ do
     Options.set("bufhidden", "unload", true, win, bufunload)
     local rv_unload = bufunload:leave(false, nil, nil)
     assert_true("bufhidden=unload leave succeeds", rv_unload == true, tostring(rv_unload))
+    assert_true("bufhidden=unload marks buffer unloaded", bufunload.loaded == false, tostring(bufunload.loaded))
+    assert_eq("bufhidden=unload clears lines", #bufunload.lines, 0)
 end
 
 print("normal + bufhidden runtime tests: OK")

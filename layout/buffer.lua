@@ -9,6 +9,11 @@ local Syntax = loadModule("vim.lib.syntax")
 
 local curr_bufno = 1
 
+local function _request_full_redraw()
+    what_redraw["all"] = true
+    need_redraw = true
+end
+
 ---@class BufOpts
 ---@field buflisted boolean Whether the buffer shows up in bufer lists.
 ---@field modified boolean Whether the buffer has been modified
@@ -20,7 +25,8 @@ local curr_bufno = 1
 ---@field swapname string The swapfile name.
 ---@field scratch boolean Whether the buffer is a scratch buffer.
 ---@field opts BufOpts The options for each buffer.
----@field lines string[] The raw lines of the file currently loaded into the buffer. `nil` if unloaded.
+---@field lines string[] The raw lines of the file currently loaded into the buffer.
+---@field loaded boolean Whether the buffer currently has file contents loaded.
 ---@field syntax_ctx table|nil Syntax engine context and caches for this buffer.
 ---@field refcount number The number of windows referencing this buffer.
 ---
@@ -32,7 +38,9 @@ local curr_bufno = 1
 --- Creates a new Buffer.
 ---@param listed boolean Whether to use the buffer in buffer lists.
 ---@param scratch boolean Whether the buffer is a scratch buffer, never saved.
-function Buffer:new(listed, scratch)
+---@param loaded boolean|nil Whether this buffer should start loaded.
+function Buffer:new(listed, scratch, loaded)
+    local is_loaded = (loaded ~= false)
     local obj = setmetatable({
         scratch = scratch or false,
         bufnr = curr_bufno,
@@ -41,7 +49,8 @@ function Buffer:new(listed, scratch)
             modified  = false
         },
         state = "hidden",
-        lines = {},
+        lines = is_loaded and { "" } or {},
+        loaded = is_loaded,
         refcount = 0,
         signs = {},
         signs_byln = {},
@@ -56,6 +65,7 @@ end
 
 function Buffer:Load(read_contents)
     self.syntax_ctx = nil
+    self.loaded = true
 
     if read_contents then
         local name = self.name or ""
@@ -106,8 +116,43 @@ function Buffer:Load(read_contents)
     end
 end
 
+function Buffer:is_loaded()
+    return self.loaded == true
+end
+
+function Buffer:ensure_loaded(read_contents)
+    if self:is_loaded() then
+        return true
+    end
+    self:Load(read_contents ~= false)
+    return self:is_loaded()
+end
+
+function Buffer:line_count(load_if_unloaded)
+    if load_if_unloaded then
+        self:ensure_loaded(true)
+    end
+    if not self:is_loaded() then
+        return 0
+    end
+    return #self.lines
+end
+
+function Buffer:lines_ref(load_if_unloaded)
+    if load_if_unloaded then
+        self:ensure_loaded(true)
+    end
+    return self.lines
+end
+
+function Buffer:get_line(line_nr, load_if_unloaded)
+    local lines = self:lines_ref(load_if_unloaded)
+    return lines[line_nr]
+end
+
 function Buffer:remove_lines(start1, end1, opts)
     opts = opts or {}
+    self.loaded = true
 
     local line_count = #self.lines
 
@@ -141,11 +186,13 @@ function Buffer:remove_lines(start1, end1, opts)
 
     self.opts.modified = true
     Syntax.ParseLinetypes(self, math.max(1, s - 1))
+    _request_full_redraw()
 
     return removed
 end
 
 function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
+    self.loaded = true
     local line_count = #self.lines
 
     -- Normalize negatives relative to end+1, remaining 0-based for now
@@ -196,6 +243,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     -- Mark modified (like altering buffer contents)
     self.opts.modified = true
     Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
+    _request_full_redraw()
 end
 
 local function _autowrite_enabled(kind)
@@ -229,8 +277,10 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
             -- Keep buffer loaded and listed regardless of global 'hidden'.
         elseif bufhidden == "unload" then
             -- Approximate unload semantics: keep the buffer object, but drop
-            -- transient parse context and mark as not active in a window.
+            -- transient parse context and clear loaded contents.
             self.syntax_ctx = nil
+            self.lines = {}
+            self.loaded = false
         elseif bufhidden == "delete" then
             -- Behave like :bdelete when last window reference is gone.
             self.opts.buflisted = false
@@ -269,16 +319,28 @@ function Buffer:write(force, newname)
         name = self.name
     end
 
-    if options.get("buftype", nil, self) ~= "" then
+    if not name or name == "" then
+        return Error(32)
+    end
+
+    local buftype = options.get("buftype", nil, self)
+    if buftype ~= "" then
+        if buftype == "acwrite" then
+            local matched = AutoCmd.Run("BufWriteCmd", {
+                bufnr = self.bufnr,
+                bufname = name,
+            }) or 0
+            if matched == 0 then
+                return Error(676)
+            end
+            self.opts.modified = false
+            return true
+        end
         return Error(382)
     end
 
     if options.get("readonly", nil, self) and not force then
         return Error(45)
-    end
-
-    if not name then
-        return Error(32)
     end
 
     local path = VimFs.abspath(name)
