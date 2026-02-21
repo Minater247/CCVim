@@ -19,6 +19,11 @@ If you're used to Vim or Neovim, you will feel right at home. The only major con
     - And many more from standard plugin repositories!
 - **Neovim API Compatibility** so that any Neovim Lua code should run seamlessly
 
+## NOTICE
+This project is still in early beta! I have waited until the project was stable enough to be my main editor the project before releasing it, but you may encounter bugs while you use it.
+
+Not all plugins will run immediately - some require minor edits. I am working on accounting for these, but I cannot guarantee a plugin will not become stuck or crash at a critical point - so use external plugins at your own risk.
+
 ## Installation
 
 A pastebin link will be coming as soon as I polish up the installer!
