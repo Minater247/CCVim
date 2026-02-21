@@ -2,18 +2,18 @@ local Window = {}
 Window.__index = Window -- Share the instance methods
 
 ---@class Buffer
-local Buffer = loadModule("vim.layout.buffer")
-local Highlight = loadModule("vim.lib.highlight")
-local FrameTree = loadModule("vim.lib.frame")
-local Statusline = loadModule("vim.lib.statusline")
-local TexRen = loadModule("vim.lib.texren")
-local Syntax = loadModule("vim.lib.syntax")
-local Sign = loadModule("vim.lib.sign")
-local Tab = loadModule("vim.lib.tab")
-local ListChars = loadModule("vim.lib.listchars")
-local Utf8 = loadModule("vim.lib.utf8")
-local Error = loadModule("vim.lib.error")
-local Autocmd = loadModule("vim.lib.autocmd")
+local Buffer = loadModule("layout.buffer")
+local Highlight = loadModule("lib.highlight")
+local FrameTree = loadModule("lib.frame")
+local Statusline = loadModule("lib.statusline")
+local TexRen = loadModule("lib.texren")
+local Syntax = loadModule("lib.syntax")
+local Sign = loadModule("lib.sign")
+local Tab = loadModule("lib.tab")
+local ListChars = loadModule("lib.listchars")
+local Utf8 = loadModule("lib.utf8")
+local Error = loadModule("lib.error")
+local Autocmd = loadModule("lib.autocmd")
 local VimExpr
 local VimFn
 local Scopes
@@ -1103,7 +1103,7 @@ function Window:render(xoff, yoff)
     local hscroll = self.scrollx or 1
     if hscroll < 1 then hscroll = 1 end
 
-    CmdRead = CmdRead or loadModule("vim.lib.excmd.cmdread")
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
 
     local tabcfg = Tab.get_tab_config(self.buffer)
     local listcfg = nil
@@ -1636,9 +1636,9 @@ function Window:_eval_indentexpr(lnum)
         return nil, false
     end
 
-    VimExpr = VimExpr or loadModule("vim.lib.excmd.vimxpr")
-    VimFn = VimFn or loadModule("vim.lib.luaapi.fn")
-    Scopes = Scopes or loadModule("vim.lib.luaapi.scopes")
+    VimExpr = VimExpr or loadModule("lib.excmd.vimxpr")
+    VimFn = VimFn or loadModule("lib.luaapi.fn")
+    Scopes = Scopes or loadModule("lib.luaapi.scopes")
 
     local save_y, save_x = self.cursory, self.cursorx
     local max_line = math.max(1, self.buffer:line_count(true))

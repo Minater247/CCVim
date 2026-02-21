@@ -104,10 +104,10 @@ local mock = MockEnv.setup({
     },
 })
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Autocmd = mock.loadModule("vim.lib.autocmd")
-local Args = mock.loadModule("vim.lib.args")
+local Autocmd = mock.loadModule("lib.autocmd")
+local Args = mock.loadModule("lib.args")
 
 Autocmd.CreateAutocommand({ "BufRead" }, { "*.lua" }, function(ctx)
     local buf = buffers[ctx.bufnr]

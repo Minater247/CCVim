@@ -108,7 +108,7 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local Loop = mock.loadModule("vim.lib.luaapi.loop")
+local Loop = mock.loadModule("lib.luaapi.loop")
 
 local stat_called, stat_err, stat_val = false, nil, nil
 Loop.fs_stat("/dir", function(err, stat)

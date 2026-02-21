@@ -1,5 +1,5 @@
-local package = loadModule("vim.lib.luaapi.package")
-local RuntimePath = loadModule("vim.lib.runtimepath")
+local package = loadModule("lib.luaapi.package")
+local RuntimePath = loadModule("lib.runtimepath")
 
 local function join_path(base, sub)
     if base:sub(-1) == "/" then
@@ -32,7 +32,7 @@ return function(dotpath)
         return package.loaded[dotpath]
     end
 
-    local LuaLoader = loadModule("vim.lib.lualoader")
+    local LuaLoader = loadModule("lib.lualoader")
     local realpath = find_module_path(dotpath)
     if not realpath then
         -- TODO: properly list out the files

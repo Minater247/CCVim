@@ -66,12 +66,12 @@ local function assert_lines(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
-local Buffer = mock.loadModule("vim.layout.buffer")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
+local Buffer = mock.loadModule("layout.buffer")
 
 local win = {
     winnr = 1,

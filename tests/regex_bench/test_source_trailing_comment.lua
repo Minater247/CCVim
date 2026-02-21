@@ -48,7 +48,7 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
 
 local buf = mock.create_buffer(1, "/tmp/test.txt", { "" })
@@ -57,7 +57,7 @@ _G.curwin = 1
 _G.curtp = 1
 _G.tabpages = { { tabnr = 1, windows = { win }, opts = {} } }
 
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
+local Runtime = mock.loadModule("lib.excmd.runtime")
 
 local ok1, err1 = Runtime.run([[source $VIMRUNTIME/colors/vim.lua " Nvim: revert to Vim default color scheme]], { script_ctx = "/tmp/test_source_comment.vim" })
 assert_eq("source with spaced comment succeeds", ok1, true)

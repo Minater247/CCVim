@@ -31,8 +31,8 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
-local VimExpr = mock.loadModule("vim.lib.excmd.vimxpr")
+local Fn = mock.loadModule("lib.luaapi.fn")
+local VimExpr = mock.loadModule("lib.excmd.vimxpr")
 
 local child = { value = 1 }
 local list = { child, 2 }

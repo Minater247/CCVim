@@ -53,11 +53,11 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Buffer = mock.loadModule("vim.layout.buffer")
-local Tabpage = mock.loadModule("vim.layout.tabpage")
-local Autocmd = mock.loadModule("vim.lib.autocmd")
+local Buffer = mock.loadModule("layout.buffer")
+local Tabpage = mock.loadModule("layout.tabpage")
+local Autocmd = mock.loadModule("lib.autocmd")
 
 local function make_win(winnr, bufnr_obj, tabnr)
     return {

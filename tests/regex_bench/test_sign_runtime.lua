@@ -35,10 +35,10 @@ end
 
 _G.screen = { width = 40, height = 10 }
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Buffer = mock.loadModule("vim.layout.buffer")
-local Sign = mock.loadModule("vim.lib.sign")
+local Buffer = mock.loadModule("layout.buffer")
+local Sign = mock.loadModule("lib.sign")
 
 local buf = Buffer(true, false, true)
 buf.name = "/tmp/sign_runtime.lua"

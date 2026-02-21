@@ -4,15 +4,15 @@ Tabpage.__index = Tabpage -- Share the instance methods
 local curr_tabno = 1
 
 ---@class Window
-local Window = loadModule("vim.layout.window")
-local FrameTree = loadModule("vim.lib.frame")
-local Highlight = loadModule("vim.lib.highlight")
-local Statusline = loadModule("vim.lib.statusline")
-local Command = loadModule("vim.lib.command")
-local CmdRead = loadModule("vim.lib.excmd.cmdread")
-local AutoCmd = loadModule("vim.lib.autocmd")
-local Event = loadModule("vim.lib.event")
-local ExMsg = loadModule("vim.lib.excmd.exmsg")
+local Window = loadModule("layout.window")
+local FrameTree = loadModule("lib.frame")
+local Highlight = loadModule("lib.highlight")
+local Statusline = loadModule("lib.statusline")
+local Command = loadModule("lib.command")
+local CmdRead = loadModule("lib.excmd.cmdread")
+local AutoCmd = loadModule("lib.autocmd")
+local Event = loadModule("lib.event")
+local ExMsg = loadModule("lib.excmd.exmsg")
 
 local function statusline_rows_for_frame(laststatus, window_count, frame_bottom, root_height)
     if frame_bottom < root_height then

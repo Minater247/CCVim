@@ -1,19 +1,19 @@
 local api = {}
 
-local VimXpr = loadModule("vim.lib.excmd.vimxpr")
-local Buffer = loadModule("vim.layout.buffer")
-local Window = loadModule("vim.layout.window")
-local Command = loadModule("vim.lib.command")
-local Key = loadModule("vim.lib.key")
-local Highlight = loadModule("vim.lib.highlight")
-local ExMsg = loadModule("vim.lib.excmd.exmsg")
-local Runtime = loadModule("vim.lib.excmd.runtime")
-local scopes = loadModule("vim.lib.luaapi.scopes")
-local AutoCmd = loadModule("vim.lib.autocmd")
-local Fn = loadModule("vim.lib.luaapi.fn")
+local VimXpr = loadModule("lib.excmd.vimxpr")
+local Buffer = loadModule("layout.buffer")
+local Window = loadModule("layout.window")
+local Command = loadModule("lib.command")
+local Key = loadModule("lib.key")
+local Highlight = loadModule("lib.highlight")
+local ExMsg = loadModule("lib.excmd.exmsg")
+local Runtime = loadModule("lib.excmd.runtime")
+local scopes = loadModule("lib.luaapi.scopes")
+local AutoCmd = loadModule("lib.autocmd")
+local Fn = loadModule("lib.luaapi.fn")
 local ScriptSource
-local Error = loadModule("vim.lib.error")
-local Utf8 = loadModule("vim.lib.utf8")
+local Error = loadModule("lib.error")
+local Utf8 = loadModule("lib.utf8")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -315,7 +315,7 @@ function api.nvim_win_set_buf(...)
     win.buffer = newbuf
     newbuf.refcount = (newbuf.refcount or 0) + 1
 
-    local Syntax = loadModule("vim.lib.syntax")
+    local Syntax = loadModule("lib.syntax")
     Syntax.OnWindowBufferChanged(win)
     scopes.w.current_syntax = nil
     win.need_redraw = true
@@ -496,7 +496,7 @@ function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
     lhs = Key.strtoseq(lhs)
 
     if opts.callback then
-        ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local cb = ScriptSource.wrap(nil, opts.callback)
         Command.map_callback(mode, lhs, cb, { buffer = buf })
     else
@@ -543,13 +543,13 @@ end
 -- =================
 
 function api.nvim_list_runtime_paths()
-    local RuntimePath = loadModule("vim.lib.runtimepath")
+    local RuntimePath = loadModule("lib.runtimepath")
     return RuntimePath.get_search_list()
 end
 
 function api.nvim_get_runtime_file(path, all)
-    local RuntimePath = loadModule("vim.lib.runtimepath")
-    local Filesystem = loadModule("vim.lib.filesystem")
+    local RuntimePath = loadModule("lib.runtimepath")
+    local Filesystem = loadModule("lib.filesystem")
 
     local rtp = RuntimePath.get_search_list()
 
@@ -962,8 +962,8 @@ function api.nvim_create_autocmd(event, opts)
         end
     end
 
-    local cb = opts.callback and (ScriptSource or loadModule("vim.lib.scriptsource")).wrap(nil, opts.callback) or nil
-    ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+    local cb = opts.callback and (ScriptSource or loadModule("lib.scriptsource")).wrap(nil, opts.callback) or nil
+    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     local script_ctx = ScriptSource.CurrentContext()
 
     return AutoCmd.CreateAutocommand(event, patterns, cb, opts.command, opts.group, opts.once, opts
@@ -1054,7 +1054,7 @@ function api.nvim_create_user_command(name, command, opts)
     end
 
     if type(command) == "function" then
-        local wrap = (ScriptSource or loadModule("vim.lib.scriptsource")).wrap
+        local wrap = (ScriptSource or loadModule("lib.scriptsource")).wrap
         command = wrap(nil, command)
     end
 
@@ -1237,7 +1237,7 @@ function api.nvim_buf_delete(buffer, opts)
                 if win.altbuf == buf or win.altbuf == buf.bufnr then
                     win.altbuf = nil
                 end
-                local Syntax = loadModule("vim.lib.syntax")
+                local Syntax = loadModule("lib.syntax")
                 Syntax.OnWindowBufferChanged(win)
                 win.need_redraw = true
             end

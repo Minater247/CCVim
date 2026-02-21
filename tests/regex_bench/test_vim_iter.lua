@@ -14,7 +14,7 @@ local function assert_eq(label, got, want)
     end
 end
 
-local ApiBuild = mock.loadModule("vim.lib.luaapi.apibuild")
+local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
 local api = ApiBuild.Build()
 
 do

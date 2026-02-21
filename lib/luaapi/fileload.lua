@@ -1,7 +1,7 @@
 local M = {}
 
-local print = loadModule("vim.lib.luaapi.print")
-local VimFs = loadModule("vim.lib.luaapi.fs")
+local print = loadModule("lib.luaapi.print")
+local VimFs = loadModule("lib.luaapi.fs")
 
 local function normalize_abs(path)
     return VimFs.abspath(path or "")

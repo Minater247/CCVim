@@ -5,10 +5,10 @@
 
 local M = {}
 
-local api = loadModule("vim.lib.luaapi.api")
-local options = loadModule("vim.lib.options")
-local scopes = loadModule("vim.lib.luaapi.scopes")
-local package = loadModule("vim.lib.luaapi.package")
+local api = loadModule("lib.luaapi.api")
+local options = loadModule("lib.options")
+local scopes = loadModule("lib.luaapi.scopes")
+local package = loadModule("lib.luaapi.package")
 
 local parser_by_buf = {}
 local query_overrides = {}

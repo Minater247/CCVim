@@ -23,7 +23,7 @@ local function assert_true(label, cond)
     end
 end
 
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
 
 Scopes.b.current_flag = "one"
 assert_eq("b: current buffer write", Scopes._b_by_buf[1].current_flag, "one")

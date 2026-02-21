@@ -2,9 +2,9 @@
 
 local Autocmd               = {}
 
-local scopes                = loadModule("vim.lib.luaapi.scopes")
-local Error                 = loadModule("vim.lib.error")
-local ExMsg                 = loadModule("vim.lib.excmd.exmsg")
+local scopes                = loadModule("lib.luaapi.scopes")
+local Error                 = loadModule("lib.error")
+local ExMsg                 = loadModule("lib.excmd.exmsg")
 local Runtime
 local ScriptSource
 
@@ -318,7 +318,7 @@ function Autocmd.CreateAutocommand(events, patterns, callback, command, group, o
 
     local durable_script_state
     if type(callback) == "string" or type(command) == "string" then
-        Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+        Runtime = Runtime or loadModule("lib.excmd.runtime")
         durable_script_state = Runtime.CaptureDurableScriptState({ script_ctx = script_ctx })
     end
 
@@ -714,7 +714,7 @@ local function _call_callback(cb, ac, event, ctx)
         end)
         return
     elseif type(cb) == "string" then
-        Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+        Runtime = Runtime or loadModule("lib.excmd.runtime")
         LOG_INTERNAL("autocmd", "autocmd %d executing Ex command string: %s", ac.id, tostring(cb))
         if event == "BufEnter" or event == "VimEnter" or event == "BufRead" or event == "BufReadCmd" then
             LOG_DEBUG("autocmd %d event=%s executing: %s", ac.id, tostring(event), tostring(cb))

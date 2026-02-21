@@ -73,9 +73,9 @@ end
 
 _G.screen = { width = 20, height = 8 }
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Tabpage = mock.loadModule("vim.layout.tabpage")
+local Tabpage = mock.loadModule("layout.tabpage")
 
 local win1 = make_win(1)
 windows[1] = win1

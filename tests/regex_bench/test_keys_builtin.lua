@@ -23,7 +23,7 @@ local function contains(tbl, value)
     return false
 end
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
+local Fn = mock.loadModule("lib.luaapi.fn")
 
 do
     local out = Fn.keys({ a = 1, b = 2 })

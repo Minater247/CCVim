@@ -1,13 +1,13 @@
 local Api = {}
 
-local State = loadModule("vim.lib.syntax_engine.state")
-local Runtime = loadModule("vim.lib.syntax_engine.runtime")
-local Profile = loadModule("vim.lib.syntax_engine.profile")
-local CommandParser = loadModule("vim.lib.syntax_engine.command_parser")
-local Compiler = loadModule("vim.lib.syntax_engine.compiler")
-local Options = loadModule("vim.lib.options")
-local Highlight = loadModule("vim.lib.highlight")
-local VimRegex = loadModule("vim.lib.excmd.vim_regex")
+local State = loadModule("lib.syntax_engine.state")
+local Runtime = loadModule("lib.syntax_engine.runtime")
+local Profile = loadModule("lib.syntax_engine.profile")
+local CommandParser = loadModule("lib.syntax_engine.command_parser")
+local Compiler = loadModule("lib.syntax_engine.compiler")
+local Options = loadModule("lib.options")
+local Highlight = loadModule("lib.highlight")
+local VimRegex = loadModule("lib.excmd.vim_regex")
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))

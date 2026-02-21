@@ -1,11 +1,11 @@
 local CmdRead = {}
 
-local Highlight = loadModule("vim.lib.highlight")
-local Command = loadModule("vim.lib.command")
-local Key = loadModule("vim.lib.key")
-local ExMsg = loadModule("vim.lib.excmd.exmsg")
-local Runtime = loadModule("vim.lib.excmd.runtime")
-local scopes = loadModule("vim.lib.luaapi.scopes")
+local Highlight = loadModule("lib.highlight")
+local Command = loadModule("lib.command")
+local Key = loadModule("lib.key")
+local ExMsg = loadModule("lib.excmd.exmsg")
+local Runtime = loadModule("lib.excmd.runtime")
+local scopes = loadModule("lib.luaapi.scopes")
 
 local pendingcmd = {}
 local active = false

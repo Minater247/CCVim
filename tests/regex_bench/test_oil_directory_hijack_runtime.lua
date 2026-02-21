@@ -104,14 +104,14 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Buffer = mock.loadModule("vim.layout.buffer")
-local Api = mock.loadModule("vim.lib.luaapi.api")
-local Autocmd = mock.loadModule("vim.lib.autocmd")
-local Loop = mock.loadModule("vim.lib.luaapi.loop")
-local ApiBuild = mock.loadModule("vim.lib.luaapi.apibuild")
-local Error = mock.loadModule("vim.lib.error")
+local Buffer = mock.loadModule("layout.buffer")
+local Api = mock.loadModule("lib.luaapi.api")
+local Autocmd = mock.loadModule("lib.autocmd")
+local Loop = mock.loadModule("lib.luaapi.loop")
+local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
+local Error = mock.loadModule("lib.error")
 
 local buf = Buffer(true, false)
 buf.name = "/tmp/start"

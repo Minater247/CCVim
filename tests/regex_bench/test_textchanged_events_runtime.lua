@@ -2,7 +2,7 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("vim.lib.excmd.exmsg") end,
+        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
         ["vim.lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
@@ -43,11 +43,11 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
 
-local Autocmd = mock.loadModule("vim.lib.autocmd")
-local Window = mock.loadModule("vim.layout.window")
+local Autocmd = mock.loadModule("lib.autocmd")
+local Window = mock.loadModule("layout.window")
 
 local buf = mock.create_buffer(1, "/tmp/textchanged.txt", { "x" }, { modified = false })
 local win = mock.create_window(1, buf, {})

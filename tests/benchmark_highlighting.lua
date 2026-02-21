@@ -450,7 +450,7 @@ local function resolve_include_path(current_file, include_file)
 end
 
 local function load_syntax_commands(ft, opts)
-    local Parser = loadModule("vim.lib.syntax_engine.command_parser")
+    local Parser = loadModule("lib.syntax_engine.command_parser")
 
     local syntax_file = normalize_path(join(RUNTIME_ROOT, "syntax/" .. tostring(ft) .. ".vim"))
     if not file_exists(syntax_file) then
@@ -721,9 +721,9 @@ local function collect_lua_timing(path, ft, opts)
 
     init_lua_engine_runtime()
 
-    local Runtime = loadModule("vim.lib.syntax_engine.runtime")
-    local Compiler = loadModule("vim.lib.syntax_engine.compiler")
-    local State = loadModule("vim.lib.syntax_engine.state")
+    local Runtime = loadModule("lib.syntax_engine.runtime")
+    local Compiler = loadModule("lib.syntax_engine.compiler")
+    local State = loadModule("lib.syntax_engine.state")
 
     local commands, syntax_file_or_err = load_syntax_commands(ft, opts)
     if not commands then

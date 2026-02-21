@@ -1,16 +1,16 @@
 -- vim.lib.excmd.runtime
 local Runtime = {}
 
-local VimExpr = loadModule("vim.lib.excmd.vimxpr")
-local VimRegex = loadModule("vim.lib.excmd.vim_regex")
-local Error = loadModule("vim.lib.error")
-local Compiler = loadModule("vim.lib.excmd.compiler")
-local Commands = loadModule("vim.lib.excmd.commands")
-local Options = loadModule("vim.lib.options")
-local Autocmd = loadModule("vim.lib.autocmd")
+local VimExpr = loadModule("lib.excmd.vimxpr")
+local VimRegex = loadModule("lib.excmd.vim_regex")
+local Error = loadModule("lib.error")
+local Compiler = loadModule("lib.excmd.compiler")
+local Commands = loadModule("lib.excmd.commands")
+local Options = loadModule("lib.options")
+local Autocmd = loadModule("lib.autocmd")
 local ScriptSource
-local scopes = loadModule("vim.lib.luaapi.scopes")
-local Builtins = loadModule("vim.lib.luaapi.fn")
+local scopes = loadModule("lib.luaapi.scopes")
+local Builtins = loadModule("lib.luaapi.fn")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -211,7 +211,7 @@ local function try_autoload_function(name)
         return false
     end
 
-    ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     LOG_DEBUG("autoload: loading %s for %s", script, name)
 
     local ok = ScriptSource.source_runtime(script .. ".vim")
@@ -842,7 +842,7 @@ local resolve_dispatch_name = Commands.resolve_dispatch_name
 function Runtime.new(state, opts)
     local ExMsg
     local function _exmsg()
-        ExMsg = ExMsg or loadModule("vim.lib.excmd.exmsg")
+        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
         return ExMsg
     end
 
@@ -891,7 +891,7 @@ function Runtime.new(state, opts)
                 if not mod or not func then
                     error(Error(117, callee))
                 end
-                local Req = loadModule("vim.lib.luaapi.require")
+                local Req = loadModule("lib.luaapi.require")
                 local ok, modtbl = pcall(Req, mod)
                 if not ok then
                     error(Error(5107, mod))
@@ -903,7 +903,7 @@ function Runtime.new(state, opts)
                 return f
             end
 
-            local LuaLoader = loadModule("vim.lib.lualoader")
+            local LuaLoader = loadModule("lib.lualoader")
             local ok_eval, cur = LuaLoader.Eval("return " .. rest)
             if not ok_eval then
                 error(cur)
@@ -925,7 +925,7 @@ function Runtime.new(state, opts)
             return rv
         end
 
-        local VimFnMod = loadModule("vim.lib.luaapi.fn")
+        local VimFnMod = loadModule("lib.luaapi.fn")
         local f_builtin = VimFnMod[name]
         if type(f_builtin) == "function" then
             return f_builtin(unpack_fn(args or {}))
@@ -1139,7 +1139,7 @@ function Runtime.new(state, opts)
         self.__prev_ctrl = Runtime._CURRENT_CTRL
         self.__pushed_ctx = false
         if state and state.script_ctx and state.script_ctx ~= "" then
-            ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PushContext(state.script_ctx)
             self.__pushed_ctx = true
         end
@@ -1151,7 +1151,7 @@ function Runtime.new(state, opts)
         Runtime._CURRENT_STATE = self.__prev_state
         Runtime._CURRENT_CTRL = self.__prev_ctrl
         if self.__pushed_ctx then
-            ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PopContext()
         end
         self.__pushed_ctx = false
@@ -1398,72 +1398,72 @@ function Runtime.new(state, opts)
     local Syntax
 
     local function _scriptsource()
-        ScriptSourceMod = ScriptSourceMod or loadModule("vim.lib.scriptsource")
+        ScriptSourceMod = ScriptSourceMod or loadModule("lib.scriptsource")
         return ScriptSourceMod
     end
 
     local function _buffer_mod()
-        Buffer = Buffer or loadModule("vim.layout.buffer")
+        Buffer = Buffer or loadModule("layout.buffer")
         return Buffer
     end
 
     local function _window_mod()
-        Window = Window or loadModule("vim.layout.window")
+        Window = Window or loadModule("layout.window")
         return Window
     end
 
     local function _vimfn()
-        VimFn = VimFn or loadModule("vim.lib.luaapi.fn")
+        VimFn = VimFn or loadModule("lib.luaapi.fn")
         return VimFn
     end
 
     local function _vimfs()
-        VimFs = VimFs or loadModule("vim.lib.luaapi.fs")
+        VimFs = VimFs or loadModule("lib.luaapi.fs")
         return VimFs
     end
 
     local function _tags()
-        Tags = Tags or loadModule("vim.lib.tags")
+        Tags = Tags or loadModule("lib.tags")
         return Tags
     end
 
     local function _highlight()
-        Highlight = Highlight or loadModule("vim.lib.highlight")
+        Highlight = Highlight or loadModule("lib.highlight")
         return Highlight
     end
 
     local function _lualoader()
-        LuaLoader = LuaLoader or loadModule("vim.lib.lualoader")
+        LuaLoader = LuaLoader or loadModule("lib.lualoader")
         return LuaLoader
     end
 
     local function _filesystem()
-        Filesystem = Filesystem or loadModule("vim.lib.filesystem")
+        Filesystem = Filesystem or loadModule("lib.filesystem")
         return Filesystem
     end
 
     local function _runtimepath()
-        RuntimePath = RuntimePath or loadModule("vim.lib.runtimepath")
+        RuntimePath = RuntimePath or loadModule("lib.runtimepath")
         return RuntimePath
     end
 
     local function _pack()
-        Pack = Pack or loadModule("vim.lib.pack")
+        Pack = Pack or loadModule("lib.pack")
         return Pack
     end
 
     local function _command_mod()
-        Command = Command or loadModule("vim.lib.command")
+        Command = Command or loadModule("lib.command")
         return Command
     end
 
     local function _key_mod()
-        Key = Key or loadModule("vim.lib.key")
+        Key = Key or loadModule("lib.key")
         return Key
     end
 
     local function _syntax()
-        Syntax = Syntax or loadModule("vim.lib.syntax")
+        Syntax = Syntax or loadModule("lib.syntax")
         return Syntax
     end
 
@@ -4275,7 +4275,7 @@ function Runtime.new(state, opts)
             local args = split_ws(argstr)
             if #args == 0 then error(Error(471)) end
             local buf = windows[curwin].buffer
-            local Scopes = loadModule("vim.lib.luaapi.scopes")
+            local Scopes = loadModule("lib.luaapi.scopes")
             if args[1] == "FALLBACK" then
                 local ft = args[2]
                 if not ft or ft == "" then return true end

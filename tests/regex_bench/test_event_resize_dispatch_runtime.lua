@@ -71,7 +71,7 @@ _G.term.getSize = function()
 end
 
 local resize_calls = {}
-local Error = mock.loadModule("vim.lib.error")
+local Error = mock.loadModule("lib.error")
 _G._V = {
     apply_terminal_resize = function(w, h, source)
         resize_calls[#resize_calls + 1] = { w = w, h = h, source = source }
@@ -91,7 +91,7 @@ tabpages = {
 }
 curtp = 1
 
-local Event = mock.loadModule("vim.lib.event")
+local Event = mock.loadModule("lib.event")
 Event.LoadCommandModule()
 
 Event.StartTimer(0, function()

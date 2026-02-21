@@ -1,7 +1,7 @@
 local Runtime = {}
 
-local Highlight = loadModule("vim.lib.highlight")
-local VimRegex = loadModule("vim.lib.excmd.vim_regex")
+local Highlight = loadModule("lib.highlight")
+local VimRegex = loadModule("lib.excmd.vim_regex")
 local str_sub = string.sub
 
 local RECOMPUTE_BATCH = 96

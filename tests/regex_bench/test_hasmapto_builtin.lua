@@ -50,8 +50,8 @@ mock.create_tabpage(1, { win }, {})
 curtp = 1
 curwin = 1
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
-local Command = mock.loadModule("vim.lib.command")
+local Fn = mock.loadModule("lib.luaapi.fn")
+local Command = mock.loadModule("lib.command")
 
 Command.clear_mappings({
     "normal",

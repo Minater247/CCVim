@@ -29,7 +29,7 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local Loop = mock.loadModule("vim.lib.luaapi.loop")
+local Loop = mock.loadModule("lib.luaapi.loop")
 local timer = Loop.new_timer()
 
 assert_true("timer has method start", type(timer.start) == "function", type(timer.start))

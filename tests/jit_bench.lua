@@ -123,9 +123,9 @@ local function main(argv)
     local MockEnv = dofile(mocks_path)
     local mock = MockEnv.setup({})
 
-    local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-    local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-    local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
+    local Compiler = mock.loadModule("lib.excmd.compiler")
+    local Runtime = mock.loadModule("lib.excmd.runtime")
+    local Scopes = mock.loadModule("lib.luaapi.scopes")
 
     local durable = Runtime.CaptureDurableScriptState({ script_ctx = opts.script_ctx }) or { s = {}, funcs = {} }
     durable.g = durable.g or Scopes._g

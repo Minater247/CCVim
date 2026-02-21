@@ -4,10 +4,10 @@ local timers = {}
 local running
 
 local Command
-local Key    = loadModule("vim.lib.key")
-local OnKey = loadModule("vim.lib.luaapi.on_key")
-local ExMsg  = loadModule("vim.lib.excmd.exmsg")
-local Error = loadModule("vim.lib.error")
+local Key    = loadModule("lib.key")
+local OnKey = loadModule("lib.luaapi.on_key")
+local ExMsg  = loadModule("lib.excmd.exmsg")
+local Error = loadModule("lib.error")
 
 function Event.StartTimer(time, callback)
     local id = os.startTimer(time)
@@ -118,7 +118,7 @@ function Event.HaltLoop()
 end
 
 function Event.LoadCommandModule()
-    Command = loadModule("vim.lib.command")
+    Command = loadModule("lib.command")
 end
 
 return Event

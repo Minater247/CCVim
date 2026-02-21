@@ -4,21 +4,21 @@
 
 local Builtins   = {}
 
-local Error      = loadModule("vim.lib.error")
-local Highlight  = loadModule("vim.lib.highlight")
+local Error      = loadModule("lib.error")
+local Highlight  = loadModule("lib.highlight")
 local Syntax
 local Runtime
 local ExMsg
 local EnvVars
-local Buffer     = loadModule("vim.layout.buffer")
-local Tab        = loadModule("vim.lib.tab")
-local scopes     = loadModule("vim.lib.luaapi.scopes")
-local VimRegex   = loadModule("vim.lib.excmd.vim_regex")
-local Sign       = loadModule("vim.lib.sign")
-local Filesystem = loadModule("vim.lib.filesystem")
-local TblUtils   = loadModule("vim.lib.luaapi.tblutils")
-local VimFs      = loadModule("vim.lib.luaapi.fs")
-local RuntimePath = loadModule("vim.lib.runtimepath")
+local Buffer     = loadModule("layout.buffer")
+local Tab        = loadModule("lib.tab")
+local scopes     = loadModule("lib.luaapi.scopes")
+local VimRegex   = loadModule("lib.excmd.vim_regex")
+local Sign       = loadModule("lib.sign")
+local Filesystem = loadModule("lib.filesystem")
+local TblUtils   = loadModule("lib.luaapi.tblutils")
+local VimFs      = loadModule("lib.luaapi.fs")
+local RuntimePath = loadModule("lib.runtimepath")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -32,7 +32,7 @@ local function call_vimfunc(name, ...)
     if type(b) == "function" then
         return b(...)
     end
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
     -- User-defined Vimscript function
     local def, resolved_name = Runtime.ResolveFunctionDef(name, { state = Runtime._CURRENT_STATE })
     if not def and Runtime.TryAutoloadFunction(name) then
@@ -68,7 +68,7 @@ local function call_vimfunc(name, ...)
             l_scope.self = selfdict
         end
     end
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
     if def.kind == "compiled" and type(def.body) == "function" then
         local state = {
             g = scopes._g,
@@ -376,7 +376,7 @@ local function _eval_includeexpr(fname, buf)
         return tostring(fname or "")
     end
 
-    local VimExpr = loadModule("vim.lib.excmd.vimxpr")
+    local VimExpr = loadModule("lib.excmd.vimxpr")
     local scope_v = { fname = tostring(fname or "") }
     local rv = VimExpr.evaluate(expr, {
         scope = { g = scopes._g, v = scope_v },
@@ -458,7 +458,7 @@ local function _is_vim_list_expr(expr)
 end
 
 local function _syntax_mod()
-    Syntax = Syntax or loadModule("vim.lib.syntax")
+    Syntax = Syntax or loadModule("lib.syntax")
     return Syntax
 end
 
@@ -1201,7 +1201,7 @@ Builtins["function"] = function(name, arglist, _dict)
         fname = funcref_name_by_fn[name]
     else
         fname = tostring(name or "")
-        Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+        Runtime = Runtime or loadModule("lib.excmd.runtime")
         local canon = Runtime.CanonicalFunctionName(fname, { state = Runtime._CURRENT_STATE })
         if canon then
             fname = canon
@@ -1650,7 +1650,7 @@ end
 
 -- exists({name}): support for internal scopes, $ENV and *FuncName
 function Builtins.exists(expr)
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
 
     local function expand_curly_name(raw)
         if type(raw) ~= "string" then return raw end
@@ -1793,12 +1793,12 @@ function Builtins.exists(expr)
         return 0
     elseif s:sub(1, 1) == "$" then
         local key = s:sub(2)
-        EnvVars = EnvVars or loadModule("vim.lib.envvars")
+        EnvVars = EnvVars or loadModule("lib.envvars")
         return EnvVars.exists(key) and 1 or 0
     elseif s:sub(1, 1) == "*" then
         local fname = s:sub(2)
         if Builtins[fname] ~= nil then return 1 end
-        Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+        Runtime = Runtime or loadModule("lib.excmd.runtime")
         local def = Runtime.ResolveFunctionDef(fname, { state = Runtime._CURRENT_STATE })
         if def then return 1 end
         local gdef = Runtime.ResolveFunctionDef("g:" .. fname, { state = Runtime._CURRENT_STATE })
@@ -1806,7 +1806,7 @@ function Builtins.exists(expr)
         return 0
     end
     -- Bare variable name: check function-local first, then global scope.
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local st = Runtime._CURRENT_STATE
     local frames = st and st.frames
     if frames then
@@ -2047,7 +2047,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
             end
         else
             local rt_ok, eval_ok, eval_rv = pcall(function()
-                Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+                Runtime = Runtime or loadModule("lib.excmd.runtime")
                 return Runtime.EvalExpression(skip, {
                     state = Runtime._CURRENT_STATE,
                     ctrl = Runtime._CURRENT_CTRL,
@@ -2419,7 +2419,7 @@ function Builtins.readfile(fname, kind, max)
     end
 
     if not handle then
-        ExMsg = ExMsg or loadModule("vim.lib.excmd.exmsg")
+        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
         ExMsg.echoerr(Error(484, raw):toString())
         return {}
     end
@@ -2434,7 +2434,7 @@ function Builtins.readfile(fname, kind, max)
     end)
 
     if not ok_read then
-        ExMsg = ExMsg or loadModule("vim.lib.excmd.exmsg")
+        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
         ExMsg.echoerr(Error(484, raw):toString())
         return {}
     end
@@ -3584,7 +3584,7 @@ local function _hasmapto_modes(mode)
 end
 
 local function _strtoseq_tolerant(str)
-    local Key = loadModule("vim.lib.key")
+    local Key = loadModule("lib.key")
     local seq = {}
     local i, n = 1, #str
 
@@ -3643,7 +3643,7 @@ function Builtins.hasmapto(what, mode, abbr, ...)
         return 0
     end
 
-    local Command = loadModule("vim.lib.command")
+    local Command = loadModule("lib.command")
     local modes = _hasmapto_modes(mode)
     if #modes == 0 then
         return 0
@@ -3671,7 +3671,7 @@ function Builtins.mapcheck(name, mode, abbr, ...)
         return ""
     end
 
-    local Command = loadModule("vim.lib.command")
+    local Command = loadModule("lib.command")
     return Command.mapcheck(modes, lhs_seq)
 end
 
@@ -3965,7 +3965,7 @@ function Builtins.map(lst, expr)
         error("map(): expected {expr} as string or function")
     end
 
-    local VimExpr = loadModule("vim.lib.excmd.vimxpr")
+    local VimExpr = loadModule("lib.excmd.vimxpr")
     local prev_val = scopes._v.val
     local prev_key = scopes._v.key
     for k, v in pairs(lst) do
@@ -4122,8 +4122,8 @@ function Builtins.execute(command, silent, ...)
         error(Error(1098):toString())
     end
 
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
-    ExMsg = ExMsg or loadModule("vim.lib.excmd.exmsg")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
+    ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
 
     local cap = ExMsg.StartCapture()
     ExMsg.PushUISuppress()

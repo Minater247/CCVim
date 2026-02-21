@@ -23,8 +23,8 @@ local buf = mock.create_buffer(1, "/tmp/test_verbose.vim", { "" })
 local win = mock.create_window(1, buf)
 tabpages[1].windows = { win }
 
-local Options = mock.loadModule("vim.lib.options")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
+local Options = mock.loadModule("lib.options")
+local Runtime = mock.loadModule("lib.excmd.runtime")
 
 Options.set("verbose", 7, false, win, buf, true)
 local rt = Runtime.new()

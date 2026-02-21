@@ -1,15 +1,15 @@
 -- Loads all the default mappings for the Command processor.
 
-local Command = loadModule("vim.lib.command")
-local Key = loadModule("vim.lib.key")
-local Event = loadModule("vim.lib.event")
-local Window = loadModule("vim.layout.window")
-local Error = loadModule("vim.lib.error")
-local WordNav = loadModule("vim.lib.wordnav")
-local Syntax = loadModule("vim.lib.syntax")
-local Tabpage = loadModule("vim.layout.tabpage")
-local CmdRead = loadModule("vim.lib.excmd.cmdread")
-local ExMsg = loadModule("vim.lib.excmd.exmsg")
+local Command = loadModule("lib.command")
+local Key = loadModule("lib.key")
+local Event = loadModule("lib.event")
+local Window = loadModule("layout.window")
+local Error = loadModule("lib.error")
+local WordNav = loadModule("lib.wordnav")
+local Syntax = loadModule("lib.syntax")
+local Tabpage = loadModule("layout.tabpage")
+local CmdRead = loadModule("lib.excmd.cmdread")
+local ExMsg = loadModule("lib.excmd.exmsg")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 local function _line_len(buf, s) return buf:str_len(s or "") end

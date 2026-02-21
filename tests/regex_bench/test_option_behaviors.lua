@@ -82,10 +82,10 @@ local mock = MockEnv.setup({
     },
 })
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local ExMsg = mock.loadModule("vim.lib.excmd.exmsg")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local ExMsg = mock.loadModule("lib.excmd.exmsg")
 Runtime.CurrentScriptSid = function()
     return rawget(_G, "__test_sid")
 end
@@ -116,8 +116,8 @@ Options.set("path", ".,/project/lua,/project/inc", false, win, buf)
 Options.set("suffixesadd", ".lua", true, win, buf)
 Options.set("includeexpr", "substitute(v:fname,'\\.','/','g')", true, win, buf)
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
-local Opts = mock.loadModule("vim.lib.luaapi.opts")
+local Fn = mock.loadModule("lib.luaapi.fn")
+local Opts = mock.loadModule("lib.luaapi.opts")
 
 assert_eq("findfile includeexpr+suffixesadd", Fn.findfile("pkg.mod"), "/project/lua/pkg/mod.lua")
 assert_eq("finddir", Fn.finddir("pkg", "/project/lua"), "/project/lua/pkg")

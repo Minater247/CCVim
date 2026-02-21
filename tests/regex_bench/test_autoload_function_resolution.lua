@@ -13,7 +13,7 @@ end
 
 function scriptsource_stub.source_runtime(path)
     autoload_calls[#autoload_calls + 1] = path
-    Runtime = Runtime or mock.loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or mock.loadModule("lib.excmd.runtime")
 
     if path == "autoload/demo.vim" then
         Runtime._FUNCS["demo#Loaded"] = {
@@ -68,7 +68,7 @@ end
 
 mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("vim.lib.excmd.exmsg") end,
+        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
         ["vim.lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
@@ -112,12 +112,12 @@ local function clear_calls()
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
-local VimFn = mock.loadModule("vim.lib.luaapi.fn")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+Runtime = mock.loadModule("lib.excmd.runtime")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
+local VimFn = mock.loadModule("lib.luaapi.fn")
 
 local test_buf = mock.create_buffer(1, "/tmp/test_autoload.vim", { "" }, {})
 local test_win = mock.create_window(1, test_buf, {})

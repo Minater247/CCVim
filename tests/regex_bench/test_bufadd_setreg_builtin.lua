@@ -40,7 +40,7 @@ mock.create_tabpage(1, { win }, {})
 curtp = 1
 curwin = 1
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
+local Fn = mock.loadModule("lib.luaapi.fn")
 
 local a = Fn.bufadd("/tmp/a.txt")
 assert_true("bufadd created buffer", a > 0, a)

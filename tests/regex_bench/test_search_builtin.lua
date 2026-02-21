@@ -14,8 +14,8 @@ local function assert_true(label, cond, detail)
     end
 end
 
-_G.options = mock.loadModule("vim.lib.options")
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
+_G.options = mock.loadModule("lib.options")
+local Fn = mock.loadModule("lib.luaapi.fn")
 
 local buf = mock.create_buffer(1, "/tmp/test_search.vim", {
     "alpha",

@@ -1,10 +1,10 @@
 local Pack = {}
 
-local Options = loadModule("vim.lib.options")
-local RuntimePath = loadModule("vim.lib.runtimepath")
-local Error = loadModule("vim.lib.error")
-local Scopes = loadModule("vim.lib.luaapi.scopes")
-local VimFs = loadModule("vim.lib.luaapi.fs")
+local Options = loadModule("lib.options")
+local RuntimePath = loadModule("lib.runtimepath")
+local Error = loadModule("lib.error")
+local Scopes = loadModule("lib.luaapi.scopes")
+local VimFs = loadModule("lib.luaapi.fs")
 local ScriptSource
 
 Pack.loaded = Pack.loaded or {}
@@ -129,7 +129,7 @@ local function collect_scripts(root, recursive)
 end
 
 local function source_files(paths)
-    ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     for _, path in ipairs(paths) do
         local ok, err = ScriptSource.source(path)
         if not ok then

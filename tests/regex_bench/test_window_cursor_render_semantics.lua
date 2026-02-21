@@ -93,9 +93,9 @@ end
 
 _G.screen = { width = 20, height = 6 }
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Window = mock.loadModule("vim.layout.window")
+local Window = mock.loadModule("layout.window")
 
 Options.set("laststatus", 0, false, nil, nil, true)
 Options.set("number", false, false, nil, nil, true)

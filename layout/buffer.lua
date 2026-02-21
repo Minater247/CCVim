@@ -1,12 +1,12 @@
 local Buffer = {}
 Buffer.__index = Buffer -- Share the instance methods
 
-local Error = loadModule("vim.lib.error")
-local ExMsg = loadModule("vim.lib.excmd.exmsg")
-local AutoCmd = loadModule("vim.lib.autocmd")
-local VimFs = loadModule("vim.lib.luaapi.fs")
-local Syntax = loadModule("vim.lib.syntax")
-local Utf8 = loadModule("vim.lib.utf8")
+local Error = loadModule("lib.error")
+local ExMsg = loadModule("lib.excmd.exmsg")
+local AutoCmd = loadModule("lib.autocmd")
+local VimFs = loadModule("lib.luaapi.fs")
+local Syntax = loadModule("lib.syntax")
+local Utf8 = loadModule("lib.utf8")
 local Sign
 
 local curr_bufno = 1
@@ -263,7 +263,7 @@ function Buffer:remove_lines(start1, end1, opts)
     end
 
     if not opts.skip_sign_adjust then
-        Sign = Sign or loadModule("vim.lib.sign")
+        Sign = Sign or loadModule("lib.sign")
         Sign.on_lines_changed(self, s, k_remove, 0)
     end
 
@@ -327,7 +327,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     end
 
     if k_remove > 0 or m_insert > 0 then
-        Sign = Sign or loadModule("vim.lib.sign")
+        Sign = Sign or loadModule("lib.sign")
         Sign.on_lines_changed(self, start1, k_remove, m_insert)
     end
 

@@ -4,8 +4,8 @@
 
 local Highlight = {}
 
-local AliasTable = loadModule("vim.lib.aliastable")
-local Error = loadModule("vim.lib.error")
+local AliasTable = loadModule("lib.aliastable")
+local Error = loadModule("lib.error")
 local HL_VERSION = 1
 
 local function bump_version()

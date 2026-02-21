@@ -1,11 +1,11 @@
 local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup()
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
 _G.screen = { width = 80, height = 24 }
 
-local FrameTree = mock.loadModule("vim.lib.frame")
+local FrameTree = mock.loadModule("lib.frame")
 
 local function fail(msg)
     error("FAIL frametree fuzzer: " .. msg)

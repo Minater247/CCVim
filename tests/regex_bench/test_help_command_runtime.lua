@@ -129,9 +129,9 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
+local Runtime = mock.loadModule("lib.excmd.runtime")
 
 local help_buf = mock.create_buffer(1, "/tmp/help.txt", { "*old*" }, { buftype = "help", modified = false })
 help_buf.loaded = true

@@ -1,6 +1,6 @@
 local print = {}
 
-local ExMsg = loadModule("vim.lib.excmd.exmsg")
+local ExMsg = loadModule("lib.excmd.exmsg")
 
 do
     local function quote_string(s)

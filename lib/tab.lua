@@ -1,5 +1,5 @@
 local Tab = {}
-local Utf8 = loadModule("vim.lib.utf8")
+local Utf8 = loadModule("lib.utf8")
 
 local floor = math.floor
 

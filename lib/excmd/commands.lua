@@ -1,7 +1,7 @@
 -- vim.lib.excmd.commands
 local Commands = {}
 
-local Error = loadModule("vim.lib.error")
+local Error = loadModule("lib.error")
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))

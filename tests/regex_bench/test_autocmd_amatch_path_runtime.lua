@@ -107,13 +107,13 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local Autocmd = mock.loadModule("vim.lib.autocmd")
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
-local Builtins = mock.loadModule("vim.lib.luaapi.fn")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local Autocmd = mock.loadModule("lib.autocmd")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
+local Builtins = mock.loadModule("lib.luaapi.fn")
 
 local buf = mock.create_buffer(1, "./tests", { "" })
 local win = mock.create_window(1, buf, { tabpagenr = 1, curdir = "/vim" })

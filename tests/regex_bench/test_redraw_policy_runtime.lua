@@ -77,10 +77,10 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Buffer = mock.loadModule("vim.layout.buffer")
-local Api = mock.loadModule("vim.lib.luaapi.api")
+local Buffer = mock.loadModule("layout.buffer")
+local Api = mock.loadModule("lib.luaapi.api")
 
 local buf = Buffer(true, false)
 buf.name = "/tmp/redraw_policy"

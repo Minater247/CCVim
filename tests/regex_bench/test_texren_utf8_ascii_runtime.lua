@@ -8,11 +8,11 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
 
-local Tab = mock.loadModule("vim.lib.tab")
-local TexRen = mock.loadModule("vim.lib.texren")
+local Tab = mock.loadModule("lib.tab")
+local TexRen = mock.loadModule("lib.texren")
 
 local buf = mock.create_buffer(1, "/tmp/texren-utf8.txt", { "" })
 local params = {

@@ -1,11 +1,11 @@
 local ScriptSource = {}
 
-local LuaLoader = loadModule("vim.lib.lualoader")
-local Runtime = loadModule("vim.lib.excmd.runtime")
-local Error = loadModule("vim.lib.error")
-local Filesystem = loadModule("vim.lib.filesystem")
-local RuntimePath = loadModule("vim.lib.runtimepath")
-local VimFs = loadModule("vim.lib.luaapi.fs")
+local LuaLoader = loadModule("lib.lualoader")
+local Runtime = loadModule("lib.excmd.runtime")
+local Error = loadModule("lib.error")
+local Filesystem = loadModule("lib.filesystem")
+local RuntimePath = loadModule("lib.runtimepath")
+local VimFs = loadModule("lib.luaapi.fs")
 
 local function ensure_abs(path)
     return VimFs.abspath(path)

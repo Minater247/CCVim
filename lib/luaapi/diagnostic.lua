@@ -1,5 +1,5 @@
 local diagnostic = {}
-local api = loadModule("vim.lib.luaapi.api")
+local api = loadModule("lib.luaapi.api")
 
 diagnostic.severity = {
     "ERROR",

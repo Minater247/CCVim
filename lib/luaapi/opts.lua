@@ -1,4 +1,4 @@
-local options = loadModule("vim.lib.options")
+local options = loadModule("lib.options")
 
 -- =========
 -- wo

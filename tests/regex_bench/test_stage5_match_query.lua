@@ -2,7 +2,7 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("vim.lib.excmd.exmsg") end,
+        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
         ["vim.lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
@@ -51,14 +51,14 @@ local function assert_contains(label, list, needle)
     error(("FAIL %s: expected to contain %s"):format(label, tostring(needle)))
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Syntax = mock.loadModule("vim.lib.syntax")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
-local Highlight = mock.loadModule("vim.lib.highlight")
+local Syntax = mock.loadModule("lib.syntax")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
+local Fn = mock.loadModule("lib.luaapi.fn")
+local Highlight = mock.loadModule("lib.highlight")
 
 local durable_by_ctx = {}
 local function run_compiled(script, script_ctx)

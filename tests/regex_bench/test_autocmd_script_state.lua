@@ -34,13 +34,13 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local VimFn = mock.loadModule("vim.lib.luaapi.fn")
-local Buffer = mock.loadModule("vim.layout.buffer")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local VimFn = mock.loadModule("lib.luaapi.fn")
+local Buffer = mock.loadModule("layout.buffer")
 
 local durable_by_ctx = {}
 local function run_compiled(script, opts)
@@ -69,7 +69,7 @@ local function run_compiled(script, opts)
     if not ok then return false, rv end
     return true, rv
 end
-local Autocmd = mock.loadModule("vim.lib.autocmd")
+local Autocmd = mock.loadModule("lib.autocmd")
 
 local buf = Buffer(true, false)
 buf.name = "/tmp/test.txt"

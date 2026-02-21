@@ -58,7 +58,7 @@ local mock = MockEnv.setup({
     },
 })
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
 
 local test_buf = mock.create_buffer(1, "/tmp/test_sid_script_local_runtime.vim", { "" }, {})
@@ -80,9 +80,9 @@ local function assert_eq(label, got, want)
 end
 
 local function run_compiled(script, script_ctx)
-    local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-    local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-    local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
+    local Compiler = mock.loadModule("lib.excmd.compiler")
+    local Runtime = mock.loadModule("lib.excmd.runtime")
+    local Scopes = mock.loadModule("lib.luaapi.scopes")
 
     local durable = Runtime.CaptureDurableScriptState({ script_ctx = script_ctx }) or { s = {}, funcs = {} }
     durable.g = durable.g or Scopes._g

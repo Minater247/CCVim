@@ -2,7 +2,7 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("vim.lib.excmd.exmsg") end,
+        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
         ["vim.lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
@@ -46,11 +46,11 @@ local function assert_true(label, cond)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
 
 local src_path = "vim/runtime/pack/dist/opt/netrw/plugin/netrwPlugin.vim"
 local script = read_file(src_path)

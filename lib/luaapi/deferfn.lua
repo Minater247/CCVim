@@ -1,4 +1,4 @@
-local Event = loadModule("vim.lib.event")
+local Event = loadModule("lib.event")
 
 -- TODO: how does a luv timer struct even look?
 return function(fn, timeout)

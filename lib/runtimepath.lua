@@ -1,7 +1,7 @@
 local RuntimePath = {}
 
-local Options = loadModule("vim.lib.options")
-local VimFs = loadModule("vim.lib.luaapi.fs")
+local Options = loadModule("lib.options")
+local VimFs = loadModule("lib.luaapi.fs")
 
 local function split_csv(s)
     local t = {}

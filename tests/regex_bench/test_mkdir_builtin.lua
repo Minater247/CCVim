@@ -71,7 +71,7 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
+local Fn = mock.loadModule("lib.luaapi.fn")
 
 assert_eq("mkdir -p creates nested path", Fn.mkdir("/tmp/a/b", "p", 448), 1)
 assert_eq("mkdir -p made parent", dirs["/tmp/a"], true)

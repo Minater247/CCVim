@@ -3,7 +3,7 @@ local Filesystem = {}
 local ScriptSource
 local Scopes
 local Runtime
-local VimFs = loadModule("vim.lib.luaapi.fs")
+local VimFs = loadModule("lib.luaapi.fs")
 
 local function _is_scheme(path)
     return type(path) == "string" and path:match("^%a[%w+.-]*://") ~= nil
@@ -16,13 +16,13 @@ local function _normalize_autocmd_path(path)
 end
 
 local function _expand_sid()
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
 
     local sid = tonumber(Runtime.CurrentScriptSid())
 
     -- Fallback: if only script context is available, derive SID from canonicalization.
     if not sid then
-        ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local ctx = ScriptSource.CurrentContext()
         local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = ctx })
         sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
@@ -268,11 +268,11 @@ function Filesystem.Expand(str, nosuf)
         local brack_l = tostring(brack or ""):lower()
 
         if brack_l == "sfile" then
-            ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             expansions = { ScriptSource.CurrentContext() }
             str = rest
         elseif brack_l == "amatch" or brack_l == "afile" or brack_l == "abuf" then
-            Scopes = Scopes or loadModule("vim.lib.luaapi.scopes")
+            Scopes = Scopes or loadModule("lib.luaapi.scopes")
             local ve = Scopes._v and Scopes._v.event or {}
             if brack_l == "amatch" then
                 local v = ve.match

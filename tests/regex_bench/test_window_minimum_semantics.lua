@@ -54,9 +54,9 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Window = mock.loadModule("vim.layout.window")
+local Window = mock.loadModule("layout.window")
 
 local win1 = setmetatable({ winnr = 1, opts = {}, style = nil }, Window)
 local win2 = setmetatable({ winnr = 2, opts = {}, style = nil }, Window)

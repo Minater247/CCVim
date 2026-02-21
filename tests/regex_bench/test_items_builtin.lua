@@ -14,8 +14,8 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
-local VimExpr = mock.loadModule("vim.lib.excmd.vimxpr")
+local Fn = mock.loadModule("lib.luaapi.fn")
+local VimExpr = mock.loadModule("lib.excmd.vimxpr")
 
 do
     local out = Fn.items({ a = 1, b = 2 })

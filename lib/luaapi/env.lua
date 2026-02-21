@@ -1,5 +1,5 @@
 local env = {}
-local EnvVars = loadModule("vim.lib.envvars")
+local EnvVars = loadModule("lib.envvars")
 
 setmetatable(env, {
     __index = function(_, idx)

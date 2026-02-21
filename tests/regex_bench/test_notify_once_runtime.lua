@@ -38,7 +38,7 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local ApiBuild = mock.loadModule("vim.lib.luaapi.apibuild")
+local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
 local api = ApiBuild.Build()
 
 assert_eq("notify_once is exported on vim", type(api.vim.notify_once), "function")

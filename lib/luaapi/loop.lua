@@ -1,9 +1,9 @@
 local loop = {}
 
-local VimRegex = loadModule("vim.lib.excmd.vim_regex")
-local Event = loadModule("vim.lib.event")
-local VimFs = loadModule("vim.lib.luaapi.fs")
-local EnvVars = loadModule("vim.lib.envvars")
+local VimRegex = loadModule("lib.excmd.vim_regex")
+local Event = loadModule("lib.event")
+local VimFs = loadModule("lib.luaapi.fs")
+local EnvVars = loadModule("lib.envvars")
 
 local function has_uri_scheme(path)
     return type(path) == "string" and path:match("^[%w][%w%+%-%.]*://") ~= nil

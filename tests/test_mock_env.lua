@@ -44,12 +44,12 @@ assert(mock.buffers[3].bufnr == 3, "Reading via metatable should work")
 print("✓ Metatable interfaces work")
 
 -- Test that loadModule works
-local opts_module = mock.loadModule("vim.lib.luaapi.opts")
+local opts_module = mock.loadModule("lib.luaapi.opts")
 assert(opts_module ~= nil, "Should be able to load vim.lib.luaapi.opts")
 print("✓ loadModule works")
 
 -- Test that module is cached
-local opts_module2 = mock.loadModule("vim.lib.luaapi.opts")
+local opts_module2 = mock.loadModule("lib.luaapi.opts")
 assert(opts_module == opts_module2, "Module should be cached")
 print("✓ Module caching works")
 

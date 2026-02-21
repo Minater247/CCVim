@@ -1,7 +1,7 @@
 local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({})
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
+local Runtime = mock.loadModule("lib.excmd.runtime")
 
 local function assert_eq(label, got, want)
     if got ~= want then

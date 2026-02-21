@@ -2,11 +2,11 @@
 
 local M = {}
 
-local Error = loadModule("vim.lib.error")
-local VimRegex = loadModule("vim.lib.excmd.vim_regex")
-local EnvVars = loadModule("vim.lib.envvars")
-local Scopes  = loadModule("vim.lib.luaapi.scopes")
-local VimFnBuiltins = loadModule("vim.lib.luaapi.fn") or {}
+local Error = loadModule("lib.error")
+local VimRegex = loadModule("lib.excmd.vim_regex")
+local EnvVars = loadModule("lib.envvars")
+local Scopes  = loadModule("lib.luaapi.scopes")
+local VimFnBuiltins = loadModule("lib.luaapi.fn") or {}
 -- =========================================================
 
 -- -------- helpers --------
@@ -188,7 +188,7 @@ local function resolve_vlua_path(path)
         end
         return cur
     end
-    local ApiBuild = loadModule("vim.lib.luaapi.apibuild")
+    local ApiBuild = loadModule("lib.luaapi.apibuild")
     local api = ApiBuild and ApiBuild.Build and ApiBuild.Build()
     local f = api and traverse(api) or nil
     if type(f) ~= "function" then return Error(117, "v:lua." .. path) end

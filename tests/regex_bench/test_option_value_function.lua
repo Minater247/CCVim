@@ -4,7 +4,7 @@ local MockEnv = require("vim.tests.test_mocks")
 -- Set up mock with module stubs
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("vim.lib.excmd.exmsg") end,
+        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
         ["vim.layout.buffer"] = {},
         ["vim.lib.highlight"] = {
             GroupExists = function() return false end,
@@ -32,12 +32,12 @@ local function assert_match(label, got, pattern)
     end
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
+local Fn = mock.loadModule("lib.luaapi.fn")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
 
 local buf = mock.create_buffer(1, "/tmp/test.txt", { "" })
 local win = mock.create_window(1, buf)

@@ -19,9 +19,9 @@ local function count_keys(t)
     return n
 end
 
-local Buffer = mock.loadModule("vim.layout.buffer")
-local Api = mock.loadModule("vim.lib.luaapi.api")
-local Diagnostic = mock.loadModule("vim.lib.luaapi.diagnostic")
+local Buffer = mock.loadModule("layout.buffer")
+local Api = mock.loadModule("lib.luaapi.api")
+local Diagnostic = mock.loadModule("lib.luaapi.diagnostic")
 
 local b1 = Buffer(true, false)
 b1.name = "/tmp/diag1"

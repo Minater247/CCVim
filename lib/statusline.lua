@@ -1,9 +1,9 @@
 local Statusline = {}
 
-local Options = loadModule("vim.lib.options")
-local VimFs = loadModule("vim.lib.luaapi.fs")
-local Compiler = loadModule("vim.lib.excmd.compiler")
-local Runtime = loadModule("vim.lib.excmd.runtime")
+local Options = loadModule("lib.options")
+local VimFs = loadModule("lib.luaapi.fs")
+local Compiler = loadModule("lib.excmd.compiler")
+local Runtime = loadModule("lib.excmd.runtime")
 
 -- Highlight mark indicators
 local HL_PUSH    = "\2" -- beginning of a new HL group

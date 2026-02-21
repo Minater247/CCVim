@@ -1,6 +1,6 @@
 local timerutils = {}
 
-local Event = loadModule("vim.lib.event")
+local Event = loadModule("lib.event")
 
 function timerutils.schedule(fn)
     Event.StartTimer(0, fn)

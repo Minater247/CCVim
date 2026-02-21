@@ -29,7 +29,7 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Key = mock.loadModule("vim.lib.key")
+local Key = mock.loadModule("lib.key")
 
 local function parse_text(s)
     return Key.seqtostr(Key.strtoseq(s))

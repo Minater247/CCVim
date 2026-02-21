@@ -2,7 +2,7 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("vim.lib.excmd.exmsg") end,
+        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
         ["vim.lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
@@ -64,11 +64,11 @@ local function err_string(err)
     return tostring(err)
 end
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Compiler = mock.loadModule("vim.lib.excmd.compiler")
-local Runtime = mock.loadModule("vim.lib.excmd.runtime")
-local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
+local Compiler = mock.loadModule("lib.excmd.compiler")
+local Runtime = mock.loadModule("lib.excmd.runtime")
+local Scopes = mock.loadModule("lib.luaapi.scopes")
 
 local test_buf = mock.create_buffer(1, "/tmp/test_compiler.vim", { "" }, {})
 local test_win = mock.create_window(1, test_buf, {})

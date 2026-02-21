@@ -30,6 +30,11 @@ do
     end
 end
 
+if not ccvim_path then
+    print("Error: Failed to determine program path!")
+    return
+end
+
 local function log(level, format, ...)
     local handle = fs.open(ccvim_path .. "/logfile.txt", "a")
     handle.write("[" .. os.date() .. "] " .. (level and ("(" .. level .. ") ") or "") .. (
@@ -79,7 +84,7 @@ local function loadModule(module)
         return _V.loaded_modules[module]
     end
 
-    local module_path = module:gsub("%.", "/") .. ".lua"
+    local module_path = ccvim_path .. "/" .. module:gsub("%.", "/") .. ".lua"
 
     setmetatable(_V, {
         __index = function(tbl, key)
@@ -105,14 +110,14 @@ end
 -- Populate v:version for Vimscript compatibility (major*100 + minor).
 -- Use a Vim-compatible value, not the NVIM version tuple, so runtime scripts
 -- that gate on Vim version (eg netrw) behave predictably.
-local Scopes = loadModule("vim.lib.luaapi.scopes")
+local Scopes = loadModule("lib.luaapi.scopes")
 Scopes._v.version = (_V.vimcompat_maj * 100) + _V.vimcompat_min
 Scopes._v.vim_did_init = 0
-local Error = loadModule("vim.lib.error")
+local Error = loadModule("lib.error")
 local ScriptSource
 
 _V.loadModule = loadModule
-local VimFs = loadModule("vim.lib.luaapi.fs")
+local VimFs = loadModule("lib.luaapi.fs")
 
 -- TEMP
 _V.LOG_DEBUG = function(format, ...) log("DEBUG", format, ...) end
@@ -156,17 +161,17 @@ end
 
 _V.writestartup("--- NVIM STARTING ---")
 
-Tabpage = loadModule("vim.layout.tabpage")
-local FrameTree = loadModule("vim.lib.frame")
-_V.options = loadModule("vim.lib.options")
+Tabpage = loadModule("layout.tabpage")
+local FrameTree = loadModule("lib.frame")
+_V.options = loadModule("lib.options")
 _V.options.set("lines", h)
 _V.options.set("columns", w)
 
-local Event = loadModule("vim.lib.event")
+local Event = loadModule("lib.event")
 Event.LoadCommandModule()
-loadModule("vim.lib.mappings")
+loadModule("lib.mappings")
 
-local AutoCmd = loadModule("vim.lib.autocmd")
+local AutoCmd = loadModule("lib.autocmd")
 _V.rebalance_current_window_soft = FrameTree.RebalanceCurrentTab
 _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
@@ -281,7 +286,7 @@ function _V.enterWindow(winnr)
 end
 
 -- Set up the emitter
-local Command = loadModule("vim.lib.command")
+local Command = loadModule("lib.command")
 Command.emit_raw = function(seq)
     if _V.vimmode == "insert" then
         for i = 1, #seq do
@@ -294,13 +299,13 @@ Command.emit_raw = function(seq)
 end
 
 _V.writestartup("parsing arguments")
-local Args = loadModule("vim.lib.args")
+local Args = loadModule("lib.args")
 if not Args.parse(arg) then
     return
 end
 
 -- Enable ftplugin and indent
-ScriptSource = loadModule("vim.lib.scriptsource")
+ScriptSource = loadModule("lib.scriptsource")
 _source_runtime_startup("ftplugin.vim")
 _source_runtime_startup("indent.vim")
 
@@ -316,9 +321,9 @@ Scopes._v.vim_did_init = 1
 
 -- Load plugin scripts (runtimepath + packages) if enabled
 if _V.options.get("loadplugins") then
-    local Filesystem = loadModule("vim.lib.filesystem")
-    local RuntimePath = loadModule("vim.lib.runtimepath")
-    local Pack = loadModule("vim.lib.pack")
+    local Filesystem = loadModule("lib.filesystem")
+    local RuntimePath = loadModule("lib.runtimepath")
+    local Pack = loadModule("lib.pack")
 
     local rtp = RuntimePath.get_list()
 

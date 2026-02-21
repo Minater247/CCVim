@@ -1,9 +1,9 @@
 local Args = {}
 
-local Buffer = loadModule("vim.layout.buffer")
-local Window = loadModule("vim.layout.window")
-local Tabpage = loadModule("vim.layout.tabpage")
-local FrameTree = loadModule("vim.lib.frame")
+local Buffer = loadModule("layout.buffer")
+local Window = loadModule("layout.window")
+local Tabpage = loadModule("layout.tabpage")
+local FrameTree = loadModule("lib.frame")
 local pending_file_bufnrs
 local pending_window_bufnrs
 

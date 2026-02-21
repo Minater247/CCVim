@@ -1,7 +1,7 @@
 local Keymap = {}
 
-local Command = loadModule("vim.lib.command")
-local Key = loadModule("vim.lib.key")
+local Command = loadModule("lib.command")
+local Key = loadModule("lib.key")
 
 -- TODO: this has many more options I'm not currently using
 function Keymap.set(mode, lhs, rhs, opts)

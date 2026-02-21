@@ -1,12 +1,12 @@
 local MockEnv = require("vim.tests.test_mocks")
 local mock = MockEnv.setup()
 
-local Runtime = mock.loadModule("vim.lib.syntax_engine.runtime")
-local Parser = mock.loadModule("vim.lib.syntax_engine.command_parser")
-local Compiler = mock.loadModule("vim.lib.syntax_engine.compiler")
-local State = mock.loadModule("vim.lib.syntax_engine.state")
-local Highlight = mock.loadModule("vim.lib.highlight")
-local Buffer = mock.loadModule("vim.layout.buffer")
+local Runtime = mock.loadModule("lib.syntax_engine.runtime")
+local Parser = mock.loadModule("lib.syntax_engine.command_parser")
+local Compiler = mock.loadModule("lib.syntax_engine.compiler")
+local State = mock.loadModule("lib.syntax_engine.state")
+local Highlight = mock.loadModule("lib.highlight")
+local Buffer = mock.loadModule("layout.buffer")
 
 local function assert_eq(label, a, b)
     if a ~= b then

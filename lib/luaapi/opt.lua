@@ -2,7 +2,7 @@ local opt = {}
 
 local opt_mt = {}
 
-local print = loadModule("vim.lib.luaapi.print")
+local print = loadModule("lib.luaapi.print")
 
 opt_mt.__index = function(self, name)
     return {

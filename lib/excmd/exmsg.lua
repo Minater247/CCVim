@@ -1,10 +1,10 @@
 local ExMsg = {}
 
-local Highlight = loadModule("vim.lib.highlight")
-local Tab = loadModule("vim.lib.tab")
-local TexRen = loadModule("vim.lib.texren")
+local Highlight = loadModule("lib.highlight")
+local Tab = loadModule("lib.tab")
+local TexRen = loadModule("lib.texren")
 local Command
-local Key = loadModule("vim.lib.key")
+local Key = loadModule("lib.key")
 local CmdRead
 
 --[[
@@ -377,7 +377,7 @@ local function readMore(ch)
         exit_more()
         return
     elseif ch == colonref then
-        CmdRead = CmdRead or loadModule("vim.lib.excmd.cmdread")
+        CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
         CmdRead.read()
     else
         -- Unsupported key: show long help, keep position.
@@ -405,7 +405,7 @@ local function readEnter(ch)
     if ch == enterref then
         exit_readEnter()
     elseif ch == colonref then
-        CmdRead = CmdRead or loadModule("vim.lib.excmd.cmdread")
+        CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
         CmdRead.read()
     end
 end
@@ -416,7 +416,7 @@ local function start_more()
     more_top = 1
     more_help_long = false
 
-    Command = Command or loadModule("vim.lib.command")
+    Command = Command or loadModule("lib.command")
 
     -- If the hit-enter handler is currently on top, pop it cleanly.
     local top = Command.override_emitter[#Command.override_emitter]
@@ -498,7 +498,7 @@ local function draw_messages_and_prompt()
         -- Enter/maintain Press ENTER mode (logic only: state & handler)
         in_press_enter = true
 
-        Command = Command or loadModule("vim.lib.command")
+        Command = Command or loadModule("lib.command")
         local top = Command.override_emitter[#Command.override_emitter]
         if top ~= readEnter then
             table.insert(Command.override_emitter, readEnter)

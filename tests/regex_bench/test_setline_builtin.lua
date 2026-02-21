@@ -37,7 +37,7 @@ mock.create_tabpage(1, { win }, {})
 curtp = 1
 curwin = 1
 
-local Fn = mock.loadModule("vim.lib.luaapi.fn")
+local Fn = mock.loadModule("lib.luaapi.fn")
 
 assert_eq("setline numeric line success", Fn.setline(2, "TWO"), 0)
 assert_eq("line 2 updated", buf.lines[2], "TWO")

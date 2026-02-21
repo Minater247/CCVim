@@ -5,8 +5,8 @@
 
 local Command                     = {}
 
-local Event                       = loadModule("vim.lib.event")
-local ExMsg                       = loadModule("vim.lib.excmd.exmsg")
+local Event                       = loadModule("lib.event")
+local ExMsg                       = loadModule("lib.excmd.exmsg")
 
 local POLICY_FULL, POLICY_CB_ONLY = 1, 2
 Command.POLICY_FULL = POLICY_FULL

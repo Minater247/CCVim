@@ -42,7 +42,7 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local Loop = mock.loadModule("vim.lib.luaapi.loop")
+local Loop = mock.loadModule("lib.luaapi.loop")
 
 local ok, err, errname = Loop.fs_rename("/src.txt", "/dst.txt")
 assert_eq("sync rename ok", ok, true)

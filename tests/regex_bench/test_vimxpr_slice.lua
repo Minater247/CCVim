@@ -14,9 +14,9 @@ local function assert_eq(label, got, want)
     end
 end
 
-local Error = mock.loadModule("vim.lib.error")
-local VimExpr = mock.loadModule("vim.lib.excmd.vimxpr")
-local Options = mock.loadModule("vim.lib.options")
+local Error = mock.loadModule("lib.error")
+local VimExpr = mock.loadModule("lib.excmd.vimxpr")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
 
 local function eval(expr, scope_s)

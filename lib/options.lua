@@ -1,6 +1,6 @@
 local Options = {}
 
-local Error = loadModule("vim.lib.error")
+local Error = loadModule("lib.error")
 local ExMsg
 local AutoCmd
 local Syntax
@@ -429,7 +429,7 @@ local function _name_for_option_function(fn)
         return known
     end
 
-    Fn = Fn or loadModule("vim.lib.luaapi.fn")
+    Fn = Fn or loadModule("lib.luaapi.fn")
     local name = Fn._funcref_name(fn)
 
     if type(name) ~= "string" or name == "" then
@@ -452,12 +452,12 @@ local function _canonicalize_script_local_function_name(raw)
         return s
     end
 
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
     if not Runtime or type(Runtime.CanonicalFunctionName) ~= "function" then
         error("Script-local function reference requires function resolver: " .. s)
     end
 
-    ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     local script_ctx = ScriptSource.CurrentContext()
     local canon = Runtime.CanonicalFunctionName(s, {
         state = Runtime._CURRENT_STATE,
@@ -507,7 +507,7 @@ local expr_option_specs = {
 }
 
 local function _current_script_ctx()
-    ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     return ScriptSource.CurrentContext()
 end
 
@@ -516,7 +516,7 @@ local function _capture_expr_option_state(name)
     if not spec then
         return nil
     end
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
     return Runtime.CaptureDurableScriptState({
         script_ctx = _current_script_ctx(),
     })
@@ -560,7 +560,7 @@ function Options.EvalExprOption(name, expr, window, buffer, vscope)
     local canon = Options.resolve_abbrev(name) or name
     expr = tostring(expr or "")
 
-    Runtime = Runtime or loadModule("vim.lib.excmd.runtime")
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local durable = Options.GetExprOptionScriptState(canon, window, buffer)
     local state = Runtime.MakeRuntimeState(durable, vscope)
 
@@ -1158,7 +1158,7 @@ local option_updatees = {
 
         LOG_DEBUG("option(filetype): old='%s' new='%s' bufnr=%s", oldft, newft, tostring(buffer.bufnr))
 
-        AutoCmd = AutoCmd or loadModule("vim.lib.autocmd")
+        AutoCmd = AutoCmd or loadModule("lib.autocmd")
         AutoCmd.Run("FileType", {
             bufnr = buffer.bufnr,
             bufname = buffer.name,
@@ -1173,10 +1173,10 @@ local option_updatees = {
 
         LOG_DEBUG("option(syntax): new='%s' bufnr=%s", tostring(value), tostring(buffer.bufnr))
 
-        Syntax = Syntax or loadModule("vim.lib.syntax")
+        Syntax = Syntax or loadModule("lib.syntax")
         Syntax.OnSyntaxOptionSet(buffer, value)
 
-        AutoCmd = AutoCmd or loadModule("vim.lib.autocmd")
+        AutoCmd = AutoCmd or loadModule("lib.autocmd")
         AutoCmd.Run("Syntax", {
             bufnr = buffer.bufnr,
             bufname = buffer.name,
@@ -1188,7 +1188,7 @@ local option_updatees = {
         need_redraw = true
     end,
     synmaxcol = function(value, _win, buffer)
-        Syntax = Syntax or loadModule("vim.lib.syntax")
+        Syntax = Syntax or loadModule("lib.syntax")
         Syntax.OnSynmaxcolOptionSet(buffer, value)
 
         what_redraw["windows"] = true
@@ -1477,7 +1477,7 @@ function Options.exset_token(token, mode, window, buffer)
     -- Display: requested via ? or bare non-boolean option (no trailing mutator).
     if disp or (is_bare_nonbool and not has_mutating_suffix) then
         local cur = Options.get(name, window, buffer, (mode == "local"), mode == "global")
-        ExMsg = ExMsg or loadModule("vim.lib.excmd.exmsg")
+        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
         if typ == "boolean" then
             ExMsg.echo((cur and "" or "no") .. name)
         else
@@ -1554,7 +1554,7 @@ function Options.exset_token(token, mode, window, buffer)
             or trimmed:match("^funcref%s*%(") ~= nil
             or (trimmed:sub(1, 1) == "{" and trimmed:sub(-1) == "}" and trimmed:find("->", 1, true) ~= nil)
         if looks_funcexpr then
-            VimExpr = VimExpr or loadModule("vim.lib.excmd.vimxpr")
+            VimExpr = VimExpr or loadModule("lib.excmd.vimxpr")
             local evaluated = VimExpr.evaluate(trimmed)
             if Error.IsError(evaluated) then
                 return evaluated

@@ -1,9 +1,9 @@
 local LuaLoader = {}
 
-local vimapi = loadModule("vim.lib.luaapi.apibuild").Build()
+local vimapi = loadModule("lib.luaapi.apibuild").Build()
 setmetatable(vimapi, { __index = _G })
-local Error = loadModule("vim.lib.error")
-local VimFs = loadModule("vim.lib.luaapi.fs")
+local Error = loadModule("lib.error")
+local VimFs = loadModule("lib.luaapi.fs")
 local ScriptSource
 
 local loaded = {}
@@ -27,7 +27,7 @@ function LuaLoader.LoadFile(path)
             LOG_ERROR("CHUNK ERROR: " .. err)
             return error(err, 0)
         end
-        ScriptSource = ScriptSource or loadModule("vim.lib.scriptsource")
+        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         ScriptSource.PushContext(path)
         plugin = chunk()
         ScriptSource.PopContext()

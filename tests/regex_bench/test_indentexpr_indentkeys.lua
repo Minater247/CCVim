@@ -49,10 +49,10 @@ local mock = MockEnv.setup({
     },
 })
 
-local Options = mock.loadModule("vim.lib.options")
+local Options = mock.loadModule("lib.options")
 _G.options = Options
-local Buffer = mock.loadModule("vim.layout.buffer")
-local Window = mock.loadModule("vim.layout.window")
+local Buffer = mock.loadModule("layout.buffer")
+local Window = mock.loadModule("layout.window")
 
 local function assert_eq(label, got, want)
     if got ~= want then

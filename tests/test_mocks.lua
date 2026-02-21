@@ -187,7 +187,7 @@ function MockEnv.setup(config)
     
     -- Helper to create a buffer
     function mock.create_buffer(bufnr, name, lines, opts)
-        local Utf8 = loadModule("vim.lib.utf8")
+        local Utf8 = loadModule("lib.utf8")
         local loaded = true
         if opts and opts.loaded ~= nil then
             loaded = not not opts.loaded

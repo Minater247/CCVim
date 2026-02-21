@@ -1,6 +1,6 @@
 local VimFs = {}
 
-local EnvVars = loadModule("vim.lib.envvars")
+local EnvVars = loadModule("lib.envvars")
 
 local function _startswith(s, prefix)
     return s:sub(1, #prefix) == prefix

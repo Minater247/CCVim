@@ -90,7 +90,7 @@ function _G.loadModule(name)
     return mod
 end
 
-local Filesystem = loadModule("vim.lib.filesystem")
+local Filesystem = loadModule("lib.filesystem")
 
 local function sort_copy(list)
     local out = {}

@@ -8,8 +8,8 @@ local TexRen = {}
 ---@field listcfg table|nil   listchars config { space?, tab_head?, tab_fill? }
 ---@field tabcfg table         tab state configuration from Tab
 
-local Tab = loadModule("vim.lib.tab")
-local Utf8 = loadModule("vim.lib.utf8")
+local Tab = loadModule("lib.tab")
+local Utf8 = loadModule("lib.utf8")
 
 -- Localize frequently used funcs (Lua 5.1 compatible)
 local s_byte  = string.byte
