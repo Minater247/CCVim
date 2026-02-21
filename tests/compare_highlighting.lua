@@ -784,7 +784,15 @@ local function collect_lua_segments(path, ft, opts)
     end
 
     local lines = read_lines(path)
-    local buf = { lines = lines }
+    local buf = {
+        lines = lines,
+    }
+    function buf:line_count(_load_if_unloaded)
+        return #self.lines
+    end
+    function buf:get_line(line_nr, _load_if_unloaded)
+        return self.lines[line_nr]
+    end
 
     local ctx = State.new_context({
         syntax = ft,
