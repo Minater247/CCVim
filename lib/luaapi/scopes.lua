@@ -2,7 +2,11 @@ local Scopes = {}
 
 -- Backing stores
 Scopes._g = Scopes._g or {}
-Scopes._v = Scopes._v or { errmsg = "", event = {} }
+Scopes._v = Scopes._v or {}
+Scopes._v.errmsg = Scopes._v.errmsg or ""
+Scopes._v.event = Scopes._v.event or {}
+Scopes._v["true"] = true
+Scopes._v["false"] = false
 Scopes._b_by_buf = Scopes._b_by_buf or {}
 Scopes._w_by_win = Scopes._w_by_win or {}
 Scopes._t_by_tab = Scopes._t_by_tab or {}

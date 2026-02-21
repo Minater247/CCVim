@@ -9,12 +9,31 @@ local TexRen = {}
 ---@field tabcfg table         tab state configuration from Tab
 
 local Tab = loadModule("vim.lib.tab")
+local Utf8 = loadModule("vim.lib.utf8")
 
 -- Localize frequently used funcs (Lua 5.1 compatible)
 local s_byte  = string.byte
 local s_char  = string.char
 local s_sub   = string.sub
 local t_concat= table.concat
+
+local function each_char_with_byte(s, visitor)
+    if utf8 and utf8.codes then
+        local ok = pcall(function()
+            for bpos, cp in utf8.codes(s) do
+                visitor(bpos, cp)
+            end
+        end)
+        if ok then
+            return
+        end
+    end
+
+    for i = 1, #s do
+        local by = s_byte(s, i)
+        visitor(i, by)
+    end
+end
 
 local function strip_trailing_eols(s)
     local n = #s
@@ -62,10 +81,8 @@ local function build_glyphs_with_map_noblit(s, bytepos, cfg, listcfg)
         col = col + 1
     end
 
-    local slen = #s
-    for i = 1, slen do
-        local by = s_byte(s, i)
-        if by == 9 then
+    each_char_with_byte(s, function(i, cp)
+        if cp == 9 then
             local stop = Tab.next_display_tabstop(col, cfg)
             local n = stop - col; if n <= 0 then n = 1 end
             local k0 = #gch
@@ -85,13 +102,13 @@ local function build_glyphs_with_map_noblit(s, bytepos, cfg, listcfg)
             end
             if bytepos and i == bytepos and not target then target = k0 + 1 end
             col = col + n
-        elseif by < 32 or by == 127 then
-            local second = (by == 127) and "?" or s_char(by + 64)
+        elseif cp < 32 or cp == 127 then
+            local second = (cp == 127) and "?" or s_char(cp + 64)
             push("^", i); push(second, i)
         else
-            push(s_char(by), i)
+            push(Utf8.ascii_cell_for_codepoint(cp), i)
         end
-    end
+    end)
     return gch, issp, nil, nil, target, #gch, gsrc
 end
 
@@ -123,11 +140,9 @@ local function build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listc
         col = col + 1
     end
 
-    local slen = #s
-    for i = 1, slen do
-        local by = s_byte(s, i)
+    each_char_with_byte(s, function(i, cp)
         local f, b = color_at(i)
-        if by == 9 then
+        if cp == 9 then
             local stop = Tab.next_display_tabstop(col, cfg)
             local n = stop - col; if n <= 0 then n = 1 end
             local k0 = #gch
@@ -146,13 +161,13 @@ local function build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listc
             end
             if bytepos and i == bytepos and not target then target = k0 + 1 end
             col = col + n
-        elseif by < 32 or by == 127 then
-            local second = (by == 127) and "?" or s_char(by + 64)
+        elseif cp < 32 or cp == 127 then
+            local second = (cp == 127) and "?" or s_char(cp + 64)
             push("^", i, f, b); push(second, i, f, b)
         else
-            push(s_char(by), i, f, b)
+            push(Utf8.ascii_cell_for_codepoint(cp), i, f, b)
         end
-    end
+    end)
     return gch, issp, gfg, gbg, target, #gch, gsrc
 end
 
@@ -211,17 +226,16 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
     local src_is_break, src_is_space = nil, nil
     if wordwrap and params.breakat and type(params.breakat) == "string" then
         breakset = {}
-        for ch in params.breakat:gmatch(".") do
-            breakset[ch] = true
-        end
+        each_char_with_byte(params.breakat, function(_, cp)
+            breakset[Utf8.ascii_cell_for_codepoint(cp)] = true
+        end)
         src_is_break = {}
         src_is_space = {}
-        local slen = #str
-        for si = 1, slen do
-            local ch = s_sub(str, si, si)
+        each_char_with_byte(str, function(si, cp)
+            local ch = Utf8.ascii_cell_for_codepoint(cp)
             if breakset[ch] then src_is_break[si] = true end
-            if ch == " " or ch == "\t" then src_is_space[si] = true end
-        end
+            if cp == 9 or ch == " " then src_is_space[si] = true end
+        end)
     end
 
     local mapped_line, mapped_col, mapped_ch_explicit

@@ -13,6 +13,7 @@ local AutoCmd = loadModule("vim.lib.autocmd")
 local Fn = loadModule("vim.lib.luaapi.fn")
 local ScriptSource
 local Error = loadModule("vim.lib.error")
+local Utf8 = loadModule("vim.lib.utf8")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -83,10 +84,6 @@ local function buf_for_bufnr(bufid)
     else
         return buffers[bufid]
     end
-end
-
-local function buffer_is_loaded(buf)
-    return buf ~= nil and buf.loaded == true
 end
 
 local function request_buffer_redraw(buf, full)
@@ -307,7 +304,7 @@ function api.nvim_win_set_buf(...)
         return
     end
 
-    if not buffer_is_loaded(newbuf) then
+    if not newbuf:is_loaded() then
         newbuf:Load(true)
     end
 
@@ -440,7 +437,6 @@ end
 -- ExCmd Functions
 -- =================
 
--- TODO: error handling, detecting vim9
 function api.nvim_eval(expr)
     local rv = VimXpr.evaluate(expr)
     if Error.IsError(rv) then
@@ -491,7 +487,6 @@ function api.nvim_buf_set_lines(buffer, start, end_, strict_indexing, replacemen
     request_buffer_redraw(buf, true)
 end
 
--- TODO: Translate from string to sequence
 function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
     opts = opts or {}
 
@@ -1186,7 +1181,7 @@ function api.nvim_buf_is_loaded(bufnr)
     if not buf then
         return false
     end
-    return buffer_is_loaded(buf)
+    return buf:is_loaded()
 end
 
 function api.nvim_buf_delete(buffer, opts)
@@ -1298,6 +1293,108 @@ function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
     end
 end
 
+local function _extmark_pos_from_arg(arg)
+    if type(arg) == "table" then
+        local line = tonumber(arg[1] or 0) or 0
+        local col = tonumber(arg[2] or 0) or 0
+        return line, col
+    end
+    if type(arg) == "number" then
+        return arg, 0
+    end
+    return 0, 0
+end
+
+local function _extmark_in_range(mark, start_line, start_col, end_line, end_col)
+    local line = mark.line or 0
+    local col = mark.col or 0
+
+    if line < start_line or line > end_line then
+        return false
+    end
+    if line == start_line and col < start_col then
+        return false
+    end
+    if line == end_line then
+        if end_col >= 0 and col > end_col then
+            return false
+        end
+    end
+    return true
+end
+
+function api.nvim_buf_get_extmarks(buffer, ns_id, start, _end, opts)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    opts = opts or {}
+    buf._extmarks = buf._extmarks or {}
+
+    local start_line, start_col = _extmark_pos_from_arg(start)
+    local end_line, end_col = _extmark_pos_from_arg(_end)
+    if end_line < start_line or (end_line == start_line and end_col >= 0 and end_col < start_col) then
+        start_line, end_line = end_line, start_line
+        start_col, end_col = end_col, start_col
+    end
+
+    local items = {}
+
+    local function collect_ns(ns_marks)
+        for id, mark in pairs(ns_marks) do
+            if _extmark_in_range(mark, start_line, start_col, end_line, end_col) then
+                items[#items + 1] = { id = id, mark = mark }
+            end
+        end
+    end
+
+    if ns_id == -1 then
+        for _, ns_marks in pairs(buf._extmarks) do
+            collect_ns(ns_marks)
+        end
+    else
+        local ns_marks = buf._extmarks[ns_id]
+        if ns_marks then
+            collect_ns(ns_marks)
+        end
+    end
+
+    table.sort(items, function(a, b)
+        local la = a.mark.line or 0
+        local lb = b.mark.line or 0
+        if la ~= lb then
+            return la < lb
+        end
+        local ca = a.mark.col or 0
+        local cb = b.mark.col or 0
+        if ca ~= cb then
+            return ca < cb
+        end
+        return a.id < b.id
+    end)
+
+    if opts.limit and tonumber(opts.limit) and tonumber(opts.limit) >= 0 then
+        local lim = tonumber(opts.limit)
+        while #items > lim do
+            items[#items] = nil
+        end
+    end
+
+    local out = {}
+    for i = 1, #items do
+        local id = items[i].id
+        local mark = items[i].mark
+        local entry = { id, mark.line or 0, mark.col or 0 }
+        if opts.details then
+            local details = {}
+            for k, v in pairs(mark.opts or {}) do
+                details[k] = v
+            end
+            entry[4] = details
+        end
+        out[#out + 1] = entry
+    end
+    return out
+end
+
 function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
@@ -1319,16 +1416,14 @@ function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
         col = col,
         opts = opts,
     }
+    if opts.sign_text ~= nil or opts.line_hl_group ~= nil or opts.number_hl_group ~= nil then
+        request_buffer_redraw(buf, false)
+    end
     return id
 end
 
 function api.nvim_strwidth(text)
-    text = tostring(text or "")
-    local ok, width = pcall(utf8.len, text)
-    if ok and width then
-        return width
-    end
-    return #text
+    return Utf8.len(text)
 end
 
 function api.nvim_echo(chunks, history, opts)

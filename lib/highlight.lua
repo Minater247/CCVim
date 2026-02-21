@@ -93,6 +93,7 @@ do
     hlgroups.DiffDelete = { colors.blue, colors.cyan }
     hlgroups.DiffText = { nil, colors.red }
     hlgroups.SignColumn = { colors.cyan, colors.gray }
+    hlgroups._:link("CursorLineSign", "SignColumn")
     hlgroups.SpellBad = { colors.gray, colors.red }
     hlgroups.SpellCap = { colors.gray, colors.blue }
     hlgroups.SpellRare = { colors.gray, colors.magenta }

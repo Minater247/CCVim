@@ -36,6 +36,7 @@ local COMMAND_SPECS = {
     { name = "command", min = 3, dispatch = true, no_bar_split = true },
     { name = "autocmd", min = 2, no_bar_split = true },
     { name = "syntax", min = 3, dispatch = true, no_bar_split = true },
+    { name = "sign", min = 3, dispatch = true, no_bar_split = true },
     { name = "highlight", min = 2, dispatch = true },
     { name = "runtime", min = 2, dispatch = true },
     { name = "augroup", min = 3, dispatch = true },
@@ -122,6 +123,7 @@ local COMMAND_SPECS = {
     { name = "drop", min = 2, dispatch = true },
     { name = "help", min = 1, dispatch = true },
     { name = "lcd", min = 2, dispatch = true },
+    { name = "tcd", min = 2, dispatch = true },
     { name = "lua", min = 2, dispatch = true, no_bar_split = true },
     { name = "messages", min = 3, dispatch = true },
     { name = "redir", min = 4, dispatch = true },
@@ -138,6 +140,10 @@ local COMMAND_SPECS = {
     { name = "syntime", min = 4, dispatch = true },
     { name = "ownsyntax", min = 3, dispatch = true },
     { name = "match", min = 3, dispatch = true, no_bar_split = true },
+    { name = "pwd", min = 2, dispatch = true },
+    { name = "copy", min = 2, dispatch = true},
+    { name = "t", min = 1, dispatch = true },
+    { name = "move", min = 1, dispatch = true },
 }
 
 local SPEC_BY_NAME = {}

@@ -1,4 +1,5 @@
 local Tab = {}
+local Utf8 = loadModule("vim.lib.utf8")
 
 local floor = math.floor
 
@@ -273,15 +274,16 @@ end
 
 --- Visual column of s:sub(1, upto_col1-1), respecting vartabstop
 function Tab.vcol_of_prefix(s, upto_col1, tcfg)
-    local v, upto = 0, math.max(0, (upto_col1 or 1) - 1)
-    for i = 1, upto do
-        local ch = s:sub(i, i)
-        if ch == "\t" then
+    local v = 0
+    local upto = math.max(0, (upto_col1 or 1) - 1)
+    local prefix = Utf8.sub(s or "", 1, upto)
+    Utf8.each_codepoint(prefix, function(cp)
+        if cp == 9 then
             v = Tab.next_display_tabstop(v, tcfg)
         else
             v = v + 1
         end
-    end
+    end)
     return v
 end
 

@@ -6,6 +6,8 @@ local ExMsg = loadModule("vim.lib.excmd.exmsg")
 local AutoCmd = loadModule("vim.lib.autocmd")
 local VimFs = loadModule("vim.lib.luaapi.fs")
 local Syntax = loadModule("vim.lib.syntax")
+local Utf8 = loadModule("vim.lib.utf8")
+local Sign
 
 local curr_bufno = 1
 
@@ -54,6 +56,7 @@ function Buffer:new(listed, scratch, loaded)
         refcount = 0,
         signs = {},
         signs_byln = {},
+        signs_nextid = { [""] = 1 },
     }, Buffer)
 
     buffers[curr_bufno] = obj
@@ -150,6 +153,81 @@ function Buffer:get_line(line_nr, load_if_unloaded)
     return lines[line_nr]
 end
 
+function Buffer:str_len(s)
+    return Utf8.len(s or "")
+end
+
+function Buffer:str_sub(s, start_col1, end_col1)
+    return Utf8.sub(s or "", start_col1, end_col1)
+end
+
+function Buffer:str_char_at(s, col1)
+    return Utf8.char_at(s or "", col1)
+end
+
+function Buffer:str_codepoint_at(s, col1)
+    return Utf8.codepoint_at(s or "", col1)
+end
+
+function Buffer:str_byte_index(s, col1, allow_eol)
+    return Utf8.byte_index(s or "", col1, allow_eol)
+end
+
+function Buffer:str_col_from_byte(s, byte_idx, allow_eol)
+    return Utf8.col_from_byte(s or "", byte_idx, allow_eol)
+end
+
+function Buffer:str_each_codepoint(s, visitor)
+    return Utf8.each_codepoint(s or "", visitor)
+end
+
+function Buffer:line_len(line_nr, load_if_unloaded)
+    local line = self:get_line(line_nr, load_if_unloaded) or ""
+    return Utf8.len(line)
+end
+
+function Buffer:line_sub(line_nr, start_col1, end_col1, load_if_unloaded)
+    local line = self:get_line(line_nr, load_if_unloaded) or ""
+    return Utf8.sub(line, start_col1, end_col1)
+end
+
+function Buffer:line_char_at(line_nr, col1, load_if_unloaded)
+    local line = self:get_line(line_nr, load_if_unloaded) or ""
+    return Utf8.char_at(line, col1)
+end
+
+function Buffer:line_codepoint_at(line_nr, col1, load_if_unloaded)
+    local line = self:get_line(line_nr, load_if_unloaded) or ""
+    return Utf8.codepoint_at(line, col1)
+end
+
+function Buffer:line_byte_index(line_nr, col1, load_if_unloaded, allow_eol)
+    local line = self:get_line(line_nr, load_if_unloaded) or ""
+    return Utf8.byte_index(line, col1, allow_eol)
+end
+
+function Buffer:line_col_from_byte(line_nr, byte_idx, load_if_unloaded, allow_eol)
+    local line = self:get_line(line_nr, load_if_unloaded) or ""
+    return Utf8.col_from_byte(line, byte_idx, allow_eol)
+end
+
+function Buffer:set_line(line_nr, text, load_if_unloaded)
+    local lines = self:lines_ref(load_if_unloaded)
+    lines[line_nr] = tostring(text or "")
+end
+
+function Buffer:splice_line(line_nr, start_col1, end_col1, replacement, load_if_unloaded)
+    local line = self:get_line(line_nr, load_if_unloaded) or ""
+    local s = math.max(1, math.floor(tonumber(start_col1) or 1))
+    local e = math.floor(tonumber(end_col1) or (s - 1))
+    local prefix = Utf8.sub(line, 1, s - 1)
+    local removed = (e >= s) and Utf8.sub(line, s, e) or ""
+    local suffix = Utf8.sub(line, math.max(s, e + 1))
+    local new_line = prefix .. tostring(replacement or "") .. suffix
+    self:set_line(line_nr, new_line, load_if_unloaded)
+    return new_line, removed
+end
+
 function Buffer:remove_lines(start1, end1, opts)
     opts = opts or {}
     self.loaded = true
@@ -182,6 +260,11 @@ function Buffer:remove_lines(start1, end1, opts)
         if not was_empty and not opts.silent_no_lines then
             ExMsg.echo("--No lines in buffer--")
         end
+    end
+
+    if not opts.skip_sign_adjust then
+        Sign = Sign or loadModule("vim.lib.sign")
+        Sign.on_lines_changed(self, s, k_remove, 0)
     end
 
     self.opts.modified = true
@@ -224,7 +307,11 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
 
     -- 1) Delete k_remove lines from self.lines at start1
     if k_remove > 0 then
-        self:remove_lines(start1, start1 + k_remove - 1, { allow_empty = true, silent_no_lines = true })
+        self:remove_lines(start1, start1 + k_remove - 1, {
+            allow_empty = true,
+            silent_no_lines = true,
+            skip_sign_adjust = true,
+        })
     end
 
     -- 2) Insert m_insert replacement lines at start1
@@ -235,9 +322,13 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     end
 
     -- 3) Ensure buffer has at least one (possibly empty) line
-    --    TODO: is this correct semantics for how neovim actually behaves?
     if #self.lines == 0 then
         self.lines = { "" }
+    end
+
+    if k_remove > 0 or m_insert > 0 then
+        Sign = Sign or loadModule("vim.lib.sign")
+        Sign.on_lines_changed(self, start1, k_remove, m_insert)
     end
 
     -- Mark modified (like altering buffer contents)
@@ -260,7 +351,6 @@ local function _autowrite_blocked_buftype(buf)
     return bt == "nowrite" or bt == "nofile" or bt == "terminal" or bt == "prompt"
 end
 
--- TODO: implement the proper force semantics here, autowrite/all, etc.
 function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     local bufhidden = options.get("bufhidden", nil, self)
     local hidden = options.get("hidden")

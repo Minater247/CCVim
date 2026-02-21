@@ -394,14 +394,14 @@ local function parse_segment(fmt, window)
                     local ln = window.cursory or 1
                     local col = window.cursorx or 1
                     local line = lines[ln] or ""
-                    local ch = byte(line, col) or 0
+                    local ch = buf:str_codepoint_at(line, col) or 0
 
                     if nxtb == 98 then     -- 'b'
                         out, is_num = tostring(ch), true
                     elseif nxtb == 66 then -- 'B'
                         out, is_num = string.format("%X", ch), true
                     else                   -- 'o' or 'O'
-                        local offset = col - 1
+                        local offset = buf:line_byte_index(ln, col, true, true) - 1
                         if ln > 1 then
                             for idx = 1, ln - 1 do
                                 offset = offset + #(lines[idx] or "") + 1

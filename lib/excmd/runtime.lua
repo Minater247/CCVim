@@ -10,6 +10,7 @@ local Options = loadModule("vim.lib.options")
 local Autocmd = loadModule("vim.lib.autocmd")
 local ScriptSource
 local scopes = loadModule("vim.lib.luaapi.scopes")
+local Builtins = loadModule("vim.lib.luaapi.fn")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -525,7 +526,7 @@ local function build_call_scopes(arg_values, param_names)
             has_varargs = true
         else
             fixed_count = fixed_count + 1
-            local valid_name = type(pname) == "string" and pname:match("^[A-Za-z_]%w*$") ~= nil
+            local valid_name = type(pname) == "string" and pname:match("^[A-Za-z_][A-Za-z0-9_]*$") ~= nil
             local key = valid_name and pname or ("a" .. tostring(fixed_count))
             local val = arg_values[fixed_count]
             a_scope[key] = val
@@ -691,9 +692,37 @@ end
 
 local function split_ws(raw)
     local out = {}
-    for tok in tostring(raw or ""):gmatch("%S+") do
-        out[#out + 1] = tok
+    local buf = {}
+    local s = tostring(raw or "")
+    local i, n = 1, #s
+
+    local function flush()
+        if #buf > 0 then
+            out[#out + 1] = table.concat(buf)
+            buf = {}
+        end
     end
+
+    while i <= n do
+        local ch = s:sub(i, i)
+        if ch == " " or ch == "\t" or ch == "\r" or ch == "\n" then
+            flush()
+            i = i + 1
+        elseif ch == "\\" then
+            if i < n then
+                buf[#buf + 1] = s:sub(i + 1, i + 1)
+                i = i + 2
+            else
+                buf[#buf + 1] = ch
+                i = i + 1
+            end
+        else
+            buf[#buf + 1] = ch
+            i = i + 1
+        end
+    end
+
+    flush()
     return out
 end
 
@@ -757,6 +786,25 @@ local function split_set_args(s)
         out[#out + 1] = table.concat(buf)
     end
     return out
+end
+
+local function strip_trailing_comment(argstr)
+    local s = tostring(argstr or "")
+    local out = {}
+    local i, n = 1, #s
+    while i <= n do
+        local c = s:sub(i, i)
+        if c == "\\" and i < n then
+            out[#out + 1] = s:sub(i, i + 1)
+            i = i + 2
+        elseif c == "\"" then
+            break
+        else
+            out[#out + 1] = c
+            i = i + 1
+        end
+    end
+    return strip(table.concat(out))
 end
 
 local function rejoin_equals(args)
@@ -1188,12 +1236,12 @@ function Runtime.new(state, opts)
     function self:execute(expr)
         local s = tostring(expr or "")
 
-        -- Support the $'...'-style single-quoted execute string with
-        -- interpolation (pre-JIT behavior).  Match and expand before
-        -- feeding the expression parser which would otherwise treat
-        -- a leading '$' as an env-var and error on $'...'.
-        local interpolated = s:match("^%$'(.*)'$")
-        if interpolated then
+        local function expand_execute_dollar_single_quoted(input_expr)
+            local interpolated = tostring(input_expr or ""):match("^%$'(.*)'$")
+            if not interpolated then
+                return nil, false
+            end
+
             local out = {}
             local i, n = 1, #interpolated
             while i <= n do
@@ -1231,7 +1279,16 @@ function Runtime.new(state, opts)
                     i = i + 1
                 end
             end
-            local line = table.concat(out)
+
+            return table.concat(out), true
+        end
+
+        -- Support the $'...'-style single-quoted execute string with
+        -- interpolation (pre-JIT behavior).  Match and expand before
+        -- feeding the expression parser which would otherwise treat
+        -- a leading '$' as an env-var and error on $'...'.
+        local line, is_interp = expand_execute_dollar_single_quoted(s)
+        if is_interp then
             return self:exec_script(line)
         end
 
@@ -1239,22 +1296,39 @@ function Runtime.new(state, opts)
         if #exprs == 0 then error(Error(471, "Argument required")) end
         local parts = {}
         for i = 1, #exprs do
-            local val = self:eval_expr(exprs[i])
+            local val
+            local expanded, expanded_ok = expand_execute_dollar_single_quoted(exprs[i])
+            if expanded_ok then
+                val = expanded
+            else
+                val = self:eval_expr(exprs[i])
+            end
             parts[#parts + 1] = tostring(val)
         end
-        local line = table.concat(parts, " ")
+        line = table.concat(parts, " ")
         return self:exec_script(line)
     end
 
-    function self:exec_verbose(rest)
-        local body = tostring(rest or "")
-        body = body:gsub("^%d+%s*", "")
-        if body:match("^exe%c?") or body:match("^execute%s+") then
-            body = body:gsub("^exe", "execute", 1)
-            body = body:gsub("^execute%s+", "", 1)
-            return self:execute(body)
+    function self:exec_verbose(level, body)
+        level = tonumber(level) or 1
+        body = tostring(body or ""):gsub("^%s*", "", 1)
+        local prev_verbose = tonumber(Options.get("verbose", nil, nil, false, true)) or 0
+        Options.set("verbose", level, false, nil, nil, true)
+
+        local ok, rv = pcall(function()
+            if body:match("^exe%c?") or body:match("^execute%s+") then
+                body = body:gsub("^exe", "execute", 1)
+                body = body:gsub("^execute%s+", "", 1)
+                return self:execute(body)
+            end
+            return self:exec_script(body)
+        end)
+
+        Options.set("verbose", prev_verbose, false, nil, nil, true)
+        if not ok then
+            error(rv)
         end
-        return self:exec_script(body)
+        return rv
     end
 
     function self:exec_silent(rest, is_unsilent, is_bang)
@@ -1429,9 +1503,13 @@ function Runtime.new(state, opts)
     local function _find_window_for_path(target_abs)
         local fsmod = _vimfs()
         for _, win in pairs(windows) do
-            local buf_abs = fsmod.abspath(win.buffer.name)
-            if buf_abs == target_abs then
-                return win
+            local buf = win and win.buffer
+            local name = buf and buf.name
+            if type(name) == "string" and name ~= "" then
+                local ok, buf_abs = pcall(fsmod.abspath, name)
+                if ok and buf_abs == target_abs then
+                    return win
+                end
             end
         end
         return nil
@@ -1577,26 +1655,19 @@ function Runtime.new(state, opts)
         return raw and raw:lower() or nil, l1, l2, has_range
     end
 
-    local function _delete_range_from_exec_cursor(cursor, win)
-        local _, l1, l2, has_range = _cursor_parse_head(cursor, win)
-        if has_range then
-            return l1, l2
-        end
-        return win.cursory, win.cursory
-    end
-
-    local function _put_line_from_exec_cursor(cursor, win)
-        local _, _, l2, has_range = _cursor_parse_head(cursor, win)
-        if has_range then
-            return l2
-        end
-        return win.cursory
-    end
-
-    local function _exec_address_only_from_cursor(cursor, win)
+    local function _build_cmd_context(cursor, win)
         local raw_cmd, l1, l2, has_range = _cursor_parse_head(cursor, win)
-        if raw_cmd ~= nil or not has_range then
-            return false
+        return {
+            raw_cmd = raw_cmd,
+            line1 = has_range and l1 or nil,
+            line2 = has_range and l2 or nil,
+        }
+    end
+
+    local function _parse_copy_move_target(raw, win)
+        local text = lstrip(tostring(raw or ""))
+        if text == "" then
+            return nil, Error(16)
         end
 
         local line_count = win.buffer:line_count(true)
@@ -1604,20 +1675,26 @@ function Runtime.new(state, opts)
             line_count = 1
         end
 
-        local target = tonumber(l2 or l1 or win.cursory or 1) or (win.cursory or 1)
-        if target < 1 then
-            target = 1
-        elseif target > line_count then
+        local c = text:sub(1, 1)
+        local target
+        if c == "." then
+            target = win.cursory
+        elseif c == "$" then
             target = line_count
+        elseif c:match("%d") then
+            local digits = text:match("^(%d+)")
+            target = tonumber(digits)
+            if target > line_count then
+                return nil, Error(16)
+            end
+        else
+            return nil, Error(16)
         end
 
-        if type(win.cursorSet) == "function" then
-            win:cursorSet(1, target)
-        else
-            win.cursorx = 1
-            win.cursory = target
+        if target < 0 then
+            return nil, Error(16)
         end
-        return true
+        return target, nil
     end
 
     local function _delete_suffix_mode(raw_cmd)
@@ -2057,7 +2134,7 @@ function Runtime.new(state, opts)
         return _split_text_lines(tostring(payload or "")), nil
     end
 
-    function self:put(argstr, bang)
+    function self:put(argstr, bang, cmdctx)
         local raw = strip(argstr)
         local source_kind = "register"
         local reg = '"'
@@ -2118,7 +2195,7 @@ function Runtime.new(state, opts)
 
         local win = windows[curwin]
         local buf = win.buffer
-        local line = _put_line_from_exec_cursor(self:get_exec_cursor(), win)
+        local line = cmdctx.line2 or win.cursory
         local insert_before = bang and line or (line + 1)
         if insert_before < 1 then
             insert_before = 1
@@ -2141,7 +2218,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:substitute(argstr, _bang)
+    function self:substitute(argstr, _bang, cmdctx)
         local spec, perr = _parse_substitute_args(argstr)
         if Error.IsError(perr) then
             return perr
@@ -2184,13 +2261,12 @@ function Runtime.new(state, opts)
 
         local win = windows[curwin]
         local buf = win.buffer
-        local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
         local line_count = buf:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
-        local line1 = has_range and l1 or win.cursory
-        local line2 = has_range and l2 or line1
+        local line1 = cmdctx.line1 or win.cursory
+        local line2 = cmdctx.line2 or line1
 
         if count then
             line2 = line1 + count - 1
@@ -2255,7 +2331,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:global(argstr, bang)
+    function self:global(argstr, bang, cmdctx)
         local pattern, cmd, perr = _parse_global_pattern_and_cmd(argstr)
         if Error.IsError(perr) then
             return perr
@@ -2277,13 +2353,12 @@ function Runtime.new(state, opts)
 
         local win = windows[curwin]
         local buf = win.buffer
-        local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
         local line_count = buf:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
-        local line1 = has_range and l1 or 1
-        local line2 = has_range and l2 or line_count
+        local line1 = cmdctx.line1 or 1
+        local line2 = cmdctx.line2 or line_count
         if line1 < 1 then line1 = 1 end
         if line1 > line_count then line1 = line_count end
         if line2 < 1 then line2 = 1 end
@@ -2337,7 +2412,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:sort(argstr, bang)
+    function self:sort(argstr, bang, cmdctx)
         local raw = strip(argstr)
         local ignorecase = false
         local numeric = false
@@ -2361,14 +2436,13 @@ function Runtime.new(state, opts)
 
         local win = windows[curwin]
         local buf = win.buffer
-        local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
         local line_count = buf:line_count(true)
         if line_count < 1 then
             line_count = 1
         end
 
-        local line1 = has_range and l1 or 1
-        local line2 = has_range and l2 or line_count
+        local line1 = cmdctx.line1 or 1
+        local line2 = cmdctx.line2 or line_count
         if line1 < 1 then line1 = 1 end
         if line1 > line_count then line1 = line_count end
         if line2 < 1 then line2 = 1 end
@@ -3237,7 +3311,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:_invoke_builtin(cmd, argstr, bang)
+    function self:_invoke_builtin(cmd, argstr, bang, cmdctx)
         if MAP_COMMAND_SPECS[cmd] then
             local rv = _run_map_ex_command(cmd, argstr, bang)
             if Error.IsError(rv) then error(rv) end
@@ -3278,13 +3352,235 @@ function Runtime.new(state, opts)
             if q ~= true then error(q) end
             return true
         elseif cmd == "source" then
-            local ok, err = _scriptsource().source(argstr)
+            local ok, err = _scriptsource().source(strip_trailing_comment(argstr))
             if not ok then error(err) end
             return true
         elseif cmd == "setglobal" then
             return self:set_options(argstr, "global")
         elseif cmd == "setlocal" then
             return self:set_options(argstr, "local")
+        elseif cmd == "sign" then
+            local tokens = split_ws(argstr)
+            if #tokens == 0 then
+                error(Error(471))
+            end
+
+            local function parse_kv(start_idx)
+                local kv = {}
+                local plain = {}
+                for i = start_idx, #tokens do
+                    local k, v = tokens[i]:match("^([^=]+)=(.*)$")
+                    if k then
+                        kv[k:lower()] = v
+                    else
+                        plain[#plain + 1] = tokens[i]
+                    end
+                end
+                return kv, plain
+            end
+
+            local function resolve_buf_arg(kv)
+                if kv.buffer ~= nil then
+                    return tonumber(kv.buffer) or kv.buffer
+                end
+                if kv.file ~= nil then
+                    return kv.file
+                end
+                return 0
+            end
+
+            local function resolve_sign_sub(prefix)
+                local defs = {
+                    { name = "define", min = 2 },
+                    { name = "undefine", min = 2 },
+                    { name = "list", min = 2 },
+                    { name = "place", min = 2 },
+                    { name = "unplace", min = 3 },
+                    { name = "jump", min = 2 },
+                }
+                prefix = tostring(prefix or ""):lower()
+                local match = nil
+                for i = 1, #defs do
+                    local d = defs[i]
+                    if #prefix >= d.min and d.name:sub(1, #prefix) == prefix then
+                        if match then
+                            return nil
+                        end
+                        match = d.name
+                    end
+                end
+                return match
+            end
+
+            local function echo_defs(defs)
+                local msg = _exmsg()
+                for i = 1, #defs do
+                    local d = defs[i]
+                    local parts = {
+                        "sign " .. tostring(d.name),
+                    }
+                    if d.text ~= nil then parts[#parts + 1] = "text=" .. tostring(d.text) end
+                    if d.linehl ~= nil then parts[#parts + 1] = "linehl=" .. tostring(d.linehl) end
+                    if d.numhl ~= nil then parts[#parts + 1] = "numhl=" .. tostring(d.numhl) end
+                    if d.texthl ~= nil then parts[#parts + 1] = "texthl=" .. tostring(d.texthl) end
+                    if d.culhl ~= nil then parts[#parts + 1] = "culhl=" .. tostring(d.culhl) end
+                    if d.priority ~= nil then parts[#parts + 1] = "priority=" .. tostring(d.priority) end
+                    msg.echo(table.concat(parts, " "))
+                end
+            end
+
+            local function echo_placed(placed)
+                local msg = _exmsg()
+                for i = 1, #placed do
+                    local item = placed[i]
+                    msg.echo(("--- Signs for buffer=%s ---"):format(tostring(item.bufnr)))
+                    local signs = item.signs or {}
+                    for j = 1, #signs do
+                        local s = signs[j]
+                        msg.echo((
+                            "id=%s group=%s line=%s name=%s priority=%s"
+                        ):format(
+                            tostring(s.id),
+                            tostring(s.group),
+                            tostring(s.lnum),
+                            tostring(s.name),
+                            tostring(s.priority)
+                        ))
+                    end
+                end
+            end
+
+            local sub = resolve_sign_sub(tokens[1])
+            if not sub then
+                error(Error(474, argstr))
+            end
+
+            if sub == "define" then
+                local name = tokens[2]
+                if not name then
+                    error(Error(471))
+                end
+                local kv = parse_kv(3)
+                local dict = {}
+                if kv.icon ~= nil then dict.icon = kv.icon end
+                if kv.linehl ~= nil then dict.linehl = kv.linehl end
+                if kv.numhl ~= nil then dict.numhl = kv.numhl end
+                if kv.text ~= nil then dict.text = kv.text end
+                if kv.texthl ~= nil then dict.texthl = kv.texthl end
+                if kv.culhl ~= nil then dict.culhl = kv.culhl end
+                if kv.priority ~= nil then dict.priority = tonumber(kv.priority) end
+                local rv = _vimfn().sign_define(name, dict)
+                if rv ~= 0 then
+                    error(Error(474, argstr))
+                end
+                return true
+            elseif sub == "undefine" then
+                local rv = _vimfn().sign_undefine(tokens[2])
+                if rv ~= 0 and rv ~= nil then
+                    error(Error(474, argstr))
+                end
+                return true
+            elseif sub == "list" then
+                local defs = _vimfn().sign_getdefined(tokens[2])
+                echo_defs(defs)
+                return true
+            elseif sub == "place" then
+                local first = tokens[2]
+                local first_num = first and tonumber(first) or nil
+                local first_is_kv = first and first:find("=", 1, true) ~= nil
+
+                if first_num and not first_is_kv then
+                    local kv = parse_kv(3)
+                    if kv.name then
+                        local opts = {}
+                        if kv.line ~= nil then opts.lnum = tonumber(kv.line) end
+                        if kv.lnum ~= nil then opts.lnum = tonumber(kv.lnum) end
+                        if kv.priority ~= nil then opts.priority = tonumber(kv.priority) end
+                        if next(opts) == nil then opts = nil end
+                        local rv = _vimfn().sign_place(
+                            first_num,
+                            kv.group or "",
+                            kv.name,
+                            resolve_buf_arg(kv),
+                            opts
+                        )
+                        if rv == -1 then
+                            error(Error(474, argstr))
+                        end
+                        return true
+                    end
+                end
+
+                local start_idx = 2
+                local dict = {}
+                if first_num and not first_is_kv then
+                    dict.id = first_num
+                    start_idx = 3
+                end
+                local kv = parse_kv(start_idx)
+                if kv.group ~= nil then dict.group = kv.group end
+                if kv.id ~= nil then dict.id = tonumber(kv.id) end
+                if kv.line ~= nil then dict.lnum = tonumber(kv.line) end
+                if kv.lnum ~= nil then dict.lnum = tonumber(kv.lnum) end
+                if next(dict) == nil then dict = nil end
+                local placed = _vimfn().sign_getplaced(resolve_buf_arg(kv), dict)
+                echo_placed(placed)
+                return true
+            elseif sub == "unplace" then
+                local first = tokens[2]
+                local first_is_kv = first and first:find("=", 1, true) ~= nil
+                local first_num = first and tonumber(first) or nil
+
+                if not first then
+                    local win = windows[curwin]
+                    local curbuf = win.buffer.bufnr
+                    local curline = win.cursory
+                    local placed = _vimfn().sign_getplaced(curbuf, { group = "*", lnum = curline })
+                    if #placed > 0 and #placed[1].signs > 0 then
+                        local top = placed[1].signs[1]
+                        _vimfn().sign_unplace(top.group, { buffer = curbuf, id = top.id })
+                    end
+                    return true
+                end
+
+                local start_idx = 2
+                local id = nil
+                if (not first_is_kv) and first ~= "*" and first_num then
+                    id = first_num
+                    start_idx = 3
+                elseif (not first_is_kv) and first == "*" then
+                    start_idx = 3
+                end
+
+                local kv = parse_kv(start_idx)
+                local group = kv.group
+                if not group then
+                    group = (first == "*") and "*" or ""
+                end
+                local opts = {}
+                if kv.buffer ~= nil then opts.buffer = tonumber(kv.buffer) or kv.buffer end
+                if kv.file ~= nil then opts.buffer = kv.file end
+                if kv.id ~= nil then opts.id = tonumber(kv.id) end
+                if id ~= nil then opts.id = id end
+                if next(opts) == nil then opts = nil end
+                local rv = _vimfn().sign_unplace(group, opts)
+                if rv == -1 then
+                    error(Error(474, argstr))
+                end
+                return true
+            elseif sub == "jump" then
+                local id = tonumber(tokens[2])
+                if not id then
+                    error(Error(474, argstr))
+                end
+                local kv = parse_kv(3)
+                local lnum = _vimfn().sign_jump(id, kv.group or "", resolve_buf_arg(kv))
+                if lnum == -1 then
+                    error(Error(474, argstr))
+                end
+                return true
+            end
+            error(Error(474, argstr))
         elseif cmd == "normal" then
             local keys_text = tostring(argstr or "")
             if keys_text == "" then
@@ -3298,7 +3594,8 @@ function Runtime.new(state, opts)
 
             local CommandMod = _command_mod()
             local win = windows[curwin]
-            local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
+            local l1 = cmdctx.line1
+            local l2 = cmdctx.line2
 
             local function run_normal_once()
                 local prev_mode = vimmode
@@ -3311,7 +3608,7 @@ function Runtime.new(state, opts)
                 return rv
             end
 
-            if has_range then
+            if l1 ~= nil and l2 ~= nil then
                 local line_count = win.buffer:line_count(true)
                 if line_count < 1 then line_count = 1 end
                 local first = tonumber(l1 or win.cursory or 1) or (win.cursory or 1)
@@ -3336,27 +3633,30 @@ function Runtime.new(state, opts)
             run_normal_once()
             return true
         elseif cmd == "put" then
-            local rv = self:put(argstr, bang)
+            local rv = self:put(argstr, bang, cmdctx)
             if Error.IsError(rv) then error(rv) end
             return rv
         elseif cmd == "substitute" then
-            local rv = self:substitute(argstr, bang)
+            local rv = self:substitute(argstr, bang, cmdctx)
             if Error.IsError(rv) then error(rv) end
             return rv
         elseif cmd == "global" then
-            local rv = self:global(argstr, bang)
+            local rv = self:global(argstr, bang, cmdctx)
             if Error.IsError(rv) then error(rv) end
             return rv
         elseif cmd == "v" or cmd == "vglobal" then
-            local rv = self:global(argstr, true)
+            local rv = self:global(argstr, true, cmdctx)
             if Error.IsError(rv) then error(rv) end
             return rv
         elseif cmd == "sort" then
-            local rv = self:sort(argstr, bang)
+            local rv = self:sort(argstr, bang, cmdctx)
             if Error.IsError(rv) then error(rv) end
             return rv
         elseif cmd == "lcd" then
             windows[curwin].curdir = argstr
+            return true
+        elseif cmd == "tcd" then
+            tabpages[curtp].curdir = argstr
             return true
         elseif cmd == "lua" then
             local ok, rv = _lualoader().Eval(argstr)
@@ -3542,8 +3842,7 @@ function Runtime.new(state, opts)
         elseif cmd == "file" then
             local target = strip(argstr)
             local win = windows[curwin]
-            local _, l1, _, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
-            local remove_name = has_range and l1 == 0 and target == ""
+            local remove_name = (cmdctx.line1 == 0 and cmdctx.line2 == 0) and target == ""
             if target == "" and not remove_name then
                 _exmsg().echo(_file_status_message(win, bang))
                 return true
@@ -3567,9 +3866,9 @@ function Runtime.new(state, opts)
             local buf = win.buffer
             local reg, explicit_reg, count, perr = _parse_delete_args(argstr)
             if Error.IsError(perr) then error(perr) end
-            local raw_cmd = _cursor_parse_head(self:get_exec_cursor(), win)
-            local post_mode = _delete_suffix_mode(raw_cmd)
-            local line1, line2 = _delete_range_from_exec_cursor(self:get_exec_cursor(), win)
+            local post_mode = _delete_suffix_mode(cmdctx.raw_cmd)
+            local line1 = cmdctx.line1 or win.cursory
+            local line2 = cmdctx.line2 or line1
             if count then
                 line2 = line1 + count - 1
             end
@@ -3600,6 +3899,87 @@ function Runtime.new(state, opts)
                 _exmsg().echo(buf:get_line(target_line, true) or "")
             elseif post_mode == "list" then
                 _exmsg().echo(_delete_list_text(buf:get_line(target_line, true) or ""))
+            end
+            win.need_redraw = true
+            need_redraw = true
+            return true
+        elseif cmd == "copy" or cmd == "t" then
+            local win = windows[curwin]
+            local buf = win.buffer
+            local target, terr = _parse_copy_move_target(argstr, win)
+            if Error.IsError(terr) then error(terr) end
+
+            local line1 = cmdctx.line1 or win.cursory
+            local line2 = cmdctx.line2 or line1
+            local line_count = buf:line_count(true)
+            if line_count < 1 then
+                line_count = 1
+            end
+            if line1 < 1 then line1 = 1 end
+            if line2 > line_count then line2 = line_count end
+            if line2 < line1 then line2 = line1 end
+
+            local lines = {}
+            for i = line1, line2 do
+                lines[#lines + 1] = buf:get_line(i, true) or ""
+            end
+
+            local insert_at = target + 1
+            local start0 = insert_at - 1
+            buf:set_lines(start0, start0, false, lines)
+            local target_line = insert_at + #lines - 1
+            if type(win.cursorSet) == "function" then
+                win:cursorSet(1, target_line)
+            else
+                win.cursorx = 1
+                win.cursory = target_line
+            end
+            win.need_redraw = true
+            need_redraw = true
+            return true
+        elseif cmd == "move" then
+            local win = windows[curwin]
+            local buf = win.buffer
+            local target, terr = _parse_copy_move_target(argstr, win)
+            if Error.IsError(terr) then error(terr) end
+
+            local line1 = cmdctx.line1 or win.cursory
+            local line2 = cmdctx.line2 or line1
+            local line_count = buf:line_count(true)
+            if line_count < 1 then
+                line_count = 1
+            end
+            if line1 < 1 then line1 = 1 end
+            if line2 > line_count then line2 = line_count end
+            if line2 < line1 then line2 = line1 end
+
+            if target >= line1 and target < line2 then
+                error(Error(134))
+            end
+
+            local target_line = line2
+            if target ~= (line1 - 1) and target ~= line2 then
+                local lines = {}
+                for i = line1, line2 do
+                    lines[#lines + 1] = buf:get_line(i, true) or ""
+                end
+                local moved_count = #lines
+                buf:set_lines(line1 - 1, line2, false, {})
+
+                local insert_after = target
+                if target > line2 then
+                    insert_after = target - moved_count
+                end
+                local insert_at = insert_after + 1
+                buf:set_lines(insert_at - 1, insert_at - 1, false, lines)
+                target_line = insert_at + moved_count - 1
+            end
+
+            if type(win.cursorSet) == "function" then
+                win:cursorSet(1, target_line)
+            else
+                win.cursorx = 1
+                win.cursory = target_line
             end
             win.need_redraw = true
             need_redraw = true
@@ -3869,8 +4249,9 @@ function Runtime.new(state, opts)
         elseif cmd == "match" then
             local win = windows[curwin]
             local slot = 1
-            local _, l1, l2, has_range = _cursor_parse_head(self:get_exec_cursor(), win)
-            if has_range and l1 == l2 and l1 >= 1 and l1 <= 3 then
+            local l1 = cmdctx.line1
+            local l2 = cmdctx.line2
+            if l1 ~= nil and l2 ~= nil and l1 == l2 and l1 >= 1 and l1 <= 3 then
                 slot = l1
             end
 
@@ -3919,6 +4300,56 @@ function Runtime.new(state, opts)
             if target == "" then target = "help.txt" end
             local match = _tags().SearchFile(ccvim_path .. "/runtime/doc/tags", target)
             if not match then error(Error(149, target)) end
+
+            local function help_jump_pos(buf, tag, exaddr)
+                local lines = buf:lines_ref(true)
+                local line_count = #lines
+
+                local function find_plain(needle)
+                    if needle == "" then
+                        return nil, nil
+                    end
+                    for ln = 1, line_count do
+                        local text = lines[ln] or ""
+                        local byte_idx = text:find(needle, 1, true)
+                        if byte_idx then
+                            local col = buf:str_col_from_byte(text, byte_idx) or 1
+                            return ln, col
+                        end
+                    end
+                    return nil, nil
+                end
+
+                local resolved_tag = tostring(tag or "")
+                if resolved_tag ~= "" then
+                    local ln, col = find_plain("*" .. resolved_tag .. "*")
+                    if ln then
+                        return ln, col
+                    end
+                end
+
+                local addr = tostring(exaddr or "")
+                local lnum = tonumber(addr)
+                if lnum then
+                    lnum = math.max(1, math.min(line_count, math.floor(lnum)))
+                    return lnum, 1
+                end
+
+                if addr ~= "" then
+                    local d = addr:sub(1, 1)
+                    if d == "/" or d == "?" then
+                        addr = addr:sub(2)
+                    end
+                    addr = addr:gsub("\\(.)", "%1")
+                    local ln, col = find_plain(addr)
+                    if ln then
+                        return ln, col
+                    end
+                end
+
+                return 1, 1
+            end
+
             local target_win
             for _, tabwin in ipairs(tabpages[curtp].windows) do
                 if tabwin.buffer.opts.buftype == "help" then
@@ -3934,6 +4365,8 @@ function Runtime.new(state, opts)
             newbuf.opts.modifiable = false
             newbuf.name = ccvim_path .. "/runtime/doc/" .. match[2]
             newbuf:Load(true)
+            Options.set("filetype", "help", true, nil, newbuf)
+            local jumpline, jumpcol = help_jump_pos(newbuf, match[1], match[3])
             if target_win then
                 target_win.buffer = newbuf
             else
@@ -3943,6 +4376,7 @@ function Runtime.new(state, opts)
                 end
             end
             enterWindow(target_win.winnr)
+            target_win:cursorSet(jumpcol, jumpline)
             return true
         elseif cmd == "highlight" then
             local args = split_ws(argstr)
@@ -3994,47 +4428,97 @@ function Runtime.new(state, opts)
                 need_redraw = true
             end
             return true
+        elseif cmd == "pwd" then
+            local exmsg = _exmsg()
+
+            local verb = Options.get("verbose")
+            local msg = Builtins.getcwd()
+
+            if verb > 0 then
+                if windows[curwin].curdir then
+                    msg = "[window] " .. msg
+                elseif tabpages[curtp].curdir then
+                    msg = "[tabpage] " .. msg
+                else
+                    msg = "[global] " .. msg
+                end
+            end
+
+            exmsg.echo(msg)
         end
 
         return nil
     end
 
-    function self:invoke_command(name, argstr, bang)
-        name = name or ""
-        local lname = tostring(name):lower()
+    function self:invoke_compiled_command(spec)
+        spec = spec or {}
+        local name = tostring(spec.name or "")
+        local lname = tostring(spec.lname or "")
+        if lname == "" then
+            lname = name:lower()
+        end
+        local qargs = tostring(spec.qargs or "")
+        local bang = not not spec.bang
+        local win = windows[curwin]
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win)
+
         if name == "" then
-            local win = windows[curwin]
-            if win and _exec_address_only_from_cursor(self:get_exec_cursor(), win) then
-                return true
+            if cmdctx.raw_cmd == nil and cmdctx.line2 ~= nil then
+                local line_count = win.buffer:line_count(true)
+                if line_count < 1 then
+                    line_count = 1
+                end
+                local target = tonumber(cmdctx.line2 or cmdctx.line1 or win.cursory or 1) or (win.cursory or 1)
+                if target < 1 then
+                    target = 1
+                elseif target > line_count then
+                    target = line_count
+                end
+                if type(win.cursorSet) == "function" then
+                    win:cursorSet(1, target)
+                else
+                    win.cursorx = 1
+                    win.cursory = target
+                end
             end
             return true
         end
 
-        local def = self.state.commands[lname]
-        local qargs = tostring(argstr or "")
-        local args = split_ws(qargs)
-        local count = 0
+        local args = spec.ws_args
+        local function ensure_args()
+            if type(args) ~= "table" then
+                args = split_ws(qargs)
+            end
+            return args
+        end
+
+        local line1 = cmdctx.line1 or win.cursory
+        local line2 = cmdctx.line2 or line1
         local range = 0
+        if cmdctx.line1 ~= nil then
+            range = (line1 == line2) and 1 or 2
+        end
+        local count = cmdctx.line2 or 0
+
+        local def = self.state.commands[lname]
         if def then
-            local line = windows[curwin].cursory
-            local script = expand_user_command_template(def.body, qargs, args, bang, count, line, line, range)
+            local script = expand_user_command_template(def.body, qargs, ensure_args(), bang, count, line1, line2, range)
             return self:exec_script(script)
         end
 
-        if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] then
-            local exact_rv = self:_invoke_builtin(lname, qargs, bang)
-            if exact_rv == nil then
-                return true
+        local dispatch_cmd = spec.dispatch
+        if not dispatch_cmd then
+            if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] then
+                dispatch_cmd = lname
+            else
+                dispatch_cmd = resolve_dispatch_name(lname)
+                if Error.IsError(dispatch_cmd) then
+                    error(dispatch_cmd)
+                end
             end
-            return exact_rv
-        end
-
-        local dispatch_cmd = resolve_dispatch_name(lname)
-        if Error.IsError(dispatch_cmd) then
-            error(dispatch_cmd)
         end
         if dispatch_cmd then
-            local rv = self:_invoke_builtin(dispatch_cmd, qargs, bang)
+            local rv = self:_invoke_builtin(dispatch_cmd, qargs, bang, cmdctx)
             if rv == nil then return true end
             return rv
         end
@@ -4045,25 +4529,31 @@ function Runtime.new(state, opts)
             error(Error(492, name))
         end
         if type(global.body) == "string" then
-            local line = windows[curwin].cursory
-            local script = expand_user_command_template(global.body, qargs, args, bang, count, line, line, range)
+            local script = expand_user_command_template(global.body, qargs, ensure_args(), bang, count, line1, line2, range)
             return self:exec_script(script)
         end
         if type(global.handler) == "function" then
             return global.handler({
                 cmd = name,
                 args = qargs,
-                fargs = args,
+                fargs = ensure_args(),
                 _ccvim = { raw_args = qargs },
-                bang = not not bang,
+                bang = bang,
             })
         end
         if type(global.command) == "string" then
-            local line = windows[curwin].cursory
-            local script = expand_user_command_template(global.command, qargs, args, bang, count, line, line, range)
+            local script = expand_user_command_template(global.command, qargs, ensure_args(), bang, count, line1, line2, range)
             return self:exec_script(script)
         end
         return true
+    end
+
+    function self:invoke_command(name, argstr, bang)
+        return self:invoke_compiled_command({
+            name = name,
+            qargs = argstr,
+            bang = bang,
+        })
     end
 
     return setmetatable(self, { __index = Runtime })

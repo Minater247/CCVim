@@ -95,12 +95,31 @@ local function tokenize(raw)
     local function scan_quoted(pos, q)
         local j = pos + 1
         local esc = false
+        local in_class = false
+        local class_count = 0
+        local class_leading_caret = false
         while j <= n do
             local ch = raw:sub(j, j)
             if esc then
                 esc = false
+                if in_class then
+                    class_count = class_count + 1
+                end
             elseif ch == "\\" then
                 esc = true
+            elseif in_class then
+                class_count = class_count + 1
+                if class_count == 1 and ch == "^" then
+                    class_leading_caret = true
+                elseif ch == "]" then
+                    if class_count > 1 and not (class_leading_caret and class_count == 2) then
+                        in_class = false
+                    end
+                end
+            elseif ch == "[" then
+                in_class = true
+                class_count = 0
+                class_leading_caret = false
             elseif ch == q then
                 return j
             end
@@ -112,12 +131,31 @@ local function tokenize(raw)
     local function scan_delimited(pos, d)
         local j = pos + 1
         local esc = false
+        local in_class = false
+        local class_count = 0
+        local class_leading_caret = false
         while j <= n do
             local ch = raw:sub(j, j)
             if esc then
                 esc = false
+                if in_class then
+                    class_count = class_count + 1
+                end
             elseif ch == "\\" then
                 esc = true
+            elseif in_class then
+                class_count = class_count + 1
+                if class_count == 1 and ch == "^" then
+                    class_leading_caret = true
+                elseif ch == "]" then
+                    if class_count > 1 and not (class_leading_caret and class_count == 2) then
+                        in_class = false
+                    end
+                end
+            elseif ch == "[" then
+                in_class = true
+                class_count = 0
+                class_leading_caret = false
             elseif ch == d then
                 return j
             end

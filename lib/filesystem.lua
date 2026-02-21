@@ -400,7 +400,7 @@ function Filesystem.Expand(str, nosuf)
                     end
                 end
             else
-                error("expand(): unknown ':' char: " .. c)
+                error("expand(): unknown ':' char: " .. c .. "(full string " .. str .. ")")
             end
             str = str:sub(3)
         else

@@ -173,14 +173,15 @@ _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 function _V.setMode(newmode, newx, newy)
     local oldmode = _V.vimmode
     _V.vimmode = newmode
+    local win = _V.windows[_V.curwin]
     if newy then
-        _V.windows[_V.curwin]:cursorSetY(newy)
+        win:cursorSetY(newy)
     end
     if newx then
-        _V.windows[_V.curwin]:cursorSetX(newx)
+        win:cursorSetX(newx)
     end
     if newmode == "insert" then
-        local buf = _V.windows[_V.curwin].buffer
+        local buf = win.buffer
         local lines = buf:lines_ref(true)
         if #lines == 0 then
             lines[1] = ""
@@ -190,7 +191,10 @@ function _V.setMode(newmode, newx, newy)
         AutoCmd.Run("ModeChanged", { old_mode = oldmode, new_mode = newmode })
     end
     _V.what_redraw["commandline"] = true
-    _V.windows[_V.curwin]:cursorMove(0, 0, false)
+    win:cursorMove(0, 0, false)
+    if newmode == "insert" then
+        win.insert_curs_start = {win.cursorx, win.cursory}
+    end
     _V.need_redraw = true
 end
 
@@ -219,8 +223,6 @@ function _V._log_caller(where)
     _V.LOG_DEBUG(debug.traceback("stack:", 2))
 end
 
--- TODO: This isn't how Neovim behaves. I don't recall why I did this, but it needs to be rewritten to either always use absolute
---       or always use relative paths.
 local function _source_runtime_startup(path)
     local ok, err = ScriptSource.source_runtime(path)
     if ok then
@@ -360,6 +362,9 @@ if _V.options.get("loadplugins") then
         _V.LOG_DEBUG("runtime! after/plugin failed: %s", err:toString())
     end
 end
+
+_V.writestartup("loading argument files")
+Args.load_pending_files()
 
 -- Fire VimEnter after startup scripts and plugins have loaded
 AutoCmd.Run("VimEnter")

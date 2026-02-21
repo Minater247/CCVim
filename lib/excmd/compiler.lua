@@ -16,6 +16,10 @@ local function _cmd_mode_and_bar(cmd_raw)
     return Commands.mode_and_bar(cmd_raw)
 end
 
+local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
+local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
+local resolve_dispatch_name = Commands.resolve_dispatch_name
+
 local function _expr_head_only_before_quote(head)
     local s = tostring(head or "")
     s = s:gsub("^%s*:?%s*", "")
@@ -256,6 +260,23 @@ local function parse_cmd_head(line)
             break
         end
     end
+
+    local count_prefix = s:match("^(%d+)")
+    if count_prefix then
+        local after_count = s:sub(#count_prefix + 1)
+        local tail = after_count:gsub("^%s+", "")
+        local base = tail:match("^([%a][%w]*)")
+        if base then
+            local resolved, rerr = resolve_cmd_name(base)
+            if not Error.IsError(rerr) and resolved == "verbose" then
+                local raw_base = base
+                local bang = tail:sub(#base + 1, #base + 1) == "!"
+                local rest = tail:sub(#base + (bang and 2 or 1)):gsub("^%s+", "")
+                return resolved, rest, nil, bang, raw_base, tonumber(count_prefix)
+            end
+        end
+    end
+
     s = strip_range_prefix(s)
     while true do
         local c = s:sub(1, 1)
@@ -275,11 +296,83 @@ local function parse_cmd_head(line)
     if Error.IsError(rerr) then
         return nil, rest, rerr, bang, raw_base
     end
-    return resolved, rest, nil, bang, raw_base
+    return resolved, rest, nil, bang, raw_base, nil
 end
 
 local function lua_string(s)
     return string.format("%q", s or "")
+end
+
+local function split_ws_static(raw)
+    local out = {}
+    local buf = {}
+    local s = tostring(raw or "")
+    local i, n = 1, #s
+
+    local function flush()
+        if #buf > 0 then
+            out[#out + 1] = table.concat(buf)
+            buf = {}
+        end
+    end
+
+    while i <= n do
+        local ch = s:sub(i, i)
+        if ch == " " or ch == "\t" or ch == "\r" or ch == "\n" then
+            flush()
+            i = i + 1
+        elseif ch == "\\" then
+            if i < n then
+                buf[#buf + 1] = s:sub(i + 1, i + 1)
+                i = i + 2
+            else
+                buf[#buf + 1] = ch
+                i = i + 1
+            end
+        else
+            buf[#buf + 1] = ch
+            i = i + 1
+        end
+    end
+
+    flush()
+    return out
+end
+
+local function compile_invocation_spec(node)
+    local cmd = tostring(node.cmd or "")
+    local rest = tostring(node.rest or "")
+    local lname = cmd:lower()
+    local ws_args = split_ws_static(rest)
+    local ws_items = {}
+    for i = 1, #ws_args do
+        ws_items[#ws_items + 1] = lua_string(ws_args[i])
+    end
+
+    local fields = {
+        "name = " .. lua_string(cmd),
+        "lname = " .. lua_string(lname),
+        "qargs = " .. lua_string(rest),
+        "bang = " .. (node.bang and "true" or "false"),
+        "ws_args = { " .. table.concat(ws_items, ", ") .. " }",
+    }
+
+    local dispatch
+    if lname ~= "" then
+        if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] then
+            dispatch = lname
+        else
+            local resolved = resolve_dispatch_name(lname)
+            if not Error.IsError(resolved) then
+                dispatch = resolved
+            end
+        end
+    end
+    if dispatch then
+        fields[#fields + 1] = "dispatch = " .. lua_string(dispatch)
+    end
+
+    return "{ " .. table.concat(fields, ", ") .. " }"
 end
 
 local function split_params(param_str)
@@ -362,19 +455,68 @@ end
 local function build_ir(script)
     local cmds = split_commands(script or "")
     local ir = {}
-    for idx, line in ipairs(cmds) do
-        local cmd, rest, perr, bang, raw = parse_cmd_head(line)
-        if Error.IsError(perr) then
-            return nil, perr
+    local idx = 1
+    while idx <= #cmds do
+        local line = cmds[idx]
+        local marker
+        local rhs = line:match("^let!?%s+.-=(.+)$")
+        if rhs then
+            local hd = trim(rhs):match("^<<%s*(.+)$")
+            if hd then
+                marker = trim(hd:match("(%S+)%s*$") or "")
+                if marker == "" then
+                    marker = nil
+                end
+            end
         end
-        ir[#ir + 1] = {
-            cmd = cmd,
-            rest = rest or "",
-            bang = not not bang,
-            raw = raw or cmd,
-            line = idx,
-            text = line,
-        }
+
+        if marker then
+            local j = idx + 1
+            while j <= #cmds do
+                if trim(cmds[j]) == marker then
+                    break
+                end
+                j = j + 1
+            end
+            if j > #cmds then
+                return nil, Error(488, marker)
+            end
+            local lhs = trim(line:match("^let!?%s+(.-)=<<") or "")
+            if lhs == "" then
+                return nil, Error(474, "Malformed heredoc :let")
+            end
+            local items = {}
+            for k = idx + 1, j - 1 do
+                local v = tostring(cmds[k] or ""):gsub("'", "''")
+                items[#items + 1] = "'" .. v .. "'"
+            end
+            local rhs = "[" .. table.concat(items, ", ") .. "]"
+            ir[#ir + 1] = {
+                cmd = "let",
+                rest = lhs .. " = " .. rhs,
+                bang = false,
+                raw = "let",
+                verbose_count = nil,
+                line = idx,
+                text = line,
+            }
+            idx = j + 1
+        else
+            local cmd, rest, perr, bang, raw, verbose_count = parse_cmd_head(line)
+            if Error.IsError(perr) then
+                return nil, perr
+            end
+            ir[#ir + 1] = {
+                cmd = cmd,
+                rest = rest or "",
+                bang = not not bang,
+                raw = raw or cmd,
+                verbose_count = verbose_count,
+                line = idx,
+                text = line,
+            }
+            idx = idx + 1
+        end
     end
     return ir
 end
@@ -590,17 +732,17 @@ function Compiler.compile_command(node, ctx)
         lhs = trim(lhs)
         rhs = trim(rhs)
         if op == "=" then
-            return string.format("do local __v=%s; runtime:assign(%s,__v) end", Compiler.compile_expr(rhs, ctx), lua_string(lhs))
+            return string.format("runtime:assign(%s, %s)", lua_string(lhs), Compiler.compile_expr(rhs, ctx))
         end
 
         if op ~= "+=" and op ~= "-=" and op ~= "*=" and op ~= "/=" and op ~= "%=" and op ~= ".=" then
             return "error('Malformed :let')"
         end
         return string.format(
-            "do local __rhs=%s; local __rv=runtime:assign_compound(%s,%s,__rhs); if Error.IsError(__rv) then error(__rv) end end",
-            Compiler.compile_expr(rhs, ctx),
+            "do local __rv=runtime:assign_compound(%s,%s,%s); if Error.IsError(__rv) then error(__rv) end end",
             lua_string(lhs),
-            lua_string(op)
+            lua_string(op),
+            Compiler.compile_expr(rhs, ctx)
         )
     elseif cmd == "unlet" then
         return string.format("runtime:unlet(%s,%s)", lua_string(rest), node.bang and "true" or "false")
@@ -615,7 +757,8 @@ function Compiler.compile_command(node, ctx)
     elseif cmd == "execute" then
         return string.format("runtime:execute(%s)", lua_string(rest))
     elseif cmd == "verbose" then
-        return string.format("runtime:exec_verbose(%s)", lua_string(rest))
+        local level = tonumber(node.verbose_count) or 1
+        return string.format("runtime:exec_verbose(%d, %s)", level, lua_string(rest))
     elseif cmd == "call" then
         local fname, argstr = rest:match("^([^%s(]+)%s*%((.*)%)%s*$")
         if not fname then
@@ -644,7 +787,7 @@ function Compiler.compile_command(node, ctx)
     elseif cmd == "command" or cmd == "command!" then
         return string.format("runtime:define_command(%s, %s)", lua_string(rest), node.bang and "true" or "false")
     else
-        return string.format("runtime:invoke_command(%s, %s, %s)", lua_string(cmd), lua_string(rest), node.bang and "true" or "false")
+        return string.format("runtime:invoke_compiled_command(%s)", compile_invocation_spec(node))
     end
 end
 
@@ -710,8 +853,7 @@ function Compiler.compile_script(script, opts)
                     local lbl = string.format("__cont_%d", node.line or #lua_lines)
                     loop_stack[#loop_stack + 1] = lbl
                     lua_lines[#lua_lines + 1] = indent .. "do"
-                    lua_lines[#lua_lines + 1] = indent .. "  local __iter = runtime:iter(" .. Compiler.compile_expr(rhs or "", { state = opts.state }) .. ")"
-                    lua_lines[#lua_lines + 1] = indent .. "  for __i, __v in ipairs(__iter) do"
+                    lua_lines[#lua_lines + 1] = indent .. "  for _, __v in ipairs(runtime:iter(" .. Compiler.compile_expr(rhs or "", { state = opts.state }) .. ")) do"
                     lua_lines[#lua_lines + 1] = indent .. "    runtime:assign(" .. lua_string(lhs) .. ", __v)"
                     lua_lines[#lua_lines + 1] = indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()"
                 end

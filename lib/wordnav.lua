@@ -57,107 +57,107 @@ function WordNav.invalidateCache(buf)
 end
 
 -- ---------- low-level helpers ----------
-local function _line_len(lines, y) return #(lines[y] or "") end
+local function _line_len(buf, lines, y) return buf:str_len(lines[y] or "") end
 
-local function _fwd(lines, y, x)
-	local n = _line_len(lines, y)
+local function _fwd(buf, lines, y, x)
+	local n = _line_len(buf, lines, y)
 	if x < n then return y, x + 1 end
 	y = y + 1
 	if y > #lines then return nil, nil end
 	return y, 1
 end
 
-local function _back(lines, y, x)
+local function _back(buf, lines, y, x)
 	if x > 1 then return y, x - 1 end
 	y = y - 1
 	if y < 1 then return nil, nil end
-	local n = _line_len(lines, y)
+	local n = _line_len(buf, lines, y)
 	if n == 0 then return y, 0 end
 	return y, n
 end
 
-local function _is_blank(lines, y, x)
+local function _is_blank(buf, lines, y, x)
 	if y < 1 or y > #lines then return true end
 	local s = lines[y] or ""
-	local n = #s
+	local n = buf:str_len(s)
 	if x < 1 or x > n then return true end
-	local b = string.byte(s, x)
-	return b == 32 or b == 9 -- space or tab
+	local ch = buf:str_char_at(s, x)
+	return ch == " " or ch == "\t"
 end
 
 -- class: 0 = blank, 1 = keyword char, 2 = other non-blank; if isWORD => collapse to 1
-local function _class_of(lines, y, x, isWORD, kwset)
-	if _is_blank(lines, y, x) then return 0 end
+local function _class_of(buf, lines, y, x, isWORD, kwset)
+	if _is_blank(buf, lines, y, x) then return 0 end
 	if isWORD then return 1 end
-	local b = string.byte(lines[y], x)
-	return kwset[b] and 1 or 2
+	local cp = buf:str_codepoint_at(lines[y], x)
+	return kwset[cp] and 1 or 2
 end
 
-local function _skip_blanks_fwd(lines, y, x)
+local function _skip_blanks_fwd(buf, lines, y, x)
 	while y do
-		if not _is_blank(lines, y, x) then return y, x end
-		y, x = _fwd(lines, y, x)
+		if not _is_blank(buf, lines, y, x) then return y, x end
+		y, x = _fwd(buf, lines, y, x)
 	end
 	return nil, nil
 end
 
-local function _skip_blanks_back(lines, y, x)
+local function _skip_blanks_back(buf, lines, y, x)
 	while y do
-		if not _is_blank(lines, y, x) then return y, x end
-		y, x = _back(lines, y, x)
+		if not _is_blank(buf, lines, y, x) then return y, x end
+		y, x = _back(buf, lines, y, x)
 	end
 	return nil, nil
 end
 
-local function _advance_past_run(lines, y, x, isWORD, kwset, c0)
+local function _advance_past_run(buf, lines, y, x, isWORD, kwset, c0)
 	local yy, xx = y, x
 	while true do
-		local ny, nx = _fwd(lines, yy, xx)
-		if not ny or _class_of(lines, ny, nx, isWORD, kwset) ~= c0 then return ny, nx end
+		local ny, nx = _fwd(buf, lines, yy, xx)
+		if not ny or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then return ny, nx end
 		yy, xx = ny, nx
 	end
 end
 
 -- ---------- one-step motions ----------
-local function _next_once(lines, y, x, isWORD, to_end, kwset)
+local function _next_once(buf, lines, y, x, isWORD, to_end, kwset)
 	if to_end then
 		-- e/E: to end of current/next run; does not stop on empty lines
-		local yy, xx = _skip_blanks_fwd(lines, y, x)
+		local yy, xx = _skip_blanks_fwd(buf, lines, y, x)
 		if not yy then return nil, nil end
-		local c0 = _class_of(lines, yy, xx, isWORD, kwset)
-		local ty, tx = _fwd(lines, yy, xx)
-		local at_run_end = (not ty) or (_class_of(lines, ty, tx, isWORD, kwset) ~= c0)
+		local c0 = _class_of(buf, lines, yy, xx, isWORD, kwset)
+		local ty, tx = _fwd(buf, lines, yy, xx)
+		local at_run_end = (not ty) or (_class_of(buf, lines, ty, tx, isWORD, kwset) ~= c0)
 		if at_run_end then
-			yy, xx = _skip_blanks_fwd(lines, ty, tx)
+			yy, xx = _skip_blanks_fwd(buf, lines, ty, tx)
 			if not yy then return nil, nil end
-			c0 = _class_of(lines, yy, xx, isWORD, kwset)
+			c0 = _class_of(buf, lines, yy, xx, isWORD, kwset)
 		end
 		while true do
-			local ny, nx = _fwd(lines, yy, xx)
-			if not ny or _class_of(lines, ny, nx, isWORD, kwset) ~= c0 then return yy, xx end
+			local ny, nx = _fwd(buf, lines, yy, xx)
+			if not ny or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then return yy, xx end
 			yy, xx = ny, nx
 		end
 	else
 		-- w/W: to start of next run
-		local c0 = _class_of(lines, y, x, isWORD, kwset)
+		local c0 = _class_of(buf, lines, y, x, isWORD, kwset)
 		if c0 == 0 then
-			return _skip_blanks_fwd(lines, y, x) -- land on first non-blank
+			return _skip_blanks_fwd(buf, lines, y, x) -- land on first non-blank
 		else
-			local ny, nx = _advance_past_run(lines, y, x, isWORD, kwset, c0)
+			local ny, nx = _advance_past_run(buf, lines, y, x, isWORD, kwset, c0)
 			if not ny then return nil, nil end
-			return _skip_blanks_fwd(lines, ny, nx)
+			return _skip_blanks_fwd(buf, lines, ny, nx)
 		end
 	end
 end
 
-local function _rewind_over_same_run_left(lines, y, x, isWORD, kwset)
-	local c0 = _class_of(lines, y, x, isWORD, kwset)
+local function _rewind_over_same_run_left(buf, lines, y, x, isWORD, kwset)
+	local c0 = _class_of(buf, lines, y, x, isWORD, kwset)
 	if c0 == 0 then return y, x end
 	local yy, xx = y, x
 	while true do
-		local py, px = _back(lines, yy, xx)
+		local py, px = _back(buf, lines, yy, xx)
 		if not py then return nil, nil end
-		if _class_of(lines, py, px, isWORD, kwset) ~= c0 then
+		if _class_of(buf, lines, py, px, isWORD, kwset) ~= c0 then
 			-- (py,px) is outside the run we started in (likely blank or a different run)
 			return py, px
 		end
@@ -166,31 +166,31 @@ local function _rewind_over_same_run_left(lines, y, x, isWORD, kwset)
 end
 
 -- REPLACED: full implementation with correct ge/gE semantics
-local function _prev_once(lines, y, x, isWORD, to_end, kwset)
+local function _prev_once(buf, lines, y, x, isWORD, to_end, kwset)
 	if to_end then
 		-- ge/gE: move to the *end of the previous* run.
 		-- If currently inside (or at the end of) a run, exclude it entirely.
 		local yy, xx = y, x
-		local ccur = _class_of(lines, yy, xx, isWORD, kwset)
+		local ccur = _class_of(buf, lines, yy, xx, isWORD, kwset)
 
 		if ccur ~= 0 then
 			-- In a run: rewind past the *entire* current run to its left boundary.
-			yy, xx = _rewind_over_same_run_left(lines, yy, xx, isWORD, kwset)
+			yy, xx = _rewind_over_same_run_left(buf, lines, yy, xx, isWORD, kwset)
 			if not yy then return nil, nil end
 		else
 			-- On blank: start from the immediately preceding character.
-			yy, xx = _back(lines, yy, xx)
+			yy, xx = _back(buf, lines, yy, xx)
 			if not yy then return nil, nil end
 		end
 
 		-- Skip any blanks to the left to arrive at the previous run (if any).
-		yy, xx = _skip_blanks_back(lines, yy, xx)
+		yy, xx = _skip_blanks_back(buf, lines, yy, xx)
 		if not yy then return nil, nil end
 
 		-- Walk right to the *last* char of that run.
 		while true do
-			local ny, nx = _fwd(lines, yy, xx)
-			if not ny or _class_of(lines, ny, nx, isWORD, kwset) ~= _class_of(lines, yy, xx, isWORD, kwset) then
+			local ny, nx = _fwd(buf, lines, yy, xx)
+			if not ny or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= _class_of(buf, lines, yy, xx, isWORD, kwset) then
 				return yy, xx
 			end
 			yy, xx = ny, nx
@@ -198,17 +198,17 @@ local function _prev_once(lines, y, x, isWORD, to_end, kwset)
 	else
 		-- b/B: move to the *start of the previous* run.
 		-- If at a start already, go to the start of the prior run.
-		local yy, xx = _back(lines, y, x)
+		local yy, xx = _back(buf, lines, y, x)
 		if not yy then return nil, nil end
 
 		-- Skip blanks to the left.
-		yy, xx = _skip_blanks_back(lines, yy, xx)
+		yy, xx = _skip_blanks_back(buf, lines, yy, xx)
 		if not yy then return nil, nil end
 
 		-- Walk left to the *first* char of this run.
 		while true do
-			local py, px = _back(lines, yy, xx)
-			if not py or _class_of(lines, py, px, isWORD, kwset) ~= _class_of(lines, yy, xx, isWORD, kwset) then
+			local py, px = _back(buf, lines, yy, xx)
+			if not py or _class_of(buf, lines, py, px, isWORD, kwset) ~= _class_of(buf, lines, yy, xx, isWORD, kwset) then
 				return yy, xx
 			end
 			yy, xx = py, px
@@ -224,12 +224,13 @@ function WordNav.posNext(win, isWORD, to_end, count, y, x)
 	y           = y or win.cursory
 	x           = x or win.cursorx
 
-	local lines = win.buffer:lines_ref(true)
+	local buf = win.buffer
+	local lines = buf:lines_ref(true)
 	if #lines == 0 then return nil end
-	local kwset = _build_iskeyword_set(win.buffer)
+	local kwset = _build_iskeyword_set(buf)
 
 	for _ = 1, count do
-		y, x = _next_once(lines, y, x, isWORD, to_end, kwset)
+		y, x = _next_once(buf, lines, y, x, isWORD, to_end, kwset)
 		if not y then return nil end
 	end
 	return y, x
@@ -241,12 +242,13 @@ function WordNav.posPrev(win, isWORD, to_end, count, y, x)
 	y           = y or win.cursory
 	x           = x or win.cursorx
 
-	local lines = win.buffer:lines_ref(true)
+	local buf = win.buffer
+	local lines = buf:lines_ref(true)
 	if #lines == 0 then return nil end
-	local kwset = _build_iskeyword_set(win.buffer)
+	local kwset = _build_iskeyword_set(buf)
 
 	for _ = 1, count do
-		y, x = _prev_once(lines, y, x, isWORD, to_end, kwset)
+		y, x = _prev_once(buf, lines, y, x, isWORD, to_end, kwset)
 		if not y then return nil end
 	end
 	return y, x
@@ -261,29 +263,30 @@ function WordNav.wordUnder(win, isWORD, y, x)
 	y = y or win.cursory
 	x = x or win.cursorx
 
-	local lines = win.buffer:lines_ref(true)
+	local buf = win.buffer
+	local lines = buf:lines_ref(true)
 	if #lines == 0 then return nil end
 	if y < 1 or y > #lines then return nil end
 	local line = lines[y] or ""
-	local linelen = #line
+	local linelen = buf:str_len(line)
 	if linelen == 0 then return nil end
 	if x < 1 then x = 1 end
 	if x > linelen then x = linelen end
 
-	local kwset = _build_iskeyword_set(win.buffer)
-	if _is_blank(lines, y, x) then return nil end
+	local kwset = _build_iskeyword_set(buf)
+	if _is_blank(buf, lines, y, x) then return nil end
 
-	local c0 = _class_of(lines, y, x, isWORD, kwset)
+	local c0 = _class_of(buf, lines, y, x, isWORD, kwset)
 	if c0 == 0 then return nil end
 
 	-- Expand left (same line only)
 	local sx = x
-	while sx > 1 and _class_of(lines, y, sx - 1, isWORD, kwset) == c0 do
+	while sx > 1 and _class_of(buf, lines, y, sx - 1, isWORD, kwset) == c0 do
 		sx = sx - 1
 	end
 	-- Expand right (same line only)
 	local ex = x
-	while ex < linelen and _class_of(lines, y, ex + 1, isWORD, kwset) == c0 do
+	while ex < linelen and _class_of(buf, lines, y, ex + 1, isWORD, kwset) == c0 do
 		ex = ex + 1
 	end
 

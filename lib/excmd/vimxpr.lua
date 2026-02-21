@@ -74,9 +74,9 @@ local function numeric_coercion_error(v)
         end
         return Error(728)
     end
-    return Error(0, "Invalid numeric coercion")
+    return Error(0, "Invalid numeric coercion! Type="..type(v))
 end
-local function num_coerce_legacy(v)
+local function num_coerce(v)
     if type(v) == "number" then return v end
     if type(v) == "boolean" then return v and 1 or 0 end
     if type(v) == "string" then
@@ -85,8 +85,8 @@ local function num_coerce_legacy(v)
     end
     return nil
 end
-local function num_coerce_legacy_or_error(v)
-    local n = num_coerce_legacy(v)
+local function num_coerce_or_error(v)
+    local n = num_coerce(v)
     if n ~= nil then
         return n
     end
@@ -332,6 +332,27 @@ local function tokenize(input)
         end
 
         -- environment variable: $NAME or ${NAME}
+        if c == "$" and peek(1) == "'" then
+            -- $'...'-style single-quoted string (used heavily by :execute).
+            -- Parse as one string token so splitExpressions() can segment
+            -- execute arguments without being confused by interpolation text.
+            adv(2) -- skip $'
+            local buf = {}
+            while i <= n do
+                local ch = peek(); adv(1)
+                if ch == "'" then
+                    if peek() == "'" then
+                        buf[#buf + 1] = "'"
+                        adv(1)
+                    else
+                        break
+                    end
+                else
+                    buf[#buf + 1] = ch
+                end
+            end
+            add("STR", table.concat(buf), start); goto cont
+        end
         if c == "$" then
             adv(1)
             local name = nil
@@ -404,6 +425,11 @@ local function tokenize(input)
         end
 
         -- single-char tokens
+        if c == "#" and peek(1) == "{" then
+            -- Vim literal dictionary syntax: #{ key: value }.
+            -- Treat this as a dict-opening brace for parser compatibility.
+            add("LBRACE", "{", start); adv(2); goto cont
+        end
         if c == "(" then
             add("LPAREN", "(", start); adv(1); goto cont
         end
@@ -516,9 +542,25 @@ local function parse(tokens)
             local t = peek()
             if t.typ == "LBRACK" then
                 adv() -- '['
-                local idx = expr(0)
-                expect("RBRACK")
-                node = { kind = "index", a = node, idx = idx, pos = t.pos }
+                local first = nil
+                if peek().typ ~= "COLON" and peek().typ ~= "RBRACK" then
+                    first = expr(0)
+                end
+                if peek().typ == "COLON" then
+                    adv() -- ':'
+                    local last = nil
+                    if peek().typ ~= "RBRACK" then
+                        last = expr(0)
+                    end
+                    expect("RBRACK")
+                    node = { kind = "slice", a = node, first = first, last = last, pos = t.pos }
+                else
+                    if first == nil then
+                        error("Expected index or slice inside []")
+                    end
+                    expect("RBRACK")
+                    node = { kind = "index", a = node, idx = first, pos = t.pos }
+                end
             else
                 break
             end
@@ -857,13 +899,13 @@ local function cmp_norm(a, b, case_sensitive, vim9)
 
     if not vim9 then
         if (ta == "string" and tb == "number") or (tb == "string" and ta == "number") then
-            local na, nb = num_coerce_legacy(a), num_coerce_legacy(b)
+            local na, nb = num_coerce(a), num_coerce(b)
             if na == nb then return 0 elseif na < nb then return -1 else return 1 end
         end
     end
 
-    LOG_DEBUG("Unimplemented/unknown comparison: a=%s (%s) b=%s (%s)", tostring(a), type(a), tostring(b), type(b))
-    return Error(0, "Bad comparison")
+    LOG_DEBUG("ERROR: Unimplemented/unknown comparison: a=%s (%s) b=%s (%s)", tostring(a), type(a), tostring(b), type(b))
+    return 0
 end
 
 local function eval_node(node, vim9, env)
@@ -1065,6 +1107,73 @@ local function eval_node(node, vim9, env)
 
         return nil
     end
+
+    if k == "slice" then
+        local container = eval_node(node.a, vim9, env); if is_error(container) then return container end
+        if container == nil then return nil end
+
+        local first = nil
+        local last = nil
+        if node.first ~= nil then
+            first = eval_node(node.first, vim9, env); if is_error(first) then return first end
+        end
+        if node.last ~= nil then
+            last = eval_node(node.last, vim9, env); if is_error(last) then return last end
+        end
+
+        local function to_index(v, default)
+            if v == nil then return default end
+            local n = num_coerce(v)
+            if n == nil then return default end
+            if n >= 0 then
+                return math.floor(n)
+            end
+            return math.ceil(n)
+        end
+
+        local function to_bounds(len, start_v, end_v)
+            if len <= 0 then
+                return nil, nil
+            end
+            local s = to_index(start_v, 0)
+            local e = to_index(end_v, -1)
+            if s < 0 then s = len + s end
+            if e < 0 then e = len + e end
+            s = s + 1
+            e = e + 1
+            if s < 1 then s = 1 end
+            if e > len then e = len end
+            if s > len or e < 1 or s > e then
+                return nil, nil
+            end
+            return s, e
+        end
+
+        if type(container) == "table" then
+            if table_kind(container) ~= "list" then
+                return nil
+            end
+            local s, e = to_bounds(#container, first, last)
+            if not s then
+                return mark_list({})
+            end
+            local out = {}
+            for i = s, e do
+                out[#out + 1] = container[i]
+            end
+            return mark_list(out)
+        end
+
+        if type(container) == "string" then
+            local s, e = to_bounds(#container, first, last)
+            if not s then
+                return ""
+            end
+            return container:sub(s, e)
+        end
+
+        return nil
+    end
     
     if k == "opt" then
         local win = windows[curwin]
@@ -1125,7 +1234,7 @@ local function eval_node(node, vim9, env)
             n = v
         else
             local nerr
-            n, nerr = num_coerce_legacy_or_error(v)
+            n, nerr = num_coerce_or_error(v)
             if n == nil then return nerr end
         end
         if node.op == "+" then return n else return -n end
@@ -1175,9 +1284,9 @@ local function eval_node(node, vim9, env)
                         "Type error: arithmetic on non-numbers") end
             else
                 local aerr, berr
-                a, aerr = num_coerce_legacy_or_error(a)
+                a, aerr = num_coerce_or_error(a)
                 if a == nil then return aerr end
-                b, berr = num_coerce_legacy_or_error(b)
+                b, berr = num_coerce_or_error(b)
                 if b == nil then return berr end
             end
             if op == "+" then return a + b end

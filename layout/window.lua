@@ -8,8 +8,10 @@ local FrameTree = loadModule("vim.lib.frame")
 local Statusline = loadModule("vim.lib.statusline")
 local TexRen = loadModule("vim.lib.texren")
 local Syntax = loadModule("vim.lib.syntax")
+local Sign = loadModule("vim.lib.sign")
 local Tab = loadModule("vim.lib.tab")
 local ListChars = loadModule("vim.lib.listchars")
+local Utf8 = loadModule("vim.lib.utf8")
 local Error = loadModule("vim.lib.error")
 local Autocmd = loadModule("vim.lib.autocmd")
 local VimExpr
@@ -96,11 +98,131 @@ function Window:minheight()
     return options.get("winminheight")
 end
 
--- Map a desired visual column to a byte index (1..#line  in normal mode,
--- 1..#line+1 in insert mode)
+local function parse_signcolumn(spec)
+    local s = tostring(spec or "auto")
+    if s == "no" then
+        return { mode = "no", min = 0, max = 0, always = false }
+    end
+    if s == "number" then
+        return { mode = "number", min = 0, max = 1, always = false }
+    end
+    if s == "yes" then
+        return { mode = "separate", min = 1, max = 1, always = true }
+    end
+    local yes_n = s:match("^yes:(%d)$")
+    if yes_n then
+        local n = tonumber(yes_n)
+        return { mode = "separate", min = n, max = n, always = true }
+    end
+    if s == "auto" then
+        return { mode = "separate", min = 0, max = 1, always = false }
+    end
+    local auto_n = s:match("^auto:(%d)$")
+    if auto_n then
+        local n = tonumber(auto_n)
+        return { mode = "separate", min = 0, max = n, always = false }
+    end
+    local auto_min, auto_max = s:match("^auto:(%d)%-(%d)$")
+    if auto_min and auto_max then
+        local min_n = tonumber(auto_min)
+        local max_n = tonumber(auto_max)
+        if min_n < max_n then
+            return { mode = "separate", min = min_n, max = max_n, always = false }
+        end
+    end
+    return { mode = "separate", min = 0, max = 1, always = false }
+end
+
+local function _format_sign_text(text)
+    return Utf8.format_sign_text(text)
+end
+
+local function _iter_extmarks(buf, visitor)
+    local all = buf._extmarks
+    if type(all) ~= "table" then
+        return
+    end
+    for ns, ns_marks in pairs(all) do
+        if type(ns_marks) == "table" then
+            for id, mark in pairs(ns_marks) do
+                visitor(ns, id, mark)
+            end
+        end
+    end
+end
+
+local function _extmark_max_signs_per_line(buf)
+    local by_line = {}
+    local max = 0
+    _iter_extmarks(buf, function(_, _, mark)
+        local opts = mark.opts or {}
+        if opts.sign_text ~= nil and not opts.invalid then
+            local lnum = (mark.line or 0) + 1
+            local n = (by_line[lnum] or 0) + 1
+            by_line[lnum] = n
+            if n > max then
+                max = n
+            end
+        end
+    end)
+    return max
+end
+
+local function _extmark_decorations_for_line(buf, lnum)
+    local line0 = lnum - 1
+    local signs = {}
+    local numhl, numhl_prio = nil, -math.huge
+    local linehl, linehl_prio = nil, -math.huge
+
+    _iter_extmarks(buf, function(ns, id, mark)
+        if (mark.line or 0) ~= line0 then
+            return
+        end
+        local opts = mark.opts or {}
+        if opts.invalid then
+            return
+        end
+
+        local prio = tonumber(opts.priority) or 10
+        if opts.sign_text ~= nil then
+            signs[#signs + 1] = {
+                _extmark = true,
+                text = _format_sign_text(opts.sign_text),
+                texthl = opts.sign_hl_group,
+                culhl = opts.cursorline_sign_hl_group,
+                priority = prio,
+                id = id,
+                ns = ns,
+            }
+        end
+
+        if opts.number_hl_group and prio > numhl_prio then
+            numhl = opts.number_hl_group
+            numhl_prio = prio
+        end
+        if opts.line_hl_group and prio > linehl_prio then
+            linehl = opts.line_hl_group
+            linehl_prio = prio
+        end
+    end)
+
+    table.sort(signs, function(a, b)
+        if a.priority ~= b.priority then
+            return a.priority > b.priority
+        end
+        if a.id ~= b.id then
+            return a.id < b.id
+        end
+        return a.ns < b.ns
+    end)
+
+    return signs, numhl, numhl_prio, linehl, linehl_prio
+end
+
+-- Map a desired visual column to a character column.
 function Window:_col1_for_visual_col(line, want_vx, insert_mode)
     local tcfg = Tab.get_tab_config(self.buffer)
-    local n = #line
+    local n = self.buffer:str_len(line)
 
     if want_vx <= 1 then
         return 1
@@ -177,7 +299,8 @@ end
 function Window:_wrap_layout(line_idx, params, bytepos)
     self.buffer:ensure_loaded(true)
     local line = self.buffer:get_line(line_idx, true) or ""
-    local lines, ranges, gsrc, pos = TexRen.layout(line, params, bytepos)
+    local byte_col = bytepos and self.buffer:str_byte_index(line, bytepos, true) or nil
+    local lines, ranges, gsrc, pos = TexRen.layout(line, params, byte_col)
     if #lines < 1 then lines[1] = "" end
     return lines, ranges, gsrc, pos
 end
@@ -373,9 +496,10 @@ end
 
 function Window:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lines, ranges, gsrc, allow_eol)
     local line_str = self.buffer:get_line(line_idx, true) or ""
+    local line_len = self.buffer:str_len(line_str)
     local line_count = #lines
     if row_in_line > line_count then
-        return allow_eol and (#line_str + 1) or math.max(1, #line_str)
+        return allow_eol and (line_len + 1) or math.max(1, line_len)
     end
     local row_str = lines[row_in_line] or ""
     local row_len = #row_str
@@ -385,7 +509,7 @@ function Window:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lin
     end
 
     if allow_eol and screen_col > row_len then
-        return #line_str + 1
+        return line_len + 1
     end
 
     if screen_col < 1 then screen_col = 1 end
@@ -395,7 +519,7 @@ function Window:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lin
     local gidx = range and (range.i + screen_col - 1) or screen_col
     local bytecol = gsrc and gsrc[gidx] or screen_col
     if not bytecol or bytecol < 1 then bytecol = 1 end
-    return bytecol
+    return self.buffer:str_col_from_byte(line_str, bytecol, allow_eol)
 end
 
 function Window:_set_cursor_raw(line_idx, col1)
@@ -404,7 +528,7 @@ function Window:_set_cursor_raw(line_idx, col1)
     if line_idx > linecnt then line_idx = linecnt end
 
     local line = self.buffer:get_line(line_idx, true) or ""
-    local ll = #line
+    local ll = self.buffer:str_len(line)
 
     local newx = col1 or self.cursorx
     if newx < 1 then
@@ -487,7 +611,6 @@ function Window:cursorMoveScreen(dy)
     self:cursorSetScreenRow(row_offset + dy, { screen_col = col_in_row })
 end
 
--- TODO: Scroll validation only functions properly on screen lines. Tabs bork things pretty bad
 function Window:cursorMove(deltax, deltay, force_reset_held_x)
     self.buffer:ensure_loaded(true)
     deltax = deltax or 0
@@ -528,7 +651,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
     if newx < 1 then
         newx = 1
     else
-        local ll = #(self.buffer:get_line(newy, true) or "")
+        local ll = self.buffer:line_len(newy, true)
         if vimmode == "normal" then
             if newx > ll then
                 newx = math.max(1, ll)
@@ -580,7 +703,8 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
     need_redraw = true
     self.need_redraw = true
 
-    local n = Autocmd.Run("CursorMoved")
+    local move_event = (vimmode == "insert") and "CursorMovedI" or "CursorMoved"
+    Autocmd.Run(move_event)
 end
 
 function Window:cursorSet(x, y, force_reset_held_x)
@@ -641,7 +765,7 @@ function Window:scroll(deltax, deltay)
         if deltax ~= 0 then
             local newx = self.scrollx + deltax
 
-            newx = math.max(1, math.min(newx, #(self.buffer:get_line(self.cursory, true) or "")))
+            newx = math.max(1, math.min(newx, self.buffer:line_len(self.cursory, true)))
 
             self.scrollx = newx
             if self.cursorx < newx then
@@ -736,12 +860,14 @@ end
 
 --- Compute the on-screen text region for this window.
 --- Returns:
----   text_x        -- 1-based column where buffer text starts (inside the pane)
 ---   text_w        -- width of the text drawing area (columns)
+---   text_x        -- 1-based column where buffer text starts (inside the pane)
 ---   gutter_w      -- reserved width for the number gutter (0 if hidden)
 ---   use_right_col -- whether any visible label needs the gutter's rightmost col
----   pane_w        -- drawable pane width after a possible vertical split line
 ---   view_rows     -- drawable rows after statusline handling
+---   sign_w        -- reserved width for dedicated signcolumn (0 if hidden)
+---   sign_in_num   -- whether signs are drawn in number column ('signcolumn=number')
+---   sign_slots    -- number of visible sign slots in dedicated signcolumn
 function Window:textwidth()
     self.buffer:ensure_loaded(true)
     local frame = self.frame
@@ -790,12 +916,41 @@ function Window:textwidth()
         end
     end
 
-    local pad = (use_right_col and 1 or 0)
-    local text_x = 1 + gutter_w + pad
-    local text_w = pane_w - gutter_w - pad
+    local sign_spec = parse_signcolumn(options.get("signcolumn", self))
+    local sign_in_num = false
+    local sign_slots = 0
+    local sign_w = 0
+    local legacy_max_signs = 0
+    local extmark_max_signs = 0
+
+    if self.style ~= "minimal" then
+        if sign_spec.mode == "number" then
+            if show_numbers and gutter_w > 0 then
+                sign_in_num = true
+            else
+                sign_spec = { mode = "separate", min = 0, max = 1, always = false }
+            end
+        end
+
+        if sign_spec.mode == "separate" then
+            legacy_max_signs = Sign.max_signs_per_line(self.buffer)
+            extmark_max_signs = _extmark_max_signs_per_line(self.buffer)
+            local max_signs = math.max(legacy_max_signs, extmark_max_signs)
+            if sign_spec.always then
+                sign_slots = sign_spec.max
+            else
+                sign_slots = math.max(sign_spec.min, math.min(sign_spec.max, max_signs))
+            end
+            sign_w = sign_slots * 2
+        end
+    end
+
+    local pad = (show_numbers and use_right_col) and 1 or 0
+    local text_x = 1 + sign_w + gutter_w + pad
+    local text_w = pane_w - sign_w - gutter_w - pad
     if text_w < 0 then text_w = 0 end
 
-    return text_w, text_x, gutter_w, use_right_col, view_rows
+    return text_w, text_x, gutter_w, use_right_col, view_rows, sign_w, sign_in_num, sign_slots
 end
 
 -- xoff and yoff are for global windows using frames. ignored otherwise
@@ -851,23 +1006,72 @@ function Window:render(xoff, yoff)
     local lines                                             = self.buffer:lines_ref(true)
     local linecnt                                           = #lines
     local start_idx                                         = self.scrolly[1]
-    local text_w, text_x, gutter_w, use_right_col, max_rows = self:textwidth()
+    local text_w, text_x, gutter_w, use_right_col, max_rows, sign_w, sign_in_num, sign_slots = self:textwidth()
     local rnu                                               = options.get("relativenumber", self)
     local show_numbers                                      = (self.style ~= "minimal") and
         (options.get("number", self) or rnu)
     local view_top                                          = math.min(math.max(1, start_idx), math.max(1, linecnt))
     local view_bottom
 
-    local function draw_gutter(row_y, label, iscursor, needs_right)
-        if gutter_w <= 0 then return end
-        setPos(1, 1 + row_y)
-        if iscursor and options.get("cursorline", self) then
-            Highlight.SetFor("CursorLineNr")
-        else
-            Highlight.SetFor("LineNr")
+    local function sign_entry_text(sig)
+        if sig._extmark then
+            return sig.text
         end
+        return Sign.get_sign_text(sig)
+    end
 
-        local s   = label or ""
+    local function sign_entry_hl(sig, cursorline_active)
+        if sig._extmark then
+            if cursorline_active and sig.culhl and sig.culhl ~= "" then
+                return sig.culhl
+            end
+            if sig.texthl and sig.texthl ~= "" then
+                return sig.texthl
+            end
+            return nil
+        end
+        return Sign.get_sign_texthl(sig, cursorline_active)
+    end
+
+    local function draw_signcol(row_y, iscursor, line_signs)
+        if sign_w <= 0 then return end
+        setPos(1, 1 + row_y)
+        local cursorline_active = iscursor and options.get("cursorline", self)
+        local base_hl = cursorline_active and "CursorLineSign" or "SignColumn"
+        local idx = 1
+        for _ = 1, sign_slots do
+            local sig = line_signs and line_signs[idx] or nil
+            if sig then
+                local txt = sign_entry_text(sig)
+                local hl = sign_entry_hl(sig, cursorline_active) or base_hl
+                Highlight.SetFor(hl)
+                term.write(txt)
+                idx = idx + 1
+            else
+                Highlight.SetFor(base_hl)
+                term.write("  ")
+            end
+        end
+        Highlight.SetFor("Normal")
+    end
+
+    local function draw_gutter(row_y, label, iscursor, needs_right, numhl, sign_text, sign_hl)
+        if gutter_w <= 0 then return end
+        setPos(1 + sign_w, 1 + row_y)
+
+        local hlgroup
+        if sign_text then
+            hlgroup = sign_hl or "LineNr"
+        elseif numhl and numhl ~= "" then
+            hlgroup = numhl
+        elseif iscursor and options.get("cursorline", self) then
+            hlgroup = "CursorLineNr"
+        else
+            hlgroup = "LineNr"
+        end
+        Highlight.SetFor(hlgroup)
+
+        local s   = sign_text or label or ""
         local len = #s
         if len > gutter_w then
             s = string.rep("+", gutter_w)
@@ -917,9 +1121,63 @@ function Window:render(xoff, yoff)
         if visual_y >= max_rows then break end
 
         view_bottom = i
+        local iscursor_line = (i == self.cursory)
+        local legacy_signs = Sign.get_line_signs(self.buffer, i)
+        local line_signs = {}
+        local numhl, numhl_prio = nil, -math.huge
+        local linehl, linehl_prio = nil, -math.huge
 
+        for si = 1, #legacy_signs do
+            local sig = legacy_signs[si]
+            line_signs[#line_signs + 1] = sig
+
+            local def = Sign.get_definition(sig.name) or {}
+            local prio = sig.priority or 10
+            if def.numhl and def.numhl ~= "" and prio > numhl_prio then
+                numhl = def.numhl
+                numhl_prio = prio
+            end
+            if def.linehl and def.linehl ~= "" and prio > linehl_prio then
+                linehl = def.linehl
+                linehl_prio = prio
+            end
+        end
+
+        local ext_signs, ext_numhl, ext_numhl_prio, ext_linehl, ext_linehl_prio = _extmark_decorations_for_line(
+            self.buffer,
+            i
+        )
+        for si = 1, #ext_signs do
+            line_signs[#line_signs + 1] = ext_signs[si]
+        end
+
+        if ext_numhl and ext_numhl_prio > numhl_prio then
+            numhl = ext_numhl
+            numhl_prio = ext_numhl_prio
+        end
+        if ext_linehl and ext_linehl_prio > linehl_prio then
+            linehl = ext_linehl
+            linehl_prio = ext_linehl_prio
+        end
+
+        table.sort(line_signs, function(a, b)
+            local ap = a.priority or 10
+            local bp = b.priority or 10
+            if ap ~= bp then
+                return ap > bp
+            end
+            local aid = a.id or 0
+            local bid = b.id or 0
+            if aid ~= bid then
+                return aid < bid
+            end
+            return tostring(a.group or "") < tostring(b.group or "")
+        end)
+
+        local line_str = lines[i] or ""
+        local cursor_byte = (self.cursory == i) and self.buffer:str_byte_index(line_str, self.cursorx, true) or nil
         local rendered, blitLines, cursorPos = TexRen.parse(
-            lines[i] or "",
+            line_str,
             {
                 wraplen  = (self.opts.wrap and text_w) or 0,
                 wordwrap = self.opts.wrap and options.get("linebreak", self),
@@ -927,19 +1185,18 @@ function Window:render(xoff, yoff)
                 listcfg  = listcfg,
                 tabcfg   = tabcfg
             },
-            (self.cursory == i) and self.cursorx or nil,
+            cursor_byte,
             prefetched_blits[i]
         )
 
         local have_blit = blitLines and blitLines.fg and blitLines.bg
 
         local cursor_virtual = false
-        if show_cursor and (self.cursory == i) and cursorPos then
+        if show_cursor and iscursor_line and cursorPos then
             if cursorPos.line == (#rendered + 1) then
                 cursor_virtual = true
             elseif self.opts.wrap and (vimmode == "insert") then
-                local line_str = lines[i] or ""
-                if self.cursorx == (#line_str + 1) then
+                if self.cursorx == (self.buffer:str_len(line_str) + 1) then
                     local last = rendered[#rendered] or ""
                     if (text_w > 0) and (#last == text_w) then
                         cursor_virtual = true
@@ -953,7 +1210,7 @@ function Window:render(xoff, yoff)
             local skip = self.scrolly[2] or 0
             if skip < 0 then skip = 0 end
             local max_skip = math.max(0, #rendered - 1)
-            if (self.cursory == i) and cursorPos and (cursorPos.line == (#rendered + 1)) then
+            if iscursor_line and cursorPos and (cursorPos.line == (#rendered + 1)) then
                 max_skip = math.max(max_skip, #rendered)
             end
             if skip > max_skip then skip = max_skip end
@@ -966,21 +1223,34 @@ function Window:render(xoff, yoff)
         for j = j_start, #rendered do
             if visual_y >= max_rows then break end
 
+            if sign_w > 0 then
+                draw_signcol(visual_y, iscursor_line, (j == 1) and line_signs or nil)
+            end
+
             if show_numbers then
                 local label = ""
-                local iscursor = i == self.cursory
+                local iscursor = iscursor_line
+                local sign_text
+                local sign_hl
                 if j == 1 then
-                    if rnu then
-                        if iscursor then
-                            label = options.get("number", self) and tostring(i) or "0"
-                        else
-                            label = tostring(math.abs(i - self.cursory))
-                        end
+                    if sign_in_num and #line_signs > 0 then
+                        local top = line_signs[1]
+                        sign_text = sign_entry_text(top)
+                        local cursorline_active = iscursor and options.get("cursorline", self)
+                        sign_hl = sign_entry_hl(top, cursorline_active)
                     else
-                        label = tostring(i)
+                        if rnu then
+                            if iscursor then
+                                label = options.get("number", self) and tostring(i) or "0"
+                            else
+                                label = tostring(math.abs(i - self.cursory))
+                            end
+                        else
+                            label = tostring(i)
+                        end
                     end
                 end
-                draw_gutter(visual_y, label, iscursor, use_right_col)
+                draw_gutter(visual_y, label, iscursor, use_right_col, numhl, sign_text, sign_hl)
             end
 
             -- Visible slice after horizontal scroll
@@ -998,19 +1268,52 @@ function Window:render(xoff, yoff)
                 bg_slice = (x2 >= x1) and bg_line:sub(x1, x2) or ""
             end
 
+            if linehl and text_w > 0 then
+                if #vis_text < text_w then
+                    local missing = text_w - #vis_text
+                    vis_text = vis_text .. string.rep(" ", missing)
+                    if have_blit then
+                        local normal_hl = Highlight.For("Normal")
+                        local pad_fg = colors.toBlit(normal_hl[1])
+                        local pad_bg = colors.toBlit(normal_hl[2])
+                        fg_slice = (fg_slice or "") .. string.rep(pad_fg, missing)
+                        bg_slice = (bg_slice or "") .. string.rep(pad_bg, missing)
+                    end
+                end
+                local row_hl = Highlight.For(linehl)
+                local fg_col = row_hl[1]
+                local bg_col = row_hl[2]
+                if have_blit then
+                    if fg_col then
+                        fg_slice = string.rep(colors.toBlit(fg_col), #vis_text)
+                    end
+                    if bg_col then
+                        bg_slice = string.rep(colors.toBlit(bg_col), #vis_text)
+                    end
+                end
+            end
+
             -- Draw text/blit
             if text_w > 0 then
                 setPos(text_x, 1 + visual_y)
                 if have_blit and #fg_slice == #vis_text and #bg_slice == #vis_text then
                     term.blit(vis_text, fg_slice, bg_slice)
                 else
-                    Highlight.SetFor("Normal")
+                    if linehl then
+                        Highlight.SetFor(linehl)
+                    else
+                        Highlight.SetFor("Normal")
+                    end
                     term.write(vis_text)
+                    if linehl and #vis_text < text_w then
+                        term.write(string.rep(" ", text_w - #vis_text))
+                    end
+                    Highlight.SetFor("Normal")
                 end
             end
 
             -- Draw cursor using Cursor highlight
-            if show_cursor and (not cursor_virtual) and (self.cursory == i) and cursorPos and (cursorPos.line == j) and text_w > 0 then
+            if show_cursor and (not cursor_virtual) and iscursor_line and cursorPos and (cursorPos.line == j) and text_w > 0 then
                 local cx_abs = cursorPos.column       -- 1-based in wrapped piece
                 local cx_vis = cx_abs - (hscroll - 1) -- 1-based in visible slice
 
@@ -1039,8 +1342,14 @@ function Window:render(xoff, yoff)
 
     -- End-of-buffer fill
     while visual_y < max_rows do
+        if sign_w > 0 then
+            draw_signcol(visual_y, false, nil)
+        end
+        if show_numbers then
+            draw_gutter(visual_y, "", false, use_right_col, nil, nil, nil)
+        end
         if text_w > 0 then
-            setPos(1, 1 + visual_y)
+            setPos(text_x, 1 + visual_y)
             Highlight.SetFor("EndOfBuffer")
             term.write(options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).eob or "~")
             Highlight.SetFor("Normal")
@@ -1120,13 +1429,15 @@ end
 
 function Window:matchPairs()
     local win   = windows[curwin]
-    win.buffer:ensure_loaded(true)
-    local lines = win.buffer:lines_ref(true)
+    local buf = win.buffer
+    buf:ensure_loaded(true)
+    local lines = buf:lines_ref(true)
     local y     = win.cursory
     local x     = win.cursorx
 
     local line  = lines[y] or ""
-    if #line == 0 or x < 1 or x > #line then
+    local line_len = buf:str_len(line)
+    if line_len == 0 or x < 1 or x > line_len then
         return
     end
 
@@ -1142,13 +1453,13 @@ function Window:matchPairs()
     end
 
     local function ch_at(i)
-        return line:sub(i, i)
+        return buf:str_char_at(line, i)
     end
 
     -- Forward scan for the matching 'stop' of a given 'start' at position i0
     local function find_match_forward(i0, startc, stopc)
         local depth = 1
-        for i = i0 + 1, #line do
+        for i = i0 + 1, line_len do
             local c = ch_at(i)
             if c == startc then
                 depth = depth + 1
@@ -1181,7 +1492,7 @@ function Window:matchPairs()
 
     -- Scan forward (strictly after position x) for the first pair character on this line
     local function first_pair_after(pos)
-        for i = pos + 1, #line do
+        for i = pos + 1, line_len do
             local c = ch_at(i)
             if is_start[c] or is_stop[c] then
                 return i, c
@@ -1228,13 +1539,14 @@ function Window:matchPairs()
 end
 
 local function _first_non_blank_col1(s)
-    for i = 1, #s do
-        local ch = s:sub(i, i)
+    local n = Utf8.len(s)
+    for i = 1, n do
+        local ch = Utf8.char_at(s, i)
         if ch ~= " " and ch ~= "\t" then
             return i
         end
     end
-    return #s + 1
+    return n + 1
 end
 
 local function _decode_indent_key(raw)
@@ -1334,8 +1646,9 @@ function Window:_eval_indentexpr(lnum)
     local target_line = self.buffer:get_line(target_y, true) or ""
 
     self.cursory = target_y
-    if self.cursorx > #target_line + 1 then
-        self.cursorx = #target_line + 1
+    local target_len = self.buffer:str_len(target_line)
+    if self.cursorx > target_len + 1 then
+        self.cursorx = target_len + 1
     elseif self.cursorx < 1 then
         self.cursorx = 1
     end
@@ -1385,29 +1698,30 @@ function Window:_build_indent_prefix(vcols)
 end
 
 function Window:reindentLine(lnum, want_vcol, cursor_col1)
-    self.buffer:ensure_loaded(true)
-    local lines = self.buffer:lines_ref(true)
+    local buf = self.buffer
+    buf:ensure_loaded(true)
+    local lines = buf:lines_ref(true)
     local ln = math.max(1, math.min(lnum, #lines))
     local line = lines[ln] or ""
 
     local fnb = _first_non_blank_col1(line)
     local old_prefix_len = fnb - 1
-    local tail = line:sub(fnb)
+    local tail = buf:str_sub(line, fnb)
 
     local prefix = self:_build_indent_prefix(want_vcol)
-    if prefix == line:sub(1, old_prefix_len) then
+    if prefix == buf:str_sub(line, 1, old_prefix_len) then
         return cursor_col1 or self.cursorx
     end
 
     lines[ln] = prefix .. tail
-    self.buffer.opts.modified = true
-    Syntax.ParseLinetypes(self.buffer, math.max(1, ln - 1))
+    buf.opts.modified = true
+    Syntax.ParseLinetypes(buf, math.max(1, ln - 1))
 
     local col = cursor_col1 or self.cursorx
-    local delta = #prefix - old_prefix_len
+    local delta = buf:str_len(prefix) - old_prefix_len
     col = col + delta
     if col < 1 then col = 1 end
-    local max_col = #(lines[ln] or "") + 1
+    local max_col = buf:str_len(lines[ln] or "") + 1
     if col > max_col then col = max_col end
     return col
 end
@@ -1451,18 +1765,19 @@ end
 
 -- TODO: handle the delete character
 function Window:insertText(text, line, offset, insetoff, cursor_on_end)
-    self.buffer:ensure_loaded(true)
+    local buf = self.buffer
+    buf:ensure_loaded(true)
     line           = line or self.cursory
     local ln       = line
     local col1     = (offset or self.cursorx) + (insetoff or 0)
 
     text           = tostring(text or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 
-    local tcfg     = Tab.get_tab_config(self.buffer)
-    local scfg     = Tab.get_soft_config(self.buffer)
+    local tcfg     = Tab.get_tab_config(buf)
+    local scfg     = Tab.get_soft_config(buf)
     local smarttab = options.get("smarttab")
-    local has_indentexpr = tostring(options.get("indentexpr", nil, self.buffer) or "") ~= ""
-    local indentkeys = _parse_indentkeys(options.get("indentkeys", nil, self.buffer) or "")
+    local has_indentexpr = tostring(options.get("indentexpr", nil, buf) or "") ~= ""
+    local indentkeys = _parse_indentkeys(options.get("indentkeys", nil, buf) or "")
 
     -- parse 'backspace' as a set
     local bs_flags = {}
@@ -1472,10 +1787,6 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         for i = 1, #items do bs_flags[items[i]] = true end
     end
 
-    -- TODO: fetch insert-mode start position from editor state
-    local ins_start_line = 1
-    local ins_start_col1 = 1
-
     local function before(aL, aC, bL, bC) return (aL < bL) or (aL == bL and aC < bC) end
     local function is_in_leading_ws(s, c1) return c1 <= _first_non_blank_col1(s) end
 
@@ -1483,19 +1794,19 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         local i = at_col1 - 2
         if i < 0 then return at_col1 - 1, at_col1 - 1 end
         while i >= 0 do
-            local ch = s:sub(i + 1, i + 1)
+            local ch = buf:str_char_at(s, i + 1)
             if ch ~= " " and ch ~= "\t" then break end
             i = i - 1
         end
         return i + 1, at_col1 - 2 -- 0-based inclusive span
     end
 
-    local lines = self.buffer:lines_ref(true)
+    local lines = buf:lines_ref(true)
     if ln < 1 then ln = 1 end
-    if ln > self.buffer:line_count(true) then ln = self.buffer:line_count(true) end
+    if ln > buf:line_count(true) then ln = buf:line_count(true) end
     local cur = lines[ln] or ""
     if col1 < 1 then col1 = 1 end
-    if col1 > #cur + 1 then col1 = #cur + 1 end
+    if col1 > buf:str_len(cur) + 1 then col1 = buf:str_len(cur) + 1 end
 
     local first_dirty = math.huge
     local function mark_dirty(i)
@@ -1508,8 +1819,8 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
     end
 
     local function do_split_line()
-        local left  = cur:sub(1, col1 - 1)
-        local right = cur:sub(col1)
+        local left  = buf:str_sub(cur, 1, col1 - 1)
+        local right = buf:str_sub(cur, col1)
         set_line(ln, left)
         ln = ln + 1
         table.insert(lines, ln, right)
@@ -1522,10 +1833,10 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         local prev = lines[ln - 1]
         local new_prev = prev .. cur
         set_line(ln - 1, new_prev)
-        self.buffer:remove_lines(ln, ln)
+        buf:remove_lines(ln, ln)
         ln = ln - 1
         cur = lines[ln]
-        col1 = #prev + 1
+        col1 = buf:str_len(prev) + 1
     end
 
     local function vcol_at(c1)
@@ -1560,7 +1871,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                 -- Insert-mode newline is handled separately.
             elseif it.kind == "key" and it.key == ch then
                 if it.start_only then
-                    local before_part = pre_line:sub(1, pre_col - 1)
+                    local before_part = buf:str_sub(pre_line, 1, pre_col - 1)
                     if before_part:match("^%s*$") then
                         return true
                     end
@@ -1569,15 +1880,17 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                 end
             elseif it.kind == "else" and ch == "e" then
                 local fnb = _first_non_blank_col1(post_line)
-                local head = post_line:sub(fnb, fnb + 3):lower()
+                local head = buf:str_sub(post_line, fnb, fnb + 3):lower()
                 if head == "else" then
                     return true
                 end
             elseif it.kind == "word" then
                 local w = tostring(it.word or "")
-                if w ~= "" and post_col > 1 and post_col - 1 >= #w then
-                    local lhs = post_line:sub(1, post_col - 1)
-                    local tail = lhs:sub(#lhs - #w + 1)
+                local wlen = buf:str_len(w)
+                if w ~= "" and post_col > 1 and post_col - 1 >= wlen then
+                    local lhs = buf:str_sub(post_line, 1, post_col - 1)
+                    local lhs_len = buf:str_len(lhs)
+                    local tail = buf:str_sub(lhs, lhs_len - wlen + 1)
                     local ok_word
                     if it.ignorecase then
                         ok_word = tail:lower() == w:lower()
@@ -1586,7 +1899,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                     end
                     if ok_word then
                         if it.start_only then
-                            local pre_word = lhs:sub(1, #lhs - #w)
+                            local pre_word = buf:str_sub(lhs, 1, lhs_len - wlen)
                             if pre_word:match("^%s*$") then
                                 return true
                             end
@@ -1604,54 +1917,70 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
     local last_action_inserted = false
     local last_inserted_newline = false
 
-    for c in text:gmatch(".") do
-        if c == "\n" then
+    local function codepoint_to_char(cp)
+        if utf8 and utf8.char then
+            local ok, ch = pcall(utf8.char, cp)
+            if ok and ch then
+                return ch
+            end
+        end
+        if cp >= 0 and cp <= 255 then
+            return string.char(cp)
+        end
+        return "?"
+    end
+
+    buf:str_each_codepoint(text, function(cp)
+        if cp == 10 then
             if _indentkey_pre_newline() then
                 _reindent_current_line()
             end
             do_split_line()
-            if has_indentexpr or options.get("autoindent", nil, self.buffer) then
+            if has_indentexpr or options.get("autoindent", nil, buf) then
                 _reindent_current_line()
             end
             last_action_inserted = true
             last_inserted_newline = true
-        elseif c == "\t" then
+        elseif cp == 9 then
             local v   = vcol_at(col1)
             local lw  = is_in_leading_ws(cur, col1)
-            local ins = Tab.compute_tab_insertion(v, lw, self.buffer)
-            cur       = cur:sub(1, col1 - 1) .. ins .. cur:sub(col1)
+            local ins = Tab.compute_tab_insertion(v, lw, buf)
+            cur       = buf:str_sub(cur, 1, col1 - 1) .. ins .. buf:str_sub(cur, col1)
             set_line(ln, cur)
-            col1 = col1 + #ins
-            last_action_inserted = (#ins > 0)
+            col1 = col1 + buf:str_len(ins)
+            last_action_inserted = (buf:str_len(ins) > 0)
             last_inserted_newline = false
-        elseif c == "\b" then
+        elseif cp == 8 then
+            local ins_start_line = self.insert_curs_start[1]
+            local ins_start_col1 = self.insert_curs_start[2]
+            
             if (not bs_flags.start) and before(ln, col1, ins_start_line, ins_start_col1) then
-                goto continue
+                return
             end
 
             if col1 == 1 then
                 if bs_flags.eol and ln > 1 then
-                    local new_line, new_col1 = ln - 1, #(lines[ln - 1]) + 1
+                    local new_line, new_col1 = ln - 1, buf:str_len(lines[ln - 1] or "") + 1
                     if (not bs_flags.start) and before(new_line, new_col1, ins_start_line, ins_start_col1) then
-                        goto continue
+                        return
                     end
                     do_join_prev_line()
                 end
                 last_action_inserted = false
                 last_inserted_newline = false
-                goto continue
+                return
             end
 
             if (not bs_flags.indent) and (col1 <= _first_non_blank_col1(cur)) then
                 last_action_inserted = false
                 last_inserted_newline = false
-                goto continue
+                return
             end
 
             local lw = is_in_leading_ws(cur, col1)
             local scfg_eff = scfg
             if smarttab and lw then
-                scfg_eff = { vsts = {}, prefix = {}, last_step = nil, numeric_sts = Tab.shiftwidth_effective(self.buffer) }
+                scfg_eff = { vsts = {}, prefix = {}, last_step = nil, numeric_sts = Tab.shiftwidth_effective(buf) }
             end
             local soft_enabled = (#scfg_eff.vsts > 0) or (scfg_eff.numeric_sts and scfg_eff.numeric_sts > 0)
 
@@ -1671,12 +2000,12 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                 if want > 0 then
                     local new_cols = run_cols - want
                     local new_ws = string.rep(" ", new_cols)
-                    cur = cur:sub(1, i0) .. new_ws .. cur:sub(i1 + 2)
+                    cur = buf:str_sub(cur, 1, i0) .. new_ws .. buf:str_sub(cur, i1 + 2)
                     set_line(ln, cur)
-                    col1 = i0 + #new_ws + 1
+                    col1 = i0 + buf:str_len(new_ws) + 1
                     last_action_inserted = false
                     last_inserted_newline = false
-                    goto continue
+                    return
                 end
             end
 
@@ -1684,17 +2013,18 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
             if (not bs_flags.start) and before(ln, new_col1, ins_start_line, ins_start_col1) then
                 last_action_inserted = false
                 last_inserted_newline = false
-                goto continue
+                return
             end
-            cur = cur:sub(1, col1 - 2) .. cur:sub(col1)
+            cur = buf:str_sub(cur, 1, col1 - 2) .. buf:str_sub(cur, col1)
             set_line(ln, cur)
             col1 = new_col1
             last_action_inserted = false
             last_inserted_newline = false
         else
+            local c = codepoint_to_char(cp)
             local pre_line = cur
             local pre_col = col1
-            cur = cur:sub(1, col1 - 1) .. c .. cur:sub(col1)
+            cur = buf:str_sub(cur, 1, col1 - 1) .. c .. buf:str_sub(cur, col1)
             set_line(ln, cur)
             col1 = col1 + 1
             if _indentkey_match_typed(c, pre_line, pre_col, cur, col1) then
@@ -1703,30 +2033,29 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
             last_action_inserted = true
             last_inserted_newline = false
         end
-        ::continue::
-    end
+    end)
 
     -- Cursor placement toggle
     if cursor_on_end and last_action_inserted then
         if last_inserted_newline then
             if ln > 1 then
                 ln = ln - 1
-                col1 = math.max(1, #lines[ln]) -- ON last char of previous line
+                col1 = math.max(1, buf:str_len(lines[ln] or "")) -- ON last char of previous line
             end
         else
             if col1 > 1 then col1 = col1 - 1 end -- ON last inserted char
         end
     end
 
-    self:markUpdate((first_dirty ~= math.huge) and first_dirty or line)
-
     self:cursorMove(col1 - self.cursorx, ln - self.cursory)
+    self:markUpdate((first_dirty ~= math.huge) and first_dirty or line)
     self.need_redraw = true
     need_redraw = true
 end
 
 function Window:pasteRegister(reg_name, line, offset, isBefore)
-    self.buffer:ensure_loaded(true)
+    local buf = self.buffer
+    buf:ensure_loaded(true)
     line = line or self.cursory
     offset = offset or self.cursorx
 
@@ -1737,7 +2066,7 @@ function Window:pasteRegister(reg_name, line, offset, isBefore)
         elseif regval[1] == "linewise" then
             local lines = regval[2]
             local desty
-            local buflines = self.buffer:lines_ref(true)
+            local buflines = buf:lines_ref(true)
 
             if isBefore then
                 for i = 1, #lines do
@@ -1756,16 +2085,16 @@ function Window:pasteRegister(reg_name, line, offset, isBefore)
             self:cursorMove(-self.cursorx, desty - self.cursory)
         elseif regval[1] == "inline" then
             local to_paste = regval[2]
-            local buflines = self.buffer:lines_ref(true)
+            local buflines = buf:lines_ref(true)
 
             local cur = buflines[line]
-            local cur_len = #cur
+            local cur_len = buf:str_len(cur)
 
             local cx = math.max(1, math.min(offset, math.max(1, cur_len)))
             local prefix_len = isBefore and (cx - 1) or cx
 
-            local prefix = (prefix_len > 0) and cur:sub(1, prefix_len) or ""
-            local trail = cur:sub(prefix_len + 1)
+            local prefix = (prefix_len > 0) and buf:str_sub(cur, 1, prefix_len) or ""
+            local trail = buf:str_sub(cur, prefix_len + 1)
 
             if #to_paste == 1 then
                 buflines[line] = prefix .. to_paste[1] .. trail
@@ -1801,6 +2130,12 @@ function Window:markUpdate(line)
             win:cursorMove(0, 0)
         end
     end
+
+    local event = (vimmode == "insert") and "TextChangedI" or "TextChanged"
+    Autocmd.Run(event, {
+        bufnr = buf.bufnr,
+        bufname = buf.name,
+    })
 end
 
 -- force: when ! is specified

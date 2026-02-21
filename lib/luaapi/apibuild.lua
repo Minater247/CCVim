@@ -185,6 +185,44 @@ function ApiBuild.Build()
         end,
     })
 
+    local iter_mod
+    local function load_iter_mod()
+        if iter_mod == nil then
+            local path = ccvim_path .. "/runtime/lua/vim/iter.lua"
+            local table_shim = setmetatable({
+                maxn = function(t)
+                    local maxk = 0
+                    for k, _ in pairs(t) do
+                        if type(k) == "number" and k > maxk then
+                            maxk = k
+                        end
+                    end
+                    return maxk
+                end,
+            }, { __index = table })
+            local iter_env = setmetatable({ table = table_shim }, { __index = mainapi })
+            local chunk, err = loadfile(path, "t", iter_env)
+            if not chunk then
+                error(err)
+            end
+            iter_mod = chunk()
+        end
+        return iter_mod
+    end
+
+    local iter_proxy = setmetatable({}, {
+        __call = function(_, ...)
+            local mod = load_iter_mod()
+            mainapi.vim.iter = mod
+            return mod(...)
+        end,
+        __index = function(_, key)
+            local mod = load_iter_mod()
+            mainapi.vim.iter = mod
+            return mod[key]
+        end,
+    })
+
     local function run_cmdline(line)
         local ok, rv = Runtime.run(line, {
             state = {
@@ -285,6 +323,7 @@ function ApiBuild.Build()
             fs = vimfs,
             F = F,
             filetype = filetype_proxy,
+            iter = iter_proxy,
             treesitter = treesitter,
             validate = vim_validate,
             trim = vim_trim,

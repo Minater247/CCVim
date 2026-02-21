@@ -160,25 +160,67 @@ local function tokenize_simple(pat)
         i = i + 1 -- '['
         if peek() == "^" then i = i + 1 end
 
+        local closed = false
         while i <= n do
             local c = peek()
             i = i + 1
             if c == "\\" then
                 if i <= n then i = i + 1 end
             elseif c == "]" then
+                closed = true
                 break
             end
         end
 
+        if not closed then
+            return nil, "Unterminated [] class"
+        end
         return pat:sub(start, i - 1)
     end
 
     local function try_counted_repeat(escaped)
         local m, n2, after
         if escaped then
+            m, n2, after = pat:match("^\\{(%d+),(%d+)\\}()", i)
+            if m then
+                add("QCOUNT", { tonumber(m), tonumber(n2) })
+                i = after
+                return true
+            end
             m, n2, after = pat:match("^\\{(%d+),(%d+)}()", i)
             if m then
                 add("QCOUNT", { tonumber(m), tonumber(n2) })
+                i = after
+                return true
+            end
+            m, after = pat:match("^\\{(%d+),\\}()", i)
+            if m then
+                add("QCOUNT", { tonumber(m), nil })
+                i = after
+                return true
+            end
+            m, after = pat:match("^\\{(%d+),}()", i)
+            if m then
+                add("QCOUNT", { tonumber(m), nil })
+                i = after
+                return true
+            end
+            n2, after = pat:match("^\\{,(%d+)\\}()", i)
+            if n2 then
+                add("QCOUNT", { 0, tonumber(n2) })
+                i = after
+                return true
+            end
+            n2, after = pat:match("^\\{,(%d+)}()", i)
+            if n2 then
+                add("QCOUNT", { 0, tonumber(n2) })
+                i = after
+                return true
+            end
+            m, after = pat:match("^\\{(%d+)\\}()", i)
+            if m then
+                local nn = tonumber(m)
+                add("QCOUNT", { nn, nn })
                 i = after
                 return true
             end
@@ -190,9 +232,46 @@ local function tokenize_simple(pat)
                 return true
             end
         else
+            m, n2, after = pat:match("^{(%d+),(%d+)\\}()", i)
+            if m then
+                add("QCOUNT", { tonumber(m), tonumber(n2) })
+                i = after
+                return true
+            end
             m, n2, after = pat:match("^{(%d+),(%d+)}()", i)
             if m then
                 add("QCOUNT", { tonumber(m), tonumber(n2) })
+                i = after
+                return true
+            end
+            m, after = pat:match("^{(%d+),\\}()", i)
+            if m then
+                add("QCOUNT", { tonumber(m), nil })
+                i = after
+                return true
+            end
+            m, after = pat:match("^{(%d+),}()", i)
+            if m then
+                add("QCOUNT", { tonumber(m), nil })
+                i = after
+                return true
+            end
+            n2, after = pat:match("^{,(%d+)\\}()", i)
+            if n2 then
+                add("QCOUNT", { 0, tonumber(n2) })
+                i = after
+                return true
+            end
+            n2, after = pat:match("^{,(%d+)}()", i)
+            if n2 then
+                add("QCOUNT", { 0, tonumber(n2) })
+                i = after
+                return true
+            end
+            m, after = pat:match("^{(%d+)\\}()", i)
+            if m then
+                local nn = tonumber(m)
+                add("QCOUNT", { nn, nn })
                 i = after
                 return true
             end
@@ -307,7 +386,11 @@ local function tokenize_simple(pat)
         end
 
         if c == "[" and (mode == "magic" or mode == "verymagic") then
-            add("BCLASS", read_bracket_class())
+            local bclass, berr = read_bracket_class()
+            if not bclass then
+                return nil, berr
+            end
+            add("BCLASS", bclass)
             goto cont
         end
 
@@ -612,26 +695,30 @@ local function apply_quant_single(frag, quant)
 
     if quant.t == "QCOUNT" then
         local m, n = quant.v[1], quant.v[2]
-        if n < m then
+        if n ~= nil and n < m then
             return nil, "Bad counted repeat {n<m}"
         end
-        if n - m > COUNT_MAX then
+        if n ~= nil and n - m > COUNT_MAX then
             return nil, ("Counted repeat too large {%d,%d} (>%d optional)"):format(m, n, COUNT_MAX)
         end
 
         local unit = frag.single and frag.pat or ("(" .. frag.pat .. ")")
-        local chunks, k = {}, 0
+        if n == nil then
+            if m == 0 then
+                return { make_frag(unit .. "*", nil, false) }
+            end
+            return { make_frag(string.rep(unit, m) .. unit .. "*", nil, false) }
+        end
 
+        local chunks, k = {}, 0
         if m > 0 then
             k = k + 1
             chunks[k] = string.rep(unit, m)
         end
-
         for _ = 1, (n - m) do
             k = k + 1
             chunks[k] = unit .. "?"
         end
-
         local plain
         if frag.plain ~= nil and m == n then
             plain = string.rep(frag.plain, m)
@@ -686,8 +773,11 @@ local function apply_quant_group_alts(alts, quant)
 
     if quant.t == "QCOUNT" then
         local m, n = quant.v[1], quant.v[2]
-        if n < m then
+        if n ~= nil and n < m then
             return nil, "Bad counted repeat {n<m}"
+        end
+        if n == nil then
+            return nil, "Group alternation with open-ended counted repeat is unsupported"
         end
         if n - m > COUNT_MAX then
             return nil, ("Counted repeat too large {%d,%d} (>%d optional)"):format(m, n, COUNT_MAX)

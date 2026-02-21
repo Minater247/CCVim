@@ -4,6 +4,8 @@ local Buffer = loadModule("vim.layout.buffer")
 local Window = loadModule("vim.layout.window")
 local Tabpage = loadModule("vim.layout.tabpage")
 local FrameTree = loadModule("vim.lib.frame")
+local pending_file_bufnrs
+local pending_window_bufnrs
 
 local function print_help(argv0)
   print("Usage:")
@@ -31,6 +33,8 @@ end
 function Args.parse(argv)
     local state = {
         files = {},
+        file_bufnrs = {},
+        window_bufnrs = {},
         nomodifiable = false,
         readonly = false,
 
@@ -136,18 +140,28 @@ function Args.parse(argv)
 
     -- Step 1: Make the buffers
     for i = 1, #state.files do
-        local buf = Buffer(true, false)
+        local buf = Buffer(true, false, false)
         buf.name = state.files[i]
-        buf:Load(true)
         buf.opts.readonly = state.readonly
         buf.opts.modifiable = not state.nomodifiable
+        state.file_bufnrs[#state.file_bufnrs + 1] = buf.bufnr
     end
 
     if state.mkwins == 0 then
         state.mkwins = #state.files
     end
+
+    local startup_window_buffer
+    if #state.files > 0 then
+        startup_window_buffer = Buffer(true, false)
+    end
+
     for i = 1, state.mkwins do
-        Window(buffers[i])
+        if startup_window_buffer then
+            Window(startup_window_buffer)
+        else
+            Window(buffers[i])
+        end
     end
 
     local firsttp = Tabpage(windows[1])
@@ -162,6 +176,46 @@ function Args.parse(argv)
     for i = 2, state.mktabs do
         Tabpage()
     end
+
+    local visible_count = math.min(#state.file_bufnrs, state.mkwins)
+    for i = 1, visible_count do
+        state.window_bufnrs[i] = state.file_bufnrs[i]
+    end
+
+    pending_file_bufnrs = state.file_bufnrs
+    pending_window_bufnrs = state.window_bufnrs
+
+    return true
+end
+
+function Args.load_pending_files()
+    if not pending_file_bufnrs then
+        return true
+    end
+
+    if pending_window_bufnrs then
+        for i = 1, #pending_window_bufnrs do
+            local win = windows[i]
+            local newbuf = buffers[pending_window_bufnrs[i]]
+            if win and newbuf and win.buffer ~= newbuf then
+                if win.buffer then
+                    win.buffer.refcount = math.max(0, (win.buffer.refcount or 0) - 1)
+                end
+                win.buffer = newbuf
+                newbuf.refcount = (newbuf.refcount or 0) + 1
+            end
+        end
+    end
+
+    for i = 1, #pending_file_bufnrs do
+        local buf = buffers[pending_file_bufnrs[i]]
+        if not buf.loaded then
+            buf:Load(true)
+        end
+    end
+
+    pending_window_bufnrs = nil
+    pending_file_bufnrs = nil
 
     return true
 end

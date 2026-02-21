@@ -152,12 +152,31 @@ local function split_delim_pattern(raw)
 
     local i, n = 2, #s
     local esc = false
+    local in_class = false
+    local class_count = 0
+    local class_leading_caret = false
     while i <= n do
         local ch = s:sub(i, i)
         if esc then
             esc = false
+            if in_class then
+                class_count = class_count + 1
+            end
         elseif ch == "\\" then
             esc = true
+        elseif in_class then
+            class_count = class_count + 1
+            if class_count == 1 and ch == "^" then
+                class_leading_caret = true
+            elseif ch == "]" then
+                if class_count > 1 and not (class_leading_caret and class_count == 2) then
+                    in_class = false
+                end
+            end
+        elseif ch == "[" then
+            in_class = true
+            class_count = 0
+            class_leading_caret = false
         elseif ch == d then
             local patt = s:sub(2, i - 1)
             local tail = s:sub(i + 1)
@@ -921,10 +940,20 @@ end
 local function find_region_end_event(entry, line, lower_line, pos, syn_limit)
     local function earliest_in_specs(specs, from_pos)
         local found = nil
+        local found_idx = nil
         for i = 1, #specs do
             local hit = find_in_spec(line, lower_line, from_pos, specs[i], false, entry.ext_captures, false)
             if hit and hit.match_start <= syn_limit then
-                found = pick_earliest_event(found, hit)
+                if not found or hit.match_start < found.match_start then
+                    found = hit
+                    found_idx = i
+                elseif hit.match_start == found.match_start and (found_idx == nil or i > found_idx) then
+                    -- For equal-start region end/skip specs, prefer later-defined specs.
+                    -- This matches help.vim behavior where a later end= pattern can refine
+                    -- an earlier broad one at the same position.
+                    found = hit
+                    found_idx = i
+                end
             end
         end
         return found

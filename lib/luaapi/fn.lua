@@ -402,24 +402,26 @@ end
 
 local function _extract_cfile_text(win)
     if not win or not win.buffer then return "" end
-    local line = win.buffer:get_line(win.cursory, true) or ""
+    local buf = win.buffer
+    local line = buf:get_line(win.cursory, true) or ""
     if line == "" then return "" end
 
     local cx = win.cursorx
+    local line_len = buf:str_len(line)
     if cx < 1 then cx = 1 end
-    if cx > #line and #line > 0 then
-        cx = #line
+    if cx > line_len and line_len > 0 then
+        cx = line_len
     end
 
     local function is_cfile_char(ch)
         return ch:match("[%w%._%-%+/%\\$%%,#{}%[%]~@:]") ~= nil
     end
 
-    if cx < 1 or cx > #line then
+    if cx < 1 or cx > line_len then
         return ""
     end
-    if not is_cfile_char(line:sub(cx, cx)) then
-        if cx > 1 and is_cfile_char(line:sub(cx - 1, cx - 1)) then
+    if not is_cfile_char(buf:str_char_at(line, cx)) then
+        if cx > 1 and is_cfile_char(buf:str_char_at(line, cx - 1)) then
             cx = cx - 1
         else
             return ""
@@ -427,9 +429,9 @@ local function _extract_cfile_text(win)
     end
 
     local s, e = cx, cx
-    while s > 1 and is_cfile_char(line:sub(s - 1, s - 1)) do s = s - 1 end
-    while e < #line and is_cfile_char(line:sub(e + 1, e + 1)) do e = e + 1 end
-    return line:sub(s, e)
+    while s > 1 and is_cfile_char(buf:str_char_at(line, s - 1)) do s = s - 1 end
+    while e < line_len and is_cfile_char(buf:str_char_at(line, e + 1)) do e = e + 1 end
+    return buf:str_sub(line, s, e)
 end
 
 local function _expand_cfile(buf)
@@ -495,7 +497,8 @@ local function _search_set_cursor(win, lnum, col1)
         return
     end
 
-    local lines = (win.buffer and win.buffer.lines_ref and win.buffer:lines_ref(true)) or {}
+    local buf = win.buffer
+    local lines = buf:lines_ref(true)
     local line_count = #lines
     if line_count < 1 then
         line_count = 1
@@ -504,7 +507,7 @@ local function _search_set_cursor(win, lnum, col1)
     if lnum > line_count then lnum = line_count end
 
     local line = lines[lnum] or ""
-    local max_col = #line + 1
+    local max_col = buf:str_len(line) + 1
     if col1 < 1 then col1 = 1 end
     if col1 > max_col then col1 = max_col end
 
@@ -1251,6 +1254,13 @@ function Builtins.type(expr)
     elseif t == "nil" then
         return 7
     elseif t == "table" then
+        local mt = getmetatable(expr)
+        if mt and mt.__vimxpr_kind == "list" then
+            return 3
+        end
+        if mt and mt.__vimxpr_kind == "dict" then
+            return 4
+        end
         -- treat as list if only numeric keys, else dict
         local is_list = true
         for k, _ in pairs(expr) do
@@ -1933,13 +1943,15 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
             end
         end
 
-        local col1 = abs_idx - line_starts[found] + 1
-        local max_col = #(lines[found] or "") + 1
-        if col1 < 1 then
-            col1 = 1
-        elseif col1 > max_col then
-            col1 = max_col
+        local line_text = lines[found] or ""
+        local byte_col1 = abs_idx - line_starts[found] + 1
+        local byte_max_col = #line_text + 1
+        if byte_col1 < 1 then
+            byte_col1 = 1
+        elseif byte_col1 > byte_max_col then
+            byte_col1 = byte_max_col
         end
+        local col1 = buf:str_col_from_byte(line_text, byte_col1, true)
         return found, col1
     end
 
@@ -1950,13 +1962,14 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
         cur_lnum = line_count
     end
     local cur_col = math.floor(tonumber(win.cursorx) or 1)
-    local cur_max_col = #(lines[cur_lnum] or "") + 1
+    local cur_max_col = buf:line_len(cur_lnum, true) + 1
     if cur_col < 1 then
         cur_col = 1
     elseif cur_col > cur_max_col then
         cur_col = cur_max_col
     end
-    local cur_abs = line_starts[cur_lnum] + cur_col - 1
+    local cur_byte_col = buf:line_byte_index(cur_lnum, cur_col, true, true)
+    local cur_abs = line_starts[cur_lnum] + cur_byte_col - 1
 
     local matches = {}
     -- For ordinary patterns, search each line independently so ^/$ anchor to
@@ -2199,10 +2212,6 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
 end
 
 function Builtins.getcwd(winnr, tabnr)
-    if winnr or tabnr then
-        error("Unimplemented: window/tabpage scope getcwd vimfn")
-    end
-
     local tabpage = tabpages[(tabnr == 0 or not tabnr) and curtp or tabnr]
     local window
     if winnr == 0 or not winnr then
@@ -2331,6 +2340,175 @@ function Builtins.filereadable(file)
         h.close(); return 1
     end
     return 0
+end
+
+local function _split_readfile_lines(text, keep_trailing_empty)
+    if text == "" then
+        return {}
+    end
+    local out = {}
+    local start = 1
+    while true do
+        local nl = text:find("\n", start, true)
+        if not nl then
+            local tail = text:sub(start)
+            if tail ~= "" or keep_trailing_empty then
+                out[#out + 1] = tail
+            end
+            break
+        end
+        out[#out + 1] = text:sub(start, nl - 1)
+        start = nl + 1
+    end
+    return out
+end
+
+local function _readfile_apply_max(lines, max_arg)
+    if max_arg == nil then
+        return lines
+    end
+    local n = tonumber(max_arg) or 0
+    if n >= 0 then
+        n = math.floor(n)
+    else
+        n = math.ceil(n)
+    end
+    if n == 0 then
+        return {}
+    end
+    if n > 0 then
+        if #lines <= n then
+            return lines
+        end
+        local out = {}
+        for i = 1, n do
+            out[i] = lines[i]
+        end
+        return out
+    end
+    local want = -n
+    if #lines <= want then
+        return lines
+    end
+    local out = {}
+    local start = #lines - want + 1
+    local j = 1
+    for i = start, #lines do
+        out[j] = lines[i]
+        j = j + 1
+    end
+    return out
+end
+
+-- readfile({fname} [, {type} [, {max}]]) -> List of lines
+function Builtins.readfile(fname, kind, max)
+    local raw = tostring(fname or "")
+    local path = _abs_path(raw)
+
+    local handle
+    do
+        local ok_rb, h_rb = pcall(fs.open, path, "rb")
+        if ok_rb and h_rb then
+            handle = h_rb
+        else
+            local ok_r, h_r = pcall(fs.open, path, "r")
+            if ok_r and h_r then
+                handle = h_r
+            end
+        end
+    end
+
+    if not handle then
+        ExMsg = ExMsg or loadModule("vim.lib.excmd.exmsg")
+        ExMsg.echoerr(Error(484, raw):toString())
+        return {}
+    end
+
+    local ok_read, data = pcall(function()
+        return handle.readAll and handle.readAll() or ""
+    end)
+    pcall(function()
+        if handle and handle.close then
+            handle.close()
+        end
+    end)
+
+    if not ok_read then
+        ExMsg = ExMsg or loadModule("vim.lib.excmd.exmsg")
+        ExMsg.echoerr(Error(484, raw):toString())
+        return {}
+    end
+
+    local mode = tostring(kind or "")
+    local binary = mode:find("b", 1, true) ~= nil
+    local as_blob = mode:find("B", 1, true) ~= nil
+    local text = tostring(data or "")
+
+    if as_blob then
+        return text
+    end
+
+    text = text:gsub("\0", "\n")
+    if not binary then
+        -- Strip UTF-8 BOM in text mode.
+        if text:sub(1, 3) == "\239\187\191" then
+            text = text:sub(4)
+        end
+        -- In text mode CR before NL is dropped.
+        text = text:gsub("\r\n", "\n")
+    end
+
+    local lines = _split_readfile_lines(text, binary)
+    return _readfile_apply_max(lines, max)
+end
+
+local function _json_decode_list_input(expr)
+    if type(expr) ~= "table" or expr.__call then
+        return nil
+    end
+    local maxk = 0
+    local count = 0
+    for k, _ in pairs(expr) do
+        if type(k) ~= "number" or k < 1 or k % 1 ~= 0 then
+            return nil
+        end
+        if k > maxk then
+            maxk = k
+        end
+        count = count + 1
+    end
+    if count ~= maxk then
+        return nil
+    end
+    local parts = {}
+    for i = 1, #expr do
+        parts[i] = tostring(expr[i] or "")
+    end
+    return table.concat(parts, "\n")
+end
+
+-- json_decode({expr}): parse JSON string or readfile()-style list.
+function Builtins.json_decode(expr)
+    local payload
+    if type(expr) == "string" then
+        payload = expr
+    else
+        payload = _json_decode_list_input(expr)
+    end
+    if payload == nil then
+        error(Error(474, "json_decode()"):toString())
+    end
+
+    local parser = textutils.unserializeJSON
+    local decoded, perr = parser(payload, {
+        parse_null = true,
+        parse_empty_array = false,
+    })
+    if decoded == nil then
+        local reason = tostring(perr or "json_decode()")
+        error(Error(474, reason):toString())
+    end
+    return decoded
 end
 
 -- match({expr}, {pat} [, {start} [, {count}]])
@@ -2698,12 +2876,16 @@ function Builtins.byteidx(expr, nr, utf16)
 end
 
 function Builtins.sign_undefine(name)
-    if type(name) == "string" then
+    if name == nil then
+        return Sign.undefine(nil)
+    elseif type(name) == "string" then
         return Sign.undefine(name)
     elseif type(name) == "table" then
         local rv = {}
         for i = 1, #name do
-            rv[#rv + 1] = Sign.undefine(name[i].name)
+            local item = name[i]
+            local sign_name = (type(item) == "table") and item.name or item
+            rv[#rv + 1] = Sign.undefine(sign_name)
         end
         return rv
     else
@@ -2715,13 +2897,51 @@ function Builtins.sign_place(id, group, name, buf, opts)
     return Sign.place(id, group, name, buf, opts)
 end
 
+function Builtins.sign_getplaced(buf, dict)
+    return Sign.getplaced(buf, dict)
+end
+
+function Builtins.sign_jump(id, group, buf)
+    return Sign.jump(id, group, buf)
+end
+
+function Builtins.sign_placelist(list)
+    local out = {}
+    for i = 1, #list do
+        local item = list[i]
+        out[#out + 1] = Sign.place(
+            item.id or 0,
+            item.group or "",
+            item.name,
+            item.buffer or 0,
+            {
+                lnum = item.lnum,
+                priority = item.priority,
+            }
+        )
+    end
+    return out
+end
+
 function Builtins.sign_unplace(group, opts)
     return Sign.unplace(group, opts)
 end
 
--- TODO: implement fnameescape
+function Builtins.sign_unplacelist(list)
+    local out = {}
+    for i = 1, #list do
+        local item = list[i]
+        out[#out + 1] = Sign.unplace(item.group or "", {
+            buffer = item.buffer,
+            id = item.id,
+        })
+    end
+    return out
+end
+
 function Builtins.fnameescape(fname)
-    return fname
+    local s = tostring(fname or "")
+    return (s:gsub("([ \t\r\n\\\"'|%*%?%[%]{}<>`$!#%%])", "\\%1"))
 end
 
 function Builtins.escape(str, chars)
@@ -3249,6 +3469,55 @@ function Builtins.len(x)
     end
 end
 
+local function _require_dict_for_keys_items(dict)
+    if type(dict) ~= "table" then
+        error(Error(1206, 1):toString())
+    end
+    local mt = getmetatable(dict)
+    if mt and mt.__vimxpr_kind == "list" then
+        error(Error(1206, 1):toString())
+    end
+    if not (mt and mt.__vimxpr_kind == "dict") then
+        local has_non_numeric_key = false
+        local has_numeric_key = false
+        for k, _ in pairs(dict) do
+            if type(k) == "number" and k >= 1 and k % 1 == 0 then
+                has_numeric_key = true
+            else
+                has_non_numeric_key = true
+                break
+            end
+        end
+        if not has_non_numeric_key and has_numeric_key then
+            error(Error(1206, 1):toString())
+        end
+    end
+end
+
+function Builtins.keys(dict, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "keys"):toString())
+    end
+    _require_dict_for_keys_items(dict)
+    local out = {}
+    for k, _ in pairs(dict) do
+        out[#out + 1] = tostring(k)
+    end
+    return out
+end
+
+function Builtins.items(dict, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "items"):toString())
+    end
+    _require_dict_for_keys_items(dict)
+    local out = {}
+    for k, v in pairs(dict) do
+        out[#out + 1] = { tostring(k), v }
+    end
+    return out
+end
+
 function Builtins.has_key(dict, key, ...)
     if select("#", ...) > 0 then
         error(Error(118, "has_key"):toString())
@@ -3533,8 +3802,106 @@ function Builtins.max(lst)
     return m or 0
 end
 
-function Builtins.deepcopy(obj, noref)
-    return TblUtils.deepcopy(obj, noref)
+local function _copy_table_kind(tbl)
+    if type(tbl) ~= "table" then
+        return nil
+    end
+    local mt = getmetatable(tbl)
+    if mt and mt.__vimxpr_kind == "list" then
+        return "list"
+    end
+    if mt and mt.__vimxpr_kind == "dict" then
+        return "dict"
+    end
+    return _is_list(tbl) and "list" or "dict"
+end
+
+local function _copy_mark_kind(src, dst)
+    local mt = getmetatable(src)
+    if mt ~= nil then
+        return setmetatable(dst, mt)
+    end
+    return dst
+end
+
+local function _copy_shallow_table(tbl)
+    local out = {}
+    if _copy_table_kind(tbl) == "list" then
+        for i = 1, #tbl do
+            out[i] = tbl[i]
+        end
+    else
+        for k, v in pairs(tbl) do
+            out[k] = v
+        end
+    end
+    return _copy_mark_kind(tbl, out)
+end
+
+local function _deepcopy_value(obj, noref_mode, cache, stack, depth)
+    if type(obj) ~= "table" then
+        return obj
+    end
+
+    local next_depth = depth + 1
+    if next_depth > 100 then
+        error(Error(698):toString())
+    end
+
+    if not noref_mode then
+        local cached = cache[obj]
+        if cached ~= nil then
+            return cached
+        end
+        local out = _copy_mark_kind(obj, {})
+        cache[obj] = out
+        if _copy_table_kind(obj) == "list" then
+            for i = 1, #obj do
+                out[i] = _deepcopy_value(obj[i], noref_mode, cache, stack, next_depth)
+            end
+        else
+            for k, v in pairs(obj) do
+                out[k] = _deepcopy_value(v, noref_mode, cache, stack, next_depth)
+            end
+        end
+        return out
+    end
+
+    if stack[obj] then
+        error(Error(724):toString())
+    end
+    stack[obj] = true
+
+    local out = _copy_mark_kind(obj, {})
+    if _copy_table_kind(obj) == "list" then
+        for i = 1, #obj do
+            out[i] = _deepcopy_value(obj[i], noref_mode, cache, stack, next_depth)
+        end
+    else
+        for k, v in pairs(obj) do
+            out[k] = _deepcopy_value(v, noref_mode, cache, stack, next_depth)
+        end
+    end
+
+    stack[obj] = nil
+    return out
+end
+
+function Builtins.copy(obj, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "copy"):toString())
+    end
+    if type(obj) ~= "table" then
+        return obj
+    end
+    return _copy_shallow_table(obj)
+end
+
+function Builtins.deepcopy(obj, noref, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "deepcopy"):toString())
+    end
+    return _deepcopy_value(obj, _vim_truthy(noref), {}, {}, 0)
 end
 
 function Builtins.join(lst, sep)
@@ -3706,7 +4073,7 @@ function Builtins.executable(fname)
     local p = tostring(fname or "")
     if p == "" then return 0 end
     local path = _abs_path(p)
-    if fs.exists(path) and not fs.isDir(path) then
+    if fs.exists(path) and not fs.isDir(path) and path:match("%.lua$") then
         return 1
     end
     return 0
