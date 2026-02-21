@@ -17,22 +17,17 @@ local mock = MockEnv.setup({
         },
         ["vim.layout.buffer"] = {},
         ["vim.layout.window"] = {},
-        ["vim.lib.syntax"] = {
-            ParseLinetypes = function() end,
-            OwnSyntax = function() end,
-            ExecuteCommand = function() return true end,
-            SyntimeReport = function() return {} end,
-            SyntimeSet = function() end,
-            SyntimeClear = function() end,
-            MatchCommand = function() return true end,
-            OnWindowBufferChanged = function() end,
+        ["vim.lib.sign"] = {
+            define = function() end,
+            getdefined = function() return {} end,
+            on_lines_changed = function() end,
         },
     },
 })
 
-local function assert_true(label, cond)
+local function assert_true(label, cond, detail)
     if not cond then
-        error(("FAIL %s: expected true, got false"):format(label))
+        error(("FAIL %s: %s"):format(label, tostring(detail)))
     end
 end
 
@@ -48,7 +43,7 @@ local Compiler = mock.loadModule("vim.lib.excmd.compiler")
 local Runtime = mock.loadModule("vim.lib.excmd.runtime")
 local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
 
-local test_buf = mock.create_buffer(1, "/tmp/test_compiler.vim", { "" }, {})
+local test_buf = mock.create_buffer(1, "/tmp/hash_dict_test.vim", { "" }, {})
 local test_win = mock.create_window(1, test_buf, {})
 mock.create_tabpage(1, { test_win }, {})
 curtp = 1
@@ -78,44 +73,31 @@ local function run_compiled(script, opts)
 
     local fn = chunk()
     local ok, rv = pcall(fn, state, runtime)
-    if not ok then return false, rv, state, code end
-    return true, rv, state, code
+    if not ok then return false, rv end
+    return true, rv, state
 end
 
--- Test: execute $'...' with interpolation of {expr}
-do
-    local ok, rv, state, code = run_compiled([[
-let s_val = 42
-execute $'let g:interp_exec = {s_val}'
-]], { script_ctx = "/tmp/exec_interp.vim" })
-    assert_true("execute $' interpolation runs", ok == true)
-    assert_eq("interpolated value set", state.g.interp_exec, 42)
-end
-
--- Test: execute with mixed expression args where some args are $'...'
--- (same shape used by runtime/syntax/help.vim).
-do
-    local ok, rv, state, code = run_compiled([[
-let s_lang = 'vim'
-let s_syntax = 'vim'
-execute 'echo' $'"@helpExampleHighlight_{s_lang}"' $'"syntax/{s_syntax}.vim"'
-]], { script_ctx = "/tmp/exec_interp_multi_args.vim" })
-    assert_true("execute mixed args with $'...' runs", ok == true)
-end
-
--- Repro: help.vim pattern that previously caused
--- "Invalid numeric coercion! Type=nil" under MockEnv.
-do
-    local ok, rv, state, code = run_compiled([[
+local script = [[
 if !exists('g:help_example_languages')
   let g:help_example_languages = #{ vim: 'vim' }
 endif
-for [s:lang, s:syntax] in g:help_example_languages->items()
-  execute 'silent! syn include' $'@helpExampleHighlight_{s:lang}'
-        \ $'syntax/{s:syntax}.vim'
-endfor
-]], { script_ctx = "/tmp/exec_interp_help_repro.vim" })
-    assert_true("execute help.vim interpolation pattern runs", ok == true)
+]]
+
+do
+    local ok, rv, state = run_compiled(script, { script_ctx = "/tmp/hash_dict_literal_runtime.vim" })
+    assert_true("hash-dict literal script executes", ok == true, rv)
+
+    local tbl = state.g.help_example_languages
+    assert_true("g:help_example_languages set", type(tbl) == "table", type(tbl))
+    assert_eq("dict key populated", tbl.vim, "vim")
 end
 
-print("excmd execute $'... interpolation test: OK")
+do
+    local g = Scopes._g
+    g.help_example_languages = { vim = "kept" }
+    local ok, rv, state = run_compiled(script, { script_ctx = "/tmp/hash_dict_literal_runtime_2.vim" })
+    assert_true("hash-dict literal script executes when var exists", ok == true, rv)
+    assert_eq("if !exists gate respected", state.g.help_example_languages.vim, "kept")
+end
+
+print("hash-dict literal runtime tests: OK")

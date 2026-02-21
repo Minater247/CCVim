@@ -170,6 +170,10 @@ local ok_verbose_exe = run_compiled([[0verbose exe "let g:verbose_exe_ok = 1"]])
 assert_eq("verbose + execute abbreviation", ok_verbose_exe, true)
 assert_eq("verbose execute body executed", Scopes._g.verbose_exe_ok, 1)
 
+local ok_verbose_level = run_compiled([[3verbose let g:verbose_level_seen = &verbose]])
+assert_eq("verbose count prefix parse", ok_verbose_level, true)
+assert_eq("3verbose applies level 3", Scopes._g.verbose_level_seen, 3)
+
 local ok_scope_dict = run_compiled([[
 let g:scope_probe = 12
 let g:scope_get = get(g:, 'scope_probe', -1)
@@ -217,5 +221,16 @@ let g:script_local_call_ctx = g:CallScriptA()
 ]], { script_ctx = "/tmp/script_b_ctx.vim" })
 assert_eq("cross-script call executes", ok_script_b, true)
 assert_eq("callee keeps defining script-local context", Scopes._g.script_local_call_ctx, "A")
+
+local ok_underscore_arg = run_compiled([[
+function! foo#ArgUnder(tutor_name)
+  let g:underscore_arg_type = type(a:tutor_name)
+  let g:underscore_arg_value = a:tutor_name
+endfunction
+call foo#ArgUnder('abc')
+]])
+assert_eq("function arg with underscore executes", ok_underscore_arg, true)
+assert_eq("underscore arg type is string", Scopes._g.underscore_arg_type, 1)
+assert_eq("underscore arg value is preserved", Scopes._g.underscore_arg_value, "abc")
 
 print("autocmd script-state tests: OK")

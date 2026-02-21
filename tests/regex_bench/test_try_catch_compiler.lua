@@ -48,6 +48,23 @@ local Compiler = mock.loadModule("vim.lib.excmd.compiler")
 local Runtime = mock.loadModule("vim.lib.excmd.runtime")
 local Scopes = mock.loadModule("vim.lib.luaapi.scopes")
 
+local buf = mock.create_buffer(1, "/tmp/trycatch.txt", { "" })
+local win = {
+    winnr = 1,
+    buffer = buf,
+    opts = {},
+    cursorx = 1,
+    cursory = 1,
+    cursorSet = function(self, x, y)
+        self.cursorx = x
+        self.cursory = y
+    end,
+}
+windows[1] = win
+tabpages[1].windows = { win }
+curtp = 1
+curwin = 1
+
 local durable_by_ctx = {}
 local function run_compiled(script, opts)
     opts = opts or {}

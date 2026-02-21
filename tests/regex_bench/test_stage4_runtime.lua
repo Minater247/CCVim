@@ -62,6 +62,7 @@ local normal_fg = colors.toBlit(Highlight.For("Normal")[1])
 local string_fg = colors.toBlit(Highlight.For("String")[1])
 local comment_fg = colors.toBlit(Highlight.For("Comment")[1])
 local structure_fg = colors.toBlit(Highlight.For("Structure")[1])
+local error_fg = colors.toBlit(Highlight.For("Error")[1])
 local error_bg = colors.toBlit(Highlight.For("Error")[2])
 
 -- keyword baseline
@@ -157,6 +158,47 @@ do
     assert_eq("region start assignment keeps spaces", parsed.patterns.start[1].pattern, "+foo bar+")
     assert_eq("region skip assignment keeps spaces", parsed.patterns.skip[1].pattern, "+x y +")
     assert_eq("region end assignment keeps spaces", parsed.patterns["end"][1].pattern, "+tail+")
+end
+
+-- Quoted delimiter-form patterns may contain the quote delimiter inside [].
+-- Tokenization must not terminate at quote characters that are part of the class.
+do
+    local parsed = Parser.parse('match Comment "[^"]\\+"')
+    assert_eq("quoted delimiter inside [] class is preserved", parsed.pattern, '"[^"]\\+"')
+end
+
+-- Delimiter-form patterns may contain the delimiter literally inside [] classes.
+-- Parser tokenization must not terminate on that inner delimiter.
+do
+    local parsed = Parser.parse("region Comment start=+[,+ ]+ end=+tail+")
+    assert_eq("delimiter inside [] class is preserved", parsed.patterns.start[1].pattern, "+[,+ ]+")
+end
+
+-- Runtime delimiter splitting must also ignore delimiters inside [] classes.
+-- Otherwise a pattern like +[ab+]+ gets truncated to [ab and crashes string.find.
+do
+    local ctx = mk_ctx({
+        "match Comment +[ab+]+",
+    })
+    local buf = mk_buf({ "+" })
+    local ok, blit = pcall(Runtime.line_to_blit, ctx, buf, 1)
+    assert_true("delimiter inside [] class does not crash runtime", ok == true)
+    if ok then
+        assert_eq("delimiter inside [] class matches", fg_at(blit, 1), comment_fg)
+    end
+end
+
+-- For equal-start region end patterns, later-defined end= specs should win.
+-- help.vim uses this to ensure the "^<" end pattern is used over a broader
+-- "^[^ \\t]" match with me=e-1 at the same position.
+do
+    local ctx = mk_ctx({
+        "region Comment matchgroup=Error start=/>/ end=/^[^ \\t]/me=e-1 end=/^</",
+    })
+    local buf = mk_buf({ ">vim", "<" })
+    Runtime.line_to_blit(ctx, buf, 1)
+    local blit2 = Runtime.line_to_blit(ctx, buf, 2)
+    assert_eq("region end tie-break prefers later end= pattern", fg_at(blit2, 1), error_fg)
 end
 
 -- contained keyword only inside container region

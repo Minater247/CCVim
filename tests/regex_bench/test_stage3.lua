@@ -92,6 +92,19 @@ assert_match("simple ignore-case", R, "token123", "\\<Token\\d\\+\\>", false, 1,
 -- Otherwise classes like [#%] can overrun and match arbitrary text.
 assert_no_match("bclass percent literal", R, "if exists", "#\\d\\+\\|[#%]<\\>", true)
 
+-- Open-ended counted repeats must work in simple-mode patterns.
+assert_match("counted repeat open upper", R, "aab", "a\\{2,}", true, 1, 2)
+assert_match("help option pattern repeat", R, "'textwidth'", "'[a-z]\\{2,\\}'", true, 1, 11)
+
+-- Unterminated [] classes should fail during compile, not crash later at match time.
+do
+    local compiled, emsg = R.compile("[abc")
+    assert_eq("unterminated [] class compile result", compiled, nil)
+    if not tostring(emsg or ""):find("Unterminated [] class", 1, true) then
+        error(("FAIL unterminated [] class error text: got %s"):format(tostring(emsg)))
+    end
+end
+
 -- Engine selector atoms are zero-width and should not affect matching.
 assert_match(
     "engine selector no-op",

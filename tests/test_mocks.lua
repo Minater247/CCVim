@@ -115,6 +115,13 @@ function MockEnv.setup(config)
     -- Module loader
     local MODULE_CACHE = {}
     local module_stubs = config.module_stubs or {}
+
+    if module_stubs["vim.lib.sign"] then
+        local sign_stub = module_stubs["vim.lib.sign"]
+        sign_stub.on_lines_changed = sign_stub.on_lines_changed or function() end
+        sign_stub.getplaced = sign_stub.getplaced or function() return {} end
+        sign_stub.jump = sign_stub.jump or function() return -1 end
+    end
     
     function _G.loadModule(name)
         if MODULE_CACHE[name] then
@@ -180,6 +187,7 @@ function MockEnv.setup(config)
     
     -- Helper to create a buffer
     function mock.create_buffer(bufnr, name, lines, opts)
+        local Utf8 = loadModule("vim.lib.utf8")
         local loaded = true
         if opts and opts.loaded ~= nil then
             loaded = not not opts.loaded
@@ -228,6 +236,47 @@ function MockEnv.setup(config)
         buf.get_line = function(self, line_nr, load_if_unloaded)
             local lns = self:lines_ref(load_if_unloaded)
             return lns[line_nr]
+        end
+        buf.str_len = function(self, s)
+            return Utf8.len(s or "")
+        end
+        buf.str_sub = function(self, s, start_col1, end_col1)
+            return Utf8.sub(s or "", start_col1, end_col1)
+        end
+        buf.str_char_at = function(self, s, col1)
+            return Utf8.char_at(s or "", col1)
+        end
+        buf.str_codepoint_at = function(self, s, col1)
+            return Utf8.codepoint_at(s or "", col1)
+        end
+        buf.str_byte_index = function(self, s, col1, allow_eol)
+            return Utf8.byte_index(s or "", col1, allow_eol)
+        end
+        buf.str_col_from_byte = function(self, s, byte_idx, allow_eol)
+            return Utf8.col_from_byte(s or "", byte_idx, allow_eol)
+        end
+        buf.str_each_codepoint = function(self, s, visitor)
+            return Utf8.each_codepoint(s or "", visitor)
+        end
+        buf.line_len = function(self, line_nr, load_if_unloaded)
+            local line = self:get_line(line_nr, load_if_unloaded) or ""
+            return Utf8.len(line)
+        end
+        buf.line_sub = function(self, line_nr, start_col1, end_col1, load_if_unloaded)
+            local line = self:get_line(line_nr, load_if_unloaded) or ""
+            return Utf8.sub(line, start_col1, end_col1)
+        end
+        buf.line_char_at = function(self, line_nr, col1, load_if_unloaded)
+            local line = self:get_line(line_nr, load_if_unloaded) or ""
+            return Utf8.char_at(line, col1)
+        end
+        buf.line_codepoint_at = function(self, line_nr, col1, load_if_unloaded)
+            local line = self:get_line(line_nr, load_if_unloaded) or ""
+            return Utf8.codepoint_at(line, col1)
+        end
+        buf.line_byte_index = function(self, line_nr, col1, load_if_unloaded, allow_eol)
+            local line = self:get_line(line_nr, load_if_unloaded) or ""
+            return Utf8.byte_index(line, col1, allow_eol)
         end
         _G.buffers[bufnr] = buf
         return buf

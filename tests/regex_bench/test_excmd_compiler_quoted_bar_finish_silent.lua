@@ -129,7 +129,7 @@ let g:finish_seen = 2
     end
     assert_eq("finish stops script", state.g.finish_seen, 1)
     assert_true("finish lowered directly", code:find("error(runtime:return_exc(nil))", 1, true) ~= nil)
-    assert_true("finish avoids invoke_command", code:find("runtime:invoke_command(\"finish\"", 1, true) == nil)
+    assert_true("finish avoids generic command invoke", code:find("runtime:invoke_compiled_command({ name = \"finish\"", 1, true) == nil)
 end
 
 do
@@ -243,7 +243,9 @@ let g:nmap_bar_split = 1
         error(tostring(rv))
     end
     assert_true("nmap arg does not swallow endif", code:find("NetrwBrowseUpDir|endif", 1, true) == nil)
-    assert_true("nmap invoke generated", code:find("runtime:invoke_command(\"nmap\", \"<buffer> <silent> <nowait> - <Plug>NetrwBrowseUpDir\", false)", 1, true) ~= nil)
+    assert_true("nmap invoke generated", code:find("runtime:invoke_compiled_command({ name = \"nmap\"", 1, true) ~= nil)
+    assert_true("nmap qargs preserved", code:find("qargs = \"<buffer> <silent> <nowait> - <Plug>NetrwBrowseUpDir\"", 1, true) ~= nil)
+    assert_true("nmap ws args pre-split", code:find("ws_args = { \"<buffer>\", \"<silent>\", \"<nowait>\", \"-\", \"<Plug>NetrwBrowseUpDir\" }", 1, true) ~= nil)
     assert_eq("script continues after inline endif", state.g.nmap_bar_split, 1)
 end
 
@@ -257,7 +259,8 @@ let g:windo_bar_split = 1
     if code == nil then
         error(err_string(err))
     end
-    assert_true("windo keeps full command chain", code:find("runtime:invoke_command(\"windo\", \"if getline(2) =~# \\\"Netrw\\\" | let s:netrwcnt= s:netrwcnt + 1 | endif\", false)", 1, true) ~= nil)
+    assert_true("windo keeps full command chain", code:find("runtime:invoke_compiled_command({ name = \"windo\"", 1, true) ~= nil)
+    assert_true("windo qargs preserved", code:find("qargs = \"if getline(2) =~# \\\"Netrw\\\" | let s:netrwcnt= s:netrwcnt + 1 | endif\"", 1, true) ~= nil)
     assert_true("windo arg does not emit top-level endif", code:find("runtime:set_exec_cursor(3, \"endif\", \"endif\", \"\")", 1, true) == nil)
 end
 
@@ -269,9 +272,9 @@ nnoremap <silent><buffer> [[ m':call search('^\s*\(fu\%[nction]\\|def\)\>', "bW"
     if code == nil then
         error(err_string(err))
     end
-    assert_true("mapping compile emits nnoremap invoke", code:find("runtime:invoke_command(\"nnoremap\", \"<silent><buffer> [[ ", 1, true) ~= nil)
+    assert_true("mapping compile emits nnoremap invoke", code:find("runtime:invoke_compiled_command({ name = \"nnoremap\"", 1, true) ~= nil)
     assert_true("mapping compile keeps escaped regex alternation text", code:find("\\\\|def", 1, true) ~= nil)
-    assert_true("mapping compile does not create bogus def command", code:find("runtime:invoke_command(\"def\",", 1, true) == nil)
+    assert_true("mapping compile does not create bogus def command", code:find("runtime:invoke_compiled_command({ name = \"def\"", 1, true) == nil)
 end
 
 print("excmd compiler quoted-bar/finish/silent tests: OK")

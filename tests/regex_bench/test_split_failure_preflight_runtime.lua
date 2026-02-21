@@ -128,6 +128,11 @@ local function make_win(id)
     return {
         winnr = id,
         tabpagenr = 1,
+        buffer = {
+            name = "/tmp/split_preflight_runtime.txt",
+            line_count = function() return 1 end,
+            get_line = function() return "" end,
+        },
         style = nil,
         floatpos = nil,
         need_redraw = false,

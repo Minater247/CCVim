@@ -49,6 +49,7 @@ local mock = MockEnv.setup({
             SyntimeReport = function() return {} end,
             SyntimeSet = function() end,
             SyntimeClear = function() end,
+            OnWindowBufferChanged = function() end,
         },
         ["vim.lib.autocmd"] = {
             Run = function() return 0 end,
@@ -242,6 +243,39 @@ let g:curly_var_probe = exists("s:netrwmarkfilemtch_{bufnr('%')}") && s:netrwmar
     assert_true("curly var expression runs", ok == true)
     if ok ~= true then error(err_string(rv)) end
     assert_eq("curly var expression evaluates true", Scopes._g.curly_var_probe, 1)
+end
+
+do
+    local buf = reset_buffer({ "one" })
+    buf.name = nil
+    local target = "/tmp/drop_nil_name_target.txt"
+    local ok, rv = run_compiled("drop " .. target, { script_ctx = "/tmp/drop_nil_name_runtime.vim" })
+    assert_true("drop handles nil current buffer name", ok == true)
+    if ok ~= true then error(err_string(rv)) end
+    assert_eq("drop updates current buffer to target", win.buffer.name, target)
+end
+
+do
+    reset_buffer({ "one" })
+    local target = "/tmp/drop escaped space target.txt"
+    local escaped = target:gsub(" ", "\\ ")
+    local ok, rv = run_compiled("drop " .. escaped, { script_ctx = "/tmp/drop_escaped_space_runtime.vim" })
+    assert_true("drop accepts escaped spaces", ok == true)
+    if ok ~= true then error(err_string(rv)) end
+    assert_eq("drop preserves escaped-space target", win.buffer.name, target)
+end
+
+do
+    reset_buffer({ "one" })
+    local target = "/tmp/drop fnameescape target.txt"
+    local script = ([[
+let g:drop_target = '%s'
+execute 'drop ' . fnameescape(g:drop_target)
+]]):format(target)
+    local ok, rv = run_compiled(script, { script_ctx = "/tmp/drop_fnameescape_runtime.vim" })
+    assert_true("drop + fnameescape accepts spaces", ok == true)
+    if ok ~= true then error(err_string(rv)) end
+    assert_eq("drop + fnameescape preserves full target", win.buffer.name, target)
 end
 
 print("file/delete/curlyvar runtime tests: OK")

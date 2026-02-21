@@ -71,15 +71,12 @@ _G.term.getSize = function()
 end
 
 local resize_calls = {}
+local Error = mock.loadModule("vim.lib.error")
 _G._V = {
     apply_terminal_resize = function(w, h, source)
         resize_calls[#resize_calls + 1] = { w = w, h = h, source = source }
         if source == "monitor_resize" then
-            return false, {
-                toString = function()
-                    return "E36: Not enough room"
-                end,
-            }
+            return false, Error(36)
         end
         return true
     end,
