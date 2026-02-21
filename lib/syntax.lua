@@ -6,7 +6,7 @@ local function load_engine()
     end
 
     local env = _V or _ENV
-    local chunk, err = loadfile("vim/lib/syntax_engine/api.lua", "t", env)
+    local chunk, err = loadfile(ccvim_path .. "/lib/syntax_engine/api.lua", "t", env)
     if not chunk then
         error("Failed to load syntax engine API: " .. tostring(err))
     end
