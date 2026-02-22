@@ -67,7 +67,36 @@ function MockEnv.setup(config)
     _G.what_redraw = {}
     _G.registers = {}
     _G.keys = config.keys or make_default_keys()
-    _G.ccvim_path = config.ccvim_path or "."
+
+
+    local function infer_ccvim_path()
+        if config.ccvim_path then
+            return config.ccvim_path
+        end
+        -- level 3 = caller of Setup (level1=infer,2=setup,3=invoker)
+        local info = debug.getinfo(3, "S")
+        if info and type(info.source) == "string" then
+            local src = info.source
+            if src:sub(1,1) == "@" then
+                src = src:sub(2)
+            end
+            local dir = src:match("(.*/)")
+            if dir then
+                local up1 = dir:gsub("/$", ""):match("(.*/)")
+                if up1 then
+                    local up2 = up1:gsub("/$", ""):match("(.*/)")
+                    if up2 then
+                        return up2:gsub("/$", "")
+                    end
+                    return up1:gsub("/$", "")
+                end
+                return dir:gsub("/$", "")
+            end
+        end
+        error("Failed to infer ccvim directory!")
+    end
+
+    _G.ccvim_path = infer_ccvim_path()
     
     -- bit32 compatibility
     _G.bit32 = _G.bit32 or {
@@ -141,13 +170,13 @@ function MockEnv.setup(config)
             loadModule = _G.loadModule,
         }, { __index = _G })
 
-        local chunk, err = loadfile(path, "t", env)
-        if not chunk then
-            error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
+        local chunk, err = loadfile(_G.ccvim_path .. "/" .. path, "t", env)
+        if chunk then
+            local mod = chunk()
+            MODULE_CACHE[name] = mod
+            return mod
         end
-        local mod = chunk()
-        MODULE_CACHE[name] = mod
-        return mod
+        error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
     end
     
     -- Return helper object with metatable interfaces

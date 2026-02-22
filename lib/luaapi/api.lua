@@ -1422,6 +1422,28 @@ function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
     return id
 end
 
+function api.nvim_buf_add_highlight(buffer, ns_id, hl_group, line, col_start, col_end)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+
+    if ns_id == 0 then
+        ns_id = api.nvim_create_namespace("")
+    end
+
+    if hl_group == "" then
+        return ns_id
+    end
+
+    local opts = { hl_group = hl_group }
+    if col_end ~= nil then
+        opts.end_col = col_end
+    end
+
+    -- ignore extmark id return value; callers expect ns_id.
+    api.nvim_buf_set_extmark(buffer, ns_id, line, col_start, opts)
+    return ns_id
+end
+
 function api.nvim_strwidth(text)
     return Utf8.len(text)
 end
