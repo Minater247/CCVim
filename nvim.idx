@@ -1,2122 +1,2367 @@
 nvim.lua
-layout/buffer.lua
-layout/tabpage.lua
-layout/window.lua
-lib/aliastable.lua
-lib/args.lua
-lib/autocmd.lua
-lib/command.lua
-lib/envvars.lua
-lib/error.lua
-lib/event.lua
-lib/excmd/cmdread.lua
-lib/excmd/commands.lua
-lib/excmd/compiler.lua
-lib/excmd/exmsg.lua
-lib/excmd/runtime.lua
-lib/excmd/vim_regex.lua
-lib/excmd/vimxpr.lua
-lib/filesystem.lua
-lib/frame.lua
-lib/highlight.lua
-lib/key.lua
-lib/listchars.lua
-lib/luaapi/F.lua
-lib/luaapi/api.lua
-lib/luaapi/apibuild.lua
-lib/luaapi/deferfn.lua
-lib/luaapi/diagnostic.lua
-lib/luaapi/env.lua
-lib/luaapi/fakejit.lua
-lib/luaapi/fileload.lua
-lib/luaapi/fn.lua
-lib/luaapi/fs.lua
-lib/luaapi/keymap.lua
-lib/luaapi/log.lua
-lib/luaapi/loop.lua
-lib/luaapi/notify.lua
-lib/luaapi/on_key.lua
-lib/luaapi/opt.lua
-lib/luaapi/opts.lua
-lib/luaapi/package.lua
-lib/luaapi/print.lua
-lib/luaapi/require.lua
-lib/luaapi/scopes.lua
-lib/luaapi/split.lua
-lib/luaapi/strutils.lua
-lib/luaapi/system.lua
-lib/luaapi/tblutils.lua
-lib/luaapi/timerutils.lua
-lib/luaapi/treesitter.lua
-lib/lualoader.lua
-lib/mappings.lua
-lib/options.lua
-lib/pack.lua
-lib/runtimepath.lua
-lib/scriptsource.lua
-lib/sign.lua
-lib/statusline.lua
-lib/syntax.lua
-lib/syntax_engine/api.lua
-lib/syntax_engine/command_parser.lua
-lib/syntax_engine/compiler.lua
-lib/syntax_engine/profile.lua
-lib/syntax_engine/runtime.lua
-lib/syntax_engine/state.lua
-lib/tab.lua
-lib/tags.lua
-lib/texren.lua
-lib/utf8.lua
-lib/wordnav.lua
-runtime/autoload/README.txt
-runtime/autoload/RstFold.vim
-runtime/autoload/ada.vim
-runtime/autoload/adacomplete.vim
-runtime/autoload/bitbake.vim
-runtime/autoload/cargo/quickfix.vim
-runtime/autoload/cargo.vim
-runtime/autoload/ccomplete.lua
-runtime/autoload/ccomplete.vim
-runtime/autoload/clojurecomplete.vim
-runtime/autoload/context.vim
-runtime/autoload/contextcomplete.vim
-runtime/autoload/csscomplete.vim
-runtime/autoload/decada.vim
-runtime/autoload/dist/vim.vim
-runtime/autoload/freebasic.vim
-runtime/autoload/gnat.vim
-runtime/autoload/gzip.vim
-runtime/autoload/hare.vim
-runtime/autoload/haskellcomplete.vim
-runtime/autoload/hcl.vim
-runtime/autoload/htmlcomplete.vim
-runtime/autoload/javaformat.vim
-runtime/autoload/javascriptcomplete.vim
-runtime/autoload/modula2.vim
-runtime/autoload/msgpack.vim
-runtime/autoload/paste.vim
-runtime/autoload/phpcomplete.vim
-runtime/autoload/provider/clipboard.vim
-runtime/autoload/provider/node.vim
-runtime/autoload/provider/perl.vim
-runtime/autoload/provider/python3.vim
-runtime/autoload/provider/ruby.vim
-runtime/autoload/provider/script_host.rb
-runtime/autoload/provider.vim
-runtime/autoload/python.vim
-runtime/autoload/python3complete.vim
-runtime/autoload/pythoncomplete.vim
-runtime/autoload/remote/define.vim
-runtime/autoload/remote/host.vim
-runtime/autoload/rubycomplete.vim
-runtime/autoload/rust/debugging.vim
-runtime/autoload/rust.vim
-runtime/autoload/rustfmt.vim
-runtime/autoload/shada.vim
-runtime/autoload/spellfile.vim
-runtime/autoload/spotbugs.vim
-runtime/autoload/sqlcomplete.vim
-runtime/autoload/syntaxcomplete.vim
-runtime/autoload/tar.vim
-runtime/autoload/tutor.vim
-runtime/autoload/typst.vim
-runtime/autoload/vimexpect.vim
-runtime/autoload/xml/html32.vim
-runtime/autoload/xml/html401f.vim
-runtime/autoload/xml/html401s.vim
-runtime/autoload/xml/html401t.vim
-runtime/autoload/xml/html40f.vim
-runtime/autoload/xml/html40s.vim
-runtime/autoload/xml/html40t.vim
-runtime/autoload/xml/xhtml10f.vim
-runtime/autoload/xml/xhtml10s.vim
-runtime/autoload/xml/xhtml10t.vim
-runtime/autoload/xml/xhtml11.vim
-runtime/autoload/xml/xsd.vim
-runtime/autoload/xml/xsl.vim
-runtime/autoload/xmlcomplete.vim
-runtime/autoload/xmlformat.vim
-runtime/autoload/zip.vim
-runtime/colors/README.txt
-runtime/colors/blue.vim
-runtime/colors/darkblue.vim
-runtime/colors/default.vim
-runtime/colors/delek.vim
-runtime/colors/desert.vim
-runtime/colors/elflord.vim
-runtime/colors/evening.vim
-runtime/colors/habamax.vim
-runtime/colors/industry.vim
-runtime/colors/koehler.vim
-runtime/colors/lunaperche.vim
-runtime/colors/morning.vim
-runtime/colors/murphy.vim
-runtime/colors/pablo.vim
-runtime/colors/peachpuff.vim
-runtime/colors/quiet.vim
-runtime/colors/retrobox.vim
-runtime/colors/ron.vim
-runtime/colors/shine.vim
-runtime/colors/slate.vim
-runtime/colors/sorbet.vim
-runtime/colors/torte.vim
-runtime/colors/unokai.vim
-runtime/colors/vim.lua
-runtime/colors/wildcharm.vim
-runtime/colors/zaibatsu.vim
-runtime/colors/zellner.vim
-runtime/compiler/README.txt
-runtime/compiler/ant.vim
-runtime/compiler/bash.vim
-runtime/compiler/bcc.vim
-runtime/compiler/bdf.vim
-runtime/compiler/cargo.vim
-runtime/compiler/checkstyle.vim
-runtime/compiler/cm3.vim
-runtime/compiler/context.vim
-runtime/compiler/cppcheck.vim
-runtime/compiler/cs.vim
-runtime/compiler/csslint.vim
-runtime/compiler/cucumber.vim
-runtime/compiler/dart.vim
-runtime/compiler/dart2js.vim
-runtime/compiler/dart2native.vim
-runtime/compiler/dartanalyser.vim
-runtime/compiler/dartdevc.vim
-runtime/compiler/dartdoc.vim
-runtime/compiler/dartfmt.vim
-runtime/compiler/decada.vim
-runtime/compiler/dot.vim
-runtime/compiler/dotnet.vim
-runtime/compiler/erlang.vim
-runtime/compiler/eruby.vim
-runtime/compiler/eslint.vim
-runtime/compiler/fbc.vim
-runtime/compiler/fortran_F.vim
-runtime/compiler/fortran_cv.vim
-runtime/compiler/fortran_elf90.vim
-runtime/compiler/fortran_g77.vim
-runtime/compiler/fortran_lf95.vim
-runtime/compiler/fpc.vim
-runtime/compiler/g95.vim
-runtime/compiler/gawk.vim
-runtime/compiler/gcc.vim
-runtime/compiler/gfortran.vim
-runtime/compiler/ghc.vim
-runtime/compiler/gjs.vim
-runtime/compiler/gm2.vim
-runtime/compiler/gnat.vim
-runtime/compiler/go.vim
-runtime/compiler/groff.vim
-runtime/compiler/haml.vim
-runtime/compiler/hare.vim
-runtime/compiler/hp_acc.vim
-runtime/compiler/icc.vim
-runtime/compiler/icon.vim
-runtime/compiler/ifort.vim
-runtime/compiler/intel.vim
-runtime/compiler/irix5_c.vim
-runtime/compiler/irix5_cpp.vim
-runtime/compiler/javac.vim
-runtime/compiler/jest.vim
-runtime/compiler/jikes.vim
-runtime/compiler/jjs.vim
-runtime/compiler/jq.vim
-runtime/compiler/jshint.vim
-runtime/compiler/jsonlint.vim
-runtime/compiler/make.vim
-runtime/compiler/maven.vim
-runtime/compiler/mcs.vim
-runtime/compiler/mips_c.vim
-runtime/compiler/mipspro_c89.vim
-runtime/compiler/mipspro_cpp.vim
-runtime/compiler/modelsim_vcom.vim
-runtime/compiler/msbuild.vim
-runtime/compiler/msvc.vim
-runtime/compiler/mypy.vim
-runtime/compiler/neato.vim
-runtime/compiler/ocaml.vim
-runtime/compiler/onsgmls.vim
-runtime/compiler/pandoc.vim
-runtime/compiler/pbx.vim
-runtime/compiler/perl.vim
-runtime/compiler/perlcritic.vim
-runtime/compiler/php.vim
-runtime/compiler/pip_compile.vim
-runtime/compiler/podchecker.vim
-runtime/compiler/powershell.vim
-runtime/compiler/pylint.vim
-runtime/compiler/pytest.vim
-runtime/compiler/pyunit.vim
-runtime/compiler/raco.vim
-runtime/compiler/racomake.vim
-runtime/compiler/racosetup.vim
-runtime/compiler/racotest.vim
-runtime/compiler/rake.vim
-runtime/compiler/rhino.vim
-runtime/compiler/rime_deployer.vim
-runtime/compiler/rspec.vim
-runtime/compiler/rst.vim
-runtime/compiler/rubocop.vim
-runtime/compiler/ruby.vim
-runtime/compiler/rubyunit.vim
-runtime/compiler/ruff.vim
-runtime/compiler/rustc.vim
-runtime/compiler/sass.vim
-runtime/compiler/scdoc.vim
-runtime/compiler/se.vim
-runtime/compiler/shellcheck.vim
-runtime/compiler/sml.vim
-runtime/compiler/spectral.vim
-runtime/compiler/splint.vim
-runtime/compiler/spotbugs.vim
-runtime/compiler/stack.vim
-runtime/compiler/standard.vim
-runtime/compiler/stylelint.vim
-runtime/compiler/svelte-check.vim
-runtime/compiler/tcl.vim
-runtime/compiler/tex.vim
-runtime/compiler/tidy.vim
-runtime/compiler/ts-node.vim
-runtime/compiler/tsc.vim
-runtime/compiler/typedoc.vim
-runtime/compiler/typst.vim
-runtime/compiler/vimdoc.vim
-runtime/compiler/xbuild.vim
-runtime/compiler/xmllint.vim
-runtime/compiler/xmlwf.vim
-runtime/compiler/xo.vim
-runtime/compiler/yamllint.vim
-runtime/compiler/zig.vim
-runtime/compiler/zig_build.vim
-runtime/compiler/zig_build_exe.vim
-runtime/compiler/zig_test.vim
-runtime/compiler/zsh.vim
-runtime/delmenu.vim
-runtime/doc/api.md
-runtime/doc/api.txt
-runtime/doc/arabic.txt
-runtime/doc/autocmd.txt
-runtime/doc/builtin.txt
-runtime/doc/change.txt
-runtime/doc/channel.txt
-runtime/doc/cmdline.txt
-runtime/doc/credits.txt
-runtime/doc/debug.txt
-runtime/doc/deprecated.txt
-runtime/doc/dev_arch.txt
-runtime/doc/dev_style.txt
-runtime/doc/dev_theme.txt
-runtime/doc/dev_tools.txt
-runtime/doc/dev_vimpatch.txt
-runtime/doc/develop.txt
-runtime/doc/diagnostic.txt
-runtime/doc/diff.txt
-runtime/doc/digraph.txt
-runtime/doc/editing.txt
-runtime/doc/editorconfig.txt
-runtime/doc/eval.txt
-runtime/doc/faq.txt
-runtime/doc/filetype.txt
-runtime/doc/fold.txt
-runtime/doc/ft_ada.txt
-runtime/doc/ft_hare.txt
-runtime/doc/ft_ps1.txt
-runtime/doc/ft_raku.txt
-runtime/doc/ft_rust.txt
-runtime/doc/ft_sql.txt
-runtime/doc/gui.txt
-runtime/doc/health.txt
-runtime/doc/hebrew.txt
-runtime/doc/help.txt
-runtime/doc/helphelp.txt
-runtime/doc/if_perl.txt
-runtime/doc/if_pyth.txt
-runtime/doc/if_ruby.txt
-runtime/doc/indent.txt
-runtime/doc/index.txt
-runtime/doc/insert.txt
-runtime/doc/intro.txt
-runtime/doc/job_control.txt
-runtime/doc/lsp-extension.txt
-runtime/doc/lsp.txt
-runtime/doc/lua-bit.txt
-runtime/doc/lua-guide.txt
-runtime/doc/lua-plugin.txt
-runtime/doc/lua.txt
-runtime/doc/luaref.txt
-runtime/doc/luvref.txt
-runtime/doc/map.txt
-runtime/doc/mbyte.txt
-runtime/doc/message.txt
-runtime/doc/mlang.txt
-runtime/doc/motion.txt
-runtime/doc/news-0.10.txt
-runtime/doc/news-0.9.txt
-runtime/doc/news.txt
-runtime/doc/nvim.txt
-runtime/doc/nvim_terminal_emulator.txt
-runtime/doc/oil.txt
-runtime/doc/options.txt
-runtime/doc/pattern.txt
-runtime/doc/pi_gzip.txt
-runtime/doc/pi_health.txt
-runtime/doc/pi_msgpack.txt
-runtime/doc/pi_netrw.txt
-runtime/doc/pi_paren.txt
-runtime/doc/pi_spec.txt
-runtime/doc/pi_tar.txt
-runtime/doc/pi_tutor.txt
-runtime/doc/pi_zip.txt
-runtime/doc/provider.txt
-runtime/doc/quickfix.txt
-runtime/doc/quickref.txt
-runtime/doc/recipes.md
-runtime/doc/recover.txt
-runtime/doc/remote.txt
-runtime/doc/remote_plugin.txt
-runtime/doc/repeat.txt
-runtime/doc/rileft.txt
-runtime/doc/russian.txt
-runtime/doc/scroll.txt
-runtime/doc/sign.txt
-runtime/doc/spell.txt
-runtime/doc/starting.txt
-runtime/doc/support.txt
-runtime/doc/syntax.txt
-runtime/doc/tabpage.txt
-runtime/doc/tags
-runtime/doc/tagsrch.txt
-runtime/doc/term.txt
-runtime/doc/terminal.txt
-runtime/doc/testing.txt
-runtime/doc/tips.txt
-runtime/doc/treesitter.txt
-runtime/doc/tui.txt
-runtime/doc/uganda.txt
-runtime/doc/ui.txt
-runtime/doc/undo.txt
-runtime/doc/userfunc.txt
-runtime/doc/usr_01.txt
-runtime/doc/usr_02.txt
-runtime/doc/usr_03.txt
-runtime/doc/usr_04.txt
-runtime/doc/usr_05.txt
-runtime/doc/usr_06.txt
-runtime/doc/usr_07.txt
-runtime/doc/usr_08.txt
-runtime/doc/usr_09.txt
-runtime/doc/usr_10.txt
-runtime/doc/usr_11.txt
-runtime/doc/usr_12.txt
-runtime/doc/usr_20.txt
-runtime/doc/usr_21.txt
-runtime/doc/usr_22.txt
-runtime/doc/usr_23.txt
-runtime/doc/usr_24.txt
-runtime/doc/usr_25.txt
-runtime/doc/usr_26.txt
-runtime/doc/usr_27.txt
-runtime/doc/usr_28.txt
-runtime/doc/usr_29.txt
-runtime/doc/usr_30.txt
-runtime/doc/usr_31.txt
-runtime/doc/usr_32.txt
-runtime/doc/usr_40.txt
-runtime/doc/usr_41.txt
-runtime/doc/usr_42.txt
-runtime/doc/usr_43.txt
-runtime/doc/usr_44.txt
-runtime/doc/usr_45.txt
-runtime/doc/usr_toc.txt
-runtime/doc/various.txt
-runtime/doc/vi_diff.txt
-runtime/doc/vietnamese.txt
-runtime/doc/vim_diff.txt
-runtime/doc/vimeval.txt
-runtime/doc/vimfn.txt
-runtime/doc/visual.txt
-runtime/doc/vvars.txt
-runtime/doc/windows.txt
-runtime/example_init.lua
-runtime/filetype.lua
-runtime/filetype.vim
-runtime/ftoff.vim
-runtime/ftplugin/8th.vim
-runtime/ftplugin/README.txt
-runtime/ftplugin/a2ps.vim
-runtime/ftplugin/aap.vim
-runtime/ftplugin/abap.vim
-runtime/ftplugin/abaqus.vim
-runtime/ftplugin/ada.vim
-runtime/ftplugin/alsaconf.vim
-runtime/ftplugin/ant.vim
-runtime/ftplugin/antlr4.vim
-runtime/ftplugin/apache.vim
-runtime/ftplugin/arch.vim
-runtime/ftplugin/arduino.lua
-runtime/ftplugin/arduino.vim
-runtime/ftplugin/art.vim
-runtime/ftplugin/asciidoc.vim
-runtime/ftplugin/asm.vim
-runtime/ftplugin/aspvbs.vim
-runtime/ftplugin/astro.vim
-runtime/ftplugin/asy.vim
-runtime/ftplugin/autohotkey.vim
-runtime/ftplugin/automake.vim
-runtime/ftplugin/awk.vim
-runtime/ftplugin/bash.vim
-runtime/ftplugin/basic.vim
-runtime/ftplugin/bdf.vim
-runtime/ftplugin/bindzone.vim
-runtime/ftplugin/bitbake.vim
-runtime/ftplugin/bp.vim
-runtime/ftplugin/bst.vim
-runtime/ftplugin/btm.vim
-runtime/ftplugin/bzl.vim
-runtime/ftplugin/c.lua
-runtime/ftplugin/c.vim
-runtime/ftplugin/c3.vim
-runtime/ftplugin/cabal.vim
-runtime/ftplugin/calendar.vim
-runtime/ftplugin/cdrdaoconf.vim
-runtime/ftplugin/cedar.vim
-runtime/ftplugin/cfg.vim
-runtime/ftplugin/cgdbrc.vim
-runtime/ftplugin/ch.lua
-runtime/ftplugin/ch.vim
-runtime/ftplugin/changelog.vim
-runtime/ftplugin/chatito.vim
-runtime/ftplugin/checkhealth.lua
-runtime/ftplugin/checkhealth.vim
-runtime/ftplugin/chicken.vim
-runtime/ftplugin/clojure.vim
-runtime/ftplugin/cmake.vim
-runtime/ftplugin/cmakecache.vim
-runtime/ftplugin/cobol.vim
-runtime/ftplugin/conf.vim
-runtime/ftplugin/config.vim
-runtime/ftplugin/confini.vim
-runtime/ftplugin/context.vim
-runtime/ftplugin/cook.vim
-runtime/ftplugin/corn.vim
-runtime/ftplugin/cpp.vim
-runtime/ftplugin/crm.vim
-runtime/ftplugin/crontab.vim
-runtime/ftplugin/cs.lua
-runtime/ftplugin/cs.vim
-runtime/ftplugin/csc.vim
-runtime/ftplugin/csh.vim
-runtime/ftplugin/css.vim
-runtime/ftplugin/csv.vim
-runtime/ftplugin/cucumber.vim
-runtime/ftplugin/cuda.vim
-runtime/ftplugin/cvsrc.vim
-runtime/ftplugin/d.lua
-runtime/ftplugin/dart.vim
-runtime/ftplugin/deb822sources.vim
-runtime/ftplugin/debchangelog.vim
-runtime/ftplugin/debcontrol.vim
-runtime/ftplugin/debsources.vim
-runtime/ftplugin/denyhosts.vim
-runtime/ftplugin/desktop.vim
-runtime/ftplugin/dictconf.vim
-runtime/ftplugin/dictdconf.vim
-runtime/ftplugin/diff.vim
-runtime/ftplugin/dircolors.vim
-runtime/ftplugin/dnsmasq.vim
-runtime/ftplugin/docbk.vim
-runtime/ftplugin/dockerfile.vim
-runtime/ftplugin/dosbatch.vim
-runtime/ftplugin/dosini.vim
-runtime/ftplugin/dot.lua
-runtime/ftplugin/dtd.vim
-runtime/ftplugin/dtrace.vim
-runtime/ftplugin/dts.vim
-runtime/ftplugin/dune.vim
-runtime/ftplugin/editorconfig.vim
-runtime/ftplugin/eiffel.vim
-runtime/ftplugin/elinks.vim
-runtime/ftplugin/elixir.vim
-runtime/ftplugin/elm.vim
-runtime/ftplugin/erlang.vim
-runtime/ftplugin/eruby.vim
-runtime/ftplugin/eterm.vim
-runtime/ftplugin/expect.vim
-runtime/ftplugin/exports.vim
-runtime/ftplugin/falcon.vim
-runtime/ftplugin/faust.lua
-runtime/ftplugin/fennel.vim
-runtime/ftplugin/fetchmail.vim
-runtime/ftplugin/fish.vim
-runtime/ftplugin/flexwiki.vim
-runtime/ftplugin/forth.vim
-runtime/ftplugin/fortran.vim
-runtime/ftplugin/fpcmake.vim
-runtime/ftplugin/framescript.vim
-runtime/ftplugin/freebasic.vim
-runtime/ftplugin/fstab.vim
-runtime/ftplugin/fvwm.vim
-runtime/ftplugin/gdb.vim
-runtime/ftplugin/gdscript.vim
-runtime/ftplugin/gdshader.vim
-runtime/ftplugin/gel.vim
-runtime/ftplugin/git.vim
-runtime/ftplugin/gitattributes.vim
-runtime/ftplugin/gitcommit.vim
-runtime/ftplugin/gitconfig.vim
-runtime/ftplugin/gitignore.vim
-runtime/ftplugin/gitrebase.vim
-runtime/ftplugin/gitsendemail.vim
-runtime/ftplugin/gleam.vim
-runtime/ftplugin/glsl.lua
-runtime/ftplugin/go.vim
-runtime/ftplugin/goaccess.vim
-runtime/ftplugin/gomod.vim
-runtime/ftplugin/gpg.vim
-runtime/ftplugin/gprof.vim
-runtime/ftplugin/graphql.vim
-runtime/ftplugin/groovy.vim
-runtime/ftplugin/group.vim
-runtime/ftplugin/grub.vim
-runtime/ftplugin/gyp.vim
-runtime/ftplugin/haml.vim
-runtime/ftplugin/hamster.vim
-runtime/ftplugin/hare.vim
-runtime/ftplugin/haredoc.vim
-runtime/ftplugin/haskell.vim
-runtime/ftplugin/hcl.vim
-runtime/ftplugin/heex.vim
-runtime/ftplugin/help.lua
-runtime/ftplugin/help.vim
-runtime/ftplugin/hgcommit.vim
-runtime/ftplugin/hlsplaylist.vim
-runtime/ftplugin/hog.vim
-runtime/ftplugin/hostconf.vim
-runtime/ftplugin/hostsaccess.vim
-runtime/ftplugin/html.vim
-runtime/ftplugin/htmlangular.vim
-runtime/ftplugin/htmldjango.vim
-runtime/ftplugin/http.vim
-runtime/ftplugin/hurl.vim
-runtime/ftplugin/hyprlang.vim
-runtime/ftplugin/i3config.vim
-runtime/ftplugin/icon.vim
-runtime/ftplugin/idris2.vim
-runtime/ftplugin/indent.lua
-runtime/ftplugin/indent.vim
-runtime/ftplugin/initex.vim
-runtime/ftplugin/ipkg.vim
-runtime/ftplugin/ishd.vim
-runtime/ftplugin/j.vim
-runtime/ftplugin/java.vim
-runtime/ftplugin/javacc.vim
-runtime/ftplugin/javascript.vim
-runtime/ftplugin/javascriptreact.vim
-runtime/ftplugin/jjdescription.vim
-runtime/ftplugin/jproperties.vim
-runtime/ftplugin/jq.vim
-runtime/ftplugin/json.vim
-runtime/ftplugin/json5.vim
-runtime/ftplugin/jsonc.vim
-runtime/ftplugin/jsonnet.vim
-runtime/ftplugin/jsp.vim
-runtime/ftplugin/julia.vim
-runtime/ftplugin/just.vim
-runtime/ftplugin/karel.vim
-runtime/ftplugin/kconfig.vim
-runtime/ftplugin/kdl.vim
-runtime/ftplugin/kivy.vim
-runtime/ftplugin/kotlin.vim
-runtime/ftplugin/kwt.vim
-runtime/ftplugin/lc.vim
-runtime/ftplugin/ld.vim
-runtime/ftplugin/ldapconf.vim
-runtime/ftplugin/leo.vim
-runtime/ftplugin/less.vim
-runtime/ftplugin/lex.vim
-runtime/ftplugin/lftp.vim
-runtime/ftplugin/libao.vim
-runtime/ftplugin/limits.vim
-runtime/ftplugin/liquid.vim
-runtime/ftplugin/lisp.vim
-runtime/ftplugin/livebook.vim
-runtime/ftplugin/llvm.vim
-runtime/ftplugin/lnk.vim
-runtime/ftplugin/lnkmap.vim
-runtime/ftplugin/logcheck.vim
-runtime/ftplugin/loginaccess.vim
-runtime/ftplugin/logindefs.vim
-runtime/ftplugin/logtalk.dict
-runtime/ftplugin/logtalk.vim
-runtime/ftplugin/lprolog.vim
-runtime/ftplugin/lua.lua
-runtime/ftplugin/lua.vim
-runtime/ftplugin/luau.vim
-runtime/ftplugin/lynx.vim
-runtime/ftplugin/m17ndb.vim
-runtime/ftplugin/m3build.vim
-runtime/ftplugin/m3quake.vim
-runtime/ftplugin/m4.vim
-runtime/ftplugin/mail.vim
-runtime/ftplugin/mailaliases.vim
-runtime/ftplugin/mailcap.vim
-runtime/ftplugin/make.vim
-runtime/ftplugin/man.vim
-runtime/ftplugin/manconf.vim
-runtime/ftplugin/markdown.lua
-runtime/ftplugin/markdown.vim
-runtime/ftplugin/masm.vim
-runtime/ftplugin/matlab.vim
-runtime/ftplugin/mediawiki.vim
-runtime/ftplugin/mermaid.vim
-runtime/ftplugin/meson.vim
-runtime/ftplugin/mf.vim
-runtime/ftplugin/mlir.vim
-runtime/ftplugin/mma.vim
-runtime/ftplugin/modconf.vim
-runtime/ftplugin/modula2.vim
-runtime/ftplugin/modula3.vim
-runtime/ftplugin/mojo.vim
-runtime/ftplugin/mp.vim
-runtime/ftplugin/mplayerconf.vim
-runtime/ftplugin/mrxvtrc.vim
-runtime/ftplugin/msmessages.vim
-runtime/ftplugin/mss.vim
-runtime/ftplugin/muttrc.vim
-runtime/ftplugin/mysql.vim
-runtime/ftplugin/nanorc.vim
-runtime/ftplugin/neomuttrc.vim
-runtime/ftplugin/netrc.vim
-runtime/ftplugin/nginx.vim
-runtime/ftplugin/nim.vim
-runtime/ftplugin/nix.vim
-runtime/ftplugin/nroff.vim
-runtime/ftplugin/nsis.vim
-runtime/ftplugin/nu.vim
-runtime/ftplugin/objc.lua
-runtime/ftplugin/objc.vim
-runtime/ftplugin/objcpp.vim
-runtime/ftplugin/objdump.vim
-runtime/ftplugin/obse.vim
-runtime/ftplugin/ocaml.vim
-runtime/ftplugin/occam.vim
-runtime/ftplugin/octave.vim
-runtime/ftplugin/odin.vim
-runtime/ftplugin/ondir.vim
-runtime/ftplugin/opencl.vim
-runtime/ftplugin/openvpn.vim
-runtime/ftplugin/org.vim
-runtime/ftplugin/pamconf.vim
-runtime/ftplugin/pascal.vim
-runtime/ftplugin/passwd.vim
-runtime/ftplugin/pbtxt.vim
-runtime/ftplugin/pdf.vim
-runtime/ftplugin/perl.vim
-runtime/ftplugin/php.vim
-runtime/ftplugin/pinfo.vim
-runtime/ftplugin/plaintex.vim
-runtime/ftplugin/plsql.vim
-runtime/ftplugin/pod.vim
-runtime/ftplugin/poefilter.vim
-runtime/ftplugin/poke.vim
-runtime/ftplugin/postscr.vim
-runtime/ftplugin/prisma.vim
-runtime/ftplugin/procmail.vim
-runtime/ftplugin/prolog.vim
-runtime/ftplugin/proto.vim
-runtime/ftplugin/protocols.vim
-runtime/ftplugin/ps1.vim
-runtime/ftplugin/ps1xml.vim
-runtime/ftplugin/ptx.vim
-runtime/ftplugin/purescript.vim
-runtime/ftplugin/pymanifest.vim
-runtime/ftplugin/pyrex.vim
-runtime/ftplugin/python.vim
-runtime/ftplugin/qb64.vim
-runtime/ftplugin/qf.vim
-runtime/ftplugin/qml.vim
-runtime/ftplugin/quake.vim
-runtime/ftplugin/quarto.vim
-runtime/ftplugin/query.lua
-runtime/ftplugin/r.vim
-runtime/ftplugin/racc.vim
-runtime/ftplugin/racket.vim
-runtime/ftplugin/raku.vim
-runtime/ftplugin/rasi.vim
-runtime/ftplugin/readline.vim
-runtime/ftplugin/registry.vim
-runtime/ftplugin/requirements.vim
-runtime/ftplugin/rescript.vim
-runtime/ftplugin/reva.vim
-runtime/ftplugin/rhelp.vim
-runtime/ftplugin/rmd.vim
-runtime/ftplugin/rnc.vim
-runtime/ftplugin/rnoweb.vim
-runtime/ftplugin/roc.vim
-runtime/ftplugin/routeros.vim
-runtime/ftplugin/rpl.vim
-runtime/ftplugin/rrst.vim
-runtime/ftplugin/rst.vim
-runtime/ftplugin/ruby.vim
-runtime/ftplugin/rust.vim
-runtime/ftplugin/samba.vim
-runtime/ftplugin/sass.vim
-runtime/ftplugin/sbt.vim
-runtime/ftplugin/scala.vim
-runtime/ftplugin/scdoc.vim
-runtime/ftplugin/scheme.vim
-runtime/ftplugin/screen.vim
-runtime/ftplugin/scss.vim
-runtime/ftplugin/sed.vim
-runtime/ftplugin/sensors.vim
-runtime/ftplugin/services.vim
-runtime/ftplugin/setserial.vim
-runtime/ftplugin/sexplib.vim
-runtime/ftplugin/sgml.vim
-runtime/ftplugin/sh.vim
-runtime/ftplugin/shada.vim
-runtime/ftplugin/shaderslang.vim
-runtime/ftplugin/sieve.vim
-runtime/ftplugin/slint.vim
-runtime/ftplugin/slpconf.vim
-runtime/ftplugin/slpreg.vim
-runtime/ftplugin/slpspi.vim
-runtime/ftplugin/snakemake.vim
-runtime/ftplugin/solidity.vim
-runtime/ftplugin/solution.vim
-runtime/ftplugin/spajson.vim
-runtime/ftplugin/spec.vim
-runtime/ftplugin/sql.vim
-runtime/ftplugin/squirrel.vim
-runtime/ftplugin/ssa.vim
-runtime/ftplugin/sshconfig.vim
-runtime/ftplugin/sshdconfig.vim
-runtime/ftplugin/stata.lua
-runtime/ftplugin/stylus.vim
-runtime/ftplugin/sudoers.vim
-runtime/ftplugin/supercollider.lua
-runtime/ftplugin/svelte.vim
-runtime/ftplugin/svg.vim
-runtime/ftplugin/sway.vim
-runtime/ftplugin/swayconfig.vim
-runtime/ftplugin/swift.lua
-runtime/ftplugin/swift.vim
-runtime/ftplugin/swiftgyb.vim
-runtime/ftplugin/swig.vim
-runtime/ftplugin/sysctl.vim
-runtime/ftplugin/systemd.vim
-runtime/ftplugin/systemverilog.vim
-runtime/ftplugin/tap.vim
-runtime/ftplugin/tcl.vim
-runtime/ftplugin/tcsh.vim
-runtime/ftplugin/tera.vim
-runtime/ftplugin/terminfo.vim
-runtime/ftplugin/terraform.vim
-runtime/ftplugin/tex.vim
-runtime/ftplugin/text.vim
-runtime/ftplugin/tf.vim
-runtime/ftplugin/thrift.vim
-runtime/ftplugin/tiasm.vim
-runtime/ftplugin/tidy.vim
-runtime/ftplugin/tmux.vim
-runtime/ftplugin/toml.vim
-runtime/ftplugin/treetop.vim
-runtime/ftplugin/tt2html.vim
-runtime/ftplugin/tutor.vim
-runtime/ftplugin/typescript.vim
-runtime/ftplugin/typescriptreact.vim
-runtime/ftplugin/typst.vim
-runtime/ftplugin/uci.vim
-runtime/ftplugin/udevconf.vim
-runtime/ftplugin/udevperm.vim
-runtime/ftplugin/udevrules.vim
-runtime/ftplugin/unison.vim
-runtime/ftplugin/updatedb.vim
-runtime/ftplugin/urlshortcut.vim
-runtime/ftplugin/usd.vim
-runtime/ftplugin/v.vim
-runtime/ftplugin/vb.vim
-runtime/ftplugin/vdf.vim
-runtime/ftplugin/verilog.vim
-runtime/ftplugin/vhdl.vim
-runtime/ftplugin/vim.vim
-runtime/ftplugin/vroom.vim
-runtime/ftplugin/vue.vim
-runtime/ftplugin/wat.vim
-runtime/ftplugin/wget.vim
-runtime/ftplugin/wget2.vim
-runtime/ftplugin/xcompose.vim
-runtime/ftplugin/xdefaults.vim
-runtime/ftplugin/xf86conf.vim
-runtime/ftplugin/xhtml.vim
-runtime/ftplugin/xinetd.vim
-runtime/ftplugin/xml.vim
-runtime/ftplugin/xmodmap.vim
-runtime/ftplugin/xs.lua
-runtime/ftplugin/xs.vim
-runtime/ftplugin/xsd.vim
-runtime/ftplugin/xslt.vim
-runtime/ftplugin/yacc.vim
-runtime/ftplugin/yaml.vim
-runtime/ftplugin/zathurarc.vim
-runtime/ftplugin/zig.vim
-runtime/ftplugin/zimbu.vim
-runtime/ftplugin/zsh.vim
-runtime/ftplugin.vim
-runtime/ftplugof.vim
-runtime/indent/Makefile
-runtime/indent/README.txt
-runtime/indent/aap.vim
-runtime/indent/ada.vim
-runtime/indent/ant.vim
-runtime/indent/arduino.vim
-runtime/indent/astro.vim
-runtime/indent/automake.vim
-runtime/indent/awk.vim
-runtime/indent/bash.vim
-runtime/indent/basic.vim
-runtime/indent/bib.vim
-runtime/indent/bitbake.vim
-runtime/indent/bst.vim
-runtime/indent/bzl.vim
-runtime/indent/c.vim
-runtime/indent/cdl.vim
-runtime/indent/ch.vim
-runtime/indent/chaiscript.vim
-runtime/indent/changelog.vim
-runtime/indent/chatito.vim
-runtime/indent/clojure.vim
-runtime/indent/cmake.vim
-runtime/indent/cobol.vim
-runtime/indent/config.vim
-runtime/indent/context.vim
-runtime/indent/cpp.vim
-runtime/indent/cs.vim
-runtime/indent/css.vim
-runtime/indent/cucumber.vim
-runtime/indent/cuda.vim
-runtime/indent/d.vim
-runtime/indent/dictconf.vim
-runtime/indent/dictdconf.vim
-runtime/indent/docbk.vim
-runtime/indent/dosbatch.vim
-runtime/indent/dtd.vim
-runtime/indent/dtrace.vim
-runtime/indent/dts.vim
-runtime/indent/dune.vim
-runtime/indent/dylan.vim
-runtime/indent/eiffel.vim
-runtime/indent/elm.vim
-runtime/indent/erlang.vim
-runtime/indent/eruby.vim
-runtime/indent/eterm.vim
-runtime/indent/expect.vim
-runtime/indent/falcon.vim
-runtime/indent/fennel.vim
-runtime/indent/fish.vim
-runtime/indent/fortran.vim
-runtime/indent/framescript.vim
-runtime/indent/freebasic.vim
-runtime/indent/gdscript.vim
-runtime/indent/gitconfig.vim
-runtime/indent/gitolite.vim
-runtime/indent/glsl.vim
-runtime/indent/go.vim
-runtime/indent/graphql.vim
-runtime/indent/gyp.vim
-runtime/indent/haml.vim
-runtime/indent/hamster.vim
-runtime/indent/hare.vim
-runtime/indent/hcl.vim
-runtime/indent/hog.vim
-runtime/indent/html.vim
-runtime/indent/htmldjango.vim
-runtime/indent/idlang.vim
-runtime/indent/idris2.vim
-runtime/indent/ishd.vim
-runtime/indent/j.vim
-runtime/indent/java.vim
-runtime/indent/javascript.vim
-runtime/indent/javascriptreact.vim
-runtime/indent/json.vim
-runtime/indent/json5.vim
-runtime/indent/jsonc.vim
-runtime/indent/jsp.vim
-runtime/indent/julia.vim
-runtime/indent/just.vim
-runtime/indent/kdl.vim
-runtime/indent/kotlin.vim
-runtime/indent/krl.vim
-runtime/indent/ld.vim
-runtime/indent/less.vim
-runtime/indent/lifelines.vim
-runtime/indent/liquid.vim
-runtime/indent/lisp.vim
-runtime/indent/livebook.vim
-runtime/indent/logtalk.vim
-runtime/indent/lua.vim
-runtime/indent/luau.vim
-runtime/indent/m17ndb.vim
-runtime/indent/mail.vim
-runtime/indent/make.vim
-runtime/indent/matlab.vim
-runtime/indent/meson.vim
-runtime/indent/mf.vim
-runtime/indent/mma.vim
-runtime/indent/mojo.vim
-runtime/indent/mp.vim
-runtime/indent/nginx.vim
-runtime/indent/nsis.vim
-runtime/indent/objc.vim
-runtime/indent/obse.vim
-runtime/indent/ocaml.vim
-runtime/indent/occam.vim
-runtime/indent/odin.vim
-runtime/indent/pascal.vim
-runtime/indent/perl.vim
-runtime/indent/php.vim
-runtime/indent/postscr.vim
-runtime/indent/pov.vim
-runtime/indent/prolog.vim
-runtime/indent/proto.vim
-runtime/indent/ps1.vim
-runtime/indent/pyrex.vim
-runtime/indent/python.vim
-runtime/indent/qb64.vim
-runtime/indent/qml.vim
-runtime/indent/quarto.vim
-runtime/indent/query.lua
-runtime/indent/r.vim
-runtime/indent/racket.vim
-runtime/indent/raku.vim
-runtime/indent/raml.vim
-runtime/indent/rapid.vim
-runtime/indent/readline.vim
-runtime/indent/rhelp.vim
-runtime/indent/rmd.vim
-runtime/indent/rnoweb.vim
-runtime/indent/rpl.vim
-runtime/indent/rrst.vim
-runtime/indent/rst.vim
-runtime/indent/ruby.vim
-runtime/indent/rust.vim
-runtime/indent/sas.vim
-runtime/indent/sass.vim
-runtime/indent/scala.vim
-runtime/indent/scheme.vim
-runtime/indent/scss.vim
-runtime/indent/sdl.vim
-runtime/indent/sh.vim
-runtime/indent/sml.vim
-runtime/indent/solidity.vim
-runtime/indent/spajson.vim
-runtime/indent/sql.vim
-runtime/indent/sqlanywhere.vim
-runtime/indent/sshconfig.vim
-runtime/indent/stylus.vim
-runtime/indent/systemverilog.vim
-runtime/indent/tcl.vim
-runtime/indent/tcsh.vim
-runtime/indent/teraterm.vim
-runtime/indent/terraform.vim
-runtime/indent/testdir/README.txt
-runtime/indent/testdir/bash.in
-runtime/indent/testdir/bash.ok
-runtime/indent/testdir/bitbake.in
-runtime/indent/testdir/bitbake.ok
-runtime/indent/testdir/dts.in
-runtime/indent/testdir/dts.ok
-runtime/indent/testdir/html.in
-runtime/indent/testdir/html.ok
-runtime/indent/testdir/krl.in
-runtime/indent/testdir/krl.ok
-runtime/indent/testdir/lua.in
-runtime/indent/testdir/lua.ok
-runtime/indent/testdir/make.in
-runtime/indent/testdir/make.ok
-runtime/indent/testdir/matlab.in
-runtime/indent/testdir/matlab.ok
-runtime/indent/testdir/python.in
-runtime/indent/testdir/python.ok
-runtime/indent/testdir/rapid.in
-runtime/indent/testdir/rapid.ok
-runtime/indent/testdir/runtest.vim
-runtime/indent/testdir/sshconfig.in
-runtime/indent/testdir/sshconfig.ok
-runtime/indent/testdir/tcl.in
-runtime/indent/testdir/tcl.ok
-runtime/indent/testdir/thrift.in
-runtime/indent/testdir/thrift.ok
-runtime/indent/testdir/vb.in
-runtime/indent/testdir/vb.ok
-runtime/indent/testdir/vim.in
-runtime/indent/testdir/vim.ok
-runtime/indent/testdir/xml.in
-runtime/indent/testdir/xml.ok
-runtime/indent/testdir/yaml.in
-runtime/indent/testdir/yaml.ok
-runtime/indent/tex.vim
-runtime/indent/tf.vim
-runtime/indent/thrift.vim
-runtime/indent/tilde.vim
-runtime/indent/treetop.vim
-runtime/indent/typescript.vim
-runtime/indent/typescriptreact.vim
-runtime/indent/typst.vim
-runtime/indent/vb.vim
-runtime/indent/verilog.vim
-runtime/indent/vhdl.vim
-runtime/indent/vim.vim
-runtime/indent/vroom.vim
-runtime/indent/vue.vim
-runtime/indent/wat.vim
-runtime/indent/xf86conf.vim
-runtime/indent/xhtml.vim
-runtime/indent/xinetd.vim
-runtime/indent/xml.vim
-runtime/indent/xsd.vim
-runtime/indent/xslt.vim
-runtime/indent/yacc.vim
-runtime/indent/yaml.vim
-runtime/indent/zig.vim
-runtime/indent/zimbu.vim
-runtime/indent/zsh.vim
-runtime/indent.vim
-runtime/indoff.vim
-runtime/keymap/README.txt
-runtime/keymap/accents.vim
-runtime/keymap/arabic.vim
-runtime/keymap/arabic_utf-8.vim
-runtime/keymap/armenian-eastern_utf-8.vim
-runtime/keymap/armenian-western_utf-8.vim
-runtime/keymap/belarusian-jcuken.vim
-runtime/keymap/bulgarian-bds.vim
-runtime/keymap/bulgarian-phonetic.vim
-runtime/keymap/canfr-win.vim
-runtime/keymap/croatian.vim
-runtime/keymap/croatian_cp1250.vim
-runtime/keymap/croatian_iso-8859-2.vim
-runtime/keymap/croatian_utf-8.vim
-runtime/keymap/czech.vim
-runtime/keymap/czech_utf-8.vim
-runtime/keymap/dvorak.vim
-runtime/keymap/esperanto.vim
-runtime/keymap/esperanto_utf-8.vim
-runtime/keymap/french-azerty.vim
-runtime/keymap/georgian-qwerty.vim
-runtime/keymap/german-qwertz.vim
-runtime/keymap/greek.vim
-runtime/keymap/greek_cp1253.vim
-runtime/keymap/greek_cp737.vim
-runtime/keymap/greek_iso-8859-7.vim
-runtime/keymap/greek_utf-8.vim
-runtime/keymap/hebrew.vim
-runtime/keymap/hebrew_cp1255.vim
-runtime/keymap/hebrew_iso-8859-8.vim
-runtime/keymap/hebrew_utf-8.vim
-runtime/keymap/hebrewp.vim
-runtime/keymap/hebrewp_cp1255.vim
-runtime/keymap/hebrewp_iso-8859-8.vim
-runtime/keymap/hebrewp_utf-8.vim
-runtime/keymap/kana.vim
-runtime/keymap/kazakh-jcuken.vim
-runtime/keymap/korean-dubeolsik_utf-8.vim
-runtime/keymap/korean.vim
-runtime/keymap/lithuanian-baltic.vim
-runtime/keymap/magyar_utf-8.vim
-runtime/keymap/mongolian_utf-8.vim
-runtime/keymap/oldturkic-orkhon_utf-8.vim
-runtime/keymap/oldturkic-yenisei_utf-8.vim
-runtime/keymap/persian-iranian_utf-8.vim
-runtime/keymap/persian.vim
-runtime/keymap/pinyin.vim
-runtime/keymap/polish-slash.vim
-runtime/keymap/polish-slash_cp1250.vim
-runtime/keymap/polish-slash_cp852.vim
-runtime/keymap/polish-slash_iso-8859-2.vim
-runtime/keymap/polish-slash_utf-8.vim
-runtime/keymap/russian-dvorak.vim
-runtime/keymap/russian-jcuken.vim
-runtime/keymap/russian-jcukenmac.vim
-runtime/keymap/russian-jcukenwin.vim
-runtime/keymap/russian-jcukenwintype.vim
-runtime/keymap/russian-typograph.vim
-runtime/keymap/russian-yawerty.vim
-runtime/keymap/serbian-latin.vim
-runtime/keymap/serbian-latin_utf-8.vim
-runtime/keymap/serbian.vim
-runtime/keymap/serbian_cp1250.vim
-runtime/keymap/serbian_cp1251.vim
-runtime/keymap/serbian_iso-8859-2.vim
-runtime/keymap/serbian_iso-8859-5.vim
-runtime/keymap/serbian_utf-8.vim
-runtime/keymap/sinhala-phonetic_utf-8.vim
-runtime/keymap/sinhala.vim
-runtime/keymap/slovak.vim
-runtime/keymap/slovak_cp1250.vim
-runtime/keymap/slovak_iso-8859-2.vim
-runtime/keymap/slovak_utf-8.vim
-runtime/keymap/tamil_tscii.vim
-runtime/keymap/thaana-phonetic_utf-8.vim
-runtime/keymap/thaana.vim
-runtime/keymap/turkish-f.vim
-runtime/keymap/turkish-q.vim
-runtime/keymap/ukrainian-dvorak.vim
-runtime/keymap/ukrainian-enhanced.vim
-runtime/keymap/ukrainian-jcuken.vim
-runtime/keymap/vietnamese-telex_utf-8.vim
-runtime/keymap/vietnamese-viqr_utf-8.vim
-runtime/keymap/vietnamese-vni_utf-8.vim
-runtime/lua/_vim9script.lua
-runtime/lua/coxpcall.lua
-runtime/lua/editorconfig.lua
-runtime/lua/man.lua
-runtime/lua/nvim/tutor.lua
-runtime/lua/tohtml.lua
-runtime/lua/vim/F.lua
-runtime/lua/vim/_buf.lua
-runtime/lua/vim/_comment.lua
-runtime/lua/vim/_defaults.lua
-runtime/lua/vim/_editor.lua
-runtime/lua/vim/_ftplugin/lua.lua
-runtime/lua/vim/_init_packages.lua
-runtime/lua/vim/_inspector.lua
-runtime/lua/vim/_meta/api.lua
-runtime/lua/vim/_meta/api_keysets.lua
-runtime/lua/vim/_meta/api_keysets_extra.lua
-runtime/lua/vim/_meta/base64.lua
-runtime/lua/vim/_meta/builtin.lua
-runtime/lua/vim/_meta/builtin_types.lua
-runtime/lua/vim/_meta/diff.lua
-runtime/lua/vim/_meta/json.lua
-runtime/lua/vim/_meta/lpeg.lua
-runtime/lua/vim/_meta/misc.lua
-runtime/lua/vim/_meta/mpack.lua
-runtime/lua/vim/_meta/options.lua
-runtime/lua/vim/_meta/re.lua
-runtime/lua/vim/_meta/regex.lua
-runtime/lua/vim/_meta/spell.lua
-runtime/lua/vim/_meta/vimfn.lua
-runtime/lua/vim/_meta/vvars.lua
-runtime/lua/vim/_meta/vvars_extra.lua
-runtime/lua/vim/_meta.lua
-runtime/lua/vim/_options.lua
-runtime/lua/vim/_system.lua
-runtime/lua/vim/_watch.lua
-runtime/lua/vim/deprecated/health.lua
-runtime/lua/vim/diagnostic.lua
-runtime/lua/vim/filetype/detect.lua
-runtime/lua/vim/filetype/options.lua
-runtime/lua/vim/filetype.lua
-runtime/lua/vim/fs.lua
-runtime/lua/vim/func/_memoize.lua
-runtime/lua/vim/func.lua
-runtime/lua/vim/glob.lua
-runtime/lua/vim/health/health.lua
-runtime/lua/vim/health.lua
-runtime/lua/vim/hl.lua
-runtime/lua/vim/inspect.lua
-runtime/lua/vim/iter.lua
-runtime/lua/vim/keymap.lua
-runtime/lua/vim/loader.lua
-runtime/lua/vim/lsp/_changetracking.lua
-runtime/lua/vim/lsp/_folding_range.lua
-runtime/lua/vim/lsp/_meta/protocol.lua
-runtime/lua/vim/lsp/_meta.lua
-runtime/lua/vim/lsp/_snippet_grammar.lua
-runtime/lua/vim/lsp/_tagfunc.lua
-runtime/lua/vim/lsp/_transport.lua
-runtime/lua/vim/lsp/_watchfiles.lua
-runtime/lua/vim/lsp/buf.lua
-runtime/lua/vim/lsp/client.lua
-runtime/lua/vim/lsp/codelens.lua
-runtime/lua/vim/lsp/completion.lua
-runtime/lua/vim/lsp/diagnostic.lua
-runtime/lua/vim/lsp/handlers.lua
-runtime/lua/vim/lsp/health.lua
-runtime/lua/vim/lsp/inlay_hint.lua
-runtime/lua/vim/lsp/log.lua
-runtime/lua/vim/lsp/protocol.lua
-runtime/lua/vim/lsp/rpc.lua
-runtime/lua/vim/lsp/semantic_tokens.lua
-runtime/lua/vim/lsp/sync.lua
-runtime/lua/vim/lsp/util.lua
-runtime/lua/vim/lsp.lua
-runtime/lua/vim/provider/health.lua
-runtime/lua/vim/provider/perl.lua
-runtime/lua/vim/provider/python.lua
-runtime/lua/vim/provider/ruby.lua
-runtime/lua/vim/provider.lua
-runtime/lua/vim/re.lua
-runtime/lua/vim/secure.lua
-runtime/lua/vim/shared.lua
-runtime/lua/vim/snippet.lua
-runtime/lua/vim/termcap.lua
-runtime/lua/vim/text.lua
-runtime/lua/vim/treesitter/_fold.lua
-runtime/lua/vim/treesitter/_headings.lua
-runtime/lua/vim/treesitter/_meta/misc.lua
-runtime/lua/vim/treesitter/_meta/tsnode.lua
-runtime/lua/vim/treesitter/_meta/tsquery.lua
-runtime/lua/vim/treesitter/_meta/tstree.lua
-runtime/lua/vim/treesitter/_query_linter.lua
-runtime/lua/vim/treesitter/_range.lua
-runtime/lua/vim/treesitter/dev.lua
-runtime/lua/vim/treesitter/health.lua
-runtime/lua/vim/treesitter/highlighter.lua
-runtime/lua/vim/treesitter/language.lua
-runtime/lua/vim/treesitter/languagetree.lua
-runtime/lua/vim/treesitter/query.lua
-runtime/lua/vim/treesitter.lua
-runtime/lua/vim/ui/clipboard/osc52.lua
-runtime/lua/vim/ui.lua
-runtime/lua/vim/uri.lua
-runtime/lua/vim/version.lua
-runtime/makemenu.vim
-runtime/menu.vim
-runtime/neovim.ico
-runtime/optwin.vim
-runtime/pack/dist/opt/cfilter/plugin/cfilter.lua
-runtime/pack/dist/opt/justify/plugin/justify.vim
-runtime/pack/dist/opt/matchit/autoload/matchit.vim
-runtime/pack/dist/opt/matchit/doc/matchit.txt
-runtime/pack/dist/opt/matchit/doc/tags
-runtime/pack/dist/opt/matchit/plugin/matchit.vim
-runtime/pack/dist/opt/netrw/LICENSE.txt
-runtime/pack/dist/opt/netrw/README.md
-runtime/pack/dist/opt/netrw/autoload/netrw.vim
-runtime/pack/dist/opt/netrw/autoload/netrwSettings.vim
-runtime/pack/dist/opt/netrw/autoload/netrw_gitignore.vim
-runtime/pack/dist/opt/netrw/doc/netrw.txt
-runtime/pack/dist/opt/netrw/doc/tags
-runtime/pack/dist/opt/netrw/plugin/netrwPlugin.vim
-runtime/pack/dist/opt/netrw/syntax/netrw.vim
-runtime/pack/dist/opt/nohlsearch/plugin/nohlsearch.vim
-runtime/pack/dist/opt/shellmenu/plugin/shellmenu.vim
-runtime/pack/dist/opt/swapmouse/plugin/swapmouse.vim
-runtime/pack/dist/opt/termdebug/plugin/termdebug.vim
-runtime/perf/bootstrap.lua
-runtime/plugin/editorconfig.lua
-runtime/plugin/gzip.vim
-runtime/plugin/hardline.vim
-runtime/plugin/man.lua
-runtime/plugin/matchit.vim
-runtime/plugin/matchparen.vim
-runtime/plugin/netrwPlugin.vim
-runtime/plugin/osc52.lua
-runtime/plugin/rplugin.vim
-runtime/plugin/shada.vim
-runtime/plugin/spellfile.vim
-runtime/plugin/tarPlugin.vim
-runtime/plugin/tohtml.lua
-runtime/plugin/tutor.vim
-runtime/plugin/zipPlugin.vim
-runtime/queries/c/folds.scm
-runtime/queries/c/highlights.scm
-runtime/queries/c/injections.scm
-runtime/queries/lua/folds.scm
-runtime/queries/lua/highlights.scm
-runtime/queries/lua/injections.scm
-runtime/queries/markdown/folds.scm
-runtime/queries/markdown/highlights.scm
-runtime/queries/markdown/injections.scm
-runtime/queries/markdown_inline/highlights.scm
-runtime/queries/markdown_inline/injections.scm
-runtime/queries/query/folds.scm
-runtime/queries/query/highlights.scm
-runtime/queries/vim/folds.scm
-runtime/queries/vim/highlights.scm
-runtime/queries/vim/injections.scm
-runtime/queries/vimdoc/highlights.scm
-runtime/queries/vimdoc/injections.scm
-runtime/scripts/emoji_list.lua
-runtime/scripts/generate.py
-runtime/scripts/less.bat
-runtime/scripts/less.sh
-runtime/scripts/less.vim
-runtime/scripts/main.py
-runtime/scripts/mswin.vim
-runtime/scripts/requirements.txt
-runtime/spell/cleanadd.vim
-runtime/spell/en.utf-8.spl
-runtime/synmenu.vim
-runtime/syntax/8th.vim
-runtime/syntax/README.txt
-runtime/syntax/a2ps.vim
-runtime/syntax/a65.vim
-runtime/syntax/aap.vim
-runtime/syntax/abap.vim
-runtime/syntax/abaqus.vim
-runtime/syntax/abc.vim
-runtime/syntax/abel.vim
-runtime/syntax/abnf.vim
-runtime/syntax/acedb.vim
-runtime/syntax/ada.vim
-runtime/syntax/aflex.vim
-runtime/syntax/ahdl.vim
-runtime/syntax/aidl.vim
-runtime/syntax/alsaconf.vim
-runtime/syntax/amiga.vim
-runtime/syntax/aml.vim
-runtime/syntax/ampl.vim
-runtime/syntax/ant.vim
-runtime/syntax/antlr.vim
-runtime/syntax/antlr4.vim
-runtime/syntax/apache.vim
-runtime/syntax/apachestyle.vim
-runtime/syntax/apkbuild.vim
-runtime/syntax/aptconf.vim
-runtime/syntax/arch.vim
-runtime/syntax/arduino.vim
-runtime/syntax/art.vim
-runtime/syntax/asciidoc.vim
-runtime/syntax/asm.vim
-runtime/syntax/asm68k.vim
-runtime/syntax/asmh8300.vim
-runtime/syntax/asn.vim
-runtime/syntax/aspperl.vim
-runtime/syntax/aspvbs.vim
-runtime/syntax/asterisk.vim
-runtime/syntax/asteriskvm.vim
-runtime/syntax/astro.vim
-runtime/syntax/asy.vim
-runtime/syntax/atlas.vim
-runtime/syntax/autodoc.vim
-runtime/syntax/autohotkey.vim
-runtime/syntax/autoit.vim
-runtime/syntax/automake.vim
-runtime/syntax/ave.vim
-runtime/syntax/avra.vim
-runtime/syntax/awk.vim
-runtime/syntax/ayacc.vim
-runtime/syntax/b.vim
-runtime/syntax/baan.vim
-runtime/syntax/bash.vim
-runtime/syntax/basic.vim
-runtime/syntax/bc.vim
-runtime/syntax/bdf.vim
-runtime/syntax/bib.vim
-runtime/syntax/bindzone.vim
-runtime/syntax/bitbake.vim
-runtime/syntax/blank.vim
-runtime/syntax/bsdl.vim
-runtime/syntax/bst.vim
-runtime/syntax/btm.vim
-runtime/syntax/bzl.vim
-runtime/syntax/bzr.vim
-runtime/syntax/c.vim
-runtime/syntax/cabal.vim
-runtime/syntax/cabalconfig.vim
-runtime/syntax/cabalproject.vim
-runtime/syntax/calendar.vim
-runtime/syntax/catalog.vim
-runtime/syntax/cdl.vim
-runtime/syntax/cdrdaoconf.vim
-runtime/syntax/cdrtoc.vim
-runtime/syntax/cf.vim
-runtime/syntax/cfg.vim
-runtime/syntax/cgdbrc.vim
-runtime/syntax/ch.vim
-runtime/syntax/chaiscript.vim
-runtime/syntax/change.vim
-runtime/syntax/changelog.vim
-runtime/syntax/chaskell.vim
-runtime/syntax/chatito.vim
-runtime/syntax/checkhealth.vim
-runtime/syntax/cheetah.vim
-runtime/syntax/chicken.vim
-runtime/syntax/chill.vim
-runtime/syntax/chordpro.vim
-runtime/syntax/chuck.vim
-runtime/syntax/cl.vim
-runtime/syntax/clean.vim
-runtime/syntax/clipper.vim
-runtime/syntax/clojure.vim
-runtime/syntax/cmacro.vim
-runtime/syntax/cmake.vim
-runtime/syntax/cmakecache.vim
-runtime/syntax/cmod.vim
-runtime/syntax/cmusrc.vim
-runtime/syntax/cobol.vim
-runtime/syntax/coco.vim
-runtime/syntax/colortest.vim
-runtime/syntax/conaryrecipe.vim
-runtime/syntax/conf.vim
-runtime/syntax/config.vim
-runtime/syntax/confini.vim
-runtime/syntax/context.vim
-runtime/syntax/cpp.vim
-runtime/syntax/crm.vim
-runtime/syntax/crontab.vim
-runtime/syntax/cs.vim
-runtime/syntax/csc.vim
-runtime/syntax/csdl.vim
-runtime/syntax/csh.vim
-runtime/syntax/csp.vim
-runtime/syntax/css.vim
-runtime/syntax/csv.vim
-runtime/syntax/cterm.vim
-runtime/syntax/ctrlh.vim
-runtime/syntax/cucumber.vim
-runtime/syntax/cuda.vim
-runtime/syntax/cupl.vim
-runtime/syntax/cuplsim.vim
-runtime/syntax/cvs.vim
-runtime/syntax/cvsrc.vim
-runtime/syntax/cweb.vim
-runtime/syntax/cynlib.vim
-runtime/syntax/cynpp.vim
-runtime/syntax/d.vim
-runtime/syntax/dart.vim
-runtime/syntax/datascript.vim
-runtime/syntax/dcd.vim
-runtime/syntax/dcl.vim
-runtime/syntax/deb822sources.vim
-runtime/syntax/debchangelog.vim
-runtime/syntax/debcontrol.vim
-runtime/syntax/debcopyright.vim
-runtime/syntax/debsources.vim
-runtime/syntax/def.vim
-runtime/syntax/denyhosts.vim
-runtime/syntax/dep3patch.vim
-runtime/syntax/desc.vim
-runtime/syntax/desktop.vim
-runtime/syntax/dictconf.vim
-runtime/syntax/dictdconf.vim
-runtime/syntax/diff.vim
-runtime/syntax/dircolors.vim
-runtime/syntax/dirpager.vim
-runtime/syntax/diva.vim
-runtime/syntax/django.vim
-runtime/syntax/dns.vim
-runtime/syntax/dnsmasq.vim
-runtime/syntax/docbk.vim
-runtime/syntax/docbksgml.vim
-runtime/syntax/docbkxml.vim
-runtime/syntax/dockerfile.vim
-runtime/syntax/dosbatch.vim
-runtime/syntax/dosini.vim
-runtime/syntax/dot.vim
-runtime/syntax/doxygen.vim
-runtime/syntax/dracula.vim
-runtime/syntax/dsl.vim
-runtime/syntax/dtd.vim
-runtime/syntax/dtml.vim
-runtime/syntax/dtrace.vim
-runtime/syntax/dts.vim
-runtime/syntax/dune.vim
-runtime/syntax/dylan.vim
-runtime/syntax/dylanintr.vim
-runtime/syntax/dylanlid.vim
-runtime/syntax/ecd.vim
-runtime/syntax/edif.vim
-runtime/syntax/editorconfig.vim
-runtime/syntax/eiffel.vim
-runtime/syntax/elf.vim
-runtime/syntax/elinks.vim
-runtime/syntax/elm.vim
-runtime/syntax/elmfilt.vim
-runtime/syntax/erlang.vim
-runtime/syntax/eruby.vim
-runtime/syntax/esmtprc.vim
-runtime/syntax/esqlc.vim
-runtime/syntax/esterel.vim
-runtime/syntax/eterm.vim
-runtime/syntax/euphoria3.vim
-runtime/syntax/euphoria4.vim
-runtime/syntax/eviews.vim
-runtime/syntax/exim.vim
-runtime/syntax/expect.vim
-runtime/syntax/exports.vim
-runtime/syntax/falcon.vim
-runtime/syntax/fan.vim
-runtime/syntax/fasm.vim
-runtime/syntax/fdcc.vim
-runtime/syntax/fetchmail.vim
-runtime/syntax/fgl.vim
-runtime/syntax/fish.vim
-runtime/syntax/flexwiki.vim
-runtime/syntax/focexec.vim
-runtime/syntax/form.vim
-runtime/syntax/forth.vim
-runtime/syntax/fortran.vim
-runtime/syntax/foxpro.vim
-runtime/syntax/fpcmake.vim
-runtime/syntax/framescript.vim
-runtime/syntax/freebasic.vim
-runtime/syntax/fstab.vim
-runtime/syntax/fvwm.vim
-runtime/syntax/fvwm2m4.vim
-runtime/syntax/gdb.vim
-runtime/syntax/gdmo.vim
-runtime/syntax/gdresource.vim
-runtime/syntax/gdscript.vim
-runtime/syntax/gdshader.vim
-runtime/syntax/gedcom.vim
-runtime/syntax/gel.vim
-runtime/syntax/gemtext.vim
-runtime/syntax/gift.vim
-runtime/syntax/git.vim
-runtime/syntax/gitattributes.vim
-runtime/syntax/gitcommit.vim
-runtime/syntax/gitconfig.vim
-runtime/syntax/gitignore.vim
-runtime/syntax/gitolite.vim
-runtime/syntax/gitrebase.vim
-runtime/syntax/gitsendemail.vim
-runtime/syntax/gkrellmrc.vim
-runtime/syntax/glsl.vim
-runtime/syntax/gnash.vim
-runtime/syntax/gnuplot.vim
-runtime/syntax/go.vim
-runtime/syntax/goaccess.vim
-runtime/syntax/godoc.vim
-runtime/syntax/gp.vim
-runtime/syntax/gpg.vim
-runtime/syntax/gprof.vim
-runtime/syntax/grads.vim
-runtime/syntax/graphql.vim
-runtime/syntax/gretl.vim
-runtime/syntax/groff.vim
-runtime/syntax/groovy.vim
-runtime/syntax/group.vim
-runtime/syntax/grub.vim
-runtime/syntax/gsp.vim
-runtime/syntax/gtkrc.vim
-runtime/syntax/gvpr.vim
-runtime/syntax/gyp.vim
-runtime/syntax/haml.vim
-runtime/syntax/hamster.vim
-runtime/syntax/hare.vim
-runtime/syntax/haredoc.vim
-runtime/syntax/haskell.vim
-runtime/syntax/haste.vim
-runtime/syntax/hastepreproc.vim
-runtime/syntax/hb.vim
-runtime/syntax/hcl.vim
-runtime/syntax/help.vim
-runtime/syntax/help_it.vim
-runtime/syntax/help_ru.vim
-runtime/syntax/hercules.vim
-runtime/syntax/hex.vim
-runtime/syntax/hgcommit.vim
-runtime/syntax/hitest.vim
-runtime/syntax/hlsplaylist.vim
-runtime/syntax/hog.vim
-runtime/syntax/hollywood.vim
-runtime/syntax/hostconf.vim
-runtime/syntax/hostsaccess.vim
-runtime/syntax/html.vim
-runtime/syntax/htmlangular.vim
-runtime/syntax/htmlcheetah.vim
-runtime/syntax/htmldjango.vim
-runtime/syntax/htmlm4.vim
-runtime/syntax/htmlos.vim
-runtime/syntax/hyprlang.vim
-runtime/syntax/i3config.vim
-runtime/syntax/ia64.vim
-runtime/syntax/ibasic.vim
-runtime/syntax/icemenu.vim
-runtime/syntax/icon.vim
-runtime/syntax/idl.vim
-runtime/syntax/idlang.vim
-runtime/syntax/idris2.vim
-runtime/syntax/indent.vim
-runtime/syntax/inform.vim
-runtime/syntax/initex.vim
-runtime/syntax/initng.vim
-runtime/syntax/inittab.vim
-runtime/syntax/ipfilter.vim
-runtime/syntax/ipkg.vim
-runtime/syntax/ishd.vim
-runtime/syntax/iss.vim
-runtime/syntax/ist.vim
-runtime/syntax/j.vim
-runtime/syntax/jal.vim
-runtime/syntax/jam.vim
-runtime/syntax/jargon.vim
-runtime/syntax/java.vim
-runtime/syntax/javacc.vim
-runtime/syntax/javascript.vim
-runtime/syntax/javascriptreact.vim
-runtime/syntax/jess.vim
-runtime/syntax/jgraph.vim
-runtime/syntax/jinja.vim
-runtime/syntax/jjdescription.vim
-runtime/syntax/jovial.vim
-runtime/syntax/jproperties.vim
-runtime/syntax/jq.vim
-runtime/syntax/json.vim
-runtime/syntax/json5.vim
-runtime/syntax/jsonc.vim
-runtime/syntax/jsp.vim
-runtime/syntax/julia.vim
-runtime/syntax/just.vim
-runtime/syntax/karel.vim
-runtime/syntax/kconfig.vim
-runtime/syntax/kdl.vim
-runtime/syntax/kivy.vim
-runtime/syntax/kix.vim
-runtime/syntax/kotlin.vim
-runtime/syntax/krl.vim
-runtime/syntax/kscript.vim
-runtime/syntax/kwt.vim
-runtime/syntax/lace.vim
-runtime/syntax/latte.vim
-runtime/syntax/lc.vim
-runtime/syntax/ld.vim
-runtime/syntax/ldapconf.vim
-runtime/syntax/ldif.vim
-runtime/syntax/less.vim
-runtime/syntax/lex.vim
-runtime/syntax/lf.vim
-runtime/syntax/lftp.vim
-runtime/syntax/lhaskell.vim
-runtime/syntax/libao.vim
-runtime/syntax/lidris2.vim
-runtime/syntax/lifelines.vim
-runtime/syntax/lilo.vim
-runtime/syntax/limits.vim
-runtime/syntax/liquid.vim
-runtime/syntax/lisp.vim
-runtime/syntax/lite.vim
-runtime/syntax/litestep.vim
-runtime/syntax/livebook.vim
-runtime/syntax/lnk.vim
-runtime/syntax/lnkmap.vim
-runtime/syntax/loginaccess.vim
-runtime/syntax/logindefs.vim
-runtime/syntax/logtalk.vim
-runtime/syntax/lotos.vim
-runtime/syntax/lout.vim
-runtime/syntax/lpc.vim
-runtime/syntax/lprolog.vim
-runtime/syntax/lscript.vim
-runtime/syntax/lsl.vim
-runtime/syntax/lsp_markdown.vim
-runtime/syntax/lss.vim
-runtime/syntax/lua.vim
-runtime/syntax/luau.vim
-runtime/syntax/lynx.vim
-runtime/syntax/lyrics.vim
-runtime/syntax/m17ndb.vim
-runtime/syntax/m3build.vim
-runtime/syntax/m3quake.vim
-runtime/syntax/m4.vim
-runtime/syntax/mail.vim
-runtime/syntax/mailaliases.vim
-runtime/syntax/mailcap.vim
-runtime/syntax/make.vim
-runtime/syntax/mallard.vim
-runtime/syntax/man.vim
-runtime/syntax/manconf.vim
-runtime/syntax/manual.vim
-runtime/syntax/maple.vim
-runtime/syntax/markdown.vim
-runtime/syntax/masm.vim
-runtime/syntax/mason.vim
-runtime/syntax/master.vim
-runtime/syntax/matlab.vim
-runtime/syntax/maxima.vim
-runtime/syntax/mediawiki.vim
-runtime/syntax/mel.vim
-runtime/syntax/mermaid.vim
-runtime/syntax/meson.vim
-runtime/syntax/messages.vim
-runtime/syntax/mf.vim
-runtime/syntax/mgl.vim
-runtime/syntax/mgp.vim
-runtime/syntax/mib.vim
-runtime/syntax/mix.vim
-runtime/syntax/mma.vim
-runtime/syntax/mmix.vim
-runtime/syntax/mmp.vim
-runtime/syntax/modconf.vim
-runtime/syntax/model.vim
-runtime/syntax/modsim3.vim
-runtime/syntax/modula2/opt/iso.vim
-runtime/syntax/modula2/opt/pim.vim
-runtime/syntax/modula2/opt/r10.vim
-runtime/syntax/modula2.vim
-runtime/syntax/modula3.vim
-runtime/syntax/mojo.vim
-runtime/syntax/monk.vim
-runtime/syntax/moo.vim
-runtime/syntax/mp.vim
-runtime/syntax/mplayerconf.vim
-runtime/syntax/mrxvtrc.vim
-runtime/syntax/msidl.vim
-runtime/syntax/msmessages.vim
-runtime/syntax/msql.vim
-runtime/syntax/mss.vim
-runtime/syntax/mupad.vim
-runtime/syntax/murphi.vim
-runtime/syntax/mush.vim
-runtime/syntax/muttrc.vim
-runtime/syntax/mysql.vim
-runtime/syntax/n1ql.vim
-runtime/syntax/named.vim
-runtime/syntax/nanorc.vim
-runtime/syntax/nasm.vim
-runtime/syntax/nastran.vim
-runtime/syntax/natural.vim
-runtime/syntax/ncf.vim
-runtime/syntax/neomuttlog.vim
-runtime/syntax/neomuttrc.vim
-runtime/syntax/netrc.vim
-runtime/syntax/nginx.vim
-runtime/syntax/ninja.vim
-runtime/syntax/nix.vim
-runtime/syntax/nosyntax.vim
-runtime/syntax/nqc.vim
-runtime/syntax/nroff.vim
-runtime/syntax/nsis.vim
-runtime/syntax/obj.vim
-runtime/syntax/objc.vim
-runtime/syntax/objcpp.vim
-runtime/syntax/obse.vim
-runtime/syntax/ocaml.vim
-runtime/syntax/occam.vim
-runtime/syntax/odin.vim
-runtime/syntax/oil.vim
-runtime/syntax/oil_preview.vim
-runtime/syntax/omnimark.vim
-runtime/syntax/ondir.vim
-runtime/syntax/opam.vim
-runtime/syntax/opencl.vim
-runtime/syntax/openroad.vim
-runtime/syntax/openscad.vim
-runtime/syntax/openvpn.vim
-runtime/syntax/opl.vim
-runtime/syntax/ora.vim
-runtime/syntax/org.vim
-runtime/syntax/pacmanlog.vim
-runtime/syntax/pamconf.vim
-runtime/syntax/pamenv.vim
-runtime/syntax/pandoc.vim
-runtime/syntax/papp.vim
-runtime/syntax/pascal.vim
-runtime/syntax/passwd.vim
-runtime/syntax/pbtxt.vim
-runtime/syntax/pcap.vim
-runtime/syntax/pccts.vim
-runtime/syntax/pdf.vim
-runtime/syntax/perl.vim
-runtime/syntax/pf.vim
-runtime/syntax/pfmain.vim
-runtime/syntax/php.vim
-runtime/syntax/phtml.vim
-runtime/syntax/pic.vim
-runtime/syntax/pike.vim
-runtime/syntax/pilrc.vim
-runtime/syntax/pine.vim
-runtime/syntax/pinfo.vim
-runtime/syntax/plaintex.vim
-runtime/syntax/pli.vim
-runtime/syntax/plm.vim
-runtime/syntax/plp.vim
-runtime/syntax/plsql.vim
-runtime/syntax/po.vim
-runtime/syntax/pod.vim
-runtime/syntax/poefilter.vim
-runtime/syntax/poke.vim
-runtime/syntax/postscr.vim
-runtime/syntax/pov.vim
-runtime/syntax/povini.vim
-runtime/syntax/ppd.vim
-runtime/syntax/ppwiz.vim
-runtime/syntax/prescribe.vim
-runtime/syntax/privoxy.vim
-runtime/syntax/procmail.vim
-runtime/syntax/progress.vim
-runtime/syntax/prolog.vim
-runtime/syntax/promela.vim
-runtime/syntax/proto.vim
-runtime/syntax/protocols.vim
-runtime/syntax/prql.vim
-runtime/syntax/ps1.vim
-runtime/syntax/ps1xml.vim
-runtime/syntax/psf.vim
-runtime/syntax/psl.vim
-runtime/syntax/ptcap.vim
-runtime/syntax/ptx.vim
-runtime/syntax/purifylog.vim
-runtime/syntax/pymanifest.vim
-runtime/syntax/pyrex.vim
-runtime/syntax/python.vim
-runtime/syntax/python2.vim
-runtime/syntax/qb64.vim
-runtime/syntax/qf.vim
-runtime/syntax/qml.vim
-runtime/syntax/quake.vim
-runtime/syntax/quarto.vim
-runtime/syntax/query.lua
-runtime/syntax/r.vim
-runtime/syntax/racc.vim
-runtime/syntax/racket.vim
-runtime/syntax/radiance.vim
-runtime/syntax/raku.vim
-runtime/syntax/raml.vim
-runtime/syntax/rapid.vim
-runtime/syntax/rasi.vim
-runtime/syntax/ratpoison.vim
-runtime/syntax/rc.vim
-runtime/syntax/rcs.vim
-runtime/syntax/rcslog.vim
-runtime/syntax/readline.vim
-runtime/syntax/rebol.vim
-runtime/syntax/redif.vim
-runtime/syntax/registry.vim
-runtime/syntax/rego.vim
-runtime/syntax/remind.vim
-runtime/syntax/requirements.vim
-runtime/syntax/resolv.vim
-runtime/syntax/reva.vim
-runtime/syntax/rexx.vim
-runtime/syntax/rhelp.vim
-runtime/syntax/rib.vim
-runtime/syntax/rmd.vim
-runtime/syntax/rnc.vim
-runtime/syntax/rng.vim
-runtime/syntax/rnoweb.vim
-runtime/syntax/robots.vim
-runtime/syntax/routeros.vim
-runtime/syntax/rpcgen.vim
-runtime/syntax/rpl.vim
-runtime/syntax/rrst.vim
-runtime/syntax/rst.vim
-runtime/syntax/rtf.vim
-runtime/syntax/ruby.vim
-runtime/syntax/rust.vim
-runtime/syntax/salt.vim
-runtime/syntax/samba.vim
-runtime/syntax/sas.vim
-runtime/syntax/sass.vim
-runtime/syntax/sather.vim
-runtime/syntax/sbt.vim
-runtime/syntax/scala.vim
-runtime/syntax/scdoc.vim
-runtime/syntax/scheme.vim
-runtime/syntax/scilab.vim
-runtime/syntax/screen.vim
-runtime/syntax/scss.vim
-runtime/syntax/sd.vim
-runtime/syntax/sdc.vim
-runtime/syntax/sdl.vim
-runtime/syntax/sed.vim
-runtime/syntax/sendpr.vim
-runtime/syntax/sensors.vim
-runtime/syntax/services.vim
-runtime/syntax/setserial.vim
-runtime/syntax/sexplib.vim
-runtime/syntax/sgml.vim
-runtime/syntax/sgmldecl.vim
-runtime/syntax/sgmllnx.vim
-runtime/syntax/sh.vim
-runtime/syntax/shada.vim
-runtime/syntax/shaderslang.vim
-runtime/syntax/shared/README.txt
-runtime/syntax/shared/debversions.vim
-runtime/syntax/shared/hgcommitDiff.vim
-runtime/syntax/shared/typescriptcommon.vim
-runtime/syntax/sicad.vim
-runtime/syntax/sieve.vim
-runtime/syntax/sil.vim
-runtime/syntax/simula.vim
-runtime/syntax/sinda.vim
-runtime/syntax/sindacmp.vim
-runtime/syntax/sindaout.vim
-runtime/syntax/sisu.vim
-runtime/syntax/skill.vim
-runtime/syntax/sl.vim
-runtime/syntax/slang.vim
-runtime/syntax/slice.vim
-runtime/syntax/slpconf.vim
-runtime/syntax/slpreg.vim
-runtime/syntax/slpspi.vim
-runtime/syntax/slrnrc.vim
-runtime/syntax/slrnsc.vim
-runtime/syntax/sm.vim
-runtime/syntax/smarty.vim
-runtime/syntax/smcl.vim
-runtime/syntax/smil.vim
-runtime/syntax/smith.vim
-runtime/syntax/sml.vim
-runtime/syntax/snnsnet.vim
-runtime/syntax/snnspat.vim
-runtime/syntax/snnsres.vim
-runtime/syntax/snobol4.vim
-runtime/syntax/solidity.vim
-runtime/syntax/spajson.vim
-runtime/syntax/spec.vim
-runtime/syntax/specman.vim
-runtime/syntax/spice.vim
-runtime/syntax/splint.vim
-runtime/syntax/spup.vim
-runtime/syntax/spyce.vim
-runtime/syntax/sql.vim
-runtime/syntax/sqlanywhere.vim
-runtime/syntax/sqlforms.vim
-runtime/syntax/sqlhana.vim
-runtime/syntax/sqlinformix.vim
-runtime/syntax/sqlj.vim
-runtime/syntax/sqloracle.vim
-runtime/syntax/sqr.vim
-runtime/syntax/squid.vim
-runtime/syntax/squirrel.vim
-runtime/syntax/srec.vim
-runtime/syntax/srt.vim
-runtime/syntax/ssa.vim
-runtime/syntax/sshconfig.vim
-runtime/syntax/sshdconfig.vim
-runtime/syntax/st.vim
-runtime/syntax/stata.vim
-runtime/syntax/stp.vim
-runtime/syntax/strace.vim
-runtime/syntax/structurizr.vim
-runtime/syntax/stylus.vim
-runtime/syntax/sudoers.vim
-runtime/syntax/svg.vim
-runtime/syntax/svn.vim
-runtime/syntax/swayconfig.vim
-runtime/syntax/swift.vim
-runtime/syntax/swiftgyb.vim
-runtime/syntax/swig.vim
-runtime/syntax/synload.vim
-runtime/syntax/syntax.vim
-runtime/syntax/sysctl.vim
-runtime/syntax/systemd.vim
-runtime/syntax/systemverilog.vim
-runtime/syntax/tads.vim
-runtime/syntax/tags.vim
-runtime/syntax/tak.vim
-runtime/syntax/takcmp.vim
-runtime/syntax/takout.vim
-runtime/syntax/tap.vim
-runtime/syntax/tar.vim
-runtime/syntax/taskdata.vim
-runtime/syntax/taskedit.vim
-runtime/syntax/tasm.vim
-runtime/syntax/tcl.vim
-runtime/syntax/tcsh.vim
-runtime/syntax/template.vim
-runtime/syntax/tera.vim
-runtime/syntax/teraterm.vim
-runtime/syntax/terminfo.vim
-runtime/syntax/terraform.vim
-runtime/syntax/tex.vim
-runtime/syntax/texinfo.vim
-runtime/syntax/texmf.vim
-runtime/syntax/tf.vim
-runtime/syntax/thrift.vim
-runtime/syntax/tiasm.vim
-runtime/syntax/tidy.vim
-runtime/syntax/tilde.vim
-runtime/syntax/tli.vim
-runtime/syntax/tmux.vim
-runtime/syntax/toml.vim
-runtime/syntax/tpp.vim
-runtime/syntax/trasys.vim
-runtime/syntax/treetop.vim
-runtime/syntax/trustees.vim
-runtime/syntax/tsalt.vim
-runtime/syntax/tsscl.vim
-runtime/syntax/tssgm.vim
-runtime/syntax/tssop.vim
-runtime/syntax/tsv.vim
-runtime/syntax/tt2.vim
-runtime/syntax/tt2html.vim
-runtime/syntax/tt2js.vim
-runtime/syntax/tutor.lua
-runtime/syntax/tutor.vim
-runtime/syntax/typescript.vim
-runtime/syntax/typescriptreact.vim
-runtime/syntax/typst.vim
-runtime/syntax/uc.vim
-runtime/syntax/uci.vim
-runtime/syntax/udevconf.vim
-runtime/syntax/udevperm.vim
-runtime/syntax/udevrules.vim
-runtime/syntax/uil.vim
-runtime/syntax/unison.vim
-runtime/syntax/updatedb.vim
-runtime/syntax/upstart.vim
-runtime/syntax/upstreamdat.vim
-runtime/syntax/upstreaminstalllog.vim
-runtime/syntax/upstreamlog.vim
-runtime/syntax/upstreamrpt.vim
-runtime/syntax/urlshortcut.vim
-runtime/syntax/usserverlog.vim
-runtime/syntax/usw2kagtlog.vim
-runtime/syntax/valgrind.vim
-runtime/syntax/vb.vim
-runtime/syntax/vdf.vim
-runtime/syntax/vera.vim
-runtime/syntax/verilog.vim
-runtime/syntax/verilogams.vim
-runtime/syntax/vgrindefs.vim
-runtime/syntax/vhdl.vim
-runtime/syntax/vim/generated.vim
-runtime/syntax/vim.vim
-runtime/syntax/viminfo.vim
-runtime/syntax/vimnormal.vim
-runtime/syntax/virata.vim
-runtime/syntax/vmasm.vim
-runtime/syntax/voscm.vim
-runtime/syntax/vrml.vim
-runtime/syntax/vroom.vim
-runtime/syntax/vsejcl.vim
-runtime/syntax/vue.vim
-runtime/syntax/wat.vim
-runtime/syntax/wdiff.vim
-runtime/syntax/wdl.vim
-runtime/syntax/web.vim
-runtime/syntax/webmacro.vim
-runtime/syntax/wget.vim
-runtime/syntax/wget2.vim
-runtime/syntax/whitespace.vim
-runtime/syntax/winbatch.vim
-runtime/syntax/wml.vim
-runtime/syntax/wsh.vim
-runtime/syntax/wsml.vim
-runtime/syntax/wvdial.vim
-runtime/syntax/xbl.vim
-runtime/syntax/xcompose.vim
-runtime/syntax/xdefaults.vim
-runtime/syntax/xf86conf.vim
-runtime/syntax/xhtml.vim
-runtime/syntax/xinetd.vim
-runtime/syntax/xkb.vim
-runtime/syntax/xmath.vim
-runtime/syntax/xml.vim
-runtime/syntax/xmodmap.vim
-runtime/syntax/xpm.vim
-runtime/syntax/xpm2.vim
-runtime/syntax/xquery.vim
-runtime/syntax/xs.vim
-runtime/syntax/xsd.vim
-runtime/syntax/xslt.vim
-runtime/syntax/xxd.vim
-runtime/syntax/yacc.vim
-runtime/syntax/yaml.vim
-runtime/syntax/z8a.vim
-runtime/syntax/zathurarc.vim
-runtime/syntax/zig.vim
-runtime/syntax/zimbu.vim
-runtime/syntax/zir.vim
-runtime/syntax/zserio.vim
-runtime/syntax/zsh.vim
-runtime/tutor/en/vim-01-beginner.tutor
-runtime/tutor/en/vim-01-beginner.tutor.json
-runtime/tutor/en/vim-02-beginner.tutor
-runtime/tutor/en/vim-02-beginner.tutor.json
-runtime/tutor/ja/vim-01-beginner.tutor
-runtime/tutor/ja/vim-01-beginner.tutor.json
-runtime/tutor/tutor.tutor
-runtime/tutor/tutor.tutor.json
-runtime/tutor/vimtutor
-runtime/tutor/zh/vim-01-beginner.tutor
-runtime/tutor/zh/vim-01-beginner.tutor.json
-runtime/tutor/zh/vim-02-beginner.tutor
-runtime/tutor/zh/vim-02-beginner.tutor.json
+layout/
+	buffer.lua
+	tabpage.lua
+	window.lua
+lib/
+	aliastable.lua
+	args.lua
+	autocmd.lua
+	command.lua
+	envvars.lua
+	error.lua
+	event.lua
+	excmd/
+		cmdread.lua
+		commands.lua
+		compiler.lua
+		exmsg.lua
+		runtime.lua
+		vim_regex.lua
+		vimxpr.lua
+	filesystem.lua
+	frame.lua
+	highlight.lua
+	key.lua
+	listchars.lua
+	luaapi/
+		F.lua
+		api.lua
+		apibuild.lua
+		deferfn.lua
+		diagnostic.lua
+		env.lua
+		fakejit.lua
+		fileload.lua
+		fn.lua
+		fs.lua
+		keymap.lua
+		log.lua
+		loop.lua
+		notify.lua
+		on_key.lua
+		opt.lua
+		opts.lua
+		package.lua
+		print.lua
+		require.lua
+		scopes.lua
+		split.lua
+		strutils.lua
+		system.lua
+		tblutils.lua
+		timerutils.lua
+		treesitter.lua
+	lualoader.lua
+	mappings.lua
+	options.lua
+	pack.lua
+	runtimepath.lua
+	scriptsource.lua
+	sign.lua
+	statusline.lua
+	syntax.lua
+	syntax_engine/
+		api.lua
+		command_parser.lua
+		compiler.lua
+		profile.lua
+		runtime.lua
+		state.lua
+	tab.lua
+	tags.lua
+	texren.lua
+	treesitter/
+		backends/
+	utf8.lua
+	wordnav.lua
+runtime/
+	autoload/
+		README.txt
+		RstFold.vim
+		ada.vim
+		adacomplete.vim
+		bitbake.vim
+		cargo/
+			quickfix.vim
+		cargo.vim
+		ccomplete.lua
+		ccomplete.vim
+		clojurecomplete.vim
+		context.vim
+		contextcomplete.vim
+		csscomplete.vim
+		decada.vim
+		dist/
+			vim.vim
+		freebasic.vim
+		gnat.vim
+		gzip.vim
+		hare.vim
+		haskellcomplete.vim
+		hcl.vim
+		htmlcomplete.vim
+		javaformat.vim
+		javascriptcomplete.vim
+		modula2.vim
+		msgpack.vim
+		paste.vim
+		phpcomplete.vim
+		provider/
+			clipboard.vim
+			node.vim
+			perl.vim
+			python3.vim
+			ruby.vim
+			script_host.rb
+		provider.vim
+		python.vim
+		python3complete.vim
+		pythoncomplete.vim
+		remote/
+			define.vim
+			host.vim
+		rubycomplete.vim
+		rust/
+			debugging.vim
+		rust.vim
+		rustfmt.vim
+		shada.vim
+		spellfile.vim
+		spotbugs.vim
+		sqlcomplete.vim
+		syntaxcomplete.vim
+		tar.vim
+		tutor.vim
+		typst.vim
+		vimexpect.vim
+		xml/
+			html32.vim
+			html401f.vim
+			html401s.vim
+			html401t.vim
+			html40f.vim
+			html40s.vim
+			html40t.vim
+			xhtml10f.vim
+			xhtml10s.vim
+			xhtml10t.vim
+			xhtml11.vim
+			xsd.vim
+			xsl.vim
+		xmlcomplete.vim
+		xmlformat.vim
+		zip.vim
+	colors/
+		README.txt
+		blue.vim
+		darkblue.vim
+		default.vim
+		delek.vim
+		desert.vim
+		elflord.vim
+		evening.vim
+		habamax.vim
+		industry.vim
+		koehler.vim
+		lunaperche.vim
+		morning.vim
+		murphy.vim
+		pablo.vim
+		peachpuff.vim
+		quiet.vim
+		retrobox.vim
+		ron.vim
+		shine.vim
+		slate.vim
+		sorbet.vim
+		torte.vim
+		unokai.vim
+		vim.lua
+		wildcharm.vim
+		zaibatsu.vim
+		zellner.vim
+	compiler/
+		README.txt
+		ant.vim
+		bash.vim
+		bcc.vim
+		bdf.vim
+		cargo.vim
+		checkstyle.vim
+		cm3.vim
+		context.vim
+		cppcheck.vim
+		cs.vim
+		csslint.vim
+		cucumber.vim
+		dart.vim
+		dart2js.vim
+		dart2native.vim
+		dartanalyser.vim
+		dartdevc.vim
+		dartdoc.vim
+		dartfmt.vim
+		decada.vim
+		dot.vim
+		dotnet.vim
+		erlang.vim
+		eruby.vim
+		eslint.vim
+		fbc.vim
+		fortran_F.vim
+		fortran_cv.vim
+		fortran_elf90.vim
+		fortran_g77.vim
+		fortran_lf95.vim
+		fpc.vim
+		g95.vim
+		gawk.vim
+		gcc.vim
+		gfortran.vim
+		ghc.vim
+		gjs.vim
+		gm2.vim
+		gnat.vim
+		go.vim
+		groff.vim
+		haml.vim
+		hare.vim
+		hp_acc.vim
+		icc.vim
+		icon.vim
+		ifort.vim
+		intel.vim
+		irix5_c.vim
+		irix5_cpp.vim
+		javac.vim
+		jest.vim
+		jikes.vim
+		jjs.vim
+		jq.vim
+		jshint.vim
+		jsonlint.vim
+		make.vim
+		maven.vim
+		mcs.vim
+		mips_c.vim
+		mipspro_c89.vim
+		mipspro_cpp.vim
+		modelsim_vcom.vim
+		msbuild.vim
+		msvc.vim
+		mypy.vim
+		neato.vim
+		ocaml.vim
+		onsgmls.vim
+		pandoc.vim
+		pbx.vim
+		perl.vim
+		perlcritic.vim
+		php.vim
+		pip_compile.vim
+		podchecker.vim
+		powershell.vim
+		pylint.vim
+		pytest.vim
+		pyunit.vim
+		raco.vim
+		racomake.vim
+		racosetup.vim
+		racotest.vim
+		rake.vim
+		rhino.vim
+		rime_deployer.vim
+		rspec.vim
+		rst.vim
+		rubocop.vim
+		ruby.vim
+		rubyunit.vim
+		ruff.vim
+		rustc.vim
+		sass.vim
+		scdoc.vim
+		se.vim
+		shellcheck.vim
+		sml.vim
+		spectral.vim
+		splint.vim
+		spotbugs.vim
+		stack.vim
+		standard.vim
+		stylelint.vim
+		svelte-check.vim
+		tcl.vim
+		tex.vim
+		tidy.vim
+		ts-node.vim
+		tsc.vim
+		typedoc.vim
+		typst.vim
+		vimdoc.vim
+		xbuild.vim
+		xmllint.vim
+		xmlwf.vim
+		xo.vim
+		yamllint.vim
+		zig.vim
+		zig_build.vim
+		zig_build_exe.vim
+		zig_test.vim
+		zsh.vim
+	data/
+		plenary/
+			filetypes/
+	delmenu.vim
+	doc/
+		api.md
+		api.txt
+		arabic.txt
+		autocmd.txt
+		builtin.txt
+		change.txt
+		channel.txt
+		cmdline.txt
+		credits.txt
+		debug.txt
+		deprecated.txt
+		dev_arch.txt
+		dev_style.txt
+		dev_theme.txt
+		dev_tools.txt
+		dev_vimpatch.txt
+		develop.txt
+		diagnostic.txt
+		diff.txt
+		digraph.txt
+		editing.txt
+		editorconfig.txt
+		eval.txt
+		faq.txt
+		filetype.txt
+		fold.txt
+		ft_ada.txt
+		ft_hare.txt
+		ft_ps1.txt
+		ft_raku.txt
+		ft_rust.txt
+		ft_sql.txt
+		gui.txt
+		health.txt
+		hebrew.txt
+		help.txt
+		helphelp.txt
+		if_perl.txt
+		if_pyth.txt
+		if_ruby.txt
+		indent.txt
+		index.txt
+		insert.txt
+		intro.txt
+		job_control.txt
+		lsp-extension.txt
+		lsp.txt
+		lua-bit.txt
+		lua-guide.txt
+		lua-plugin.txt
+		lua.txt
+		luaref.txt
+		luvref.txt
+		map.txt
+		mbyte.txt
+		message.txt
+		mlang.txt
+		motion.txt
+		news-0.10.txt
+		news-0.9.txt
+		news.txt
+		nvim.txt
+		nvim_terminal_emulator.txt
+		oil.txt
+		options.txt
+		pattern.txt
+		pi_gzip.txt
+		pi_health.txt
+		pi_msgpack.txt
+		pi_netrw.txt
+		pi_paren.txt
+		pi_spec.txt
+		pi_tar.txt
+		pi_tutor.txt
+		pi_zip.txt
+		provider.txt
+		quickfix.txt
+		quickref.txt
+		recipes.md
+		recover.txt
+		remote.txt
+		remote_plugin.txt
+		repeat.txt
+		rileft.txt
+		russian.txt
+		scroll.txt
+		sign.txt
+		spell.txt
+		starting.txt
+		support.txt
+		syntax.txt
+		tabpage.txt
+		tags
+		tagsrch.txt
+		term.txt
+		terminal.txt
+		testing.txt
+		tips.txt
+		treesitter.txt
+		tui.txt
+		uganda.txt
+		ui.txt
+		undo.txt
+		userfunc.txt
+		usr_01.txt
+		usr_02.txt
+		usr_03.txt
+		usr_04.txt
+		usr_05.txt
+		usr_06.txt
+		usr_07.txt
+		usr_08.txt
+		usr_09.txt
+		usr_10.txt
+		usr_11.txt
+		usr_12.txt
+		usr_20.txt
+		usr_21.txt
+		usr_22.txt
+		usr_23.txt
+		usr_24.txt
+		usr_25.txt
+		usr_26.txt
+		usr_27.txt
+		usr_28.txt
+		usr_29.txt
+		usr_30.txt
+		usr_31.txt
+		usr_32.txt
+		usr_40.txt
+		usr_41.txt
+		usr_42.txt
+		usr_43.txt
+		usr_44.txt
+		usr_45.txt
+		usr_toc.txt
+		various.txt
+		vi_diff.txt
+		vietnamese.txt
+		vim_diff.txt
+		vimeval.txt
+		vimfn.txt
+		visual.txt
+		vvars.txt
+		windows.txt
+	example_init.lua
+	filetype.lua
+	filetype.vim
+	ftoff.vim
+	ftplugin/
+		8th.vim
+		README.txt
+		a2ps.vim
+		aap.vim
+		abap.vim
+		abaqus.vim
+		ada.vim
+		alsaconf.vim
+		ant.vim
+		antlr4.vim
+		apache.vim
+		arch.vim
+		arduino.lua
+		arduino.vim
+		art.vim
+		asciidoc.vim
+		asm.vim
+		aspvbs.vim
+		astro.vim
+		asy.vim
+		autohotkey.vim
+		automake.vim
+		awk.vim
+		bash.vim
+		basic.vim
+		bdf.vim
+		bindzone.vim
+		bitbake.vim
+		bp.vim
+		bst.vim
+		btm.vim
+		bzl.vim
+		c.lua
+		c.vim
+		c3.vim
+		cabal.vim
+		calendar.vim
+		cdrdaoconf.vim
+		cedar.vim
+		cfg.vim
+		cgdbrc.vim
+		ch.lua
+		ch.vim
+		changelog.vim
+		chatito.vim
+		checkhealth.lua
+		checkhealth.vim
+		chicken.vim
+		clojure.vim
+		cmake.vim
+		cmakecache.vim
+		cobol.vim
+		conf.vim
+		config.vim
+		confini.vim
+		context.vim
+		cook.vim
+		corn.vim
+		cpp.vim
+		crm.vim
+		crontab.vim
+		cs.lua
+		cs.vim
+		csc.vim
+		csh.vim
+		css.vim
+		csv.vim
+		cucumber.vim
+		cuda.vim
+		cvsrc.vim
+		d.lua
+		dart.vim
+		deb822sources.vim
+		debchangelog.vim
+		debcontrol.vim
+		debsources.vim
+		denyhosts.vim
+		desktop.vim
+		dictconf.vim
+		dictdconf.vim
+		diff.vim
+		dircolors.vim
+		dnsmasq.vim
+		docbk.vim
+		dockerfile.vim
+		dosbatch.vim
+		dosini.vim
+		dot.lua
+		dtd.vim
+		dtrace.vim
+		dts.vim
+		dune.vim
+		editorconfig.vim
+		eiffel.vim
+		elinks.vim
+		elixir.vim
+		elm.vim
+		erlang.vim
+		eruby.vim
+		eterm.vim
+		expect.vim
+		exports.vim
+		falcon.vim
+		faust.lua
+		fennel.vim
+		fetchmail.vim
+		fish.vim
+		flexwiki.vim
+		forth.vim
+		fortran.vim
+		fpcmake.vim
+		framescript.vim
+		freebasic.vim
+		fstab.vim
+		fvwm.vim
+		gdb.vim
+		gdscript.vim
+		gdshader.vim
+		gel.vim
+		git.vim
+		gitattributes.vim
+		gitcommit.vim
+		gitconfig.vim
+		gitignore.vim
+		gitrebase.vim
+		gitsendemail.vim
+		gleam.vim
+		glsl.lua
+		go.vim
+		goaccess.vim
+		gomod.vim
+		gpg.vim
+		gprof.vim
+		graphql.vim
+		groovy.vim
+		group.vim
+		grub.vim
+		gyp.vim
+		haml.vim
+		hamster.vim
+		hare.vim
+		haredoc.vim
+		haskell.vim
+		hcl.vim
+		heex.vim
+		help.lua
+		help.vim
+		hgcommit.vim
+		hlsplaylist.vim
+		hog.vim
+		hostconf.vim
+		hostsaccess.vim
+		html.vim
+		htmlangular.vim
+		htmldjango.vim
+		http.vim
+		hurl.vim
+		hyprlang.vim
+		i3config.vim
+		icon.vim
+		idris2.vim
+		indent.lua
+		indent.vim
+		initex.vim
+		ipkg.vim
+		ishd.vim
+		j.vim
+		java.vim
+		javacc.vim
+		javascript.vim
+		javascriptreact.vim
+		jjdescription.vim
+		jproperties.vim
+		jq.vim
+		json.vim
+		json5.vim
+		jsonc.vim
+		jsonnet.vim
+		jsp.vim
+		julia.vim
+		just.vim
+		karel.vim
+		kconfig.vim
+		kdl.vim
+		kivy.vim
+		kotlin.vim
+		kwt.vim
+		lc.vim
+		ld.vim
+		ldapconf.vim
+		leo.vim
+		less.vim
+		lex.vim
+		lftp.vim
+		libao.vim
+		limits.vim
+		liquid.vim
+		lisp.vim
+		livebook.vim
+		llvm.vim
+		lnk.vim
+		lnkmap.vim
+		logcheck.vim
+		loginaccess.vim
+		logindefs.vim
+		logtalk.dict
+		logtalk.vim
+		lprolog.vim
+		lua.lua
+		lua.vim
+		luau.vim
+		lynx.vim
+		m17ndb.vim
+		m3build.vim
+		m3quake.vim
+		m4.vim
+		mail.vim
+		mailaliases.vim
+		mailcap.vim
+		make.vim
+		man.vim
+		manconf.vim
+		markdown.lua
+		markdown.vim
+		masm.vim
+		matlab.vim
+		mediawiki.vim
+		mermaid.vim
+		meson.vim
+		mf.vim
+		mlir.vim
+		mma.vim
+		modconf.vim
+		modula2.vim
+		modula3.vim
+		mojo.vim
+		mp.vim
+		mplayerconf.vim
+		mrxvtrc.vim
+		msmessages.vim
+		mss.vim
+		muttrc.vim
+		mysql.vim
+		nanorc.vim
+		neomuttrc.vim
+		netrc.vim
+		nginx.vim
+		nim.vim
+		nix.vim
+		nroff.vim
+		nsis.vim
+		nu.vim
+		objc.lua
+		objc.vim
+		objcpp.vim
+		objdump.vim
+		obse.vim
+		ocaml.vim
+		occam.vim
+		octave.vim
+		odin.vim
+		ondir.vim
+		opencl.vim
+		openvpn.vim
+		org.vim
+		pamconf.vim
+		pascal.vim
+		passwd.vim
+		pbtxt.vim
+		pdf.vim
+		perl.vim
+		php.vim
+		pinfo.vim
+		plaintex.vim
+		plsql.vim
+		pod.vim
+		poefilter.vim
+		poke.vim
+		postscr.vim
+		prisma.vim
+		procmail.vim
+		prolog.vim
+		proto.vim
+		protocols.vim
+		ps1.vim
+		ps1xml.vim
+		ptx.vim
+		purescript.vim
+		pymanifest.vim
+		pyrex.vim
+		python.vim
+		qb64.vim
+		qf.vim
+		qml.vim
+		quake.vim
+		quarto.vim
+		query.lua
+		r.vim
+		racc.vim
+		racket.vim
+		raku.vim
+		rasi.vim
+		readline.vim
+		registry.vim
+		requirements.vim
+		rescript.vim
+		reva.vim
+		rhelp.vim
+		rmd.vim
+		rnc.vim
+		rnoweb.vim
+		roc.vim
+		routeros.vim
+		rpl.vim
+		rrst.vim
+		rst.vim
+		ruby.vim
+		rust.vim
+		samba.vim
+		sass.vim
+		sbt.vim
+		scala.vim
+		scdoc.vim
+		scheme.vim
+		screen.vim
+		scss.vim
+		sed.vim
+		sensors.vim
+		services.vim
+		setserial.vim
+		sexplib.vim
+		sgml.vim
+		sh.vim
+		shada.vim
+		shaderslang.vim
+		sieve.vim
+		slint.vim
+		slpconf.vim
+		slpreg.vim
+		slpspi.vim
+		snakemake.vim
+		solidity.vim
+		solution.vim
+		spajson.vim
+		spec.vim
+		sql.vim
+		squirrel.vim
+		ssa.vim
+		sshconfig.vim
+		sshdconfig.vim
+		stata.lua
+		stylus.vim
+		sudoers.vim
+		supercollider.lua
+		svelte.vim
+		svg.vim
+		sway.vim
+		swayconfig.vim
+		swift.lua
+		swift.vim
+		swiftgyb.vim
+		swig.vim
+		sysctl.vim
+		systemd.vim
+		systemverilog.vim
+		tap.vim
+		tcl.vim
+		tcsh.vim
+		tera.vim
+		terminfo.vim
+		terraform.vim
+		tex.vim
+		text.vim
+		tf.vim
+		thrift.vim
+		tiasm.vim
+		tidy.vim
+		tmux.vim
+		toml.vim
+		treetop.vim
+		tt2html.vim
+		tutor.vim
+		typescript.vim
+		typescriptreact.vim
+		typst.vim
+		uci.vim
+		udevconf.vim
+		udevperm.vim
+		udevrules.vim
+		unison.vim
+		updatedb.vim
+		urlshortcut.vim
+		usd.vim
+		v.vim
+		vb.vim
+		vdf.vim
+		verilog.vim
+		vhdl.vim
+		vim.vim
+		vroom.vim
+		vue.vim
+		wat.vim
+		wget.vim
+		wget2.vim
+		xcompose.vim
+		xdefaults.vim
+		xf86conf.vim
+		xhtml.vim
+		xinetd.vim
+		xml.vim
+		xmodmap.vim
+		xs.lua
+		xs.vim
+		xsd.vim
+		xslt.vim
+		yacc.vim
+		yaml.vim
+		zathurarc.vim
+		zig.vim
+		zimbu.vim
+		zsh.vim
+	ftplugin.vim
+	ftplugof.vim
+	indent/
+		Makefile
+		README.txt
+		aap.vim
+		ada.vim
+		ant.vim
+		arduino.vim
+		astro.vim
+		automake.vim
+		awk.vim
+		bash.vim
+		basic.vim
+		bib.vim
+		bitbake.vim
+		bst.vim
+		bzl.vim
+		c.vim
+		cdl.vim
+		ch.vim
+		chaiscript.vim
+		changelog.vim
+		chatito.vim
+		clojure.vim
+		cmake.vim
+		cobol.vim
+		config.vim
+		context.vim
+		cpp.vim
+		cs.vim
+		css.vim
+		cucumber.vim
+		cuda.vim
+		d.vim
+		dictconf.vim
+		dictdconf.vim
+		docbk.vim
+		dosbatch.vim
+		dtd.vim
+		dtrace.vim
+		dts.vim
+		dune.vim
+		dylan.vim
+		eiffel.vim
+		elm.vim
+		erlang.vim
+		eruby.vim
+		eterm.vim
+		expect.vim
+		falcon.vim
+		fennel.vim
+		fish.vim
+		fortran.vim
+		framescript.vim
+		freebasic.vim
+		gdscript.vim
+		gitconfig.vim
+		gitolite.vim
+		glsl.vim
+		go.vim
+		graphql.vim
+		gyp.vim
+		haml.vim
+		hamster.vim
+		hare.vim
+		hcl.vim
+		hog.vim
+		html.vim
+		htmldjango.vim
+		idlang.vim
+		idris2.vim
+		ishd.vim
+		j.vim
+		java.vim
+		javascript.vim
+		javascriptreact.vim
+		json.vim
+		json5.vim
+		jsonc.vim
+		jsp.vim
+		julia.vim
+		just.vim
+		kdl.vim
+		kotlin.vim
+		krl.vim
+		ld.vim
+		less.vim
+		lifelines.vim
+		liquid.vim
+		lisp.vim
+		livebook.vim
+		logtalk.vim
+		lua.vim
+		luau.vim
+		m17ndb.vim
+		mail.vim
+		make.vim
+		matlab.vim
+		meson.vim
+		mf.vim
+		mma.vim
+		mojo.vim
+		mp.vim
+		nginx.vim
+		nsis.vim
+		objc.vim
+		obse.vim
+		ocaml.vim
+		occam.vim
+		odin.vim
+		pascal.vim
+		perl.vim
+		php.vim
+		postscr.vim
+		pov.vim
+		prolog.vim
+		proto.vim
+		ps1.vim
+		pyrex.vim
+		python.vim
+		qb64.vim
+		qml.vim
+		quarto.vim
+		query.lua
+		r.vim
+		racket.vim
+		raku.vim
+		raml.vim
+		rapid.vim
+		readline.vim
+		rhelp.vim
+		rmd.vim
+		rnoweb.vim
+		rpl.vim
+		rrst.vim
+		rst.vim
+		ruby.vim
+		rust.vim
+		sas.vim
+		sass.vim
+		scala.vim
+		scheme.vim
+		scss.vim
+		sdl.vim
+		sh.vim
+		sml.vim
+		solidity.vim
+		spajson.vim
+		sql.vim
+		sqlanywhere.vim
+		sshconfig.vim
+		stylus.vim
+		systemverilog.vim
+		tcl.vim
+		tcsh.vim
+		teraterm.vim
+		terraform.vim
+		testdir/
+			README.txt
+			bash.in
+			bash.ok
+			bitbake.in
+			bitbake.ok
+			dts.in
+			dts.ok
+			html.in
+			html.ok
+			krl.in
+			krl.ok
+			lua.in
+			lua.ok
+			make.in
+			make.ok
+			matlab.in
+			matlab.ok
+			python.in
+			python.ok
+			rapid.in
+			rapid.ok
+			runtest.vim
+			sshconfig.in
+			sshconfig.ok
+			tcl.in
+			tcl.ok
+			thrift.in
+			thrift.ok
+			vb.in
+			vb.ok
+			vim.in
+			vim.ok
+			xml.in
+			xml.ok
+			yaml.in
+			yaml.ok
+		tex.vim
+		tf.vim
+		thrift.vim
+		tilde.vim
+		treetop.vim
+		typescript.vim
+		typescriptreact.vim
+		typst.vim
+		vb.vim
+		verilog.vim
+		vhdl.vim
+		vim.vim
+		vroom.vim
+		vue.vim
+		wat.vim
+		xf86conf.vim
+		xhtml.vim
+		xinetd.vim
+		xml.vim
+		xsd.vim
+		xslt.vim
+		yacc.vim
+		yaml.vim
+		zig.vim
+		zimbu.vim
+		zsh.vim
+	indent.vim
+	indoff.vim
+	keymap/
+		README.txt
+		accents.vim
+		arabic.vim
+		arabic_utf-8.vim
+		armenian-eastern_utf-8.vim
+		armenian-western_utf-8.vim
+		belarusian-jcuken.vim
+		bulgarian-bds.vim
+		bulgarian-phonetic.vim
+		canfr-win.vim
+		croatian.vim
+		croatian_cp1250.vim
+		croatian_iso-8859-2.vim
+		croatian_utf-8.vim
+		czech.vim
+		czech_utf-8.vim
+		dvorak.vim
+		esperanto.vim
+		esperanto_utf-8.vim
+		french-azerty.vim
+		georgian-qwerty.vim
+		german-qwertz.vim
+		greek.vim
+		greek_cp1253.vim
+		greek_cp737.vim
+		greek_iso-8859-7.vim
+		greek_utf-8.vim
+		hebrew.vim
+		hebrew_cp1255.vim
+		hebrew_iso-8859-8.vim
+		hebrew_utf-8.vim
+		hebrewp.vim
+		hebrewp_cp1255.vim
+		hebrewp_iso-8859-8.vim
+		hebrewp_utf-8.vim
+		kana.vim
+		kazakh-jcuken.vim
+		korean-dubeolsik_utf-8.vim
+		korean.vim
+		lithuanian-baltic.vim
+		magyar_utf-8.vim
+		mongolian_utf-8.vim
+		oldturkic-orkhon_utf-8.vim
+		oldturkic-yenisei_utf-8.vim
+		persian-iranian_utf-8.vim
+		persian.vim
+		pinyin.vim
+		polish-slash.vim
+		polish-slash_cp1250.vim
+		polish-slash_cp852.vim
+		polish-slash_iso-8859-2.vim
+		polish-slash_utf-8.vim
+		russian-dvorak.vim
+		russian-jcuken.vim
+		russian-jcukenmac.vim
+		russian-jcukenwin.vim
+		russian-jcukenwintype.vim
+		russian-typograph.vim
+		russian-yawerty.vim
+		serbian-latin.vim
+		serbian-latin_utf-8.vim
+		serbian.vim
+		serbian_cp1250.vim
+		serbian_cp1251.vim
+		serbian_iso-8859-2.vim
+		serbian_iso-8859-5.vim
+		serbian_utf-8.vim
+		sinhala-phonetic_utf-8.vim
+		sinhala.vim
+		slovak.vim
+		slovak_cp1250.vim
+		slovak_iso-8859-2.vim
+		slovak_utf-8.vim
+		tamil_tscii.vim
+		thaana-phonetic_utf-8.vim
+		thaana.vim
+		turkish-f.vim
+		turkish-q.vim
+		ukrainian-dvorak.vim
+		ukrainian-enhanced.vim
+		ukrainian-jcuken.vim
+		vietnamese-telex_utf-8.vim
+		vietnamese-viqr_utf-8.vim
+		vietnamese-vni_utf-8.vim
+	lua/
+		_vim9script.lua
+		coxpcall.lua
+		editorconfig.lua
+		lualine/
+			components/
+				branch/
+				buffers/
+				diagnostics/
+				diff/
+				special/
+				tabs/
+				windows/
+			extensions/
+			themes/
+			utils/
+		man.lua
+		nvim/
+			tutor.lua
+		nvim-tree/
+			_meta/
+				api/
+					appearance.lua
+					commands.lua
+					decorator.lua
+					decorator_example.lua
+					deprecated.lua
+					events.lua
+					filter.lua
+					fs.lua
+					git.lua
+					map.lua
+					marks.lua
+					node.lua
+					tree.lua
+				classes.lua
+				config/
+					actions.lua
+					bookmarks.lua
+					default.lua
+					diagnostics.lua
+					experimental.lua
+					filesystem_watchers.lua
+					filters.lua
+					git.lua
+					help.lua
+					hijack_directories.lua
+					live_filter.lua
+					log.lua
+					modified.lua
+					notify.lua
+					renderer.lua
+					sort.lua
+					system_open.lua
+					tab.lua
+					trash.lua
+					ui.lua
+					update_focused_file.lua
+					view.lua
+				config.lua
+			actions/
+				finders/
+					find-file.lua
+					init.lua
+					search-node.lua
+				fs/
+					clipboard.lua
+					create-file.lua
+					init.lua
+					remove-file.lua
+					rename-file.lua
+					trash.lua
+				init.lua
+				moves/
+					init.lua
+					item.lua
+					parent.lua
+					sibling.lua
+				node/
+					buffer.lua
+					file-popup.lua
+					init.lua
+					open-file.lua
+					run-command.lua
+					system-open.lua
+				tree/
+					collapse.lua
+					find-file.lua
+					init.lua
+					open.lua
+					resize.lua
+					toggle.lua
+			api/
+				impl/
+					post.lua
+					pre.lua
+			api.lua
+			appearance/
+				hi-test.lua
+				init.lua
+			buffers.lua
+			classic.lua
+			commands.lua
+			core.lua
+			diagnostics.lua
+			enum.lua
+			events.lua
+			explorer/
+				filters.lua
+				init.lua
+				live-filter.lua
+				sorter.lua
+				watch.lua
+			git/
+				init.lua
+				runner.lua
+				utils.lua
+			help.lua
+			iterators/
+				node-iterator.lua
+			keymap.lua
+			legacy.lua
+			lib.lua
+			log.lua
+			marks/
+				init.lua
+			node/
+				directory-link.lua
+				directory.lua
+				factory.lua
+				file-link.lua
+				file.lua
+				init.lua
+				link.lua
+				root.lua
+			notify.lua
+			renderer/
+				builder.lua
+				components/
+					devicons.lua
+					full-name.lua
+					init.lua
+					padding.lua
+				decorator/
+					bookmarks.lua
+					builtin.lua
+					copied.lua
+					cut.lua
+					diagnostics.lua
+					git.lua
+					hidden.lua
+					init.lua
+					modified.lua
+					opened.lua
+				init.lua
+			utils.lua
+			view.lua
+			watcher.lua
+		nvim-tree.lua
+		tohtml.lua
+		vim/
+			F.lua
+			_buf.lua
+			_comment.lua
+			_defaults.lua
+			_editor.lua
+			_ftplugin/
+				lua.lua
+			_init_packages.lua
+			_inspector.lua
+			_meta/
+				api.lua
+				api_keysets.lua
+				api_keysets_extra.lua
+				base64.lua
+				builtin.lua
+				builtin_types.lua
+				diff.lua
+				json.lua
+				lpeg.lua
+				misc.lua
+				mpack.lua
+				options.lua
+				re.lua
+				regex.lua
+				spell.lua
+				vimfn.lua
+				vvars.lua
+				vvars_extra.lua
+			_meta.lua
+			_options.lua
+			_system.lua
+			_watch.lua
+			deprecated/
+				health.lua
+			diagnostic.lua
+			filetype/
+				detect.lua
+				options.lua
+			filetype.lua
+			fs.lua
+			func/
+				_memoize.lua
+			func.lua
+			glob.lua
+			health/
+				health.lua
+			health.lua
+			hl.lua
+			inspect.lua
+			iter.lua
+			keymap.lua
+			loader.lua
+			lsp/
+				_changetracking.lua
+				_folding_range.lua
+				_meta/
+					protocol.lua
+				_meta.lua
+				_snippet_grammar.lua
+				_tagfunc.lua
+				_transport.lua
+				_watchfiles.lua
+				buf.lua
+				client.lua
+				codelens.lua
+				completion.lua
+				diagnostic.lua
+				handlers.lua
+				health.lua
+				inlay_hint.lua
+				log.lua
+				protocol.lua
+				rpc.lua
+				semantic_tokens.lua
+				sync.lua
+				util.lua
+			lsp.lua
+			provider/
+				health.lua
+				perl.lua
+				python.lua
+				ruby.lua
+			provider.lua
+			re.lua
+			secure.lua
+			shared.lua
+			snippet.lua
+			termcap.lua
+			text.lua
+			treesitter/
+				_fold.lua
+				_headings.lua
+				_meta/
+					misc.lua
+					tsnode.lua
+					tsquery.lua
+					tstree.lua
+				_query_linter.lua
+				_range.lua
+				dev.lua
+				health.lua
+				highlighter.lua
+				language.lua
+				languagetree.lua
+				query.lua
+			treesitter.lua
+			ui/
+				clipboard/
+					osc52.lua
+			ui.lua
+			uri.lua
+			version.lua
+	makemenu.vim
+	menu.vim
+	neovim.ico
+	optwin.vim
+	pack/
+		dist/
+			opt/
+				cfilter/
+					plugin/
+						cfilter.lua
+				justify/
+					plugin/
+						justify.vim
+				matchit/
+					autoload/
+						matchit.vim
+					doc/
+						matchit.txt
+						tags
+					plugin/
+						matchit.vim
+				netrw/
+					LICENSE.txt
+					README.md
+					autoload/
+						netrw.vim
+						netrwSettings.vim
+						netrw_gitignore.vim
+					doc/
+						netrw.txt
+						tags
+					plugin/
+						netrwPlugin.vim
+					syntax/
+						netrw.vim
+				nohlsearch/
+					plugin/
+						nohlsearch.vim
+				shellmenu/
+					plugin/
+						shellmenu.vim
+				swapmouse/
+					plugin/
+						swapmouse.vim
+				termdebug/
+					plugin/
+						termdebug.vim
+	perf/
+		bootstrap.lua
+	plugin/
+		editorconfig.lua
+		gzip.vim
+		hardline.vim
+		man.lua
+		matchit.vim
+		matchparen.vim
+		netrwPlugin.vim
+		nvim-tree.lua
+		osc52.lua
+		rplugin.vim
+		shada.vim
+		spellfile.vim
+		tarPlugin.vim
+		tohtml.lua
+		tutor.vim
+		zipPlugin.vim
+	queries/
+		c/
+			folds.scm
+			highlights.scm
+			injections.scm
+		lua/
+			folds.scm
+			highlights.scm
+			injections.scm
+		markdown/
+			folds.scm
+			highlights.scm
+			injections.scm
+		markdown_inline/
+			highlights.scm
+			injections.scm
+		query/
+			folds.scm
+			highlights.scm
+		vim/
+			folds.scm
+			highlights.scm
+			injections.scm
+		vimdoc/
+			highlights.scm
+			injections.scm
+	scripts/
+		emoji_list.lua
+		generate.py
+		less.bat
+		less.sh
+		less.vim
+		main.py
+		mswin.vim
+		requirements.txt
+		vararg/
+	spell/
+		cleanadd.vim
+		en.utf-8.spl
+	synmenu.vim
+	syntax/
+		8th.vim
+		README.txt
+		a2ps.vim
+		a65.vim
+		aap.vim
+		abap.vim
+		abaqus.vim
+		abc.vim
+		abel.vim
+		abnf.vim
+		acedb.vim
+		ada.vim
+		aflex.vim
+		ahdl.vim
+		aidl.vim
+		alsaconf.vim
+		amiga.vim
+		aml.vim
+		ampl.vim
+		ant.vim
+		antlr.vim
+		antlr4.vim
+		apache.vim
+		apachestyle.vim
+		apkbuild.vim
+		aptconf.vim
+		arch.vim
+		arduino.vim
+		art.vim
+		asciidoc.vim
+		asm.vim
+		asm68k.vim
+		asmh8300.vim
+		asn.vim
+		aspperl.vim
+		aspvbs.vim
+		asterisk.vim
+		asteriskvm.vim
+		astro.vim
+		asy.vim
+		atlas.vim
+		autodoc.vim
+		autohotkey.vim
+		autoit.vim
+		automake.vim
+		ave.vim
+		avra.vim
+		awk.vim
+		ayacc.vim
+		b.vim
+		baan.vim
+		bash.vim
+		basic.vim
+		bc.vim
+		bdf.vim
+		bib.vim
+		bindzone.vim
+		bitbake.vim
+		blank.vim
+		bsdl.vim
+		bst.vim
+		btm.vim
+		bzl.vim
+		bzr.vim
+		c.vim
+		cabal.vim
+		cabalconfig.vim
+		cabalproject.vim
+		calendar.vim
+		catalog.vim
+		cdl.vim
+		cdrdaoconf.vim
+		cdrtoc.vim
+		cf.vim
+		cfg.vim
+		cgdbrc.vim
+		ch.vim
+		chaiscript.vim
+		change.vim
+		changelog.vim
+		chaskell.vim
+		chatito.vim
+		checkhealth.vim
+		cheetah.vim
+		chicken.vim
+		chill.vim
+		chordpro.vim
+		chuck.vim
+		cl.vim
+		clean.vim
+		clipper.vim
+		clojure.vim
+		cmacro.vim
+		cmake.vim
+		cmakecache.vim
+		cmod.vim
+		cmusrc.vim
+		cobol.vim
+		coco.vim
+		colortest.vim
+		conaryrecipe.vim
+		conf.vim
+		config.vim
+		confini.vim
+		context.vim
+		cpp.vim
+		crm.vim
+		crontab.vim
+		cs.vim
+		csc.vim
+		csdl.vim
+		csh.vim
+		csp.vim
+		css.vim
+		csv.vim
+		cterm.vim
+		ctrlh.vim
+		cucumber.vim
+		cuda.vim
+		cupl.vim
+		cuplsim.vim
+		cvs.vim
+		cvsrc.vim
+		cweb.vim
+		cynlib.vim
+		cynpp.vim
+		d.vim
+		dart.vim
+		datascript.vim
+		dcd.vim
+		dcl.vim
+		deb822sources.vim
+		debchangelog.vim
+		debcontrol.vim
+		debcopyright.vim
+		debsources.vim
+		def.vim
+		denyhosts.vim
+		dep3patch.vim
+		desc.vim
+		desktop.vim
+		dictconf.vim
+		dictdconf.vim
+		diff.vim
+		dircolors.vim
+		dirpager.vim
+		diva.vim
+		django.vim
+		dns.vim
+		dnsmasq.vim
+		docbk.vim
+		docbksgml.vim
+		docbkxml.vim
+		dockerfile.vim
+		dosbatch.vim
+		dosini.vim
+		dot.vim
+		doxygen.vim
+		dracula.vim
+		dsl.vim
+		dtd.vim
+		dtml.vim
+		dtrace.vim
+		dts.vim
+		dune.vim
+		dylan.vim
+		dylanintr.vim
+		dylanlid.vim
+		ecd.vim
+		edif.vim
+		editorconfig.vim
+		eiffel.vim
+		elf.vim
+		elinks.vim
+		elm.vim
+		elmfilt.vim
+		erlang.vim
+		eruby.vim
+		esmtprc.vim
+		esqlc.vim
+		esterel.vim
+		eterm.vim
+		euphoria3.vim
+		euphoria4.vim
+		eviews.vim
+		exim.vim
+		expect.vim
+		exports.vim
+		falcon.vim
+		fan.vim
+		fasm.vim
+		fdcc.vim
+		fetchmail.vim
+		fgl.vim
+		fish.vim
+		flexwiki.vim
+		focexec.vim
+		form.vim
+		forth.vim
+		fortran.vim
+		foxpro.vim
+		fpcmake.vim
+		framescript.vim
+		freebasic.vim
+		fstab.vim
+		fvwm.vim
+		fvwm2m4.vim
+		gdb.vim
+		gdmo.vim
+		gdresource.vim
+		gdscript.vim
+		gdshader.vim
+		gedcom.vim
+		gel.vim
+		gemtext.vim
+		gift.vim
+		git.vim
+		gitattributes.vim
+		gitcommit.vim
+		gitconfig.vim
+		gitignore.vim
+		gitolite.vim
+		gitrebase.vim
+		gitsendemail.vim
+		gkrellmrc.vim
+		glsl.vim
+		gnash.vim
+		gnuplot.vim
+		go.vim
+		goaccess.vim
+		godoc.vim
+		gp.vim
+		gpg.vim
+		gprof.vim
+		grads.vim
+		graphql.vim
+		gretl.vim
+		groff.vim
+		groovy.vim
+		group.vim
+		grub.vim
+		gsp.vim
+		gtkrc.vim
+		gvpr.vim
+		gyp.vim
+		haml.vim
+		hamster.vim
+		hare.vim
+		haredoc.vim
+		haskell.vim
+		haste.vim
+		hastepreproc.vim
+		hb.vim
+		hcl.vim
+		help.vim
+		help_it.vim
+		help_ru.vim
+		hercules.vim
+		hex.vim
+		hgcommit.vim
+		hitest.vim
+		hlsplaylist.vim
+		hog.vim
+		hollywood.vim
+		hostconf.vim
+		hostsaccess.vim
+		html.vim
+		htmlangular.vim
+		htmlcheetah.vim
+		htmldjango.vim
+		htmlm4.vim
+		htmlos.vim
+		hyprlang.vim
+		i3config.vim
+		ia64.vim
+		ibasic.vim
+		icemenu.vim
+		icon.vim
+		idl.vim
+		idlang.vim
+		idris2.vim
+		indent.vim
+		inform.vim
+		initex.vim
+		initng.vim
+		inittab.vim
+		ipfilter.vim
+		ipkg.vim
+		ishd.vim
+		iss.vim
+		ist.vim
+		j.vim
+		jal.vim
+		jam.vim
+		jargon.vim
+		java.vim
+		javacc.vim
+		javascript.vim
+		javascriptreact.vim
+		jess.vim
+		jgraph.vim
+		jinja.vim
+		jjdescription.vim
+		jovial.vim
+		jproperties.vim
+		jq.vim
+		json.vim
+		json5.vim
+		jsonc.vim
+		jsp.vim
+		julia.vim
+		just.vim
+		karel.vim
+		kconfig.vim
+		kdl.vim
+		kivy.vim
+		kix.vim
+		kotlin.vim
+		krl.vim
+		kscript.vim
+		kwt.vim
+		lace.vim
+		latte.vim
+		lc.vim
+		ld.vim
+		ldapconf.vim
+		ldif.vim
+		less.vim
+		lex.vim
+		lf.vim
+		lftp.vim
+		lhaskell.vim
+		libao.vim
+		lidris2.vim
+		lifelines.vim
+		lilo.vim
+		limits.vim
+		liquid.vim
+		lisp.vim
+		lite.vim
+		litestep.vim
+		livebook.vim
+		lnk.vim
+		lnkmap.vim
+		loginaccess.vim
+		logindefs.vim
+		logtalk.vim
+		lotos.vim
+		lout.vim
+		lpc.vim
+		lprolog.vim
+		lscript.vim
+		lsl.vim
+		lsp_markdown.vim
+		lss.vim
+		lua.vim
+		luau.vim
+		lynx.vim
+		lyrics.vim
+		m17ndb.vim
+		m3build.vim
+		m3quake.vim
+		m4.vim
+		mail.vim
+		mailaliases.vim
+		mailcap.vim
+		make.vim
+		mallard.vim
+		man.vim
+		manconf.vim
+		manual.vim
+		maple.vim
+		markdown.vim
+		masm.vim
+		mason.vim
+		master.vim
+		matlab.vim
+		maxima.vim
+		mediawiki.vim
+		mel.vim
+		mermaid.vim
+		meson.vim
+		messages.vim
+		mf.vim
+		mgl.vim
+		mgp.vim
+		mib.vim
+		mix.vim
+		mma.vim
+		mmix.vim
+		mmp.vim
+		modconf.vim
+		model.vim
+		modsim3.vim
+		modula2/
+			opt/
+				iso.vim
+				pim.vim
+				r10.vim
+		modula2.vim
+		modula3.vim
+		mojo.vim
+		monk.vim
+		moo.vim
+		mp.vim
+		mplayerconf.vim
+		mrxvtrc.vim
+		msidl.vim
+		msmessages.vim
+		msql.vim
+		mss.vim
+		mupad.vim
+		murphi.vim
+		mush.vim
+		muttrc.vim
+		mysql.vim
+		n1ql.vim
+		named.vim
+		nanorc.vim
+		nasm.vim
+		nastran.vim
+		natural.vim
+		ncf.vim
+		neomuttlog.vim
+		neomuttrc.vim
+		netrc.vim
+		nginx.vim
+		ninja.vim
+		nix.vim
+		nosyntax.vim
+		nqc.vim
+		nroff.vim
+		nsis.vim
+		obj.vim
+		objc.vim
+		objcpp.vim
+		obse.vim
+		ocaml.vim
+		occam.vim
+		odin.vim
+		oil.vim
+		oil_preview.vim
+		omnimark.vim
+		ondir.vim
+		opam.vim
+		opencl.vim
+		openroad.vim
+		openscad.vim
+		openvpn.vim
+		opl.vim
+		ora.vim
+		org.vim
+		pacmanlog.vim
+		pamconf.vim
+		pamenv.vim
+		pandoc.vim
+		papp.vim
+		pascal.vim
+		passwd.vim
+		pbtxt.vim
+		pcap.vim
+		pccts.vim
+		pdf.vim
+		perl.vim
+		pf.vim
+		pfmain.vim
+		php.vim
+		phtml.vim
+		pic.vim
+		pike.vim
+		pilrc.vim
+		pine.vim
+		pinfo.vim
+		plaintex.vim
+		pli.vim
+		plm.vim
+		plp.vim
+		plsql.vim
+		po.vim
+		pod.vim
+		poefilter.vim
+		poke.vim
+		postscr.vim
+		pov.vim
+		povini.vim
+		ppd.vim
+		ppwiz.vim
+		prescribe.vim
+		privoxy.vim
+		procmail.vim
+		progress.vim
+		prolog.vim
+		promela.vim
+		proto.vim
+		protocols.vim
+		prql.vim
+		ps1.vim
+		ps1xml.vim
+		psf.vim
+		psl.vim
+		ptcap.vim
+		ptx.vim
+		purifylog.vim
+		pymanifest.vim
+		pyrex.vim
+		python.vim
+		python2.vim
+		qb64.vim
+		qf.vim
+		qml.vim
+		quake.vim
+		quarto.vim
+		query.lua
+		r.vim
+		racc.vim
+		racket.vim
+		radiance.vim
+		raku.vim
+		raml.vim
+		rapid.vim
+		rasi.vim
+		ratpoison.vim
+		rc.vim
+		rcs.vim
+		rcslog.vim
+		readline.vim
+		rebol.vim
+		redif.vim
+		registry.vim
+		rego.vim
+		remind.vim
+		requirements.vim
+		resolv.vim
+		reva.vim
+		rexx.vim
+		rhelp.vim
+		rib.vim
+		rmd.vim
+		rnc.vim
+		rng.vim
+		rnoweb.vim
+		robots.vim
+		routeros.vim
+		rpcgen.vim
+		rpl.vim
+		rrst.vim
+		rst.vim
+		rtf.vim
+		ruby.vim
+		rust.vim
+		salt.vim
+		samba.vim
+		sas.vim
+		sass.vim
+		sather.vim
+		sbt.vim
+		scala.vim
+		scdoc.vim
+		scheme.vim
+		scilab.vim
+		screen.vim
+		scss.vim
+		sd.vim
+		sdc.vim
+		sdl.vim
+		sed.vim
+		sendpr.vim
+		sensors.vim
+		services.vim
+		setserial.vim
+		sexplib.vim
+		sgml.vim
+		sgmldecl.vim
+		sgmllnx.vim
+		sh.vim
+		shada.vim
+		shaderslang.vim
+		shared/
+			README.txt
+			debversions.vim
+			hgcommitDiff.vim
+			typescriptcommon.vim
+		sicad.vim
+		sieve.vim
+		sil.vim
+		simula.vim
+		sinda.vim
+		sindacmp.vim
+		sindaout.vim
+		sisu.vim
+		skill.vim
+		sl.vim
+		slang.vim
+		slice.vim
+		slpconf.vim
+		slpreg.vim
+		slpspi.vim
+		slrnrc.vim
+		slrnsc.vim
+		sm.vim
+		smarty.vim
+		smcl.vim
+		smil.vim
+		smith.vim
+		sml.vim
+		snnsnet.vim
+		snnspat.vim
+		snnsres.vim
+		snobol4.vim
+		solidity.vim
+		spajson.vim
+		spec.vim
+		specman.vim
+		spice.vim
+		splint.vim
+		spup.vim
+		spyce.vim
+		sql.vim
+		sqlanywhere.vim
+		sqlforms.vim
+		sqlhana.vim
+		sqlinformix.vim
+		sqlj.vim
+		sqloracle.vim
+		sqr.vim
+		squid.vim
+		squirrel.vim
+		srec.vim
+		srt.vim
+		ssa.vim
+		sshconfig.vim
+		sshdconfig.vim
+		st.vim
+		stata.vim
+		stp.vim
+		strace.vim
+		structurizr.vim
+		stylus.vim
+		sudoers.vim
+		svg.vim
+		svn.vim
+		swayconfig.vim
+		swift.vim
+		swiftgyb.vim
+		swig.vim
+		synload.vim
+		syntax.vim
+		sysctl.vim
+		systemd.vim
+		systemverilog.vim
+		tads.vim
+		tags.vim
+		tak.vim
+		takcmp.vim
+		takout.vim
+		tap.vim
+		tar.vim
+		taskdata.vim
+		taskedit.vim
+		tasm.vim
+		tcl.vim
+		tcsh.vim
+		template.vim
+		tera.vim
+		teraterm.vim
+		terminfo.vim
+		terraform.vim
+		tex.vim
+		texinfo.vim
+		texmf.vim
+		tf.vim
+		thrift.vim
+		tiasm.vim
+		tidy.vim
+		tilde.vim
+		tli.vim
+		tmux.vim
+		toml.vim
+		tpp.vim
+		trasys.vim
+		treetop.vim
+		trustees.vim
+		tsalt.vim
+		tsscl.vim
+		tssgm.vim
+		tssop.vim
+		tsv.vim
+		tt2.vim
+		tt2html.vim
+		tt2js.vim
+		tutor.lua
+		tutor.vim
+		typescript.vim
+		typescriptreact.vim
+		typst.vim
+		uc.vim
+		uci.vim
+		udevconf.vim
+		udevperm.vim
+		udevrules.vim
+		uil.vim
+		unison.vim
+		updatedb.vim
+		upstart.vim
+		upstreamdat.vim
+		upstreaminstalllog.vim
+		upstreamlog.vim
+		upstreamrpt.vim
+		urlshortcut.vim
+		usserverlog.vim
+		usw2kagtlog.vim
+		valgrind.vim
+		vb.vim
+		vdf.vim
+		vera.vim
+		verilog.vim
+		verilogams.vim
+		vgrindefs.vim
+		vhdl.vim
+		vim/
+			generated.vim
+		vim.vim
+		viminfo.vim
+		vimnormal.vim
+		virata.vim
+		vmasm.vim
+		voscm.vim
+		vrml.vim
+		vroom.vim
+		vsejcl.vim
+		vue.vim
+		wat.vim
+		wdiff.vim
+		wdl.vim
+		web.vim
+		webmacro.vim
+		wget.vim
+		wget2.vim
+		whitespace.vim
+		winbatch.vim
+		wml.vim
+		wsh.vim
+		wsml.vim
+		wvdial.vim
+		xbl.vim
+		xcompose.vim
+		xdefaults.vim
+		xf86conf.vim
+		xhtml.vim
+		xinetd.vim
+		xkb.vim
+		xmath.vim
+		xml.vim
+		xmodmap.vim
+		xpm.vim
+		xpm2.vim
+		xquery.vim
+		xs.vim
+		xsd.vim
+		xslt.vim
+		xxd.vim
+		yacc.vim
+		yaml.vim
+		z8a.vim
+		zathurarc.vim
+		zig.vim
+		zimbu.vim
+		zir.vim
+		zserio.vim
+		zsh.vim
+	tests/
+		manual/
+		plenary/
+			async/
+			job/
+	tutor/
+		en/
+			vim-01-beginner.tutor
+			vim-01-beginner.tutor.json
+			vim-02-beginner.tutor
+			vim-02-beginner.tutor.json
+		ja/
+			vim-01-beginner.tutor
+			vim-01-beginner.tutor.json
+		tutor.tutor
+		tutor.tutor.json
+		vimtutor
+		zh/
+			vim-01-beginner.tutor
+			vim-01-beginner.tutor.json
+			vim-02-beginner.tutor
+			vim-02-beginner.tutor.json

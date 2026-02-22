@@ -22,12 +22,35 @@ end
 
 local function parseManifest(text)
     local files = {}
+    local stack = {}
+
     for line in text:gmatch("[^\r\n]+") do
-        line = line:match("^%s*(.-)%s*$")  -- trim spaces
-        if line ~= "" and not line:match("^#") then
-            table.insert(files, line)
+        if line ~= "" then
+            local depth = 0
+            while line:sub(1, 1) == "\t" do
+                depth = depth + 1
+                line = line:sub(2)
+            end
+
+            local isDir = line:sub(-1) == "/"
+            local name = isDir and line:sub(1, -2) or line
+
+            while #stack > depth do
+                table.remove(stack)
+            end
+
+            if isDir then
+                table.insert(stack, name)
+            else
+                if #stack == 0 then
+                    table.insert(files, name)
+                else
+                    table.insert(files, table.concat(stack, "/") .. "/" .. name)
+                end
+            end
         end
     end
+
     return files
 end
 

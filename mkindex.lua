@@ -2,22 +2,30 @@
 
 local index = {"nvim.lua"}
 
-local function indexPath(dir)
+local function indexPath(dir, depth)
     local files = fs.list(shell.resolve(dir))
+
+    depth = depth or 0
     
     for i = 1, #files do
         local path = dir .. "/" .. files[i]
         if fs.isDir(shell.resolve(path)) then
-            indexPath(path)
+            table.insert(index, string.rep("\t", depth) .. files[i] .. "/")
+            indexPath(path, depth + 1)
         else
-            table.insert(index, path)
+            table.insert(index, string.rep("\t", depth) .. files[i])
         end
     end
 end
 
-indexPath("layout")
-indexPath("lib")
-indexPath("runtime")
+local function indexRoot(root)
+    table.insert(index, root .. "/")
+    indexPath(root, 1)
+end
+
+indexRoot("layout")
+indexRoot("lib")
+indexRoot("runtime")
 
 local indexfile = fs.open(shell.resolve("nvim.idx"), "w")
 if not indexfile then
