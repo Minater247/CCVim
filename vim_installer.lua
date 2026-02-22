@@ -454,27 +454,25 @@ local function runInstall()
     end
     TUI.addMessage(installerBox, "Manifest downloaded. Walking files...")
     
-    local base_count = 1
-    local function count(entry)
+    local function countFiles(entry)
+        local n = 0
         for _, v in pairs(entry) do
             if v == true then
-                base_count = base_count + 1
+                n = n + 1
             elseif type(v) == "table" then
-                count(v)
+                n = n + countFiles(v)
             end
         end
+        return n
     end
 
-    count(manifest_tree.lib)
-    count(manifest_tree.layout)
-
+    local base_count = 1 + countFiles(manifest_tree.lib) + countFiles(manifest_tree.layout)
     TUI.addMessage(installerBox, ("Core runtime: %d files to install"):format(base_count))
-    local done = 0
 
-    local function downwalk(entry, parents)
+    local function downwalk(entry, parents, state, total)
         for k, v in pairs(entry) do
             if v == true then
-                done = done + 1
+                state.done = state.done + 1
 
                 local file
                 if #parents > 0 then
@@ -483,7 +481,7 @@ local function runInstall()
                     file = k
                 end
 
-                TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, base_count, file))
+                TUI.addMessage(installerBox, ("[%d/%d] %s"):format(state.done, total, file))
 
                 local ok, e = downloadFile(file)
                 if not ok then
@@ -492,7 +490,7 @@ local function runInstall()
 
             elseif type(v) == "table" then
                 parents[#parents + 1] = k
-                local ok, err = downwalk(v, parents)
+                local ok, err = downwalk(v, parents, state, total)
                 parents[#parents] = nil
                 if not ok then
                     return false, err
@@ -508,17 +506,18 @@ local function runInstall()
         TUI.addMessage(installerBox, "Installation aborted.")
     end
 
-    done = done + 1
-    TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, base_count, "nvim.lua"))
+    local state = { done = 0 }
+    state.done = state.done + 1
+    TUI.addMessage(installerBox, ("[%d/%d] %s"):format(state.done, base_count, "nvim.lua"))
     local ok, err = downloadFile("nvim.lua")
     if not ok then
         return failure(err)
     end
-    ok, err = downwalk(manifest_tree.lib, { "lib" })
+    ok, err = downwalk(manifest_tree.lib, { "lib" }, state, base_count)
     if not ok then
         return failure(err)
     end
-    ok, err = downwalk(manifest_tree.layout, { "layout" })
+    ok, err = downwalk(manifest_tree.layout, { "layout" }, state, base_count)
     if not ok then
         return failure(err)
     end
@@ -617,8 +616,12 @@ local function runInstall()
         if not ok then return failure(err) end
         ok, err = downloadFile("runtime/tutor/tutor.tutor.json")
         if not ok then return failure(err) end
-        ok, err = downwalk(manifest_tree.runtime.tutor.en, {"runtime", "tutor", "en"})
-        if not ok then return failure(err) end
+        local tutor_total = countFiles(manifest_tree.runtime.tutor.en)
+        if tutor_total > 0 then
+            local tutor_state = { done = 0 }
+            ok, err = downwalk(manifest_tree.runtime.tutor.en, {"runtime", "tutor", "en"}, tutor_state, tutor_total)
+            if not ok then return failure(err) end
+        end
     end
 
     if install_spellfiles then
@@ -650,33 +653,47 @@ local function runInstall()
     end
     
     TUI.addMessage(installerBox, "Downloading core runtime files...")
-    ok, err = downwalk(manifest_tree.runtime.autoload, {"runtime", "autoload"})
+    local core_entries = {
+        manifest_tree.runtime.autoload,
+        manifest_tree.runtime.lua,
+        manifest_tree.runtime.pack,
+        manifest_tree.runtime.plugin,
+    }
+    local core_single_files = {
+        "runtime/example_init.lua",
+        "runtime/filetype.lua",
+        "runtime/filetype.vim",
+        "runtime/ftoff.vim",
+        "runtime/ftplugin.vim",
+        "runtime/ftplugof.vim",
+        "runtime/indent.vim",
+        "runtime/indoff.vim",
+        "runtime/optwin.vim",
+    }
+
+    local core_total = 0
+    for _, e in ipairs(core_entries) do
+        core_total = core_total + countFiles(e)
+    end
+    core_total = core_total + #core_single_files
+
+    local core_state = { done = 0 }
+    -- walk the directory groups
+    ok, err = downwalk(manifest_tree.runtime.autoload, {"runtime", "autoload"}, core_state, core_total)
     if not ok then return failure(err) end
-    ok, err = downwalk(manifest_tree.runtime.lua, {"runtime", "lua"})
+    ok, err = downwalk(manifest_tree.runtime.lua, {"runtime", "lua"}, core_state, core_total)
     if not ok then return failure(err) end
-    ok, err = downwalk(manifest_tree.runtime.pack, {"runtime", "pack"})
+    ok, err = downwalk(manifest_tree.runtime.pack, {"runtime", "pack"}, core_state, core_total)
     if not ok then return failure(err) end
-    ok, err = downwalk(manifest_tree.runtime.plugin, {"runtime", "plugin"})
+    ok, err = downwalk(manifest_tree.runtime.plugin, {"runtime", "plugin"}, core_state, core_total)
     if not ok then return failure(err) end
     -- single files
-    ok, err = downloadFile("runtime/example_init.lua")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/filetype.lua")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/filetype.vim")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/ftoff.vim")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/ftplugin.vim")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/ftplugof.vim")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/indent.vim")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/indoff.vim")
-    if not ok then return failure(err) end
-    ok, err = downloadFile("runtime/optwin.vim")
-    if not ok then return failure(err) end
+    for _, f in ipairs(core_single_files) do
+        core_state.done = core_state.done + 1
+        TUI.addMessage(installerBox, ("[%d/%d] %s"):format(core_state.done, core_total, f))
+        ok, err = downloadFile(f)
+        if not ok then return failure(err) end
+    end
 
 
     TUI.addMessage(installerBox, "All files downloaded successfully.")
