@@ -36,11 +36,16 @@ Be aware that there are just over 2,000 files to download for a full install, so
 You should be able to simply use standard Neovim configuration files! In the directory you install the program to, simply create either `config/init.lua` or `config/init.vim`. Either copy in your config, or write one using the many tutorials available online!
 
 ## Plugin Management
-Given that ComputerCraft does not support `git` natively, plugins which pull from such providers are not yet supported.
+
+### Installation
+Given that ComputerCraft does not support `git` natively, plugin managers which pull from such providers are not yet supported.
 
 If you are familiar with the `packadd` command, an older method of package management in Vim, that is supported! You may use `runtime/pack`.
 
 Most plugins also work perfectly fine if you simply copy their folders into the `runtime` directory, which is how I have been testing in the meantime.
+
+### Compatibility
+Any compatibility notes will be listed in `plugin_compat/<plugin-name>`. Most plugins only need a couple config keys set to function properly.
 
 ## Contributing
 Please try your config and see if it works! If anything behaves even slightly differently to how Neovim behaves, that is grounds for opening an issue.
