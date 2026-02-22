@@ -387,39 +387,49 @@ function TUI.render()
                 local label        = item.str or ""
                 local value        = menu.textboxState[idx] or ""
                 local labelPart    = label .. ": "
-                local valPart      = "[" .. value .. "]"
-
-                local remaining    = w
+                local valPart      = value
 
                 local labelToWrite = labelPart
-                if #labelToWrite > remaining then
-                    labelToWrite = labelToWrite:sub(1, remaining)
+                if #labelToWrite > w then
+                    labelToWrite = labelToWrite:sub(1, w)
                 end
 
                 term.setTextColor(fg)
                 term.write(labelToWrite)
-                remaining = remaining - #labelToWrite
 
-                if remaining > 0 then
+                local spaceForVal = w - #labelToWrite - 2
+                if spaceForVal < 0 then
+                    spaceForVal = 0
+                end
+
+                if spaceForVal > 0 then
                     local valToWrite = valPart
-                    if #valToWrite > remaining then
-                        valToWrite = valToWrite:sub(1, remaining)
+                    if #valToWrite > spaceForVal then
+                        if spaceForVal > 3 then
+                            valToWrite = "..." .. valToWrite:sub(- (spaceForVal - 3))
+                        else
+                            valToWrite = valToWrite:sub(-spaceForVal)
+                        end
                     end
 
-                    local valueColor
-                    local bgColor
-                    if idx == menu.editingTextbox then
-                        valueColor = fg
-                        bgColor = bg
-                    else
-                        valueColor = colors.cyan
-                        bgColor = colors.black
-                    end
+                    local valueColor = (idx == menu.editingTextbox) and fg or colors.cyan
+                    local bgColor = (idx == menu.editingTextbox) and bg or colors.black
 
                     term.setTextColor(valueColor)
                     term.setBackgroundColor(bgColor)
-                    term.write(valToWrite)
-                    remaining = remaining - #valToWrite
+
+                    term.write("[" .. valToWrite .. "]")
+
+                    local used = #valToWrite + 2
+                    remaining = w - #labelToWrite - used
+                    if remaining < 0 then
+                        remaining = 0
+                    end
+                else
+                    remaining = w - #labelToWrite
+                    if remaining < 0 then
+                        remaining = 0
+                    end
                 end
 
                 if remaining > 0 then
@@ -592,14 +602,12 @@ function TUI.handleChar(char)
     if menu.editingTextbox then
         local idx   = menu.editingTextbox
         local value = menu.textboxState[idx] or ""
-        if #value < 40 then
-            menu.textboxState[idx] = value .. char
-            local cb = menu.items[idx].callback
-            if cb then
-                cb(menu.textboxState[idx])
-            end
-            return true
+        menu.textboxState[idx] = value .. char
+        local cb = menu.items[idx].callback
+        if cb then
+            cb(menu.textboxState[idx])
         end
+        return true
     end
     return false
 end
