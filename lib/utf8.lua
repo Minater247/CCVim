@@ -14,6 +14,12 @@ local translations = {
     [0x2192] = "\x1a",
     [0xE0B0] = "\x7f",
     [0xE0B2] = "\x7f",
+    [0x2518] = "/",
+    [0x2500] = "-",
+    [0x2514] = "\\",
+    [0x2502] = "|",
+    [0x2510] = "\\",
+    [0x250C] = "/",
 }
 
 local function _ascii_cell_for_codepoint(cp)
