@@ -1212,146 +1212,6 @@ runtime/
 		man.lua
 		nvim/
 			tutor.lua
-		nvim-tree/
-			_meta/
-				api/
-					appearance.lua
-					commands.lua
-					decorator.lua
-					decorator_example.lua
-					deprecated.lua
-					events.lua
-					filter.lua
-					fs.lua
-					git.lua
-					map.lua
-					marks.lua
-					node.lua
-					tree.lua
-				classes.lua
-				config/
-					actions.lua
-					bookmarks.lua
-					default.lua
-					diagnostics.lua
-					experimental.lua
-					filesystem_watchers.lua
-					filters.lua
-					git.lua
-					help.lua
-					hijack_directories.lua
-					live_filter.lua
-					log.lua
-					modified.lua
-					notify.lua
-					renderer.lua
-					sort.lua
-					system_open.lua
-					tab.lua
-					trash.lua
-					ui.lua
-					update_focused_file.lua
-					view.lua
-				config.lua
-			actions/
-				finders/
-					find-file.lua
-					init.lua
-					search-node.lua
-				fs/
-					clipboard.lua
-					create-file.lua
-					init.lua
-					remove-file.lua
-					rename-file.lua
-					trash.lua
-				init.lua
-				moves/
-					init.lua
-					item.lua
-					parent.lua
-					sibling.lua
-				node/
-					buffer.lua
-					file-popup.lua
-					init.lua
-					open-file.lua
-					run-command.lua
-					system-open.lua
-				tree/
-					collapse.lua
-					find-file.lua
-					init.lua
-					open.lua
-					resize.lua
-					toggle.lua
-			api/
-				impl/
-					post.lua
-					pre.lua
-			api.lua
-			appearance/
-				hi-test.lua
-				init.lua
-			buffers.lua
-			classic.lua
-			commands.lua
-			core.lua
-			diagnostics.lua
-			enum.lua
-			events.lua
-			explorer/
-				filters.lua
-				init.lua
-				live-filter.lua
-				sorter.lua
-				watch.lua
-			git/
-				init.lua
-				runner.lua
-				utils.lua
-			help.lua
-			iterators/
-				node-iterator.lua
-			keymap.lua
-			legacy.lua
-			lib.lua
-			log.lua
-			marks/
-				init.lua
-			node/
-				directory-link.lua
-				directory.lua
-				factory.lua
-				file-link.lua
-				file.lua
-				init.lua
-				link.lua
-				root.lua
-			notify.lua
-			renderer/
-				builder.lua
-				components/
-					devicons.lua
-					full-name.lua
-					init.lua
-					padding.lua
-				decorator/
-					bookmarks.lua
-					builtin.lua
-					copied.lua
-					cut.lua
-					diagnostics.lua
-					git.lua
-					hidden.lua
-					init.lua
-					modified.lua
-					opened.lua
-				init.lua
-			utils.lua
-			view.lua
-			watcher.lua
-		nvim-tree.lua
 		tohtml.lua
 		vim/
 			F.lua
@@ -1468,7 +1328,6 @@ runtime/
 			version.lua
 	makemenu.vim
 	menu.vim
-	neovim.ico
 	optwin.vim
 	pack/
 		dist/
@@ -1523,7 +1382,6 @@ runtime/
 		matchit.vim
 		matchparen.vim
 		netrwPlugin.vim
-		nvim-tree.lua
 		osc52.lua
 		rplugin.vim
 		shada.vim
