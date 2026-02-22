@@ -1,16 +1,35 @@
 local Utf8 = {}
 
+local translations = {
+    [0x2713] = "v",
+    [0x2714] = "v",
+    [0x2611] = "v",
+    [0x2715] = "x",
+    [0x2717] = "x",
+    [0x2718] = "x",
+    [0x00D7] = "x",
+    [0x2191] = "\x18",
+    [0x2193] = "\x19",
+    [0x2190] = "\x1b",
+    [0x2192] = "\x1a",
+    [0xE0B0] = "\x7f",
+    [0xE0B2] = "\x7f",
+}
+
 local function _ascii_cell_for_codepoint(cp)
-    if cp >= 32 and cp <= 126 then
+    if cp >= 32 and cp <= 127 then
         return string.char(cp)
     end
-    if cp == 0x2713 or cp == 0x2714 or cp == 0x2611 then
-        return "v"
+
+    -- DEBUG
+    if translations[cp] then
+        return translations[cp]
+    else
+        LOG_DEBUG("UNKNOWN CODEPOINT: 0x%X", cp)
+        return "?"
     end
-    if cp == 0x2715 or cp == 0x2717 or cp == 0x2718 or cp == 0x00D7 then
-        return "x"
-    end
-    return "?"
+
+    -- return translations[cp] or "?"
 end
 
 function Utf8.ascii_cell_for_codepoint(cp)

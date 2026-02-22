@@ -4,6 +4,7 @@ local Options = loadModule("lib.options")
 local VimFs = loadModule("lib.luaapi.fs")
 local Compiler = loadModule("lib.excmd.compiler")
 local Runtime = loadModule("lib.excmd.runtime")
+local Utf8 = loadModule("lib.utf8")
 
 -- Highlight mark indicators
 local HL_PUSH    = "\2" -- beginning of a new HL group
@@ -490,7 +491,7 @@ local function visible_len_chunks(chunks)
     local n = 0
     for _, ck in ipairs(chunks) do
         if ck.kind == "text" or ck.kind == "group" then
-            n = n + #ck.s
+            n = n + Utf8.len(ck.s)
         end
     end
     return n
@@ -524,7 +525,7 @@ local function drop_left_visible(chunks, n_drop)
     for _, ck in ipairs(chunks) do
         if ck.kind == "text" or ck.kind == "group" then
             local s = ck.s
-            local L = #s
+            local L = Utf8.len(s)
             if remain >= L then
                 remain = remain - L
                 -- drop entire text chunk
@@ -585,6 +586,17 @@ local function concat_chunk_arrays(...)
     return out
 end
 
+local function to_ascii_cells(s)
+    if not s or s == "" then
+        return ""
+    end
+    local out = {}
+    Utf8.each_codepoint(s, function(cp)
+        out[#out + 1] = Utf8.ascii_cell_for_codepoint(cp)
+    end)
+    return table.concat(out)
+end
+
 -- Turn final chunk stream (no truncmarks) into { {text, group}, ... }
 local function chunks_to_spans(chunks, default_group)
     local spans = {}
@@ -613,7 +625,9 @@ local function chunks_to_spans(chunks, default_group)
                 group_stack[#group_stack] = nil
             end
         elseif ck.kind == "text" or ck.kind == "group" then
-            if #ck.s > 0 then buf = buf .. ck.s end
+            if #ck.s > 0 then
+                buf = buf .. to_ascii_cells(ck.s)
+            end
         end
         -- truncmark ignored
     end
