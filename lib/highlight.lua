@@ -202,6 +202,7 @@ end
 function Highlight.Link(name, target, ns)
     local tbl = ns_table(ns)
     if tbl._:hasConcreteKey(name) then
+        LOG_DEBUG(name .. "HAS CONCRETE")
         return Error(414)
     end
     tbl._:link(name, target)

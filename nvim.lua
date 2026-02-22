@@ -310,7 +310,16 @@ _source_runtime_startup("ftplugin.vim")
 _source_runtime_startup("indent.vim")
 
 _V.writestartup("sourcing vimrc file(s)")
-ScriptSource.source("config/init.lua")
+local ok, err = ScriptSource.source(ccvim_path .. "/config/init.lua")
+if not ok then
+    local cause
+    if Error.IsError(err) then
+        cause = err:toString()
+    else
+        cause = tostring(err)
+    end
+    _V.LOG_DEBUG("Failed to source init file! Reason: %s", cause)
+end
 
 -- Run filetype.lua and syntax.vim
 -- TODO: these are skipped if `:filetype off` or `:syntax off` were called during init
