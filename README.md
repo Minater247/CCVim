@@ -20,7 +20,7 @@ If you're used to Vim or Neovim, you will feel right at home. The only major con
 - **Neovim API Compatibility** so that any Neovim Lua code should run seamlessly
 
 ## NOTICE
-This project is still in early beta! I have waited until the project was stable enough to be my main editor the project before releasing it, but you may encounter bugs while you use it.
+This project is still in early beta! I have waited until the project was stable enough to be my main CC editor before releasing it, but you may encounter bugs while you use it.
 
 Not all plugins will run immediately - some require minor edits. I am working on accounting for these, but I cannot guarantee a plugin will not become stuck or crash at a critical point - so use external plugins at your own risk.
 
@@ -29,6 +29,8 @@ Not all plugins will run immediately - some require minor edits. I am working on
 A pastebin link will be coming as soon as I polish up the installer!
 
 For now, use whatever methods you have to transfer [vim_installer.lua](https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/rewrite-2026/vim_installer.lua) and [instui.lua](https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/rewrite-2026/instui.lua) to your computer, and run `vim_installer`. Currently, the only functional installer option is a fresh install.
+
+Be aware that there are just over 2,000 files to download for a full install, so it may take a while. The final installer, when complete, will allow you to select exactly what you want to download.
 
 ## Configuration
 You should be able to simply use standard Neovim configuration files! In the directory you install the program to, simply create either `config/init.lua` or `config/init.vim`. Either copy in your config, or write one using the many tutorials available online!
