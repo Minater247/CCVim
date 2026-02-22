@@ -133,7 +133,7 @@ function ScriptSource.source(path)
 
     local internalpath = Filesystem.Expand(path)
 
-    -- ALso accept a table of strings
+    -- Also accept a table of strings
     if type(internalpath) == "table" then
         for _, v in ipairs(internalpath) do
             local ok, err = ScriptSource.source(v)
