@@ -9,6 +9,8 @@ local MANIFEST = "nvim.idx"
 local install_dir = "/vim"
 local git_branch = "rewrite-2026"
 
+local manifest_tree
+
 local function httpGet(url)
     local res, err = http.get(url)
     if not res then
@@ -21,37 +23,43 @@ local function httpGet(url)
 end
 
 local function parseManifest(text)
-    local files = {}
-    local stack = {}
+    --   directory = table
+    --   file      = true
+    local root = {}
 
-    for line in text:gmatch("[^\r\n]+") do
-        if line ~= "" then
+    local nodes = { root }
+
+    for rawLine in text:gmatch("[^\r\n]+") do
+        if rawLine ~= "" then
             local depth = 0
-            while line:sub(1, 1) == "\t" do
+            while rawLine:sub(depth + 1, depth + 1) == "\t" do
                 depth = depth + 1
-                line = line:sub(2)
             end
 
+            local line = rawLine:sub(depth + 1)
             local isDir = line:sub(-1) == "/"
             local name = isDir and line:sub(1, -2) or line
 
-            while #stack > depth do
-                table.remove(stack)
+            for i = #nodes, depth + 2, -1 do
+                nodes[i] = nil
             end
 
+            local parent = nodes[depth + 1] or root
+
             if isDir then
-                table.insert(stack, name)
-            else
-                if #stack == 0 then
-                    table.insert(files, name)
-                else
-                    table.insert(files, table.concat(stack, "/") .. "/" .. name)
+                local child = parent[name]
+                if type(child) ~= "table" then
+                    child = {}
+                    parent[name] = child
                 end
+                nodes[depth + 2] = child
+            else
+                parent[name] = true
             end
         end
     end
 
-    return files
+    return root
 end
 
 local function downloadFile(relPath)
@@ -79,6 +87,288 @@ local function downloadFile(relPath)
 end
 
 
+
+--#region Components pages
+local colorschemes = {}
+
+local function buildColorschemesMenu()
+    local tui = {
+        TUI.Components.info(label),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.option("Back", function()
+            TUI.popMenu()
+        end),
+        
+        TUI.Components.separator(),
+    }
+
+    local color_names = {}
+    for k, v in pairs(manifest_tree.runtime.colors) do
+        if v == true then
+            table.insert(color_names, k)
+        end
+    end
+    table.sort(color_names)
+    for _, k in ipairs(color_names) do
+        if k:match("^[%w_%-]+%.vim$") and k ~= "default.vim" then
+            table.insert(tui, TUI.Components.checkbox(k, colorschemes[k], function(newval)
+                colorschemes[k] = newval
+            end))
+        end
+    end
+
+    return tui
+end
+
+local syntaxes = {
+    ["lua.vim"] = true,
+    ["vim.vim"] = true,
+    ["help.vim"] = true,
+    ["json.vim"] = true,
+    ["tutor.vim"] = true,
+    ["markdown.vim"] = true,
+}
+
+local function buildSyntaxesMenu()
+    local tui = {
+        TUI.Components.info(label),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.option("Back", function()
+            TUI.popMenu()
+        end),
+        
+        TUI.Components.separator(),
+    }
+    
+    local syntax_names = {}
+    for k, v in pairs(manifest_tree.runtime.syntax) do
+        if v == true then
+            table.insert(syntax_names, k)
+        end
+    end
+    table.sort(syntax_names)
+    for _, k in ipairs(syntax_names) do
+        if k:match("^[%w_%-]+%.vim$") and k ~= "syntax.vim" and k ~= "synload.vim" then
+            table.insert(tui, TUI.Components.checkbox(k, syntaxes[k], function(newval)
+                syntaxes[k] = newval
+            end))
+        end
+    end
+
+    return tui
+end
+
+local ftplugins = {
+    ["lua.lua"] = true,
+    ["lua.vim"] = true,
+    ["vim.vim"] = true,
+    ["help.lua"] = true,
+    ["help.vim"] = true,
+    ["json.vim"] = true,
+    ["tutor.vim"] = true,
+    ["markdown.lua"] = true,
+    ["markdown.vim"] = true,
+}
+
+local function buildFtpluginsMenu()
+    local tui = {
+        TUI.Components.info(label),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.option("Back", function()
+            TUI.popMenu()
+        end),
+        
+        TUI.Components.separator(),
+    }
+
+    local ftplugin_names = {}
+    for k, v in pairs(manifest_tree.runtime.ftplugin) do
+        if v == true then
+            table.insert(ftplugin_names, k)
+        end
+    end
+    table.sort(ftplugin_names)
+    for _, k in ipairs(ftplugin_names) do
+        if (k:match("^[%w_%-]+%.vim$") or k:match("^[%w_%-]+%.lua$")) and k ~= "README.txt" then
+            table.insert(tui, TUI.Components.checkbox(k, ftplugins[k], function(newval)
+                ftplugins[k] = newval
+            end))
+        end
+    end
+
+    return tui
+end
+
+-- These are either not applicable or unimplemented
+local helpfiles = {
+    ["news-0.10.txt"] = false,
+    ["news.txt"] = false,
+    ["news-0.9.txt"] = false,
+    ["ft_ada.txt"] = false,
+    ["ft_hare.txt"] = false,
+    ["ft_ps1.txt"] = false,
+    ["ft_raku.txt"] = false,
+    ["ft_rust.txt"] = false,
+    ["ft_sql.txt"] = false,
+    ["dev_arch.txt"] = false,
+    ["dev_style.txt"] = false,
+    ["dev_tools.txt"] = false,
+    ["dev_vimpatch.txt"] = false,
+    ["develop.txt"] = false,
+    ["diff.txt"] = false,
+    ["if_perl.txt"] = false,
+    ["if_pyth.txt"] = false,
+    ["if_ruby.txt"] = false,
+    ["support.txt"] = false,
+    ["terminal.txt"] = false,
+    ["undo.txt"] = false,
+    ["treesitter.txt"] = false,
+    ["testing.txt"] = false,
+    ["vietnamese.txt"] = false,
+}
+
+local function buildHelpfilesMenu()
+    local tui = {
+        TUI.Components.info(label),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.option("Back", function()
+            TUI.popMenu()
+        end),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.option("Enable All", function()
+            for k, _ in pairs(helpfiles) do
+                helpfiles[k] = true
+            end
+            TUI.popMenu()
+            TUI.pushMenu(buildHelpfilesMenu())
+        end),
+        TUI.Components.option("Disable All (breaks :help)", function()
+            for k, _ in pairs(helpfiles) do
+                helpfiles[k] = false
+            end
+            TUI.popMenu()
+            TUI.pushMenu(buildHelpfilesMenu())
+        end),
+        
+        TUI.Components.separator(),
+    }
+
+    local helpfile_names = {}
+    for k, v in pairs(manifest_tree.runtime.doc) do
+        if v == true then
+            table.insert(helpfile_names, k)
+        end
+    end
+    table.sort(helpfile_names)
+    for _, k in ipairs(helpfile_names) do
+        table.insert(tui, TUI.Components.checkbox(k, helpfiles[k], function(newval)
+            helpfiles[k] = newval
+        end))
+    end
+
+    return tui
+end
+
+local keymaps = {}
+
+local function buildKeymapsMenu()
+    local tui = {
+        TUI.Components.info(label),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.text("These may or may not work. They have not been tested."),
+
+        TUI.Components.option("Back", function()
+            TUI.popMenu()
+        end),
+        
+        TUI.Components.separator(),
+    }
+
+    local keymap_names = {}
+    for k, v in pairs(manifest_tree.runtime.keymap) do
+        if v == true then
+            table.insert(keymap_names, k)
+        end
+    end
+    table.sort(keymap_names)
+    for _, k in ipairs(keymap_names) do
+        table.insert(tui, TUI.Components.checkbox(k, keymaps[k], function(newval)
+            keymaps[k] = newval
+        end))
+    end
+
+    return tui
+end
+
+-- Unfortunately only ASCII is supported by ComputerCraft so ja/zh won't work
+local install_tutor = true
+
+local install_spellfiles = false
+
+local function buildComponentsMenu()
+    if not manifest_tree then
+        local text, err = httpGet(BASE_URL .. MANIFEST)
+        if not text then
+            return {
+                TUI.Components.text("Failed to download manifest: "),
+                TUI.Components.info(tostring(err))
+            }
+        end
+
+        manifest_tree = parseManifest(text)
+
+        for k, v in pairs(manifest_tree.runtime.doc) do
+            if v == true and helpfiles[k] == nil then
+                helpfiles[k] = true
+            end
+        end
+    end
+
+    return {
+        TUI.Components.info(label),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.option("Colorschemes", function()
+            TUI.pushMenu(buildColorschemesMenu())
+        end),
+        TUI.Components.option("Syntax Languages", function()
+            TUI.pushMenu(buildSyntaxesMenu())
+        end),
+        TUI.Components.option("Filetype Plugins", function()
+            TUI.pushMenu(buildFtpluginsMenu())
+        end),
+        TUI.Components.option("Helpfiles", function()
+            TUI.pushMenu(buildHelpfilesMenu())
+        end),
+        TUI.Components.option("Keymaps", function()
+            TUI.pushMenu(buildKeymapsMenu())
+        end),
+        TUI.Components.checkbox("Tutor Files", install_tutor, function(newval)
+            install_tutor = newval
+        end),
+        TUI.Components.checkbox("Spellcheck Files", install_spellfiles, function(newval)
+            install_spellfiles = newval
+        end),
+
+        TUI.Components.option("Back", function()
+            TUI.popMenu()
+        end)
+    }
+end
+--#endregion Components pages
 
 -- #region Install progress page
 local installerBox = TUI.Components.messageBox{
@@ -108,29 +398,249 @@ local function buildInstallProgressMenu()
 end
 
 local function runInstall()
-    TUI.addMessage(installerBox, "Downloading manifest from:")
-    TUI.addMessage(installerBox, BASE_URL .. MANIFEST)
+    if not manifest_tree then
+        TUI.addMessage(installerBox, "Downloading manifest from:")
+        TUI.addMessage(installerBox, BASE_URL .. MANIFEST)
 
-    local text, err = httpGet(BASE_URL .. MANIFEST)
-    if not text then
-        TUI.addMessage(installerBox, "ERROR: Could not download manifest:")
-        TUI.addMessage(installerBox, "        " .. tostring(err))
-        return
-    end
-
-    local files = parseManifest(text)
-    TUI.addMessage(installerBox, ("Found %d files to install."):format(#files))
-    TUI.addMessage(installerBox, "Beginning downloads...")
-
-    for i, rel in ipairs(files) do
-        TUI.addMessage(installerBox, ("[%d/%d] %s"):format(i, #files, rel))
-        local ok, e = downloadFile(rel)
-        if not ok then
-            TUI.addMessage(installerBox, "  ERROR: " .. tostring(e))
-            TUI.addMessage(installerBox, "Installation aborted.")
+        local text, err = httpGet(BASE_URL .. MANIFEST)
+        if not text then
+            TUI.addMessage(installerBox, "ERROR: Could not download manifest:")
+            TUI.addMessage(installerBox, "        " .. tostring(err))
             return
         end
+
+        manifest_tree = parseManifest(text)
     end
+    TUI.addMessage(installerBox, "Manifest downloaded. Walking files...")
+    
+    local base_count = 1
+    local function count(entry)
+        for _, v in pairs(entry) do
+            if v == true then
+                base_count = base_count + 1
+            elseif type(v) == "table" then
+                count(v)
+            end
+        end
+    end
+
+    count(manifest_tree.lib)
+    count(manifest_tree.layout)
+
+    TUI.addMessage(installerBox, ("Core runtime: %d files to install"):format(base_count))
+    local done = 0
+
+    local function downwalk(entry, parents)
+        for k, v in pairs(entry) do
+            if v == true then
+                done = done + 1
+
+                local file
+                if #parents > 0 then
+                    file = table.concat(parents, "/") .. "/" .. k
+                else
+                    file = k
+                end
+
+                TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, base_count, file))
+
+                local ok, e = downloadFile(file)
+                if not ok then
+                    return false, ("failed to download %s: %s"):format(file, tostring(e))
+                end
+
+            elseif type(v) == "table" then
+                parents[#parents + 1] = k
+                local ok, err = downwalk(v, parents)
+                parents[#parents] = nil
+                if not ok then
+                    return false, err
+                end
+            end
+        end
+
+        return true
+    end
+
+    local function failure(err)
+        TUI.addMessage(installerBox, "  ERROR: " .. tostring(err))
+        TUI.addMessage(installerBox, "Installation aborted.")
+    end
+
+    done = done + 1
+    TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, base_count, "nvim.lua"))
+    local ok, err = downloadFile("nvim.lua")
+    if not ok then
+        return failure(err)
+    end
+    ok, err = downwalk(manifest_tree.lib, { "lib" })
+    if not ok then
+        return failure(err)
+    end
+    ok, err = downwalk(manifest_tree.layout, { "layout" })
+    if not ok then
+        return failure(err)
+    end
+
+    TUI.addMessage(installerBox, "Downloading colorscheme files...")
+    local colorschemecnt = 0
+    colorschemes["default.vim"] = true
+    colorschemes["vim.lua"] = true
+    for _, v in pairs(colorschemes) do
+        if v then
+            colorschemecnt = colorschemecnt + 1
+        end
+    end
+    done = 0
+    for k, v in pairs(colorschemes) do
+        if v then
+            done = done + 1
+            TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, colorschemecnt, k))
+            ok, err = downloadFile("runtime/colors/" .. k)
+            if not ok then
+                return failure(err)
+            end
+        end
+    end
+
+    TUI.addMessage(installerBox, "Downloading syntax runtime files...")
+    local syntaxcnt = 0
+    syntaxes["syntax.vim"] = true
+    syntaxes["synload.vim"] = true
+    syntaxes["query.lua"] = true
+    if syntaxes["tutor.vim"] then
+        syntaxes["tutor.lua"] = true
+    end
+    if syntaxes["vim.vim"] then
+        syntaxes["vim/generated.vim"] = true
+    end
+    -- Shared
+    if syntaxes["deb822sources.vim"] or syntaxes["debchangelog.vim"] or syntaxes["debsources.vim"] or syntaxes["debversions.vim"] then
+        syntaxes["shared/debversions.vim"] = true
+    end
+    if syntaxes["hgcommit.vim"] then
+        syntaxes["shared/hgcommitDiff.vim"] = true
+    end
+    if syntaxes["typescript.vim"] or syntaxes["typescriptreact.vim"] then
+        syntaxes["shared/typescriptcommon.vim"] = true
+    end
+    -- modula2
+    if syntaxes["modula2.vim"] then
+        syntaxes["modula2/opt/iso.vim"] = true
+        syntaxes["modula2/opt/pim.vim"] = true
+        syntaxes["modula2/opt/r10.vim"] = true
+    end
+    -- actual loop
+    for _, v in pairs(syntaxes) do
+        if v then
+            syntaxcnt = syntaxcnt + 1
+        end
+    end
+    done = 0
+    for k, v in pairs(syntaxes) do
+        if v then
+            done = done + 1
+            TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, syntaxcnt, k))
+            ok, err = downloadFile("runtime/syntax/" .. k)
+            if not ok then
+                return failure(err)
+            end
+        end
+    end
+
+    TUI.addMessage(installerBox, "Downloading filetype runtime files...")
+    local ftplugincnt = 0
+    for _, v in pairs(ftplugins) do
+        if v then
+            ftplugincnt = ftplugincnt + 1
+        end
+    end
+    done = 0
+    for k, v in pairs(ftplugins) do
+        if v then
+            done = done + 1
+            TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, ftplugincnt, k))
+            ok, err = downloadFile("runtime/ftplugin/" .. k)
+            if not ok then
+                return failure(err)
+            end
+        end
+    end
+
+    if install_tutor then
+        TUI.addMessage("Downloading tutor files...")
+
+        ok, err = downloadFile("runtime/tutor/vimtutor")
+        if not ok then return failure(err) end
+        ok, err = downloadFile("runtime/tutor/tutor.tutor")
+        if not ok then return failure(err) end
+        ok, err = downloadFile("runtime/tutor/tutor.tutor.json")
+        if not ok then return failure(err) end
+        ok, err = downwalk(manifest_tree.runtime.tutor.en, {"runtime", "tutor", "en"})
+        if not ok then return failure(err) end
+    end
+
+    if install_spellfiles then
+        TUI.addMessage("Downloading spellcheck files...")
+
+        ok, err = downloadFile("runtime/spll/cleanadd.vim")
+        if not ok then return failure(err) end
+        ok, err = downloadFile("runtime/spell/en.utf-8.spl")
+        if not ok then return failure(err) end
+    end
+
+    TUI.addMessage(installerBox, "Downloading keymaps...")
+    local keymapcnt = 0
+    for _, v in pairs(keymaps) do
+        if v then
+            keymapcnt = keymapcnt + 1
+        end
+    end
+    done = 0
+    for k, v in pairs(keymaps) do
+        if v then
+            done = done + 1
+            TUI.addMessage(installerBox, ("[%d/%d] %s"):format(done, keymapcnt, k))
+            ok, err = downloadFile("runtime/keymaps/" .. k)
+            if not ok then
+                return failure(err)
+            end
+        end
+    end
+
+    -- compiler?
+    -- indent?
+    -- queries?
+
+    TUI.addMessage("Downloading core runtime files...")
+    ok, err = downwalk(manifest_tree.runtime.autoload, {"runtime", "autoload"})
+    if not ok then return failure(err) end
+    ok, err = downwalk(manifest_tree.runtime.lua, {"runtime", "lua"})
+    if not ok then return failure(err) end
+    ok, err = downwalk(manifest_tree.runtime.pack, {"runtime", "pack"})
+    if not ok then return failure(err) end
+    ok, err = downwalk(manifest_tree.runtime.plugin, {"runtime", "plugin"})
+    if not ok then return failure(err) end
+    -- single files
+    ok, err = downloadFile("runtime/example_init.lua")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/filetype.lua")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/filetype.vim")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/ftoff.vim")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/ftplugin.vim")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/ftplugof.vim")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/indent.vim")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/indoff.vim")
+    if not ok then return failure(err) end
+    ok, err = downloadFile("runtime/optwin.vim")
+    if not ok then return failure(err) end
+
 
     TUI.addMessage(installerBox, "All files downloaded successfully.")
     TUI.addMessage(installerBox, "Installation complete.")
@@ -143,16 +653,19 @@ local function updateInstallDir(dir)
 end
 
 local function buildInstallMenu()
+    BASE_URL = "https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. git_branch .. "/"
     return {
         TUI.Components.info(label),
         
         TUI.Components.separator(),
 
         TUI.Components.textbox("Install Directory", updateInstallDir, install_dir),
+        TUI.Components.option("Choose Components", function()
+            TUI.pushMenu(buildComponentsMenu())
+        end),
         TUI.Components.text(""),
         TUI.Components.option("Begin Installation", function()
             TUI.setQuitEnabled(false)
-            BASE_URL = "https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. git_branch .. "/"
             TUI.pushMenu(buildInstallProgressMenu())
             runInstall()
             TUI.setQuitEnabled(true)
