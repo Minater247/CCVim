@@ -205,6 +205,43 @@ local function buildFtpluginsMenu()
     return tui
 end
 
+local indents = {
+    ["lua.vim"] = true,
+    ["vim.vim"] = true,
+    ["json.vim"] = true,
+}
+
+local function buildIndentsMenu()
+    local tui = {
+        TUI.Components.info(label),
+        
+        TUI.Components.separator(),
+
+        TUI.Components.option("Back", function()
+            TUI.popMenu()
+        end),
+        
+        TUI.Components.separator(),
+    }
+
+    local indents_names = {}
+    for k, v in pairs(manifest_tree.runtime.indent) do
+        if v == true then
+            table.insert(indents_names, k)
+        end
+    end
+    table.sort(indents_names)
+    for _, k in ipairs(indents_names) do
+        if (k:match("^[%w_%-]+%.vim$") or k:match("^[%w_%-]+%.lua$")) and k ~= "README.txt" and k ~= "Makefile" then
+            table.insert(tui, TUI.Components.checkbox(k, indents[k], function(newval)
+                indents[k] = newval
+            end))
+        end
+    end
+
+    return tui
+end
+
 -- These are either not applicable or unimplemented
 local helpfiles = {
     ["news-0.10.txt"] = false,
@@ -231,6 +268,7 @@ local helpfiles = {
     ["treesitter.txt"] = false,
     ["testing.txt"] = false,
     ["vietnamese.txt"] = false,
+    ["arabic.txt"] = false,
 }
 
 local function buildHelpfilesMenu()
@@ -349,6 +387,9 @@ local function buildComponentsMenu()
         end),
         TUI.Components.option("Filetype Plugins", function()
             TUI.pushMenu(buildFtpluginsMenu())
+        end),
+        TUI.Components.option("Indent Languages", function()
+            TUI.pushMenu(buildIndentsMenu())
         end),
         TUI.Components.option("Helpfiles", function()
             TUI.pushMenu(buildHelpfilesMenu())
@@ -568,7 +609,7 @@ local function runInstall()
     end
 
     if install_tutor then
-        TUI.addMessage("Downloading tutor files...")
+        TUI.addMessage(installerBox, "Downloading tutor files...")
 
         ok, err = downloadFile("runtime/tutor/vimtutor")
         if not ok then return failure(err) end
@@ -581,7 +622,7 @@ local function runInstall()
     end
 
     if install_spellfiles then
-        TUI.addMessage("Downloading spellcheck files...")
+        TUI.addMessage(installerBox, "Downloading spellcheck files...")
 
         ok, err = downloadFile("runtime/spll/cleanadd.vim")
         if not ok then return failure(err) end
@@ -607,12 +648,8 @@ local function runInstall()
             end
         end
     end
-
-    -- compiler?
-    -- indent?
-    -- queries?
-
-    TUI.addMessage("Downloading core runtime files...")
+    
+    TUI.addMessage(installerBox, "Downloading core runtime files...")
     ok, err = downwalk(manifest_tree.runtime.autoload, {"runtime", "autoload"})
     if not ok then return failure(err) end
     ok, err = downwalk(manifest_tree.runtime.lua, {"runtime", "lua"})
