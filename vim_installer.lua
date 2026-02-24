@@ -62,6 +62,8 @@ local function parseManifest(text)
     return root
 end
 
+local doRelease = true
+
 local function downloadFile(relPath)
     local url = BASE_URL .. relPath
     local localPath = fs.combine(install_dir, relPath)
@@ -74,6 +76,15 @@ local function downloadFile(relPath)
     local data, err = httpGet(url)
     if not data then
         return false, ("failed to GET %s: %s"):format(url, tostring(err))
+    end
+
+    if doRelease then
+        local fh, ferr = fs.open(localPath, "wb")
+        if fh then
+            fh.write(data)
+            fh.close()
+            return true
+        end
     end
 
     local fh, ferr = fs.open(localPath, "wb")
@@ -718,6 +729,9 @@ local function buildInstallMenu()
             TUI.pushMenu(buildComponentsMenu())
         end),
         TUI.Components.text(""),
+        TUI.Components.checkbox("Install compressed (Release)", doRelease, function(newval)
+            doRelease = newval
+        end),
         TUI.Components.option("Begin Installation", function()
             TUI.setQuitEnabled(false)
             TUI.pushMenu(buildInstallProgressMenu())
