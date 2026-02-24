@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "lua-format": "^1.6.1-b"
+  },
+  "scripts": {
+    "build:dist": "node scripts/minify_dist.cjs"
+  }
+}

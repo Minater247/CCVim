@@ -4,3 +4,5 @@ config/
 *.old
 .DS_STORE
 .nvimlog
+dist/
+node_modules
