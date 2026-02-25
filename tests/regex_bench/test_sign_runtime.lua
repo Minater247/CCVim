@@ -2,20 +2,20 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.excmd.exmsg"] = {
             echo = function() end,
         },
-        ["vim.lib.autocmd"] = {
+        ["lib.autocmd"] = {
             Run = function()
                 return 0
             end,
         },
-        ["vim.lib.luaapi.fs"] = {
+        ["lib.luaapi.fs"] = {
             abspath = function(path)
                 return tostring(path or "")
             end,
         },
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             ParseLinetypes = function() end,
         },
     },

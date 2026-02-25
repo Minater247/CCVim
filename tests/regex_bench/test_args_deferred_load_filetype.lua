@@ -91,14 +91,14 @@ local mock = MockEnv.setup({
         end,
     },
     module_stubs = {
-        ["vim.layout.window"] = window_ctor,
-        ["vim.layout.tabpage"] = tab_ctor,
-        ["vim.lib.frame"] = {
+        ["layout.window"] = window_ctor,
+        ["layout.tabpage"] = tab_ctor,
+        ["lib.frame"] = {
             Equalize = function()
                 return true
             end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             on_lines_changed = function() end,
         },
     },

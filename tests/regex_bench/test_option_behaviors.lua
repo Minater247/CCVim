@@ -66,15 +66,15 @@ local mock = MockEnv.setup({
         end,
     },
     module_stubs = {
-        ["vim.layout.buffer"] = {},
-        ["vim.lib.highlight"] = {
+        ["layout.buffer"] = {},
+        ["lib.highlight"] = {
             For = function() return { colors.white, colors.black } end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
         },
-        ["vim.lib.scriptsource"] = {
+        ["lib.scriptsource"] = {
             CurrentContext = function()
                 return rawget(_G, "__test_script_ctx")
             end,

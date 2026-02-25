@@ -2,23 +2,23 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             PendingPrintable = function() return "" end,
         },
-        ["vim.lib.excmd.cmdread"] = {
+        ["lib.excmd.cmdread"] = {
             drawCmdline = function() end,
         },
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.excmd.exmsg"] = {
             Redraw = function() end,
             DrawOneShot = function() end,
         },
-        ["vim.lib.highlight"] = {
+        ["lib.highlight"] = {
             SetFor = function() end,
         },
-        ["vim.lib.statusline"] = {
+        ["lib.statusline"] = {
             Parse = function() return {} end,
         },
-        ["vim.lib.frame"] = {
+        ["lib.frame"] = {
             Close = function()
                 return true, nil
             end,
@@ -26,13 +26,13 @@ local mock = MockEnv.setup({
             GetXY = function() return 1, 1 end,
             GetFrameAt = function() return nil end,
         },
-        ["vim.lib.event"] = {
+        ["lib.event"] = {
             HaltLoop = function() end,
         },
-        ["vim.layout.window"] = function()
+        ["layout.window"] = function()
             return {}
         end,
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             ParseLinetypes = function() end,
             OnWindowBufferChanged = function() end,
             OnSyntaxOptionSet = function() end,

@@ -15,16 +15,16 @@ local exmsg_stub = {
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return exmsg_stub end,
-        ["vim.lib.excmd.exmsg"] = exmsg_stub,
-        ["vim.lib.autocmd"] = {
+        ["lib.exmsg"] = function() return exmsg_stub end,
+        ["lib.excmd.exmsg"] = exmsg_stub,
+        ["lib.autocmd"] = {
             Run = function() return 0 end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
         },
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             ParseLinetypes = function() end,
             OwnSyntax = function() end,
             ExecuteCommand = function() return true end,
@@ -32,24 +32,24 @@ local mock = MockEnv.setup({
             SyntimeSet = function() end,
             SyntimeClear = function() end,
         },
-        ["vim.lib.tags"] = {
+        ["lib.tags"] = {
             SearchFile = function() return nil end,
         },
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             clear_mappings = function() end,
             unmap_keys = function() end,
             remap_keys = function() end,
             noremap_keys = function() end,
         },
-        ["vim.lib.pack"] = {
+        ["lib.pack"] = {
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["vim.lib.key"] = {
+        ["lib.key"] = {
             strtoseq = function() return {} end,
         },
-        ["vim.layout.buffer"] = {},
-        ["vim.layout.window"] = {},
+        ["layout.buffer"] = {},
+        ["layout.window"] = {},
     },
 })
 

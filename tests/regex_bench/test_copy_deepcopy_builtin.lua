@@ -2,11 +2,11 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.layout.buffer"] = {},
-        ["vim.lib.highlight"] = {
+        ["layout.buffer"] = {},
+        ["lib.highlight"] = {
             For = function() return { colors.white, colors.black } end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
         },

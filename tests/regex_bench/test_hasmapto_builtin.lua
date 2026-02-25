@@ -2,11 +2,11 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.event"] = {
+        ["lib.event"] = {
             StartTimer = function() return 1 end,
             CancelTimer = function() end,
         },
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.excmd.exmsg"] = {
             echo = function() end,
             echon = function() end,
             echomsg = function() end,

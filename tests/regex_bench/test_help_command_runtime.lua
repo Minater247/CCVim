@@ -21,10 +21,18 @@ local vimfn_text = table.concat({
     "body",
 }, "\n")
 
+local function is_tags_path(path)
+    return path == "vim/runtime/doc/tags" or path == "/vim/runtime/doc/tags"
+end
+
+local function is_vimfn_path(path)
+    return path == "vim/runtime/doc/vimfn.txt" or path == "/vim/runtime/doc/vimfn.txt"
+end
+
 local fs_stub = {
     exists = function(path)
         path = norm(path)
-        return path == "/vim/runtime/doc/tags" or path == "/vim/runtime/doc/vimfn.txt"
+        return is_tags_path(path) or is_vimfn_path(path)
     end,
     isDir = function(_)
         return false
@@ -37,7 +45,7 @@ local fs_stub = {
         if mode ~= "r" then
             return nil
         end
-        if path == "/vim/runtime/doc/tags" then
+        if is_tags_path(path) then
             local i = 0
             return {
                 readLine = function()
@@ -47,7 +55,7 @@ local fs_stub = {
                 close = function() end,
             }
         end
-        if path == "/vim/runtime/doc/vimfn.txt" then
+        if is_vimfn_path(path) then
             return {
                 readAll = function()
                     return vimfn_text
@@ -62,10 +70,10 @@ local fs_stub = {
     end,
     getSize = function(path)
         path = norm(path)
-        if path == "/vim/runtime/doc/vimfn.txt" then
+        if is_vimfn_path(path) then
             return #vimfn_text
         end
-        if path == "/vim/runtime/doc/tags" then
+        if is_tags_path(path) then
             return #table.concat(tags_lines, "\n")
         end
         return 0
@@ -92,24 +100,24 @@ local exmsg_stub = {
 }
 
 local mock = MockEnv.setup({
-    ccvim_path = "/vim",
+    ccvim_path = "vim",
     fs = fs_stub,
     shell = { dir = function() return "/" end },
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return exmsg_stub end,
-        ["vim.lib.excmd.exmsg"] = exmsg_stub,
-        ["vim.lib.command"] = {
+        ["lib.exmsg"] = function() return exmsg_stub end,
+        ["lib.excmd.exmsg"] = exmsg_stub,
+        ["lib.command"] = {
             clear_mappings = function() end,
             unmap_keys = function() end,
             remap_keys = function() end,
             noremap_keys = function() end,
         },
-        ["vim.lib.key"] = { strtoseq = function() return {} end },
-        ["vim.lib.pack"] = {
+        ["lib.key"] = { strtoseq = function() return {} end },
+        ["lib.pack"] = {
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
             on_lines_changed = function() end,
@@ -167,7 +175,7 @@ if ok ~= true then
 end
 
 local buf = _G.windows[_G.curwin].buffer
-assert_eq("help file opened", buf.name, "/vim/runtime/doc/vimfn.txt")
+assert_eq("help file opened", buf.name, "vim/runtime/doc/vimfn.txt")
 assert_eq("help filetype set", Options.get("filetype", nil, buf), "help")
 assert_true("cursor moved to tag line", (buf:get_line(help_win.cursory, true) or ""):find("%*copy%(%)%*", 1) ~= nil)
 

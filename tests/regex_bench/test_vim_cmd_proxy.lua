@@ -1,3 +1,5 @@
+local MockEnv = require("vim.tests.test_mocks")
+
 local stub_calls = {
     runtime_run = {},
     nvim_cmd = {},
@@ -13,7 +15,7 @@ local scopes_stub = {
 }
 
 local modules = {
-    ["vim.lib.luaapi.api"] = {
+    ["lib.luaapi.api"] = {
         nvim_cmd = function(cmd, opts)
             stub_calls.nvim_cmd[#stub_calls.nvim_cmd + 1] = {
                 cmd = cmd,
@@ -22,33 +24,33 @@ local modules = {
             return ""
         end,
     },
-    ["vim.lib.luaapi.loop"] = {},
-    ["vim.lib.luaapi.fakejit"] = {},
-    ["vim.lib.luaapi.opts"] = {
+    ["lib.luaapi.loop"] = {},
+    ["lib.luaapi.fakejit"] = {},
+    ["lib.luaapi.opts"] = {
         wo = {},
         bo = {},
         go = {},
         o = {},
     },
-    ["vim.lib.luaapi.on_key"] = {
+    ["lib.luaapi.on_key"] = {
         set_namespace_allocator = function(_) end,
         on_key = function() return 0 end,
         dispatch = function() return false end,
     },
-    ["vim.lib.excmd.runtime"] = {
+    ["lib.excmd.runtime"] = {
         run = function(line)
             stub_calls.runtime_run[#stub_calls.runtime_run + 1] = line
             return true, ""
         end,
         _FUNCS = {},
     },
-    ["vim.lib.luaapi.fn"] = { _proxy = {} },
-    ["vim.lib.luaapi.deferfn"] = function() end,
-    ["vim.lib.luaapi.split"] = function(s) return s end,
-    ["vim.lib.luaapi.require"] = function(name) return require(name) end,
-    ["vim.lib.luaapi.keymap"] = {},
-    ["vim.lib.luaapi.package"] = {},
-    ["vim.lib.luaapi.fileload"] = {
+    ["lib.luaapi.fn"] = { _proxy = {} },
+    ["lib.luaapi.deferfn"] = function() end,
+    ["lib.luaapi.split"] = function(s) return s end,
+    ["lib.luaapi.require"] = function(name) return require(name) end,
+    ["lib.luaapi.keymap"] = {},
+    ["lib.luaapi.package"] = {},
+    ["lib.luaapi.fileload"] = {
         Bind = function(_)
             return {
                 loadfile = _G.loadfile,
@@ -58,8 +60,8 @@ local modules = {
             }
         end,
     },
-    ["vim.lib.luaapi.opt"] = {},
-    ["vim.lib.luaapi.tblutils"] = {
+    ["lib.luaapi.opt"] = {},
+    ["lib.luaapi.tblutils"] = {
         extend = function(_, lhs, rhs)
             local out = {}
             for k, v in pairs(lhs or {}) do out[k] = v end
@@ -118,30 +120,30 @@ local modules = {
             return out
         end,
     },
-    ["vim.lib.luaapi.timerutils"] = {
+    ["lib.luaapi.timerutils"] = {
         schedule = function(fn) return fn() end,
         schedule_wrap = function(fn) return fn end,
     },
-    ["vim.lib.luaapi.log"] = {},
-    ["vim.lib.luaapi.notify"] = {
+    ["lib.luaapi.log"] = {},
+    ["lib.luaapi.notify"] = {
         notify = function(_) end,
     },
-    ["vim.lib.luaapi.scopes"] = scopes_stub,
-    ["vim.lib.luaapi.print"] = {
+    ["lib.luaapi.scopes"] = scopes_stub,
+    ["lib.luaapi.print"] = {
         print = _G.print,
         inspect = function(v) return tostring(v) end,
     },
-    ["vim.lib.luaapi.diagnostic"] = {},
-    ["vim.lib.luaapi.env"] = {},
-    ["vim.lib.luaapi.system"] = {},
-    ["vim.lib.luaapi.strutils"] = {
+    ["lib.luaapi.diagnostic"] = {},
+    ["lib.luaapi.env"] = {},
+    ["lib.luaapi.system"] = {},
+    ["lib.luaapi.strutils"] = {
         startswith = function(s, p)
             return tostring(s):sub(1, #p) == p
         end,
     },
-    ["vim.lib.luaapi.fs"] = {},
-    ["vim.lib.luaapi.F"] = {},
-    ["vim.lib.excmd.vim_regex"] = {
+    ["lib.luaapi.fs"] = {},
+    ["lib.luaapi.F"] = {},
+    ["lib.excmd.vim_regex"] = {
         compile = function(_)
             return true
         end,
@@ -149,31 +151,18 @@ local modules = {
             return nil
         end,
     },
-    ["vim.lib.luaapi.treesitter"] = {},
+    ["lib.luaapi.treesitter"] = {},
 }
 
-_G.LOG_DEBUG = function(...) end
-_G.LOG_ERROR = function(...) end
+local mock = MockEnv.setup({
+    ccvim_path = "vim",
+    _V = {},
+    module_stubs = modules,
+})
+
 _G._log_caller = function(...) end
 
-function _G.loadModule(name)
-    local mod = modules[name]
-    if not mod then
-        error("missing module stub: " .. tostring(name))
-    end
-    return mod
-end
-
-local env = setmetatable({
-    _V = {},
-    loadModule = _G.loadModule,
-    LOG_DEBUG = _G.LOG_DEBUG,
-    LOG_ERROR = _G.LOG_ERROR,
-    _log_caller = _G._log_caller,
-}, { __index = _G })
-
-local chunk = assert(loadfile("vim/lib/luaapi/apibuild.lua", "t", env))
-local ApiBuild = chunk()
+local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
 local api = ApiBuild.Build()
 
 local function assert_true(label, cond)
@@ -247,7 +236,7 @@ local cmd3 = stub_calls.nvim_cmd[#stub_calls.nvim_cmd].cmd
 assert_eq("table-form call command", cmd3.cmd, "highlight")
 assert_eq("table-form call arg", cmd3.args[1], "clear")
 
-modules["vim.lib.excmd.runtime"].run = function(_)
+modules["lib.excmd.runtime"].run = function(_)
     return false, {
         toString = function()
             return "E492: Not an editor command"

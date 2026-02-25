@@ -91,17 +91,17 @@ local mock = MockEnv.setup({
         end,
     },
     module_stubs = {
-        ["vim.lib.exmsg"] = exmsg_stub,
-        ["vim.lib.excmd.exmsg"] = exmsg_stub,
-        ["vim.lib.highlight"] = {
+        ["lib.exmsg"] = exmsg_stub,
+        ["lib.excmd.exmsg"] = exmsg_stub,
+        ["lib.highlight"] = {
             GroupExists = function() return false end,
             For = function() return { colors.white, colors.black } end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
         },
-        ["vim.lib.autocmd"] = {
+        ["lib.autocmd"] = {
             Run = function() return 0 end,
         },
     },

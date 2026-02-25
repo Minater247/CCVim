@@ -39,33 +39,33 @@ _G.window = {
 local mock = MockEnv.setup({
     term = mock_term,
     module_stubs = {
-        ["vim.layout.window"] = setmetatable({}, {
+        ["layout.window"] = setmetatable({}, {
             __call = function()
                 error("unexpected window construction")
             end,
         }),
-        ["vim.lib.highlight"] = {
+        ["lib.highlight"] = {
             SetFor = function() end,
         },
-        ["vim.lib.statusline"] = {
+        ["lib.statusline"] = {
             Parse = function()
                 return { { "status", "StatusLine" } }
             end,
         },
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             PendingPrintable = function() return "" end,
         },
-        ["vim.lib.excmd.cmdread"] = {
+        ["lib.excmd.cmdread"] = {
             is_active = function() return false end,
             drawCmdline = function() end,
         },
-        ["vim.lib.autocmd"] = {
+        ["lib.autocmd"] = {
             Run = function() return 0 end,
         },
-        ["vim.lib.event"] = {
+        ["lib.event"] = {
             HaltLoop = function() end,
         },
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.excmd.exmsg"] = {
             IsOverlayActive = function() return false end,
             IsMoreActive = function() return false end,
             DrawMoreView = function() end,

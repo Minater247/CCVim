@@ -2,8 +2,8 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
+        ["lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
             echon = function() end,
@@ -15,23 +15,23 @@ local mock = MockEnv.setup({
             PopSilent = function() end,
             _writeWithHL = function() end,
         },
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             ParseLinetypes = function() end,
             LineToBlit = function() return nil end,
             LinesToBlit = function() return {} end,
             OnWindowBufferChanged = function() end,
         },
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             clear_mappings = function() end,
             unmap_keys = function() end,
             remap_keys = function() end,
             noremap_keys = function() end,
         },
-        ["vim.lib.pack"] = {
+        ["lib.pack"] = {
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             on_lines_changed = function() end,
         },
     },
@@ -47,9 +47,12 @@ local Options = mock.loadModule("lib.options")
 _G.options = Options
 
 local Autocmd = mock.loadModule("lib.autocmd")
-local Window = mock.loadModule("layout.window")
+local Buffer = mock.loadModule("layout.buffer")
 
-local buf = mock.create_buffer(1, "/tmp/textchanged.txt", { "x" }, { modified = false })
+local buf = Buffer:new(true, false, true)
+buf.name = "/tmp/textchanged.txt"
+buf.lines = { "x" }
+buf.opts.modified = false
 local win = mock.create_window(1, buf, {})
 win.cursorx = 1
 win.cursory = 1
@@ -77,10 +80,10 @@ Autocmd.CreateAutocommand({ "TextChangedI" }, { "*" }, function(info)
 end, nil, 1, false, false, nil, nil)
 
 _G.vimmode = "normal"
-Window.markUpdate(win, 1)
+buf:set_line(1, "normal-change")
 
 _G.vimmode = "insert"
-Window.markUpdate(win, 1)
+buf:set_line(1, "insert-change")
 
 assert_eq("TextChanged fired once", normal_count, 1)
 assert_eq("TextChangedI fired once", insert_count, 1)

@@ -4,17 +4,17 @@ local autocmd_run_count = 0
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.event"] = {
+        ["lib.event"] = {
             StartTimer = function() return 1 end,
             CancelTimer = function() end,
         },
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.excmd.exmsg"] = {
             echo = function() end,
             echon = function() end,
             echomsg = function() end,
             echoerr = function() end,
         },
-        ["vim.lib.autocmd"] = {
+        ["lib.autocmd"] = {
             Run = function()
                 autocmd_run_count = autocmd_run_count + 1
             end,

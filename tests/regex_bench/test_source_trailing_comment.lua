@@ -2,9 +2,9 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local sourced = {}
 local mock = MockEnv.setup({
-    ccvim_path = "/vim",
+    ccvim_path = "vim",
     module_stubs = {
-        ["vim.lib.scriptsource"] = {
+        ["lib.scriptsource"] = {
             source = function(path)
                 sourced[#sourced + 1] = path
                 return true
@@ -21,21 +21,21 @@ local mock = MockEnv.setup({
                 return cb
             end,
         },
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             clear_mappings = function() end,
             unmap_keys = function() end,
             remap_keys = function() end,
             noremap_keys = function() end,
             trigger_keys = function() end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
             on_lines_changed = function() end,
             getplaced = function() return {} end,
             jump = function() return -1 end,
         },
-        ["vim.lib.pack"] = {
+        ["lib.pack"] = {
             add = function() return true end,
             load_start = function() return true end,
         },

@@ -12,8 +12,8 @@ local autocmd_stub = {
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
+        ["lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
             echon = function() end,
@@ -29,49 +29,49 @@ local mock = MockEnv.setup({
             RenderPressEnter = function() end,
             Redraw = function() end,
         },
-        ["vim.layout.buffer"] = setmetatable({}, {
+        ["layout.buffer"] = setmetatable({}, {
             __call = function()
                 error("unexpected buffer construction")
             end,
         }),
-        ["vim.layout.window"] = setmetatable({}, {
+        ["layout.window"] = setmetatable({}, {
             __call = function()
                 window_ctor_calls = window_ctor_calls + 1
                 error("unexpected window construction")
             end,
         }),
-        ["vim.lib.highlight"] = {
+        ["lib.highlight"] = {
             SetFor = function() end,
         },
-        ["vim.lib.statusline"] = {
+        ["lib.statusline"] = {
             Parse = function() return {} end,
         },
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             PendingPrintable = function() return "" end,
             clear_mappings = function() end,
             unmap_keys = function() end,
             remap_keys = function() end,
             noremap_keys = function() end,
         },
-        ["vim.lib.key"] = {
+        ["lib.key"] = {
             strtoseq = function() return {} end,
         },
-        ["vim.lib.pack"] = {
+        ["lib.pack"] = {
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
         },
-        ["vim.lib.tags"] = {
+        ["lib.tags"] = {
             SearchFile = function() return nil end,
         },
-        ["vim.lib.excmd.cmdread"] = {
+        ["lib.excmd.cmdread"] = {
             is_active = function() return false end,
         },
-        ["vim.lib.autocmd"] = autocmd_stub,
-        ["vim.lib.event"] = {
+        ["lib.autocmd"] = autocmd_stub,
+        ["lib.event"] = {
             HaltLoop = function() end,
         },
     },

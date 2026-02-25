@@ -2,8 +2,8 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
+        ["lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
             echon = function() end,
@@ -15,9 +15,9 @@ local mock = MockEnv.setup({
             PopSilent = function() end,
             _writeWithHL = function() end,
         },
-        ["vim.layout.buffer"] = {},
-        ["vim.layout.window"] = {},
-        ["vim.lib.sign"] = {
+        ["layout.buffer"] = {},
+        ["layout.window"] = {},
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
             on_lines_changed = function() end,

@@ -19,16 +19,16 @@ local exmsg_stub = {
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return exmsg_stub end,
-        ["vim.lib.excmd.exmsg"] = exmsg_stub,
-        ["vim.lib.command"] = {
+        ["lib.exmsg"] = function() return exmsg_stub end,
+        ["lib.excmd.exmsg"] = exmsg_stub,
+        ["lib.command"] = {
             clear_mappings = function() end,
             unmap_keys = function() end,
             remap_keys = function() end,
             noremap_keys = function() end,
             emit_raw = function() end,
         },
-        ["vim.lib.key"] = {
+        ["lib.key"] = {
             strtoseq = function(s)
                 local out = {}
                 for i = 1, #s do
@@ -37,21 +37,21 @@ local mock = MockEnv.setup({
                 return out
             end,
         },
-        ["vim.lib.pack"] = {
+        ["lib.pack"] = {
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["vim.lib.sign"] = {
+        ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,
         },
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             ParseLinetypes = function() end,
             OnWindowBufferChanged = function() end,
             OnSyntaxOptionSet = function() end,
             OnSynmaxcolOptionSet = function() end,
         },
-        ["vim.lib.autocmd"] = {
+        ["lib.autocmd"] = {
             Run = function() return 0 end,
             CreateAutocommand = function() return 1 end,
             RemoveAutocommands = function() return 0 end,
@@ -59,7 +59,7 @@ local mock = MockEnv.setup({
             DeleteAutocommand = function() return false end,
             NormalizeEvent = function(ev) return ev end,
         },
-        ["vim.lib.tags"] = {
+        ["lib.tags"] = {
             SearchFile = function() return nil end,
         },
     },

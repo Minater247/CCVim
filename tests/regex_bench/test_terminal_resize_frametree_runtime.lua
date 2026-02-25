@@ -10,28 +10,28 @@ local autocmd_stub = {
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.layout.window"] = setmetatable({}, {
+        ["layout.window"] = setmetatable({}, {
             __call = function()
                 error("unexpected window construction")
             end,
         }),
-        ["vim.lib.highlight"] = {
+        ["lib.highlight"] = {
             SetFor = function() end,
         },
-        ["vim.lib.statusline"] = {
+        ["lib.statusline"] = {
             Parse = function() return {} end,
         },
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             PendingPrintable = function() return "" end,
         },
-        ["vim.lib.excmd.cmdread"] = {
+        ["lib.excmd.cmdread"] = {
             is_active = function() return false end,
         },
-        ["vim.lib.autocmd"] = autocmd_stub,
-        ["vim.lib.event"] = {
+        ["lib.autocmd"] = autocmd_stub,
+        ["lib.event"] = {
             HaltLoop = function() end,
         },
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.excmd.exmsg"] = {
             IsMoreActive = function() return false end,
             DrawMoreView = function() end,
             RenderPressEnter = function() end,

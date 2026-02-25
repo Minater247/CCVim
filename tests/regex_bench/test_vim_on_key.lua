@@ -1,3 +1,5 @@
+local MockEnv = require("vim.tests.test_mocks")
+
 local function assert_eq(label, got, want)
     if got ~= want then
         error(("FAIL %s: expected %s, got %s"):format(label, tostring(want), tostring(got)))
@@ -10,16 +12,8 @@ local function assert_true(label, cond)
     end
 end
 
-function _G.loadModule(name)
-    error("unexpected module load: " .. tostring(name))
-end
-
-local env = setmetatable({
-    loadModule = _G.loadModule,
-}, { __index = _G })
-
-local chunk = assert(loadfile("vim/lib/luaapi/on_key.lua", "t", env))
-local OnKey = chunk()
+local mock = MockEnv.setup({ ccvim_path = "vim" })
+local OnKey = mock.loadModule("lib.luaapi.on_key")
 
 assert_eq("count starts at zero", OnKey.on_key(), 0)
 

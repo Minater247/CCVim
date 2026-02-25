@@ -70,9 +70,6 @@ function MockEnv.setup(config)
 
 
     local function infer_ccvim_path()
-        if config.ccvim_path then
-            return config.ccvim_path
-        end
         -- level 3 = caller of Setup (level1=infer,2=setup,3=invoker)
         local info = debug.getinfo(3, "S")
         if info and type(info.source) == "string" then
@@ -96,7 +93,8 @@ function MockEnv.setup(config)
         error("Failed to infer ccvim directory!")
     end
 
-    _G.ccvim_path = infer_ccvim_path()
+    local inferred_ccvim_path = infer_ccvim_path()
+    _G.ccvim_path = config.ccvim_path or inferred_ccvim_path
     
     -- bit32 compatibility
     _G.bit32 = _G.bit32 or {
@@ -135,21 +133,67 @@ function MockEnv.setup(config)
         setTextColor = function() end,
         setBackgroundColor = function() end,
     }
+    _G.term.getSize = _G.term.getSize or function() return 80, 24 end
     
     -- ComputerCraft shell API
     _G.shell = config.shell or {
         dir = function() return "/" end,
     }
+
+    local screen_w, screen_h = _G.term.getSize()
+    _G.screen = config.screen or { width = screen_w or 80, height = screen_h or 24 }
+    if config._V ~= nil then
+        _G._V = config._V
+    end
+
+    local next_timer_id = 0
+    _G.os = config.os or _G.os or os or {}
+    _G.os.epoch = _G.os.epoch or function()
+        local sec = (_G.os.time and _G.os.time()) or 0
+        return math.floor(sec * 1000)
+    end
+    _G.os.startTimer = _G.os.startTimer or function()
+        next_timer_id = next_timer_id + 1
+        return next_timer_id
+    end
+    _G.os.cancelTimer = _G.os.cancelTimer or function() end
+    _G.os.pullEvent = _G.os.pullEvent or function()
+        return "terminate"
+    end
+    _G.os.queueEvent = _G.os.queueEvent or function() end
     
     -- Module loader
     local MODULE_CACHE = {}
     local module_stubs = config.module_stubs or {}
 
-    if module_stubs["vim.lib.sign"] then
-        local sign_stub = module_stubs["vim.lib.sign"]
+    local sign_stub = module_stubs["lib.sign"]
+    if type(sign_stub) == "table" then
         sign_stub.on_lines_changed = sign_stub.on_lines_changed or function() end
         sign_stub.getplaced = sign_stub.getplaced or function() return {} end
         sign_stub.jump = sign_stub.jump or function() return -1 end
+    end
+
+    local module_roots = {}
+    local function add_module_root(root)
+        if type(root) ~= "string" or root == "" then
+            return
+        end
+        for i = 1, #module_roots do
+            if module_roots[i] == root then
+                return
+            end
+        end
+        module_roots[#module_roots + 1] = root
+    end
+
+    add_module_root(config.module_root)
+    add_module_root(_G.ccvim_path)
+    add_module_root(inferred_ccvim_path)
+    if type(_G.ccvim_path) == "string" and _G.ccvim_path:sub(1, 1) == "/" then
+        add_module_root(_G.ccvim_path:sub(2))
+    end
+    if type(inferred_ccvim_path) == "string" and inferred_ccvim_path:sub(1, 1) == "/" then
+        add_module_root(inferred_ccvim_path:sub(2))
     end
     
     function _G.loadModule(name)
@@ -158,25 +202,28 @@ function MockEnv.setup(config)
         end
         
         -- Check if there's a stub for this module
-        if module_stubs[name] then
-            local stub = module_stubs[name]
+        local stub = module_stubs[name]
+        if stub then
             MODULE_CACHE[name] = stub
             return stub
         end
 
         local path = name:gsub("%.", "/") .. ".lua"
         local env = setmetatable({
-            _V = nil,
             loadModule = _G.loadModule,
         }, { __index = _G })
 
-        local chunk, err = loadfile(_G.ccvim_path .. "/" .. path, "t", env)
-        if chunk then
-            local mod = chunk()
-            MODULE_CACHE[name] = mod
-            return mod
+        local last_err
+        for i = 1, #module_roots do
+            local chunk, err = loadfile(module_roots[i] .. "/" .. path, "t", env)
+            if chunk then
+                local mod = chunk()
+                MODULE_CACHE[name] = mod
+                return mod
+            end
+            last_err = err
         end
-        error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
+        error(("loadModule failed for %s (%s)"):format(name, tostring(last_err)))
     end
     
     -- Return helper object with metatable interfaces

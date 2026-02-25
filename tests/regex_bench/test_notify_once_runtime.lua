@@ -21,8 +21,8 @@ local exmsg_stub = {
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return exmsg_stub end,
-        ["vim.lib.excmd.exmsg"] = exmsg_stub,
+        ["lib.exmsg"] = function() return exmsg_stub end,
+        ["lib.excmd.exmsg"] = exmsg_stub,
     },
 })
 

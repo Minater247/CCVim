@@ -5,7 +5,7 @@ local cancelled = {}
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.event"] = {
+        ["lib.event"] = {
             StartTimer = function(_secs, _cb)
                 next_id = next_id + 1
                 return next_id

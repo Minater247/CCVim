@@ -11,7 +11,7 @@ local mock = MockEnv.setup({
         blit = function() end,
     },
     module_stubs = {
-        ["vim.lib.highlight"] = {
+        ["lib.highlight"] = {
             SetFor = function() end,
             For = function() return { colors.white, colors.black } end,
             HasGroup = function() return false end,
@@ -19,13 +19,13 @@ local mock = MockEnv.setup({
             Clear = function() end,
             SetGroupColor = function() end,
         },
-        ["vim.lib.frame"] = {
+        ["lib.frame"] = {
             IsLeftChild = function() return false end,
         },
-        ["vim.lib.statusline"] = {
+        ["lib.statusline"] = {
             Parse = function() return { { "", "Normal" } } end,
         },
-        ["vim.lib.texren"] = {
+        ["lib.texren"] = {
             parse = function(line, _opts, cursor)
                 local c = nil
                 if cursor then
@@ -36,14 +36,14 @@ local mock = MockEnv.setup({
                 return { line }, nil, c
             end,
         },
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             ParseLinetypes = function() end,
             LineToBlit = function() return nil end,
         },
-        ["vim.lib.listchars"] = {
+        ["lib.listchars"] = {
             get = function() return {} end,
         },
-        ["vim.lib.autocmd"] = {
+        ["lib.autocmd"] = {
             Run = function() return 0 end,
         },
     },

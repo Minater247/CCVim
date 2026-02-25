@@ -1,3 +1,5 @@
+local MockEnv = require("vim.tests.test_mocks")
+
 local function norm(path)
     path = tostring(path or ""):gsub("//+", "/")
     if path == "" then return "/" end
@@ -49,20 +51,11 @@ local function mk_fs_tree()
     return fs
 end
 
-_G.fs = mk_fs_tree()
-
-_G.LOG_DEBUG = function(...) end
-_G.LOG_ERROR = function(...) end
-_G.LOG_INTERNAL = function(...) end
-
-local MODULE_CACHE = {}
-function _G.loadModule(name)
-    if MODULE_CACHE[name] then
-        return MODULE_CACHE[name]
-    end
-
-    if name == "vim.lib.luaapi.fs" then
-        local mod = {
+local mock = MockEnv.setup({
+    ccvim_path = "vim",
+    fs = mk_fs_tree(),
+    module_stubs = {
+        ["lib.luaapi.fs"] = {
             abspath = function(path)
                 path = tostring(path or "")
                 if path:sub(1, 1) ~= "/" then
@@ -70,27 +63,11 @@ function _G.loadModule(name)
                 end
                 return norm(path)
             end,
-        }
-        MODULE_CACHE[name] = mod
-        return mod
-    end
+        },
+    },
+})
 
-    local path = name:gsub("%.", "/") .. ".lua"
-    local env = setmetatable({
-        _V = nil,
-        loadModule = _G.loadModule,
-    }, { __index = _G })
-
-    local chunk, err = loadfile(path, "t", env)
-    if not chunk then
-        error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
-    end
-    local mod = chunk()
-    MODULE_CACHE[name] = mod
-    return mod
-end
-
-local Filesystem = loadModule("lib.filesystem")
+local Filesystem = mock.loadModule("lib.filesystem")
 
 local function sort_copy(list)
     local out = {}

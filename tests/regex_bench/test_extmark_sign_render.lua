@@ -25,18 +25,18 @@ end
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.layout.buffer"] = setmetatable({}, {
+        ["layout.buffer"] = setmetatable({}, {
             __call = function()
                 error("unexpected buffer construction")
             end,
         }),
-        ["vim.lib.highlight"] = {
+        ["lib.highlight"] = {
             SetFor = function() end,
             For = function()
                 return { colors.white, colors.black }
             end,
         },
-        ["vim.lib.frame"] = {
+        ["lib.frame"] = {
             IsLeftChild = function()
                 return false
             end,
@@ -44,32 +44,32 @@ local mock = MockEnv.setup({
                 return frame.x or 1, frame.y or 1
             end,
         },
-        ["vim.lib.statusline"] = {
+        ["lib.statusline"] = {
             Parse = function()
                 return {}
             end,
         },
-        ["vim.lib.texren"] = {
+        ["lib.texren"] = {
             parse = function(line)
                 return { line }, nil, nil
             end,
         },
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             LinesToBlit = function()
                 return {}
             end,
         },
-        ["vim.lib.tab"] = {
+        ["lib.tab"] = {
             get_tab_config = function()
                 return {}
             end,
         },
-        ["vim.lib.listchars"] = {
+        ["lib.listchars"] = {
             get = function()
                 return {}
             end,
         },
-        ["vim.lib.excmd.cmdread"] = {
+        ["lib.excmd.cmdread"] = {
             is_active = function()
                 return false
             end,

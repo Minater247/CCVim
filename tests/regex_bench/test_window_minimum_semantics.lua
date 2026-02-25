@@ -2,7 +2,7 @@ local MockEnv = require("vim.tests.test_mocks")
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["vim.layout.buffer"] = function()
+        ["layout.buffer"] = function()
             return {
                 refcount = 0,
                 opts = {},
@@ -18,10 +18,10 @@ local mock = MockEnv.setup({
                 end,
             }
         end,
-        ["vim.lib.highlight"] = {},
-        ["vim.lib.frame"] = {},
-        ["vim.lib.statusline"] = {},
-        ["vim.lib.texren"] = {
+        ["lib.highlight"] = {},
+        ["lib.frame"] = {},
+        ["lib.statusline"] = {},
+        ["lib.texren"] = {
             parse = function()
                 return { "" }, { fg = { "" }, bg = { "" } }
             end,
@@ -29,10 +29,10 @@ local mock = MockEnv.setup({
                 return { "" }, {}, {}, { line = 1, column = 1 }
             end,
         },
-        ["vim.lib.syntax"] = {
+        ["lib.syntax"] = {
             ParseLinetypes = function() end,
         },
-        ["vim.lib.tab"] = {
+        ["lib.tab"] = {
             get_tab_config = function()
                 return {}
             end,
@@ -40,11 +40,11 @@ local mock = MockEnv.setup({
                 return col1
             end,
         },
-        ["vim.lib.listchars"] = {},
-        ["vim.lib.error"] = function(code, ...)
+        ["lib.listchars"] = {},
+        ["lib.error"] = function(code, ...)
             return { code = code, params = { ... } }
         end,
-        ["vim.lib.autocmd"] = {},
+        ["lib.autocmd"] = {},
     },
 })
 

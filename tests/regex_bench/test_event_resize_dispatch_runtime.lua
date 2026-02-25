@@ -14,20 +14,53 @@ local exmsg_stub = {
     Finalize = function() end,
 }
 
+local pulled = 0
+local size_calls = 0
+
 local mock = MockEnv.setup({
+    os = {
+        startTimer = function()
+            return 99
+        end,
+        cancelTimer = function() end,
+        pullEvent = function()
+            pulled = pulled + 1
+            if pulled == 1 then
+                return "term_resize"
+            elseif pulled == 2 then
+                return "monitor_resize"
+            elseif pulled == 3 then
+                return "timer", 99
+            end
+            error("unexpected pullEvent call: " .. tostring(pulled))
+        end,
+    },
+    term = {
+        getSize = function()
+            size_calls = size_calls + 1
+            if size_calls == 1 then
+                return 120, 40
+            end
+            return 121, 41
+        end,
+        getPaletteColor = function() return 0, 0, 0 end,
+        setTextColor = function() end,
+        setBackgroundColor = function() end,
+    },
     module_stubs = {
-        ["vim.lib.command"] = {
+        ["lib.command"] = {
             HandleKey = function() end,
         },
-        ["vim.lib.key"] = {
+        ["lib.key"] = {
             new = function() end,
         },
-        ["vim.lib.luaapi.on_key"] = {
+        ["lib.luaapi.on_key"] = {
             dispatch = function() return false end,
         },
-        ["vim.lib.excmd.exmsg"] = exmsg_stub,
+        ["lib.excmd.exmsg"] = exmsg_stub,
     },
 })
+size_calls = 0
 
 local function assert_eq(label, got, want)
     if got ~= want then
@@ -39,35 +72,6 @@ local function assert_true(label, cond, detail)
     if not cond then
         error(("FAIL %s: %s"):format(label, tostring(detail or "assertion failed")))
     end
-end
-
-local pulled = 0
-_G.os = {
-    startTimer = function()
-        return 99
-    end,
-    cancelTimer = function() end,
-    pullEvent = function()
-        pulled = pulled + 1
-        if pulled == 1 then
-            return "term_resize"
-        elseif pulled == 2 then
-            return "monitor_resize"
-        elseif pulled == 3 then
-            return "timer", 99
-        end
-        error("unexpected pullEvent call: " .. tostring(pulled))
-    end,
-}
-
-local size_calls = 0
-_G.term = _G.term or {}
-_G.term.getSize = function()
-    size_calls = size_calls + 1
-    if size_calls == 1 then
-        return 120, 40
-    end
-    return 121, 41
 end
 
 local resize_calls = {}

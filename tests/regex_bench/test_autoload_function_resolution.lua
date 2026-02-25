@@ -68,8 +68,8 @@ end
 
 mock = MockEnv.setup({
     module_stubs = {
-        ["vim.lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
-        ["vim.lib.excmd.exmsg"] = {
+        ["lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
+        ["lib.excmd.exmsg"] = {
             messages = {},
             echo = function() end,
             echon = function() end,
@@ -81,9 +81,9 @@ mock = MockEnv.setup({
             PopSilent = function() end,
             _writeWithHL = function() end,
         },
-        ["vim.layout.buffer"] = {},
-        ["vim.layout.window"] = {},
-        ["vim.lib.scriptsource"] = scriptsource_stub,
+        ["layout.buffer"] = {},
+        ["layout.window"] = {},
+        ["lib.scriptsource"] = scriptsource_stub,
     },
 })
 
