@@ -89,9 +89,8 @@ async function main() {
     const src = await fs.readFile(file, "utf8");
 
     const min = luamin.Minify(src, {
-      RenameVariables: false,
+      RenameVariables: true,
       RenameGlobals: false,
-      SolveMath: false,
       Indentation: "\t",
     });
 
