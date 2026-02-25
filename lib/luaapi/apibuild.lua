@@ -31,6 +31,11 @@ local validate = loadModule("lib.luaapi.validate")
 local treesitter = loadModule("lib.luaapi.treesitter")
 
 local mainapi
+local VIM_NIL = setmetatable({}, {
+    __tostring = function()
+        return "vim.NIL"
+    end,
+})
 -- TODO: what? is this documented? Why 20?
 local VIM_CMD_ARG_MAX = 20
 
@@ -175,6 +180,7 @@ function ApiBuild.Build()
             b = scopes.b,
             w = scopes.w,
             t = scopes.t,
+            NIL = VIM_NIL,
             defer_fn = defer_fn,
             split = split,
             keymap = keymap,
@@ -211,6 +217,8 @@ function ApiBuild.Build()
             isarray = tblutils.isarray,
             islist = tblutils.islist,
             tbl_islist = tblutils.tbl_islist,
+            str_utfindex = strutils.str_utfindex,
+            str_byteindex = strutils.str_byteindex,
             pesc = strutils.pesc,
             regex = strutils.regex,
             _with = vim_with,

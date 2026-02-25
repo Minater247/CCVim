@@ -1107,6 +1107,11 @@ function api.nvim_get_current_buf()
     return windows[curwin].buffer.bufnr
 end
 
+function api.nvim_get_current_line()
+    local win = windows[curwin]
+    return win.buffer:get_line(win.cursory, true) or ""
+end
+
 function api.nvim_set_current_buf(buffer)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
