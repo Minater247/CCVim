@@ -13,6 +13,7 @@ local CmdRead = loadModule("lib.excmd.cmdread")
 local AutoCmd = loadModule("lib.autocmd")
 local Event = loadModule("lib.event")
 local ExMsg = loadModule("lib.excmd.exmsg")
+local Decoration = loadModule("lib.decoration")
 
 local function statusline_rows_for_frame(laststatus, window_count, frame_bottom, root_height)
     if frame_bottom < root_height then
@@ -445,6 +446,7 @@ function Tabpage:render()
     local backwin = self:_ensureBackBuffer()
     backwin.setVisible(false)
     local prevTerm = term.redirect(backwin)
+    Decoration.begin_redraw()
 
     for i = 1, #self.windows do
         if self.windows[i].need_redraw or what_redraw["all"] or self.windows[i].floatpos or what_redraw["windows"] then
@@ -529,6 +531,7 @@ function Tabpage:render()
         ExMsg.DrawOneShot()
     end
 
+    Decoration.end_redraw()
     term.redirect(prevTerm)
     backwin.setVisible(true)
 end

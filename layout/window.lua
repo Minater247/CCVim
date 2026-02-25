@@ -14,6 +14,7 @@ local ListChars = loadModule("lib.listchars")
 local Utf8 = loadModule("lib.utf8")
 local Error = loadModule("lib.error")
 local Autocmd = loadModule("lib.autocmd")
+local Decoration = loadModule("lib.decoration")
 local VimExpr
 local VimFn
 local Scopes
@@ -138,17 +139,7 @@ local function _format_sign_text(text)
 end
 
 local function _iter_extmarks(buf, visitor)
-    local all = buf._extmarks
-    if type(all) ~= "table" then
-        return
-    end
-    for ns, ns_marks in pairs(all) do
-        if type(ns_marks) == "table" then
-            for id, mark in pairs(ns_marks) do
-                visitor(ns, id, mark)
-            end
-        end
-    end
+    Decoration.iter_extmarks(buf, visitor)
 end
 
 local function _extmark_max_signs_per_line(buf)
@@ -1114,12 +1105,16 @@ function Window:render(xoff, yoff)
     local pending_cursor = nil
     local show_cursor = (self.winnr == curwin) and (not CmdRead.is_active())
     local last_visible_idx = math.min(linecnt, start_idx + max_rows - 1)
+    local top0 = math.max(0, start_idx - 1)
+    local bot0 = math.max(top0, last_visible_idx - 1)
+    Decoration.on_window(self, top0, bot0)
     local prefetched_blits = Syntax.LinesToBlit(self.buffer, start_idx, last_visible_idx, self)
 
     -- Draw buffer lines
     for i = start_idx, linecnt do
         if visual_y >= max_rows then break end
 
+        Decoration.on_line(self, i - 1)
         view_bottom = i
         local iscursor_line = (i == self.cursory)
         local legacy_signs = Sign.get_line_signs(self.buffer, i)

@@ -11,6 +11,7 @@ local Runtime = loadModule("lib.excmd.runtime")
 local scopes = loadModule("lib.luaapi.scopes")
 local AutoCmd = loadModule("lib.autocmd")
 local Fn = loadModule("lib.luaapi.fn")
+local Decoration = loadModule("lib.decoration")
 local ScriptSource
 local Error = loadModule("lib.error")
 local Utf8 = loadModule("lib.utf8")
@@ -128,6 +129,19 @@ function api.nvim_create_namespace(name)
         ns_id_to_name[id] = name
     end
     return id
+end
+
+function api.nvim_set_decoration_provider(ns_id, opts)
+    if type(ns_id) ~= "number" then
+        error("nvim_set_decoration_provider: ns_id must be number", 2)
+    end
+    if opts ~= nil and type(opts) ~= "table" then
+        error("nvim_set_decoration_provider: opts must be table or nil", 2)
+    end
+
+    Decoration.set_provider(ns_id, opts)
+    what_redraw["windows"] = true
+    need_redraw = true
 end
 
 -- ========================
@@ -626,6 +640,63 @@ function api.nvim_get_mode()
         return { mode = "i" }
     else
         error("unhandled mode in nvim_get_mode")
+    end
+end
+
+function api.nvim__redraw(opts)
+    opts = opts or {}
+
+    local flush = opts.flush
+    if flush == nil then
+        flush = true
+    else
+        flush = not not flush
+    end
+
+    local touched_window = false
+    local target_buf = nil
+
+    if opts.win ~= nil then
+        local win = win_for_id(opts.win)
+        win.need_redraw = true
+        touched_window = true
+    elseif opts.buf ~= nil then
+        target_buf = buf_for_bufnr(opts.buf)
+        if target_buf then
+            for _, win in pairs(windows) do
+                if win.buffer == target_buf then
+                    win.need_redraw = true
+                    touched_window = true
+                end
+            end
+        end
+    end
+
+    if not touched_window then
+        if opts.valid == false then
+            what_redraw["all"] = true
+        else
+            what_redraw["windows"] = true
+        end
+    end
+
+    if opts.tabline then
+        what_redraw["all"] = true
+    end
+    -- TODO: match this granularity in the renderer
+    if opts.statusline or opts.statuscolumn or opts.winbar or opts.cursor then
+        what_redraw["windows"] = true
+    end
+
+    need_redraw = true
+
+    if flush and not Decoration.is_redraw_active() then
+        local tab = tabpages[curtp]
+        if tab and type(tab.render) == "function" then
+            need_redraw = false
+            tab:render()
+            what_redraw = {}
+        end
     end
 end
 
@@ -1273,10 +1344,12 @@ function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
 
     if ns_id == -1 then
         buf._extmarks = {}
+        Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
         return
     end
 
     if not buf._extmarks[ns_id] then
+        Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
         return
     end
 
@@ -1286,6 +1359,7 @@ function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
 
     if line_start == 0 and line_end == -1 then
         buf._extmarks[ns_id] = {}
+        Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
         return
     end
 
@@ -1296,6 +1370,7 @@ function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
             ns_marks[id] = nil
         end
     end
+    Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
 end
 
 local function _extmark_pos_from_arg(arg)
@@ -1343,24 +1418,13 @@ function api.nvim_buf_get_extmarks(buffer, ns_id, start, _end, opts)
 
     local items = {}
 
-    local function collect_ns(ns_marks)
-        for id, mark in pairs(ns_marks) do
+    Decoration.iter_extmarks(buf, function(mark_ns, id, mark)
+        if ns_id == -1 or mark_ns == ns_id then
             if _extmark_in_range(mark, start_line, start_col, end_line, end_col) then
                 items[#items + 1] = { id = id, mark = mark }
             end
         end
-    end
-
-    if ns_id == -1 then
-        for _, ns_marks in pairs(buf._extmarks) do
-            collect_ns(ns_marks)
-        end
-    else
-        local ns_marks = buf._extmarks[ns_id]
-        if ns_marks then
-            collect_ns(ns_marks)
-        end
-    end
+    end)
 
     table.sort(items, function(a, b)
         local la = a.mark.line or 0
@@ -1416,15 +1480,49 @@ function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
         buf._next_extmark_id[ns_id] = nextid + 1
     end
 
-    ns_marks[id] = {
+    local mark = {
         line = line,
         col = col,
         opts = opts,
     }
-    if opts.sign_text ~= nil or opts.line_hl_group ~= nil or opts.number_hl_group ~= nil then
-        request_buffer_redraw(buf, false)
+    local stored_ephemeral = false
+    if opts.ephemeral then
+        stored_ephemeral = Decoration.add_ephemeral_extmark(buf.bufnr, ns_id, id, mark)
+    end
+
+    if not stored_ephemeral then
+        ns_marks[id] = mark
+        if opts.sign_text ~= nil or opts.line_hl_group ~= nil or opts.number_hl_group ~= nil then
+            request_buffer_redraw(buf, false)
+        end
     end
     return id
+end
+
+function api.nvim_buf_del_extmark(buffer, ns_id, id)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    buf._extmarks = buf._extmarks or {}
+
+    local removed = false
+    local ns_marks = buf._extmarks[ns_id]
+    local removed_mark = nil
+    if ns_marks and ns_marks[id] ~= nil then
+        removed_mark = ns_marks[id]
+        ns_marks[id] = nil
+        removed = true
+    end
+
+    if Decoration.del_ephemeral_extmark(buf.bufnr, ns_id, id) then
+        removed = true
+    end
+
+    local ropts = removed_mark and removed_mark.opts or nil
+    if ropts and (ropts.sign_text ~= nil or ropts.line_hl_group ~= nil or ropts.number_hl_group ~= nil) then
+        request_buffer_redraw(buf, false)
+    end
+
+    return removed
 end
 
 function api.nvim_buf_add_highlight(buffer, ns_id, hl_group, line, col_start, col_end)
