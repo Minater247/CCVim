@@ -20,6 +20,8 @@ local translations = {
     [0x2502] = "|",
     [0x2510] = "\\",
     [0x250C] = "/",
+    [0x2019] = "'",
+    [0x201C] = "\"",
 }
 
 local function _ascii_cell_for_codepoint(cp)

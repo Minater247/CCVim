@@ -1345,7 +1345,7 @@ end
 -- Supports ".", "$", and numeric line numbers.
 function Builtins.getline(expr, last)
     local win = windows[curwin]
-    local lines = (win and win.buffer and win.buffer.lines_ref and win.buffer:lines_ref(true)) or {}
+    local lines = win.buffer:lines_ref(true)
     local line_count = #lines
 
     local function resolve_lnum(v, fallback)

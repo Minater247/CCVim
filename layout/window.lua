@@ -1713,7 +1713,7 @@ function Window:reindentLine(lnum, want_vcol, cursor_col1)
         return cursor_col1 or self.cursorx
     end
 
-    lines[ln] = prefix .. tail
+    buf:set_line(ln, prefix .. tail)
     buf.opts.modified = true
     Syntax.ParseLinetypes(buf, math.max(1, ln - 1))
 
@@ -1814,7 +1814,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         if i < first_dirty then first_dirty = i end
     end
     local function set_line(i, s)
-        lines[i] = s
+        buf:set_line(i, s)
         mark_dirty(i)
     end
 
@@ -2066,16 +2066,15 @@ function Window:pasteRegister(reg_name, line, offset, isBefore)
         elseif regval[1] == "linewise" then
             local lines = regval[2]
             local desty
-            local buflines = buf:lines_ref(true)
 
             if isBefore then
                 for i = 1, #lines do
-                    table.insert(buflines, line + i - 1, lines[i])
+                    buf:insert_line(line + i - 1, lines[i])
                 end
                 desty = line
             else
                 for i = 1, #lines do
-                    table.insert(buflines, line + 1, lines[#lines - i + 1])
+                    buf:insert_line(line + 1, lines[#lines - i + 1])
                 end
                 desty = line + 1
             end
@@ -2097,13 +2096,13 @@ function Window:pasteRegister(reg_name, line, offset, isBefore)
             local trail = buf:str_sub(cur, prefix_len + 1)
 
             if #to_paste == 1 then
-                buflines[line] = prefix .. to_paste[1] .. trail
+                buf:set_line(line, prefix .. to_paste[1] .. trail)
             else
-                buflines[line] = prefix .. to_paste[1]
+                buf:set_line(line, prefix .. to_paste[1])
                 for i = 2, #to_paste - 1 do
-                    table.insert(buflines, line + (i - 1), to_paste[i])
+                    buf:insert_line(line + (i - 1), to_paste[i])
                 end
-                table.insert(buflines, line + (#to_paste - 1), to_paste[#to_paste] .. trail)
+                buf:insert_line(line + (#to_paste - 1), to_paste[#to_paste] .. trail)
             end
 
             self:markUpdate(line)
@@ -2130,12 +2129,6 @@ function Window:markUpdate(line)
             win:cursorMove(0, 0)
         end
     end
-
-    local event = (vimmode == "insert") and "TextChangedI" or "TextChanged"
-    Autocmd.Run(event, {
-        bufnr = buf.bufnr,
-        bufname = buf.name,
-    })
 end
 
 -- force: when ! is specified

@@ -16,6 +16,27 @@ local function _request_full_redraw()
     need_redraw = true
 end
 
+local function _run_textchanged(buf, noauto)
+    if noauto then
+        return
+    end
+    if windows[curwin].buffer ~= buf then
+        return
+    end
+    local event
+    if vimmode == "terminal" then
+        event = "TextChangedT"
+    elseif vimmode == "insert" then
+        event = "TextChangedI"
+    else
+        event = "TextChanged"
+    end
+    AutoCmd.Run(event, {
+        bufnr = buf.bufnr,
+        bufname = buf.name,
+    })
+end
+
 ---@class BufOpts
 ---@field buflisted boolean Whether the buffer shows up in bufer lists.
 ---@field modified boolean Whether the buffer has been modified
@@ -211,9 +232,18 @@ function Buffer:line_col_from_byte(line_nr, byte_idx, load_if_unloaded, allow_eo
     return Utf8.col_from_byte(line, byte_idx, allow_eol)
 end
 
-function Buffer:set_line(line_nr, text, load_if_unloaded)
+function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
     local lines = self:lines_ref(load_if_unloaded)
     lines[line_nr] = tostring(text or "")
+    self.opts.modified = true
+    _run_textchanged(self, noauto)
+end
+
+function Buffer:insert_line(index, item, load_if_unloaded, noauto)
+    local lines = self:lines_ref(load_if_unloaded)
+    table.insert(lines, index, item)
+    self.opts.modified = true
+    _run_textchanged(self, noauto)
 end
 
 function Buffer:splice_line(line_nr, start_col1, end_col1, replacement, load_if_unloaded)
@@ -228,7 +258,7 @@ function Buffer:splice_line(line_nr, start_col1, end_col1, replacement, load_if_
     return new_line, removed
 end
 
-function Buffer:remove_lines(start1, end1, opts)
+function Buffer:remove_lines(start1, end1, opts, noauto)
     opts = opts or {}
     self.loaded = true
 
@@ -270,6 +300,8 @@ function Buffer:remove_lines(start1, end1, opts)
     self.opts.modified = true
     Syntax.ParseLinetypes(self, math.max(1, s - 1))
     _request_full_redraw()
+    
+    _run_textchanged(self, noauto)
 
     return removed
 end
@@ -311,7 +343,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
             allow_empty = true,
             silent_no_lines = true,
             skip_sign_adjust = true,
-        })
+        }, true)
     end
 
     -- 2) Insert m_insert replacement lines at start1
@@ -330,9 +362,10 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
         Sign = Sign or loadModule("lib.sign")
         Sign.on_lines_changed(self, start1, k_remove, m_insert)
     end
-
+    
     -- Mark modified (like altering buffer contents)
     self.opts.modified = true
+    _run_textchanged(self, false)
     Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
     _request_full_redraw()
 end
