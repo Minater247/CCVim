@@ -4,6 +4,7 @@ assert(TUI)
 local label = "CCVIM Installer v0.2"
 
 local BASE_URL
+local COMPRESSED_URL = "https://minater247.github.io/CCVim/"
 local MANIFEST = "nvim.idx"
 
 local install_dir = "/vim"
@@ -73,17 +74,16 @@ local function downloadFile(relPath)
         fs.makeDir(dir)
     end
 
-    local data, err = httpGet(url)
-    if not data then
-        return false, ("failed to GET %s: %s"):format(url, tostring(err))
-    end
+    local data, err
 
     if doRelease then
-        local fh, ferr = fs.open(localPath, "wb")
-        if fh then
-            fh.write(data)
-            fh.close()
-            return true
+        data, err = httpGet(COMPRESSED_URL .. relPath)
+    end
+    
+    if not data then
+        data, err = httpGet(url)
+        if not data then
+            return false, ("failed to GET %s: %s"):format(url, tostring(err))
         end
     end
 
