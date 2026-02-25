@@ -1,4 +1,7 @@
 local tbl = {}
+local get_empty_dict_mt = function()
+    return nil
+end
 
 local function _resolve(behavior, k, a, b)
     if type(behavior) == "function" then
@@ -125,6 +128,26 @@ function tbl.contains(t, value, opts)
     end
 end
 
+function tbl.list_extend(dst, src, start, finish)
+    if type(dst) ~= "table" then
+        error(("dst: expected table, got %s"):format(type(dst)), 2)
+    end
+    if type(src) ~= "table" then
+        error(("src: expected table, got %s"):format(type(src)), 2)
+    end
+    if start ~= nil and type(start) ~= "number" then
+        error(("start: expected number, got %s"):format(type(start)), 2)
+    end
+    if finish ~= nil and type(finish) ~= "number" then
+        error(("finish: expected number, got %s"):format(type(finish)), 2)
+    end
+
+    for i = start or 1, finish or #src do
+        table.insert(dst, src[i])
+    end
+    return dst
+end
+
 function tbl.filter(func, t)
     local out = {}
     for k, v in pairs(t) do
@@ -194,6 +217,69 @@ function tbl.values(t)
         out[#out + 1] = v
     end
     return out
+end
+
+function tbl.set_empty_dict_mt_getter(getter)
+    get_empty_dict_mt = getter
+end
+
+function tbl.isarray(t)
+    if type(t) ~= "table" then
+        return false
+    end
+
+    local count = 0
+    for k, _ in pairs(t) do
+        if type(k) == "number" and k == math.floor(k) then
+            count = count + 1
+        else
+            return false
+        end
+    end
+
+    if count > 0 then
+        return true
+    end
+
+    local empty_dict_mt = get_empty_dict_mt()
+    if empty_dict_mt == nil then
+        return true
+    end
+    return getmetatable(t) ~= empty_dict_mt
+end
+
+function tbl.islist(t)
+    if type(t) ~= "table" then
+        return false
+    end
+
+    if next(t) == nil then
+        local empty_dict_mt = get_empty_dict_mt()
+        if empty_dict_mt == nil then
+            return true
+        end
+        return getmetatable(t) ~= empty_dict_mt
+    end
+
+    local count = 0
+    for k, _ in pairs(t) do
+        if type(k) ~= "number" or k ~= math.floor(k) then
+            return false
+        end
+        count = count + 1
+    end
+
+    for i = 1, count do
+        if t[i] == nil then
+            return false
+        end
+    end
+
+    return true
+end
+
+function tbl.tbl_islist(t)
+    return tbl.islist(t)
 end
 
 return tbl

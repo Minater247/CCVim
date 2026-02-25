@@ -406,11 +406,18 @@ local timer_mt = {
         get_repeat = function(self)
             return loop.timer_get_repeat(self)
         end,
+        is_active = function(self)
+            return loop.is_active(self)
+        end,
+        is_closing = function(self)
+            return loop.is_closing(self)
+        end,
     },
 }
 
 local function mk_timer()
     return setmetatable({
+        _handle_type = "timer",
         id      = nil, -- backend id from Event.StartTimer
         _active = false,
         _closed = false,
@@ -431,11 +438,15 @@ function loop.timer_stop(timer)
     timer.id = nil
 end
 
-function loop.close(timer)
+function loop.close(handle)
     -- libuv requires closing; here we just stop and mark closed
-    loop.timer_stop(timer)
-    timer._closed = true
-    timer._cb = nil
+    if handle._handle_type == "check" then
+        loop.check_stop(handle)
+    else
+        loop.timer_stop(handle)
+    end
+    handle._closed = true
+    handle._cb = nil
 end
 
 function loop.timer_set_repeat(timer, repeat_ms)
@@ -497,6 +508,90 @@ function loop.timer_again(timer)
     return 0
 end
 
+local check_mt = {
+    __index = {
+        start = function(self, callback)
+            return loop.check_start(self, callback)
+        end,
+        stop = function(self)
+            return loop.check_stop(self)
+        end,
+        close = function(self)
+            return loop.close(self)
+        end,
+        is_active = function(self)
+            return loop.is_active(self)
+        end,
+        is_closing = function(self)
+            return loop.is_closing(self)
+        end,
+    },
+}
+
+local function mk_check()
+    return setmetatable({
+        _handle_type = "check",
+        id = nil,
+        _active = false,
+        _closed = false,
+        _cb = nil,
+    }, check_mt)
+end
+
+local function _check_schedule(check)
+    check.id = Event.StartTimer(0, function()
+        if check._closed or not check._active then
+            return
+        end
+        check.id = nil
+
+        local cb = check._cb
+        if type(cb) == "function" then
+            cb(check)
+        end
+
+        if check._closed or not check._active then
+            return
+        end
+        _check_schedule(check)
+    end)
+end
+
+function loop.new_check()
+    return mk_check()
+end
+
+function loop.check_start(check, callback)
+    if check._closed then return error("close on a closed check") end
+    if type(callback) ~= "function" then
+        return error("check callback must be a function")
+    end
+
+    check._cb = callback
+    check._active = true
+    if not check.id then
+        _check_schedule(check)
+    end
+    return 0
+end
+
+function loop.check_stop(check)
+    if check and check.id then
+        Event.CancelTimer(check.id)
+    end
+    check.id = nil
+    check._active = false
+    return 0
+end
+
+function loop.is_active(handle)
+    return handle._active or false
+end
+
+function loop.is_closing(handle)
+    return handle._closed or false
+end
+
 local function _fs_realpath_impl(path)
     if has_uri_scheme(path) then
         return nil, "ENOENT: unsupported uri scheme"
@@ -521,6 +616,14 @@ end
 
 function loop.hrtime()
     return os.epoch("utc") * 1000000
+end
+
+function loop.update_time()
+    -- no-op: now() reads current time directly
+end
+
+function loop.now()
+    return os.epoch("utc")
 end
 
 function loop.fs_scandir(path)

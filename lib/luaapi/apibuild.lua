@@ -27,7 +27,7 @@ local system = loadModule("lib.luaapi.system")
 local strutils = loadModule("lib.luaapi.strutils")
 local vimfs = loadModule("lib.luaapi.fs")
 local F = loadModule("lib.luaapi.F")
-local VimRegex = loadModule("lib.excmd.vim_regex")
+local validate = loadModule("lib.luaapi.validate")
 local treesitter = loadModule("lib.luaapi.treesitter")
 
 local mainapi
@@ -41,126 +41,6 @@ function ApiBuild.Build()
     if mainapi then return mainapi end
 
     on_key.set_namespace_allocator(api.nvim_create_namespace)
-
-    local function is_callable(v)
-        if type(v) == "function" then
-            return true
-        end
-        local mt = getmetatable(v)
-        return mt ~= nil and type(mt.__call) == "function"
-    end
-
-    local function validate_one(name, value, validator, optional, message)
-        if value == nil and optional == true then
-            return
-        end
-
-        local function type_ok(expected)
-            if expected == "callable" then
-                return is_callable(value)
-            end
-            return type(value) == expected
-        end
-
-        local ok = false
-        if type(validator) == "string" then
-            ok = type_ok(validator)
-        elseif type(validator) == "table" then
-            for i = 1, #validator do
-                local v = validator[i]
-                if type(v) == "string" and type_ok(v) then
-                    ok = true
-                    break
-                end
-            end
-        elseif type(validator) == "function" then
-            local rv = validator(value)
-            ok = rv and true or false
-        end
-
-        if not ok then
-            local expected = message
-            if not expected then
-                if type(validator) == "table" then
-                    expected = table.concat(validator, "|")
-                else
-                    expected = tostring(validator)
-                end
-            end
-            error(("%s: expected %s, got %s"):format(tostring(name), tostring(expected), type(value)), 3)
-        end
-    end
-
-    local function vim_validate(name, value, validator, optional, message)
-        if validator ~= nil then
-            if type(optional) == "string" and message == nil then
-                message = optional
-                optional = false
-            end
-            validate_one(name, value, validator, optional, message)
-            return
-        end
-
-        -- Minimal legacy form support: vim.validate({ key = {value, validator, optional_or_msg}, ... })
-        if type(name) ~= "table" then
-            error("invalid arguments", 2)
-        end
-        for k, spec in pairs(name) do
-            if type(spec) ~= "table" then
-                error(("invalid validation spec for %s"):format(tostring(k)), 2)
-            end
-            local v = spec[1]
-            local vd = spec[2]
-            local opt = spec[3]
-            local msg = nil
-            if type(opt) == "string" then
-                msg = opt
-                opt = false
-            end
-            validate_one(k, v, vd, opt, msg)
-        end
-    end
-
-    local function vim_pesc(s)
-        if type(s) ~= "string" then
-            error(("s: expected string, got %s"):format(type(s)), 2)
-        end
-        return (s:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1"))
-    end
-
-    local function vim_trim(s)
-        vim_validate("s", s, "string")
-        return s:match("^%s*(.*%S)") or ""
-    end
-
-    local function vim_list_extend(dst, src, start, finish)
-        vim_validate("dst", dst, "table")
-        vim_validate("src", src, "table")
-        vim_validate("start", start, "number", true)
-        vim_validate("finish", finish, "number", true)
-        for i = start or 1, finish or #src do
-            table.insert(dst, src[i])
-        end
-        return dst
-    end
-
-    local function vim_regex(re)
-        local compiled, c_err = VimRegex.compile(re)
-        if not compiled then
-            error(c_err or ("invalid regex: " .. tostring(re)), 2)
-        end
-
-        return {
-            match_str = function(_, s)
-                local ss = tostring(s or "")
-                local a, b = VimRegex.find_compiled(ss, compiled, true)
-                if a then
-                    return a - 1, b - 1
-                end
-                return nil
-            end,
-        }
-    end
 
     local function vim_with(context, f)
         if type(context) ~= "table" then
@@ -325,11 +205,14 @@ function ApiBuild.Build()
             filetype = filetype_proxy,
             iter = iter_proxy,
             treesitter = treesitter,
-            validate = vim_validate,
-            trim = vim_trim,
-            list_extend = vim_list_extend,
-            pesc = vim_pesc,
-            regex = vim_regex,
+            validate = validate.validate,
+            trim = strutils.trim,
+            list_extend = tblutils.list_extend,
+            isarray = tblutils.isarray,
+            islist = tblutils.islist,
+            tbl_islist = tblutils.tbl_islist,
+            pesc = strutils.pesc,
+            regex = strutils.regex,
             _with = vim_with,
             on_key = on_key.on_key,
             _on_key = on_key.dispatch,
@@ -347,6 +230,10 @@ function ApiBuild.Build()
     setmetatable(mainapi, {
         __index = _G
     })
+
+    tblutils.set_empty_dict_mt_getter(function()
+        return mainapi.vim._empty_dict_mt
+    end)
 
     local FL = fileload.Bind(mainapi)
     mainapi.loadfile = FL.loadfile
