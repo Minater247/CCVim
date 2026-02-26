@@ -50,8 +50,22 @@ local function rgb_for_palette_index(idx)
     return colors.packRGB(r, g, b)
 end
 
+local function api_color_value(raw_value, palette_value)
+    if raw_value ~= nil then
+        return raw_value
+    end
+    if palette_value ~= nil then
+        return rgb_for_palette_index(palette_value)
+    end
+    return nil
+end
+
 local function normalize_color_value(val)
-    if val == nil or type(val) == "number" or val == "fg" or val == "bg" then
+    if val == nil or val == "fg" or val == "bg" then
+        return val
+    end
+    if type(val) == "number" then
+        -- Preserve numeric values as-is (palette indices and RGB numbers).
         return val
     end
     if type(val) == "string" then
@@ -60,7 +74,7 @@ local function normalize_color_value(val)
 
         local alias = COLOR_ALIASES[string.lower(val)]
         if alias then
-            return rgb_for_palette_index(alias)
+            return alias
         end
     end
     return nil
@@ -978,11 +992,12 @@ end
 -- Highlighting Functions
 -- =================
 function api.nvim_get_hl_by_name(name)
-    local hl = Highlight.For(name)
+    local hl = Highlight.For(name, 0, true)
+    local raw = Highlight.RawFor(name) or {}
 
     return {
-        foreground = colors.packRGB(term.getPaletteColor(hl[1])),
-        background = colors.packRGB(term.getPaletteColor(hl[2])),
+        foreground = api_color_value(raw._raw_fg, hl[1]),
+        background = api_color_value(raw._raw_bg, hl[2]),
     }
 end
 
@@ -1275,15 +1290,16 @@ function api.nvim_get_hl(ns_id, opts)
         return { link = link }
     end
 
-    local hl = Highlight.For(name, ns)
+    local hl = Highlight.For(name, ns, true)
+    local raw = Highlight.RawFor(name, ns) or {}
     local out = {}
-    if hl[1] then
-        local r, g, b = term.getPaletteColor(hl[1])
-        out.fg = colors.packRGB(r, g, b)
+    local fg = api_color_value(raw._raw_fg, hl[1])
+    if fg ~= nil then
+        out.fg = fg
     end
-    if hl[2] then
-        local r, g, b = term.getPaletteColor(hl[2])
-        out.bg = colors.packRGB(r, g, b)
+    local bg = api_color_value(raw._raw_bg, hl[2])
+    if bg ~= nil then
+        out.bg = bg
     end
     return out
 end
