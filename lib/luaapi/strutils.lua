@@ -39,7 +39,7 @@ function strutils.regex(re)
             local ss = tostring(s or "")
             local a, b = VimRegex.find_compiled(ss, compiled, true)
             if a then
-                return a - 1, b - 1
+                return a - 1, b
             end
             return nil
         end,
