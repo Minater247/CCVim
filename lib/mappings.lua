@@ -775,7 +775,7 @@ Command.nmap_callback(
 )
 
 Command.nmap_callback(
-    {K(keys.semiColon, false, true)},
+    {K(keys.semiColon or keys.semicolon, false, true)},
     function()
         CmdRead.read()
         what_redraw["commandline"] = true

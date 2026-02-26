@@ -88,7 +88,7 @@ local printables = {
 
     [keys.leftBracket] = "[",
     [keys.rightBracket] = "]",
-    [keys.semiColon] = ";",
+    [keys.semiColon or keys.semicolon] = ";",
     [keys.apostrophe] = "'",
     [keys.grave] = "`",
     [keys.backslash] = "\\",
@@ -160,7 +160,7 @@ local shiftables = {
 
     [keys.leftBracket] = "{",
     [keys.rightBracket] = "}",
-    [keys.semiColon] = ":",
+    [keys.semiColon or keys.semicolon] = ":",
     [keys.apostrophe] = "\"",
     [keys.grave] = "~",
     [keys.backslash] = "|",
@@ -218,7 +218,7 @@ local emittables = {
 
     [keys.leftBracket] = "[",
     [keys.rightBracket] = "]",
-    [keys.semiColon] = ";",
+    [keys.semiColon or keys.semicolon] = ";",
     [keys.apostrophe] = "'",
     [keys.grave] = "`",
     [keys.backslash] = "\\",
@@ -286,7 +286,7 @@ local emittables = {
 
     [S(keys.leftBracket)] = "{",
     [S(keys.rightBracket)] = "}",
-    [S(keys.semiColon)] = ":",
+    [S(keys.semiColon or keys.semicolon)] = ":",
     [S(keys.apostrophe)] = "\"",
     [S(keys.grave)] = "~",
     [S(keys.backslash)] = "|",
