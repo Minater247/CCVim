@@ -1604,7 +1604,7 @@ function api.nvim_win_set_config(window, config)
 end
 
 function api.nvim_replace_termcodes(str, from_part, do_lt, special)
-    return tostring(str or "")
+    return Key.replace_termcodes(str, do_lt, special)
 end
 
 function api.nvim_feedkeys(keys, mode, escape_ks)

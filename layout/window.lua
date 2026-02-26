@@ -210,6 +210,373 @@ local function _extmark_decorations_for_line(buf, lnum)
     return signs, numhl, numhl_prio, linehl, linehl_prio
 end
 
+local function _to_char_array(s)
+    local out = {}
+    for i = 1, #s do
+        out[i] = s:sub(i, i)
+    end
+    return out
+end
+
+local function _to_blit_array(s, n, fill)
+    local out = {}
+    for i = 1, n do
+        local ch = s:sub(i, i)
+        out[i] = (ch ~= "") and ch or fill
+    end
+    return out
+end
+
+local function _ascii_cells(text)
+    local out = {}
+    Utf8.each_codepoint(tostring(text or ""), function(cp)
+        out[#out + 1] = Utf8.ascii_cell_for_codepoint(cp)
+    end)
+    return out
+end
+
+local function _resolve_hl_group_name(hl)
+    if type(hl) == "table" then
+        if #hl == 0 then
+            return nil
+        end
+        return _resolve_hl_group_name(hl[#hl])
+    end
+    if type(hl) == "number" then
+        return Highlight.NameById(hl)
+    end
+    if type(hl) == "string" and hl ~= "" then
+        return hl
+    end
+    return nil
+end
+
+local function _virt_text_cells(chunks, default_fg, default_bg)
+    local text_cells, fg_cells, bg_cells = {}, {}, {}
+    local list = (type(chunks) == "table") and chunks or {}
+
+    for i = 1, #list do
+        local chunk = list[i]
+        local text = ""
+        local hl_group = nil
+        if type(chunk) == "table" then
+            text = tostring(chunk[1] or "")
+            hl_group = _resolve_hl_group_name(chunk[2])
+        else
+            text = tostring(chunk or "")
+        end
+
+        local cells = _ascii_cells(text)
+        local fg = default_fg
+        local bg = default_bg
+        if hl_group then
+            local hl = Highlight.For(hl_group)
+            fg = colors.toBlit(hl[1])
+            bg = colors.toBlit(hl[2])
+        end
+
+        for c = 1, #cells do
+            text_cells[#text_cells + 1] = cells[c]
+            fg_cells[#fg_cells + 1] = fg
+            bg_cells[#bg_cells + 1] = bg
+        end
+    end
+
+    return text_cells, fg_cells, bg_cells
+end
+
+local function _extmark_text_effects_for_line(buf, lnum, line_str)
+    local line0 = lnum - 1
+    local line_bytes = #line_str
+    local out = {
+        hl_ranges = {},
+        virt_text = {},
+        virt_lines_above = {},
+        virt_lines_below = {},
+    }
+    local has_effect = false
+
+    _iter_extmarks(buf, function(ns, id, mark)
+        local opts = mark.opts or {}
+        if opts.invalid then
+            return
+        end
+
+        local mline = mark.line or 0
+        local mcol = tonumber(mark.col) or 0
+        local prio = tonumber(opts.priority) or 10
+
+        local hl_group = _resolve_hl_group_name(opts.hl_group)
+        if hl_group then
+            local start_line = mline
+            local end_line = tonumber(opts.end_line)
+            if end_line == nil then
+                end_line = start_line
+            end
+
+            if line0 >= start_line and line0 <= end_line then
+                local s = (line0 == start_line) and mcol or 0
+                local e
+                if line0 < end_line then
+                    e = line_bytes
+                else
+                    local end_col = tonumber(opts.end_col)
+                    if end_col == nil then
+                        e = (end_line == start_line) and (s + 1) or 0
+                    elseif end_col < 0 then
+                        e = line_bytes
+                    else
+                        e = end_col
+                    end
+                end
+
+                s = math.max(0, math.min(line_bytes, s))
+                e = math.max(0, math.min(line_bytes, e))
+                if e > s then
+                    has_effect = true
+                    out.hl_ranges[#out.hl_ranges + 1] = {
+                        start_byte = s + 1,
+                        end_byte_excl = e + 1,
+                        hl_group = hl_group,
+                        priority = prio,
+                        id = id,
+                        ns = ns,
+                    }
+                end
+            end
+        end
+
+        if mline == line0 and type(opts.virt_text) == "table" and #opts.virt_text > 0 then
+            has_effect = true
+            out.virt_text[#out.virt_text + 1] = {
+                col = mcol,
+                pos = tostring(opts.virt_text_pos or "eol"),
+                chunks = opts.virt_text,
+                priority = prio,
+                id = id,
+                ns = ns,
+                win_col = tonumber(opts.virt_text_win_col),
+            }
+        end
+
+        if mline == line0 and type(opts.virt_lines) == "table" and #opts.virt_lines > 0 then
+            has_effect = true
+            local target = opts.virt_lines_above and out.virt_lines_above or out.virt_lines_below
+            for i = 1, #opts.virt_lines do
+                local line_chunks = opts.virt_lines[i]
+                if type(line_chunks) == "table" then
+                    target[#target + 1] = line_chunks
+                end
+            end
+        end
+    end)
+
+    if not has_effect then
+        return nil
+    end
+
+    table.sort(out.hl_ranges, function(a, b)
+        if a.priority ~= b.priority then
+            return a.priority < b.priority
+        end
+        if a.id ~= b.id then
+            return a.id < b.id
+        end
+        return a.ns < b.ns
+    end)
+
+    table.sort(out.virt_text, function(a, b)
+        if a.priority ~= b.priority then
+            return a.priority < b.priority
+        end
+        if a.col ~= b.col then
+            return a.col < b.col
+        end
+        if a.id ~= b.id then
+            return a.id < b.id
+        end
+        return a.ns < b.ns
+    end)
+
+    return out
+end
+
+local function _ensure_row_at(rows_t, rows_fg, rows_bg, row, fill_fg, fill_bg)
+    while #rows_t < row do
+        rows_t[#rows_t + 1] = {}
+        rows_fg[#rows_fg + 1] = {}
+        rows_bg[#rows_bg + 1] = {}
+    end
+    rows_t[row] = rows_t[row] or {}
+    rows_fg[row] = rows_fg[row] or {}
+    rows_bg[row] = rows_bg[row] or {}
+end
+
+local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, effects, line_str, text_w)
+    if not effects then
+        return rendered, blitLines
+    end
+
+    local normal = Highlight.For("Normal")
+    local default_fg = colors.toBlit(normal[1])
+    local default_bg = colors.toBlit(normal[2])
+
+    local rows_t, rows_fg, rows_bg = {}, {}, {}
+    local row_count = math.max(1, #rendered)
+    for row = 1, row_count do
+        local row_text = rendered[row] or ""
+        rows_t[row] = _to_char_array(row_text)
+        local fg_line = (blitLines and blitLines.fg and blitLines.fg[row]) or ""
+        local bg_line = (blitLines and blitLines.bg and blitLines.bg[row]) or ""
+        rows_fg[row] = _to_blit_array(fg_line, #rows_t[row], default_fg)
+        rows_bg[row] = _to_blit_array(bg_line, #rows_t[row], default_bg)
+    end
+
+    local byte_to_pos = {}
+    if ranges and gsrc then
+        for row = 1, #ranges do
+            local rr = ranges[row]
+            if rr and rr.i and rr.j then
+                for k = rr.i, rr.j do
+                    local bidx = gsrc[k]
+                    if bidx and not byte_to_pos[bidx] then
+                        byte_to_pos[bidx] = { row = row, col = k - rr.i + 1 }
+                    end
+                end
+            end
+        end
+    end
+
+    for i = 1, #effects.hl_ranges do
+        local hr = effects.hl_ranges[i]
+        local hl = Highlight.For(hr.hl_group)
+        local hl_fg = colors.toBlit(hl[1])
+        local hl_bg = colors.toBlit(hl[2])
+
+        if ranges and gsrc then
+            for row = 1, #ranges do
+                local rr = ranges[row]
+                if rr and rr.i and rr.j then
+                    for k = rr.i, rr.j do
+                        local bidx = gsrc[k]
+                        if bidx and bidx >= hr.start_byte and bidx < hr.end_byte_excl then
+                            local col = k - rr.i + 1
+                            rows_fg[row][col] = hl_fg
+                            rows_bg[row][col] = hl_bg
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local line_bytes = #line_str
+    for i = 1, #effects.virt_text do
+        local vt = effects.virt_text[i]
+        local cells_t, cells_fg, cells_bg = _virt_text_cells(vt.chunks, default_fg, default_bg)
+        if #cells_t > 0 then
+            local row, col
+
+            if vt.win_col ~= nil then
+                row = 1
+                col = math.max(1, vt.win_col + 1)
+            elseif vt.pos == "eol" or vt.pos == "eol_right_align" or vt.pos == "right_align" then
+                row = #rows_t
+                col = #rows_t[row] + 1
+            else
+                local byte_idx = vt.col + 1
+                local pos = byte_to_pos[byte_idx]
+                if not pos then
+                    local b = byte_idx + 1
+                    while b <= (line_bytes + 1) do
+                        pos = byte_to_pos[b]
+                        if pos then break end
+                        b = b + 1
+                    end
+                end
+                if pos then
+                    row = pos.row
+                    col = pos.col
+                else
+                    row = #rows_t
+                    col = #rows_t[row] + 1
+                end
+            end
+
+            _ensure_row_at(rows_t, rows_fg, rows_bg, row, default_fg, default_bg)
+
+            if vt.pos == "inline" then
+                col = math.max(1, col)
+                for c = #cells_t, 1, -1 do
+                    table.insert(rows_t[row], col, cells_t[c])
+                    table.insert(rows_fg[row], col, cells_fg[c] or default_fg)
+                    table.insert(rows_bg[row], col, cells_bg[c] or default_bg)
+                end
+            elseif vt.pos == "overlay" then
+                for c = 1, #cells_t do
+                    local idx = col + c - 1
+                    while #rows_t[row] < idx - 1 do
+                        rows_t[row][#rows_t[row] + 1] = " "
+                        rows_fg[row][#rows_fg[row] + 1] = default_fg
+                        rows_bg[row][#rows_bg[row] + 1] = default_bg
+                    end
+                    rows_t[row][idx] = cells_t[c]
+                    rows_fg[row][idx] = cells_fg[c] or rows_fg[row][idx] or default_fg
+                    rows_bg[row][idx] = cells_bg[c] or rows_bg[row][idx] or default_bg
+                end
+            elseif vt.pos == "right_align" or vt.pos == "eol_right_align" then
+                local want_col = math.max(1, (text_w or 0) - #cells_t + 1)
+                if vt.pos == "eol_right_align" then
+                    col = math.max(col, want_col)
+                else
+                    col = want_col
+                end
+                for c = 1, #cells_t do
+                    local idx = col + c - 1
+                    while #rows_t[row] < idx - 1 do
+                        rows_t[row][#rows_t[row] + 1] = " "
+                        rows_fg[row][#rows_fg[row] + 1] = default_fg
+                        rows_bg[row][#rows_bg[row] + 1] = default_bg
+                    end
+                    rows_t[row][idx] = cells_t[c]
+                    rows_fg[row][idx] = cells_fg[c] or default_fg
+                    rows_bg[row][idx] = cells_bg[c] or default_bg
+                end
+            else
+                for c = 1, #cells_t do
+                    rows_t[row][#rows_t[row] + 1] = cells_t[c]
+                    rows_fg[row][#rows_fg[row] + 1] = cells_fg[c] or default_fg
+                    rows_bg[row][#rows_bg[row] + 1] = cells_bg[c] or default_bg
+                end
+            end
+        end
+    end
+
+    for i = #effects.virt_lines_above, 1, -1 do
+        local cells_t, cells_fg, cells_bg = _virt_text_cells(effects.virt_lines_above[i], default_fg, default_bg)
+        table.insert(rows_t, 1, cells_t)
+        table.insert(rows_fg, 1, cells_fg)
+        table.insert(rows_bg, 1, cells_bg)
+    end
+    for i = 1, #effects.virt_lines_below do
+        local cells_t, cells_fg, cells_bg = _virt_text_cells(effects.virt_lines_below[i], default_fg, default_bg)
+        rows_t[#rows_t + 1] = cells_t
+        rows_fg[#rows_fg + 1] = cells_fg
+        rows_bg[#rows_bg + 1] = cells_bg
+    end
+
+    local out_rendered = {}
+    local out_fg = {}
+    local out_bg = {}
+    for row = 1, #rows_t do
+        out_rendered[row] = table.concat(rows_t[row] or {})
+        out_fg[row] = table.concat(rows_fg[row] or {})
+        out_bg[row] = table.concat(rows_bg[row] or {})
+    end
+
+    return out_rendered, { fg = out_fg, bg = out_bg }
+end
+
 -- Map a desired visual column to a character column.
 function Window:_col1_for_visual_col(line, want_vx, insert_mode)
     local tcfg = Tab.get_tab_config(self.buffer)
@@ -1171,7 +1538,7 @@ function Window:render(xoff, yoff)
 
         local line_str = lines[i] or ""
         local cursor_byte = (self.cursory == i) and self.buffer:str_byte_index(line_str, self.cursorx, true) or nil
-        local rendered, blitLines, cursorPos = TexRen.parse(
+        local rendered, blitLines, cursorPos, ranges, gsrc = TexRen.parse(
             line_str,
             {
                 wraplen  = (self.opts.wrap and text_w) or 0,
@@ -1183,6 +1550,11 @@ function Window:render(xoff, yoff)
             cursor_byte,
             prefetched_blits[i]
         )
+
+        local text_effects = _extmark_text_effects_for_line(self.buffer, i, line_str)
+        if text_effects then
+            rendered, blitLines = _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, text_effects, line_str, text_w)
+        end
 
         local have_blit = blitLines and blitLines.fg and blitLines.bg
 

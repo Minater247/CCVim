@@ -358,14 +358,18 @@ end
 --- If `bytepos` is provided, also returns {line,column,ch} for the rendered cell.
 --- If a blit pair { fg, bg } is provided (4th arg), returns rendered blits
 --- as the SECOND return value: { fg = {..lines..}, bg = {..lines..} }.
+--- Additional return values expose layout mapping metadata used by window
+--- decorations:
+--- - ranges: per-rendered-row glyph bounds
+--- - gsrc: glyph index -> source byte index
 ---@param str string
 ---@param params TexRenParseParams
 ---@param bytepos integer|nil
 ---@param blit_pair table|nil  -- { fg=string, bg=string } or { [1]=fg, [2]=bg }
----@return string[] lines, table|nil rendered_blits, table|nil pos
+---@return string[] lines, table|nil rendered_blits, table|nil pos, table ranges, table gsrc
 TexRen.parse = function(str, params, bytepos, blit_pair)
-    local lines, blits, pos = parse_internal(str, params, bytepos, blit_pair, false)
-    return lines, blits, pos
+    local lines, blits, pos, ranges, gsrc = parse_internal(str, params, bytepos, blit_pair, true)
+    return lines, blits, pos, ranges, gsrc
 end
 
 --- Parse & wrap, returning additional layout info for cursor/scroll helpers.

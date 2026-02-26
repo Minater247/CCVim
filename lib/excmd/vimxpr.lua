@@ -6,6 +6,7 @@ local Error = loadModule("lib.error")
 local VimRegex = loadModule("lib.excmd.vim_regex")
 local EnvVars = loadModule("lib.envvars")
 local Scopes  = loadModule("lib.luaapi.scopes")
+local Key = loadModule("lib.key")
 local VimFnBuiltins = loadModule("lib.luaapi.fn") or {}
 -- =========================================================
 
@@ -149,21 +150,7 @@ local function decode_angle_escape(content)
         end
     end
 
-    local ctrl = c:match("^[cC]%-(.)$")
-    if ctrl then
-        local b = string.byte(ctrl)
-        if b then
-            if b >= string.byte("a") and b <= string.byte("z") then
-                b = b - 32
-            end
-            if b == string.byte("?") then
-                return string.char(127)
-            end
-            return string.char(bit32.band(b, 0x1f))
-        end
-    end
-
-    return nil
+    return Key.decode_angle_escape(c)
 end
 
 local function resolve_vlua_path(path)

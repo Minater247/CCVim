@@ -325,25 +325,36 @@ end
 function Key.printable_number(num)
     local ctrld = bit32.band(num, 4096) ~= 0
     local shifted = bit32.band(num, 8192) ~= 0
+    local alted = bit32.band(num, 16384) ~= 0
 
     local base = bit32.band(num, 4095)
-
-    local start = (ctrld or shifted) and "<" or ""
-
-    if ctrld then start = start .. "C-" end
-    if shifted then
-        if shiftables[base] then
-            start = start .. shiftables[base]
-        else
-            start = start .. "S-" .. printables[base]
-        end
-    else
-        start = start .. printables[base]
+    local bname = printables[base]
+    if bname == nil then
+        return ""
     end
 
-    if ctrld or shifted then start = start .. ">" end
+    if not ctrld and not shifted and not alted then
+        return bname
+    end
 
-    return start
+    local start = "<"
+    if ctrld then
+        start = start .. "C-"
+    end
+    if alted then
+        start = start .. "M-"
+    end
+    if shifted then
+        if shiftables[base] ~= nil then
+            start = start .. shiftables[base]
+        else
+            start = start .. "S-" .. bname
+        end
+    else
+        start = start .. bname
+    end
+
+    return start .. ">"
 end
 
 local digitmap = {
@@ -405,6 +416,117 @@ for k, v in pairs(shiftables) do
     shiftables_rev[v] = k
 end
 
+local TERM_PREFIX_1 = 255
+local TERM_PREFIX_2 = 254
+local TERM_PREFIX = string.char(TERM_PREFIX_1, TERM_PREFIX_2)
+local NVIM_K_SPECIAL = 128
+local NVIM_KS_MODIFIER = 252
+local NVIM_KS_COMMAND = 253
+
+local function bytes3(a, b, c)
+    return string.char(a, b, c)
+end
+
+local NVIM_SPECIAL_KEYCODE = {
+    ["<BS>"] = bytes3(128, 107, 98),
+    ["<Home>"] = bytes3(128, 107, 104),
+    ["<End>"] = bytes3(128, 64, 55),
+    ["<PageUp>"] = bytes3(128, 107, 80),
+    ["<PageDown>"] = bytes3(128, 107, 78),
+    ["<Insert>"] = bytes3(128, 107, 73),
+    ["<Del>"] = bytes3(128, 107, 68),
+    ["<Up>"] = bytes3(128, 107, 117),
+    ["<Down>"] = bytes3(128, 107, 100),
+    ["<Left>"] = bytes3(128, 107, 108),
+    ["<Right>"] = bytes3(128, 107, 114),
+    ["<S-Tab>"] = bytes3(128, 107, 66),
+    ["<F1>"] = bytes3(128, 107, 49),
+    ["<F2>"] = bytes3(128, 107, 50),
+    ["<F3>"] = bytes3(128, 107, 51),
+    ["<F4>"] = bytes3(128, 107, 52),
+    ["<F5>"] = bytes3(128, 107, 53),
+    ["<F6>"] = bytes3(128, 107, 54),
+    ["<F7>"] = bytes3(128, 107, 55),
+    ["<F8>"] = bytes3(128, 107, 56),
+    ["<F9>"] = bytes3(128, 107, 57),
+    ["<F10>"] = bytes3(128, 107, 59),
+    ["<F11>"] = bytes3(128, 70, 49),
+    ["<F12>"] = bytes3(128, 70, 50),
+    ["<C-Home>"] = bytes3(128, 253, 87),
+    ["<C-Left>"] = bytes3(128, 253, 85),
+    ["<C-Right>"] = bytes3(128, 253, 86),
+    ["<S-Up>"] = bytes3(128, 253, 4),
+    ["<S-Down>"] = bytes3(128, 253, 5),
+    ["<S-Left>"] = bytes3(128, 35, 52),
+    ["<S-Right>"] = bytes3(128, 37, 105),
+    ["<Nul>"] = bytes3(128, 255, 88),
+    ["<Cmd>"] = bytes3(128, 253, 104),
+}
+
+local NVIM_SPECIAL_BY_BYTES = {}
+for notation, seq in pairs(NVIM_SPECIAL_KEYCODE) do
+    local b1, b2, b3 = string.byte(seq, 1, 3)
+    NVIM_SPECIAL_BY_BYTES[("%d,%d,%d"):format(b1, b2, b3)] = notation
+end
+
+local NVIM_SPECIAL_TO_NUMERIC = {
+    ["<BS>"] = keys.backspace,
+    ["<Home>"] = keys.home,
+    ["<End>"] = keys["end"],
+    ["<PageUp>"] = keys.pageUp,
+    ["<PageDown>"] = keys.pageDown,
+    ["<Insert>"] = keys.insert,
+    ["<Del>"] = keys.delete,
+    ["<Up>"] = keys.up,
+    ["<Down>"] = keys.down,
+    ["<Left>"] = keys.left,
+    ["<Right>"] = keys.right,
+    ["<S-Tab>"] = S(keys.tab),
+    ["<F1>"] = keys.f1,
+    ["<F2>"] = keys.f2,
+    ["<F3>"] = keys.f3,
+    ["<F4>"] = keys.f4,
+    ["<F5>"] = keys.f5,
+    ["<F6>"] = keys.f6,
+    ["<F7>"] = keys.f7,
+    ["<F8>"] = keys.f8,
+    ["<F9>"] = keys.f9,
+    ["<F10>"] = keys.f10,
+    ["<F11>"] = keys.f11,
+    ["<F12>"] = keys.f12,
+    ["<C-Home>"] = C(keys.home),
+    ["<C-Left>"] = C(keys.left),
+    ["<C-Right>"] = C(keys.right),
+    ["<S-Up>"] = S(keys.up),
+    ["<S-Down>"] = S(keys.down),
+    ["<S-Left>"] = S(keys.left),
+    ["<S-Right>"] = S(keys.right),
+    ["<Nul>"] = C(S(keys.two)),
+}
+
+local function key_from_numeric(num)
+    return setmetatable({ numeric = num }, Key)
+end
+
+local function encode_numeric_termcode(num)
+    local hi = bit32.band(bit32.rshift(num, 8), 0xff)
+    local lo = bit32.band(num, 0xff)
+    return TERM_PREFIX .. string.char(hi, lo)
+end
+
+local function decode_numeric_termcode_at(str, i)
+    if i + 3 > #str then
+        return nil
+    end
+    if string.byte(str, i) ~= TERM_PREFIX_1 or string.byte(str, i + 1) ~= TERM_PREFIX_2 then
+        return nil
+    end
+    local hi = string.byte(str, i + 2)
+    local lo = string.byte(str, i + 3)
+    local num = bit32.bor(bit32.lshift(hi, 8), lo)
+    return num, i + 4
+end
+
 -- Conversion to a sequence
 -- Helpers for name normalization and pushing keys
 local function canon_name(name)
@@ -459,9 +581,49 @@ local function canon_name(name)
     return name
 end
 
+local function numeric_for_ctrl_char_byte(byte)
+    if byte == 13 or byte == 10 then
+        return keys.enter
+    end
+    if byte == 9 then
+        return keys.tab
+    end
+    if byte == 8 then
+        return keys.backspace
+    end
+    if byte >= 1 and byte <= 26 then
+        local base = printables_rev[string.char(byte + 96)]
+        if base then
+            return C(base)
+        end
+    end
+    if byte == 0 then
+        return C(S(keys.two)) -- <C-@>
+    end
+    if byte == 27 then
+        return C(keys.leftBracket)
+    end
+    if byte == 28 then
+        return C(keys.backslash)
+    end
+    if byte == 29 then
+        return C(keys.rightBracket)
+    end
+    if byte == 30 then
+        return C(S(keys.six)) -- <C-^>
+    end
+    if byte == 31 then
+        return C(S(keys.minus)) -- <C-_>
+    end
+    if byte == 127 then
+        return C(S(keys.slash)) -- <C-?>
+    end
+    return nil
+end
+
 local function push_char(seq, ch)
     -- Map literal characters to base key + (optional) shift bit.
-    if ch == "\n" then
+    if ch == "\n" or ch == "\r" then
         table.insert(seq, Key:new(keys.enter, false, false, false))
         return
     elseif ch == "\t" then
@@ -470,6 +632,15 @@ local function push_char(seq, ch)
     elseif ch == "\b" then
         table.insert(seq, Key:new(keys.backspace, false, false, false))
         return
+    end
+
+    local b = string.byte(ch)
+    if b ~= nil and (b < 32 or b == 127) then
+        local num = numeric_for_ctrl_char_byte(b)
+        if num ~= nil then
+            table.insert(seq, key_from_numeric(num))
+            return
+        end
     end
 
     local base = printables_rev[ch]
@@ -492,27 +663,37 @@ local function push_literal_angle(seq, content)
     push_char(seq, ">")
 end
 
-local function push_angle(seq, content)
-    -- Handle <...> blocks like <CR>, <S-Tab>, <C-a>, <lt>, etc.
-    local clower = content:lower()
-
-    if clower == "lt" then
-        -- Literal '<'
-        push_char(seq, "<")
-        return
-    elseif clower == "bar" then
-        -- Mapping-special literal '|'
-        push_char(seq, "|")
-        return
-    elseif clower == "plug" then
-        -- Preserve as canonical <Plug> text token.
-        push_literal_angle(seq, "Plug")
-        return
+local function parse_angle_content(content)
+    local raw = content
+    local force_keycode = false
+    if raw:sub(1, 1) == "*" then
+        force_keycode = true
+        raw = raw:sub(2)
+    end
+    if raw == "" then
+        error(("Malformed angle key notation: <%s>"):format(content))
     end
 
-    local ctrl, shift, alt = false, false, false -- 'alt' parsed but ignored
+    local clower = raw:lower()
+    if clower == "lt" then
+        return { kind = "literal_char", ch = "<", force_keycode = force_keycode }
+    elseif clower == "bar" then
+        return { kind = "literal_char", ch = "|", force_keycode = force_keycode }
+    elseif clower == "plug" then
+        return { kind = "literal_angle", content = "Plug", force_keycode = force_keycode }
+    elseif clower == "cmd" then
+        return { kind = "cmd", force_keycode = force_keycode }
+    elseif clower == "nl" then
+        return { kind = "literal_char", ch = "\n", force_keycode = force_keycode }
+    elseif clower == "esc" then
+        return { kind = "literal_char", ch = string.char(27), force_keycode = force_keycode }
+    elseif clower == "nul" then
+        return { kind = "key", key = Key:new(keys.two, true, true, false), force_keycode = force_keycode }
+    end
+
+    local ctrl, shift, alt = false, false, false
     local parts = {}
-    for token in content:gmatch("[^%-]+") do
+    for token in raw:gmatch("[^%-]+") do
         parts[#parts + 1] = token
     end
 
@@ -523,8 +704,8 @@ local function push_angle(seq, content)
             ctrl = true
         elseif tl == "s" or tl == "shift" then
             shift = true
-        elseif tl == "m" or tl == "meta" or tl == "alt" then
-            alt = true -- parsed but intentionally ignored when constructing Key
+        elseif tl == "m" or tl == "meta" or tl == "alt" or tl == "a" then
+            alt = true
         else
             error(("Malformed angle key notation: <%s>"):format(content))
         end
@@ -534,18 +715,17 @@ local function push_angle(seq, content)
         error(("Malformed angle key notation: <%s>"):format(content))
     end
 
-    -- Determine base key code; support both single chars and named keys.
     local keynr, inherent_shift = nil, false
     if #base_token == 1 then
-        -- single character inside <...>
         keynr = printables_rev[base_token]
         if not keynr then
             keynr = shiftables_rev[base_token]
-            if keynr then inherent_shift = true end
+            if keynr then
+                inherent_shift = true
+            end
         end
         if not keynr then
-            -- allow control chars written literally like <\n>, though uncommon
-            if base_token == "\n" then
+            if base_token == "\n" or base_token == "\r" then
                 keynr = keys.enter
             elseif base_token == "\t" then
                 keynr = keys.tab
@@ -557,7 +737,6 @@ local function push_angle(seq, content)
             error(("Unknown key name <%s>"):format(content))
         end
     else
-        -- Named key
         local cname = canon_name(base_token)
         keynr = printables_rev[cname]
         if not keynr then
@@ -565,8 +744,118 @@ local function push_angle(seq, content)
         end
     end
 
-    -- Build the Key (ignore alt/M- per requirement)
-    table.insert(seq, Key:new(keynr, ctrl, (shift or inherent_shift), false))
+    return {
+        kind = "key",
+        key = Key:new(keynr, ctrl, (shift or inherent_shift), alt),
+        force_keycode = force_keycode,
+    }
+end
+
+local function push_angle(seq, content)
+    local parsed = parse_angle_content(content)
+    if parsed.kind == "literal_char" then
+        push_char(seq, parsed.ch)
+    elseif parsed.kind == "literal_angle" then
+        push_literal_angle(seq, parsed.content)
+    elseif parsed.kind == "cmd" then
+        -- Keep command-mapping usability in feed/mapping paths.
+        push_char(seq, ":")
+    else
+        table.insert(seq, parsed.key)
+    end
+end
+
+local function decode_nvim_special_at(str, i)
+    if i + 2 > #str then
+        return nil
+    end
+    local b1, b2, b3 = string.byte(str, i, i + 2)
+    if b1 ~= NVIM_K_SPECIAL then
+        return nil
+    end
+    local notation = NVIM_SPECIAL_BY_BYTES[("%d,%d,%d"):format(b1, b2, b3)]
+    if not notation then
+        return nil
+    end
+    return notation, i + 3
+end
+
+local function decode_modifier_payload_byte_to_numeric(mod, payload)
+    local has_shift = bit32.band(mod, 2) ~= 0
+    local has_ctrl = bit32.band(mod, 4) ~= 0
+    local has_alt = bit32.band(mod, 8) ~= 0
+
+    local base_num = nil
+    local inherent_shift = false
+
+    if has_ctrl and payload >= string.byte("A") and payload <= string.byte("Z") then
+        local lower = string.char(payload + 32)
+        base_num = printables_rev[lower]
+    else
+        local ch = string.char(payload)
+        base_num = printables_rev[ch]
+        if not base_num then
+            base_num = shiftables_rev[ch]
+            if base_num then
+                inherent_shift = true
+            end
+        end
+    end
+
+    if not base_num then
+        local ctrl_num = numeric_for_ctrl_char_byte(payload)
+        if ctrl_num then
+            base_num = bit32.band(ctrl_num, 4095)
+            inherent_shift = bit32.band(ctrl_num, 8192) ~= 0
+            has_ctrl = has_ctrl or (bit32.band(ctrl_num, 4096) ~= 0)
+        end
+    end
+
+    if not base_num then
+        return nil
+    end
+
+    local num = base_num
+    if has_ctrl then
+        num = bit32.bor(num, 4096)
+    end
+    if has_alt then
+        num = bit32.bor(num, 16384)
+    end
+    if has_shift or inherent_shift then
+        num = bit32.bor(num, 8192)
+    end
+    return num
+end
+
+local function decode_nvim_modifier_at(str, i)
+    if i + 3 > #str then
+        return nil
+    end
+    local b1, b2, mod = string.byte(str, i, i + 2)
+    if b1 ~= NVIM_K_SPECIAL or b2 ~= NVIM_KS_MODIFIER then
+        return nil
+    end
+
+    local j = i + 3
+    local special_notation, nj = decode_nvim_special_at(str, j)
+    if special_notation then
+        local base_num = NVIM_SPECIAL_TO_NUMERIC[special_notation]
+        if base_num then
+            local num = base_num
+            if bit32.band(mod, 2) ~= 0 then num = bit32.bor(num, 8192) end
+            if bit32.band(mod, 4) ~= 0 then num = bit32.bor(num, 4096) end
+            if bit32.band(mod, 8) ~= 0 then num = bit32.bor(num, 16384) end
+            return num, nj
+        end
+    end
+
+    local payload = string.byte(str, j)
+    local num = decode_modifier_payload_byte_to_numeric(mod, payload)
+    if not num then
+        return nil
+    end
+    return num, j + 1
 end
 
 -- Conversion to a sequence
@@ -575,6 +864,32 @@ function Key.strtoseq(str)
     local seq = {}
 
     while i <= n do
+        local num, ni = decode_numeric_termcode_at(str, i)
+        if num ~= nil then
+            seq[#seq + 1] = key_from_numeric(num)
+            i = ni
+            goto continue
+        end
+
+        local mnum, mni = decode_nvim_modifier_at(str, i)
+        if mnum ~= nil then
+            seq[#seq + 1] = key_from_numeric(mnum)
+            i = mni
+            goto continue
+        end
+
+        local nvim_notation, nvim_ni = decode_nvim_special_at(str, i)
+        if nvim_notation ~= nil then
+            local nnum = NVIM_SPECIAL_TO_NUMERIC[nvim_notation]
+            if nnum ~= nil then
+                seq[#seq + 1] = key_from_numeric(nnum)
+            elseif nvim_notation == "<Cmd>" then
+                push_char(seq, ":")
+            end
+            i = nvim_ni
+            goto continue
+        end
+
         local c = str:sub(i, i)
         if c == "<" then
             -- Find the matching '>' (no nesting per Vim notation)
@@ -598,6 +913,8 @@ function Key.strtoseq(str)
             push_char(seq, c)
             i = i + 1
         end
+
+        ::continue::
     end
 
     return seq
@@ -609,6 +926,311 @@ function Key.seqtostr(seq)
         tab[i] = seq[i]:emittable()
     end
     return table.concat(tab)
+end
+
+local function collapse_ctrl_key(base, shifted)
+    local g = shifted and shiftables[base] or printables[base]
+    if g == nil or #g ~= 1 then
+        return nil
+    end
+
+    local b = string.byte(g)
+    if b >= string.byte("a") and b <= string.byte("z") then
+        return b - 96
+    end
+    if b >= string.byte("A") and b <= string.byte("Z") then
+        return b - 64
+    end
+    if g == "@" then
+        return NVIM_SPECIAL_KEYCODE["<Nul>"]
+    end
+    if g == "[" then return 27 end
+    if g == "\\" then return 28 end
+    if g == "]" then return 29 end
+    if g == "^" then return 30 end
+    if g == "_" then return 31 end
+    if g == "?" then return 127 end
+    return nil
+end
+
+local function modifier_payload_byte(base, shifted, preserve_ctrl_char)
+    if base == keys.enter or base == keys.numPadEnter then
+        return 13
+    end
+    if base == keys.tab then
+        return 9
+    end
+    if base == keys.backspace then
+        return 8
+    end
+    if base == keys.space then
+        return 32
+    end
+
+    local p = printables[base]
+    if preserve_ctrl_char and p and #p == 1 and p:match("[a-z]") then
+        return string.byte(string.upper(p))
+    end
+
+    local g = shifted and shiftables[base] or printables[base]
+    if g and #g == 1 then
+        return string.byte(g)
+    end
+    return nil
+end
+
+local function shift_mod_bit(base, shifted)
+    if not shifted then
+        return 0
+    end
+    if shiftables[base] ~= nil then
+        return 0
+    end
+    return 2
+end
+
+local function key_to_termcode_string(key, opts)
+    opts = opts or {}
+    local force_keycode = not not opts.force_keycode
+    local from_expr = not not opts.from_expr
+
+    local num = key.numeric
+    local ctrld = bit32.band(num, 4096) ~= 0
+    local shifted = bit32.band(num, 8192) ~= 0
+    local alted = bit32.band(num, 16384) ~= 0
+    local base = bit32.band(num, 4095)
+
+    local notation = Key.to_map_notation(num)
+    local special = NVIM_SPECIAL_KEYCODE[notation]
+    if special then
+        return special
+    end
+
+    if ctrld and from_expr and force_keycode then
+        local payload = modifier_payload_byte(base, shifted, true)
+        if payload then
+            local mod = bit32.bor(4, bit32.bor(alted and 8 or 0, shift_mod_bit(base, shifted)))
+            return string.char(NVIM_K_SPECIAL, NVIM_KS_MODIFIER, mod, payload)
+        end
+    end
+
+    if ctrld then
+        local collapsed = collapse_ctrl_key(base, shifted)
+        if collapsed ~= nil then
+            if alted then
+                local mod = bit32.bor(8, shift_mod_bit(base, shifted))
+                if type(collapsed) == "number" then
+                    return string.char(NVIM_K_SPECIAL, NVIM_KS_MODIFIER, mod, collapsed)
+                end
+                return string.char(NVIM_K_SPECIAL, NVIM_KS_MODIFIER, mod) .. collapsed
+            end
+            if type(collapsed) == "number" then
+                return string.char(collapsed)
+            end
+            return collapsed
+        end
+    end
+
+    if alted or ctrld then
+        local payload = modifier_payload_byte(base, shifted, false)
+        if payload then
+            local mod = bit32.bor(
+                shift_mod_bit(base, shifted),
+                bit32.bor(ctrld and 4 or 0, alted and 8 or 0)
+            )
+            return string.char(NVIM_K_SPECIAL, NVIM_KS_MODIFIER, mod, payload)
+        end
+    end
+
+    if not ctrld and not alted then
+        if base == keys.enter or base == keys.numPadEnter then
+            return "\r"
+        end
+        local emitted = key:emittable()
+        if emitted ~= nil then
+            return emitted
+        end
+    end
+
+    return encode_numeric_termcode(num)
+end
+
+function Key.replace_termcodes(str, do_lt, special)
+    local text = tostring(str or "")
+    local replace_special = (special == true or special == 1)
+    if not replace_special then
+        return text
+    end
+    local translate_lt = (do_lt == true or do_lt == 1)
+
+    local out = {}
+    local i, n = 1, #text
+    while i <= n do
+        local c = text:sub(i, i)
+        if c ~= "<" then
+            out[#out + 1] = c
+            i = i + 1
+        else
+            local j = text:find(">", i + 1, true)
+            if not j then
+                out[#out + 1] = c
+                i = i + 1
+            else
+                local content = text:sub(i + 1, j - 1)
+                if content == "" or content:match("^%s+$") then
+                    out[#out + 1] = "<"
+                    i = i + 1
+                else
+                    local ok, parsed = pcall(parse_angle_content, content)
+                    if not ok then
+                        out[#out + 1] = text:sub(i, j)
+                    elseif parsed.kind == "literal_char" then
+                        if parsed.ch == "<" and not translate_lt then
+                            out[#out + 1] = "<lt>"
+                        else
+                            out[#out + 1] = parsed.ch
+                        end
+                    elseif parsed.kind == "literal_angle" then
+                        out[#out + 1] = "<" .. parsed.content .. ">"
+                    elseif parsed.kind == "cmd" then
+                        out[#out + 1] = NVIM_SPECIAL_KEYCODE["<Cmd>"]
+                    else
+                        out[#out + 1] = key_to_termcode_string(parsed.key, { force_keycode = false, from_expr = false })
+                    end
+                    i = j + 1
+                end
+            end
+        end
+    end
+
+    return table.concat(out)
+end
+
+function Key.decode_angle_escape(content)
+    local ok, parsed = pcall(parse_angle_content, tostring(content or ""))
+    if not ok then
+        return nil
+    end
+
+    if parsed.kind == "literal_char" then
+        return parsed.ch
+    end
+    if parsed.kind == "literal_angle" then
+        return "<" .. parsed.content .. ">"
+    end
+    if parsed.kind == "cmd" then
+        return NVIM_SPECIAL_KEYCODE["<Cmd>"]
+    end
+    if parsed.kind == "key" then
+        return key_to_termcode_string(parsed.key, { force_keycode = parsed.force_keycode, from_expr = true })
+    end
+    return nil
+end
+
+function Key.to_map_notation(num)
+    local p = Key.printable_number(num)
+    if p == "" then
+        return ""
+    end
+    if p:sub(1, 1) == "<" then
+        return p
+    end
+    if #p == 1 then
+        return p
+    end
+    return "<" .. p .. ">"
+end
+
+local function raw_keytrans_atom(byte)
+    if byte == 0 then return "<Nul>" end
+    if byte == 9 then return "<Tab>" end
+    if byte == 10 then return "<NL>" end
+    if byte == 13 then return "<CR>" end
+    if byte == 27 then return "<Esc>" end
+    if byte == 32 then return "<Space>" end
+    if byte == 60 then return "<lt>" end
+    if byte == 127 then return "^?" end
+    if byte >= 1 and byte <= 31 then
+        return ("<C-%s>"):format(string.char(byte + 64))
+    end
+    return nil
+end
+
+local function modifier_payload_atom(payload)
+    local atom = raw_keytrans_atom(payload)
+    if atom then
+        if atom:sub(1, 1) == "<" and atom:sub(-1) == ">" then
+            return atom:sub(2, -2)
+        end
+        return atom
+    end
+    return string.char(payload)
+end
+
+local function keytrans_modifier_at(text, i)
+    if i + 3 > #text then
+        return nil
+    end
+    local b1, b2, mod = string.byte(text, i, i + 2)
+    if b1 ~= NVIM_K_SPECIAL or b2 ~= NVIM_KS_MODIFIER then
+        return nil
+    end
+    local j = i + 3
+
+    local base_atom = nil
+    local special_notation, nsi = decode_nvim_special_at(text, j)
+    if special_notation then
+        base_atom = special_notation:sub(2, -2)
+        j = nsi
+    else
+        local payload = string.byte(text, j)
+        if payload == nil then
+            return nil
+        end
+        base_atom = modifier_payload_atom(payload)
+        j = j + 1
+    end
+
+    local prefix = "<"
+    if bit32.band(mod, 8) ~= 0 then prefix = prefix .. "M-" end
+    if bit32.band(mod, 4) ~= 0 then prefix = prefix .. "C-" end
+    if bit32.band(mod, 2) ~= 0 then prefix = prefix .. "S-" end
+    return prefix .. base_atom .. ">", j
+end
+
+function Key.keytrans(str)
+    local text = tostring(str or "")
+    local out = {}
+    local i, n = 1, #text
+    while i <= n do
+        local num, ni = decode_numeric_termcode_at(text, i)
+        if num ~= nil then
+            out[#out + 1] = Key.to_map_notation(num)
+            i = ni
+        else
+            local mod_text, mod_ni = keytrans_modifier_at(text, i)
+            if mod_text ~= nil then
+                out[#out + 1] = mod_text
+                i = mod_ni
+            else
+                local nvim_notation, nvim_ni = decode_nvim_special_at(text, i)
+                if nvim_notation ~= nil then
+                    out[#out + 1] = nvim_notation
+                    i = nvim_ni
+                else
+                    local b = string.byte(text, i)
+                    local t = raw_keytrans_atom(b)
+                    if t ~= nil then
+                        out[#out + 1] = t
+                    else
+                        out[#out + 1] = text:sub(i, i)
+                    end
+                    i = i + 1
+                end
+            end
+        end
+    end
+    return table.concat(out)
 end
 
 return Key

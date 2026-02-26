@@ -3506,6 +3506,14 @@ function Builtins.keys(dict, ...)
     return out
 end
 
+function Builtins.keytrans(str, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "keytrans"):toString())
+    end
+    local Key = loadModule("lib.key")
+    return Key.keytrans(tostring(str or ""))
+end
+
 function Builtins.items(dict, ...)
     if select("#", ...) > 0 then
         error(Error(118, "items"):toString())
