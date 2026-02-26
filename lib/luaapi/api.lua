@@ -225,23 +225,136 @@ local feedkeys_queue = {}
 local feedkeys_flush_timer = nil
 local feedkeys_flushing = false
 
-local function enqueue_feedkeys(seq, prepend)
-    if #seq == 0 then
+local NVIM_CMD_MARKER = string.char(128, 253, 104)
+
+local function _run_feedkeys_cmdline(cmdline)
+    local state = {
+        g = scopes._g,
+        s = {},
+        v = scopes._v,
+        funcs = Runtime._FUNCS,
+    }
+
+    local ok, err = Runtime.run(tostring(cmdline or ""), {
+        state = state,
+        origin = {
+            kind = "feedkeys-cmd",
+        },
+    })
+    if not ok and err and err.toString then
+        ExMsg.echoerr(err:toString())
+    elseif not ok then
+        ExMsg.echoerr(tostring(err))
+    end
+    ExMsg.Finalize()
+end
+
+local function _parse_feedkeys_ops(text)
+    local ops = {}
+    local n = #text
+    local i = 1
+    local normal_start = 1
+
+    local function push_keys_segment(start_i, stop_i)
+        if stop_i < start_i then
+            return
+        end
+        local seq = Key.strtoseq(text:sub(start_i, stop_i))
+        if #seq > 0 then
+            ops[#ops + 1] = { kind = "keys", seq = seq }
+        end
+    end
+
+    local function marker_len_at(idx)
+        local b1, b2, b3 = string.byte(text, idx, idx + 2)
+        if b1 == 128 and b2 == 253 and b3 == 104 then
+            return #NVIM_CMD_MARKER
+        end
+        if idx + 4 <= n then
+            local s = text:sub(idx, idx + 4)
+            if s:lower() == "<cmd>" then
+                return 5
+            end
+        end
+        return nil
+    end
+
+    local function cmd_terminator_len_at(idx)
+        local b = string.byte(text, idx)
+        if b == 13 or b == 10 then
+            return 1
+        end
+
+        if idx + 3 <= n and text:sub(idx, idx) == "<" then
+            local s = text:sub(idx, idx + 3):lower()
+            if s == "<cr>" or s == "<nl>" then
+                return 4
+            end
+        end
+        return nil
+    end
+
+    while i <= n do
+        local mlen = marker_len_at(i)
+        if not mlen then
+            i = i + 1
+        else
+            push_keys_segment(normal_start, i - 1)
+
+            local cmd_start = i + mlen
+            local j = cmd_start
+            local tend = nil
+            local tlen = nil
+            while j <= n do
+                local len = cmd_terminator_len_at(j)
+                if len then
+                    tend = j - 1
+                    tlen = len
+                    break
+                end
+                j = j + 1
+            end
+
+            if not tend then
+                -- Unterminated <Cmd>: keep legacy behavior for the remainder.
+                local seq = Key.strtoseq(":" .. text:sub(cmd_start))
+                if #seq > 0 then
+                    ops[#ops + 1] = { kind = "keys", seq = seq }
+                end
+                normal_start = n + 1
+                i = n + 1
+            else
+                local cmd_seq = Key.strtoseq(text:sub(cmd_start, tend))
+                local cmdline = Key.seqtostr(cmd_seq)
+                ops[#ops + 1] = { kind = "cmd", cmd = cmdline }
+                i = tend + tlen + 1
+                normal_start = i
+            end
+        end
+    end
+
+    push_keys_segment(normal_start, n)
+
+    return ops
+end
+
+local function enqueue_feedkeys(ops, prepend)
+    if #ops == 0 then
         return
     end
 
     if prepend then
         local merged = {}
-        for i = 1, #seq do
-            merged[#merged + 1] = seq[i]
+        for i = 1, #ops do
+            merged[#merged + 1] = ops[i]
         end
         for i = 1, #feedkeys_queue do
             merged[#merged + 1] = feedkeys_queue[i]
         end
         feedkeys_queue = merged
     else
-        for i = 1, #seq do
-            feedkeys_queue[#feedkeys_queue + 1] = seq[i]
+        for i = 1, #ops do
+            feedkeys_queue[#feedkeys_queue + 1] = ops[i]
         end
     end
 end
@@ -258,7 +371,14 @@ local function flush_feedkeys_queue()
     local queue = feedkeys_queue
     feedkeys_queue = {}
     for i = 1, #queue do
-        Command.HandleKey(queue[i])
+        local op = queue[i]
+        if op.kind == "keys" then
+            for j = 1, #op.seq do
+                Command.HandleKey(op.seq[j])
+            end
+        elseif op.kind == "cmd" then
+            _run_feedkeys_cmdline(op.cmd)
+        end
     end
     feedkeys_flushing = false
 end
@@ -1876,12 +1996,12 @@ function api.nvim_replace_termcodes(str, from_part, do_lt, special)
 end
 
 function api.nvim_feedkeys(keys, mode, escape_ks)
-    local seq = Key.strtoseq(tostring(keys or ""))
+    local ops = _parse_feedkeys_ops(tostring(keys or ""))
     mode = tostring(mode or "")
     local prepend = mode:find("i", 1, true) ~= nil
     local immediate = mode:find("x", 1, true) ~= nil
 
-    enqueue_feedkeys(seq, prepend)
+    enqueue_feedkeys(ops, prepend)
 
     if immediate or not prepend then
         if feedkeys_flush_timer ~= nil then
