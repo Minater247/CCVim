@@ -17,6 +17,7 @@ local Error = loadModule("lib.error")
 local Utf8 = loadModule("lib.utf8")
 local PopupMenu = loadModule("lib.popupmenu")
 local Event = loadModule("lib.event")
+local BufAttach = loadModule("lib.bufattach")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -1714,6 +1715,7 @@ function api.nvim_buf_delete(buffer, opts)
         end
     end
 
+    BufAttach.detach(buf.bufnr)
     scopes._b_by_buf[buf.bufnr] = nil
 
     if unload then
@@ -1727,6 +1729,86 @@ function api.nvim_buf_delete(buffer, opts)
 
     what_redraw["windows"] = true
     need_redraw = true
+end
+
+-- TODO: set up proper RPC handling for send_buffer
+function api.nvim_buf_attach(buffer, send_buffer, opts)
+    local bufnr = tonumber(buffer)
+    if not bufnr then
+        return false
+    end
+
+    local buf
+    if bufnr == 0 then
+        buf = windows[curwin] and windows[curwin].buffer or nil
+    else
+        buf = buffers[bufnr]
+    end
+    if not buf then
+        return false
+    end
+    if not buf:is_loaded() then
+        return false
+    end
+
+    if opts == nil then
+        opts = {}
+    end
+    if type(opts) ~= "table" then
+        return false
+    end
+
+    local callback_keys = { "on_lines", "on_bytes", "on_changedtick", "on_detach", "on_reload" }
+    for i = 1, #callback_keys do
+        local key = callback_keys[i]
+        local cb = opts[key]
+        if cb ~= nil and type(cb) ~= "function" then
+            return false
+        end
+    end
+
+    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
+    local listener = {
+        on_lines = opts.on_lines and ScriptSource.wrap(nil, opts.on_lines) or nil,
+        on_bytes = opts.on_bytes and ScriptSource.wrap(nil, opts.on_bytes) or nil,
+        on_changedtick = opts.on_changedtick and ScriptSource.wrap(nil, opts.on_changedtick) or nil,
+        on_detach = opts.on_detach and ScriptSource.wrap(nil, opts.on_detach) or nil,
+        on_reload = opts.on_reload and ScriptSource.wrap(nil, opts.on_reload) or nil,
+        utf_sizes = opts.utf_sizes == true,
+        preview = opts.preview == true,
+    }
+
+    local ok = BufAttach.attach(buf.bufnr, listener)
+    if not ok then
+        return false
+    end
+
+    return true
+end
+
+function api.nvim_buf_detach(buffer)
+    local bufnr = tonumber(buffer)
+    if not bufnr then
+        return false
+    end
+
+    local buf
+    if bufnr == 0 then
+        buf = windows[curwin] and windows[curwin].buffer or nil
+    else
+        buf = buffers[bufnr]
+    end
+    if not buf then
+        return false
+    end
+
+    return BufAttach.detach(buf.bufnr)
+end
+
+function api.nvim_buf_get_changedtick(buffer)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    return BufAttach.get_changedtick(buf.bufnr)
 end
 
 function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)

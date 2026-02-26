@@ -22,6 +22,7 @@ local Filesystem = loadModule("lib.filesystem")
 local TblUtils   = loadModule("lib.luaapi.tblutils")
 local VimFs      = loadModule("lib.luaapi.fs")
 local RuntimePath = loadModule("lib.runtimepath")
+local Utf8       = loadModule("lib.utf8")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}

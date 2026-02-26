@@ -7,6 +7,7 @@ local AutoCmd = loadModule("lib.autocmd")
 local VimFs = loadModule("lib.luaapi.fs")
 local Syntax = loadModule("lib.syntax")
 local Utf8 = loadModule("lib.utf8")
+local BufAttach = loadModule("lib.bufattach")
 local Sign
 
 local curr_bufno = 1
@@ -35,6 +36,59 @@ local function _run_textchanged(buf, noauto)
         bufnr = buf.bufnr,
         bufname = buf.name,
     })
+end
+
+local function _slice_lines(lines, s, e)
+    local out = {}
+    for i = s, e do
+        out[#out + 1] = lines[i] or ""
+    end
+    return out
+end
+
+local function _bytes_of_lines(lines)
+    local total = 0
+    for i = 1, #lines do
+        total = total + #(lines[i] or "")
+    end
+    if #lines > 1 then
+        total = total + (#lines - 1)
+    end
+    return total
+end
+
+local function _bytes_before_row(lines, row0)
+    local total = 0
+    for i = 1, row0 do
+        total = total + #(lines[i] or "") + 1
+    end
+    return total
+end
+
+-- TODO: implement this properly
+local function _utf16_units(text)
+    local units = 0
+    Utf8.each_codepoint(text or "", function(cp)
+        if cp > 0xFFFF then
+            units = units + 2
+        else
+            units = units + 1
+        end
+    end)
+    return units
+end
+
+local function _notify_buf_lines(buf, payload)
+    if not buf then
+        return
+    end
+    local deleted_text = payload.deleted_text
+    if deleted_text ~= nil then
+        payload.deleted_codepoints = payload.deleted_codepoints or Utf8.len(deleted_text)
+        payload.deleted_codeunits = payload.deleted_codeunits or _utf16_units(deleted_text)
+        payload.deleted_text = nil
+    end
+    BufAttach.notify_lines(buf.bufnr, payload)
 end
 
 ---@class BufOpts
@@ -81,6 +135,7 @@ function Buffer:new(listed, scratch, loaded)
     }, Buffer)
 
     buffers[curr_bufno] = obj
+    BufAttach.ensure_buffer(obj.bufnr)
 
     curr_bufno = curr_bufno + 1
 
@@ -88,6 +143,7 @@ function Buffer:new(listed, scratch, loaded)
 end
 
 function Buffer:Load(read_contents)
+    local was_loaded = self.loaded == true
     self.syntax_ctx = nil
     self.loaded = true
 
@@ -136,6 +192,10 @@ function Buffer:Load(read_contents)
                 self.lines = { "" }
                 AutoCmd.Run("BufNewFile", ctx)
             end
+        end
+
+        if was_loaded then
+            BufAttach.notify_reload(self.bufnr)
         end
     end
 end
@@ -234,15 +294,58 @@ end
 
 function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
     local lines = self:lines_ref(load_if_unloaded)
-    lines[line_nr] = tostring(text or "")
+    local ln = math.max(1, math.floor(tonumber(line_nr) or 1))
+    local old_line = lines[ln] or ""
+    local start_byte = _bytes_before_row(lines, ln - 1)
+    local new_line = tostring(text or "")
+    lines[ln] = new_line
     self.opts.modified = true
+    _notify_buf_lines(self, {
+        firstline = ln - 1,
+        lastline = ln,
+        new_lastline = ln,
+        byte_count = #old_line,
+        deleted_text = old_line,
+        bytes = {
+            start_row = ln - 1,
+            start_col = 0,
+            start_byte = start_byte,
+            old_end_row = 0,
+            old_end_col = #old_line,
+            old_end_byte = #old_line,
+            new_end_row = 0,
+            new_end_col = #new_line,
+            new_end_byte = #new_line,
+        },
+    })
     _run_textchanged(self, noauto)
 end
 
 function Buffer:insert_line(index, item, load_if_unloaded, noauto)
     local lines = self:lines_ref(load_if_unloaded)
-    table.insert(lines, index, item)
+    local idx = math.max(1, math.floor(tonumber(index) or (#lines + 1)))
+    local new_line = tostring(item or "")
+    local start_byte = _bytes_before_row(lines, idx - 1)
+    table.insert(lines, idx, new_line)
     self.opts.modified = true
+    _notify_buf_lines(self, {
+        firstline = idx - 1,
+        lastline = idx - 1,
+        new_lastline = idx,
+        byte_count = 0,
+        deleted_text = "",
+        bytes = {
+            start_row = idx - 1,
+            start_col = 0,
+            start_byte = start_byte,
+            old_end_row = 0,
+            old_end_col = 0,
+            old_end_byte = 0,
+            new_end_row = 0,
+            new_end_col = #new_line,
+            new_end_byte = #new_line,
+        },
+    })
     _run_textchanged(self, noauto)
 end
 
@@ -275,6 +378,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     end
 
     local was_empty = (line_count == 1 and self.lines[1] == "")
+    local start_byte = _bytes_before_row(self.lines, s - 1)
 
     local removed = {}
     for i = s, e do
@@ -300,6 +404,28 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     self.opts.modified = true
     Syntax.ParseLinetypes(self, math.max(1, s - 1))
     _request_full_redraw()
+
+    if not opts.skip_buf_attach_notify then
+        local old_byte = _bytes_of_lines(removed)
+        _notify_buf_lines(self, {
+            firstline = s - 1,
+            lastline = e,
+            new_lastline = s - 1,
+            byte_count = old_byte,
+            deleted_text = table.concat(removed, "\n"),
+            bytes = {
+                start_row = s - 1,
+                start_col = 0,
+                start_byte = start_byte,
+                old_end_row = (#removed > 0) and (#removed - 1) or 0,
+                old_end_col = (#removed > 0) and #(removed[#removed] or "") or 0,
+                old_end_byte = old_byte,
+                new_end_row = 0,
+                new_end_col = 0,
+                new_end_byte = 0,
+            },
+        })
+    end
     
     _run_textchanged(self, noauto)
 
@@ -336,6 +462,12 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     local start1 = s + 1
     local k_remove = e - s        -- how many to remove
     local m_insert = #replacement -- how many to insert
+    local removed_lines = (k_remove > 0) and _slice_lines(self.lines, start1, start1 + k_remove - 1) or {}
+    local inserted_lines = {}
+    for i = 1, m_insert do
+        inserted_lines[i] = tostring(replacement[i] or "")
+    end
+    local start_byte = _bytes_before_row(self.lines, s)
 
     -- 1) Delete k_remove lines from self.lines at start1
     if k_remove > 0 then
@@ -343,13 +475,14 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
             allow_empty = true,
             silent_no_lines = true,
             skip_sign_adjust = true,
+            skip_buf_attach_notify = true,
         }, true)
     end
 
     -- 2) Insert m_insert replacement lines at start1
     if m_insert > 0 then
         for i = 1, m_insert do
-            table.insert(self.lines, start1 + i - 1, replacement[i])
+            table.insert(self.lines, start1 + i - 1, inserted_lines[i])
         end
     end
 
@@ -365,6 +498,30 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     
     -- Mark modified (like altering buffer contents)
     self.opts.modified = true
+
+    if k_remove > 0 or m_insert > 0 then
+        local old_byte = _bytes_of_lines(removed_lines)
+        local new_byte = _bytes_of_lines(inserted_lines)
+        _notify_buf_lines(self, {
+            firstline = s,
+            lastline = e,
+            new_lastline = s + m_insert,
+            byte_count = old_byte,
+            deleted_text = table.concat(removed_lines, "\n"),
+            bytes = {
+                start_row = s,
+                start_col = 0,
+                start_byte = start_byte,
+                old_end_row = (#removed_lines > 0) and (#removed_lines - 1) or 0,
+                old_end_col = (#removed_lines > 0) and #(removed_lines[#removed_lines] or "") or 0,
+                old_end_byte = old_byte,
+                new_end_row = (#inserted_lines > 0) and (#inserted_lines - 1) or 0,
+                new_end_col = (#inserted_lines > 0) and #(inserted_lines[#inserted_lines] or "") or 0,
+                new_end_byte = new_byte,
+            },
+        })
+    end
+
     _run_textchanged(self, false)
     Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
     _request_full_redraw()
@@ -404,14 +561,17 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
             self.syntax_ctx = nil
             self.lines = {}
             self.loaded = false
+            BufAttach.detach(self.bufnr)
         elseif bufhidden == "delete" then
             -- Behave like :bdelete when last window reference is gone.
             self.opts.buflisted = false
             if self.refcount <= 1 then
+                BufAttach.detach(self.bufnr)
                 buffers[self.bufnr] = nil
             end
         elseif bufhidden == "wipe" then
             if self.refcount <= 1 then
+                BufAttach.detach(self.bufnr)
                 buffers[self.bufnr] = nil
             end
         else

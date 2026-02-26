@@ -214,6 +214,7 @@ function ApiBuild.Build()
             validate = validate.validate,
             trim = strutils.trim,
             list_extend = tblutils.list_extend,
+            list_slice = tblutils.list_slice,
             isarray = tblutils.isarray,
             islist = tblutils.islist,
             tbl_islist = tblutils.tbl_islist,

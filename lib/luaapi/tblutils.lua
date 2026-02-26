@@ -148,6 +148,24 @@ function tbl.list_extend(dst, src, start, finish)
     return dst
 end
 
+function tbl.list_slice(list, start, finish)
+    if type(list) ~= "table" then
+        error(("list: expected table, got %s"):format(type(list)), 2)
+    end
+    if start ~= nil and type(start) ~= "number" then
+        error(("start: expected number, got %s"):format(type(start)), 2)
+    end
+    if finish ~= nil and type(finish) ~= "number" then
+        error(("finish: expected number, got %s"):format(type(finish)), 2)
+    end
+
+    local out = {}
+    for i = start or 1, finish or #list do
+        out[#out + 1] = list[i]
+    end
+    return out
+end
+
 function tbl.filter(func, t)
     local out = {}
     for k, v in pairs(t) do
