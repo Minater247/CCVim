@@ -178,8 +178,18 @@ _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
 function _V.setMode(newmode, newx, newy)
     local oldmode = _V.vimmode
-    _V.vimmode = newmode
     local win = _V.windows[_V.curwin]
+    local mode_changed = (newmode ~= oldmode)
+    local buf_ctx = {
+        bufnr = win.buffer.bufnr,
+        bufname = win.buffer.name,
+    }
+
+    if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+        AutoCmd.Run("InsertLeavePre", buf_ctx)
+    end
+
+    _V.vimmode = newmode
     if newy then
         win:cursorSetY(newy)
     end
@@ -193,12 +203,22 @@ function _V.setMode(newmode, newx, newy)
             lines[1] = ""
         end
     end
-    if newmode ~= oldmode then
+    if mode_changed then
         if oldmode == "insert" and newmode ~= "insert" then
             if PopupMenu.visible() then
                 PopupMenu.close("cancel")
             end
+            AutoCmd.Run("InsertLeave", buf_ctx)
+        elseif oldmode ~= "insert" and newmode == "insert" then
+            AutoCmd.Run("InsertEnter", buf_ctx)
         end
+
+        if oldmode == "cmdline" and newmode ~= "cmdline" then
+            AutoCmd.Run("CmdlineLeave", buf_ctx)
+        elseif oldmode ~= "cmdline" and newmode == "cmdline" then
+            AutoCmd.Run("CmdlineEnter", buf_ctx)
+        end
+
         AutoCmd.Run("ModeChanged", { old_mode = oldmode, new_mode = newmode })
     end
     _V.what_redraw["commandline"] = true
