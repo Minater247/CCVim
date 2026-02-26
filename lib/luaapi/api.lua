@@ -374,7 +374,11 @@ local function flush_feedkeys_queue()
         local op = queue[i]
         if op.kind == "keys" then
             for j = 1, #op.seq do
-                Command.HandleKey(op.seq[j])
+                if op.noremap then
+                    Command._handle_key_with_policy(op.seq[j], Command.POLICY_NOREMAP, true)
+                else
+                    Command.HandleKey(op.seq[j])
+                end
             end
         elseif op.kind == "cmd" then
             _run_feedkeys_cmdline(op.cmd)
@@ -1998,6 +2002,18 @@ end
 function api.nvim_feedkeys(keys, mode, escape_ks)
     local ops = _parse_feedkeys_ops(tostring(keys or ""))
     mode = tostring(mode or "")
+    local remap = true
+    if mode:find("n", 1, true) ~= nil then
+        remap = false
+    end
+    if mode:find("m", 1, true) ~= nil then
+        remap = true
+    end
+    for i = 1, #ops do
+        if ops[i].kind == "keys" then
+            ops[i].noremap = not remap
+        end
+    end
     local prepend = mode:find("i", 1, true) ~= nil
     local immediate = mode:find("x", 1, true) ~= nil
 

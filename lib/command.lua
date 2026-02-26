@@ -9,9 +9,10 @@ local Event                       = loadModule("lib.event")
 local ExMsg                       = loadModule("lib.excmd.exmsg")
 local PopupMenu                   = loadModule("lib.popupmenu")
 
-local POLICY_FULL, POLICY_CB_ONLY = 1, 2
+local POLICY_FULL, POLICY_CB_ONLY, POLICY_NOREMAP = 1, 2, 3
 Command.POLICY_FULL = POLICY_FULL
 Command.POLICY_CB_ONLY = POLICY_CB_ONLY
+Command.POLICY_NOREMAP = POLICY_NOREMAP
 
 -- =========================
 -- Host-settable hooks / options
@@ -854,6 +855,16 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     if #Command.override_emitter > 0 then
         Command.override_emitter[#Command.override_emitter](code)
         return true
+    end
+
+    if policy == POLICY_NOREMAP then
+        cancel_ambiguous_timer()
+        reset_state()
+        if capture_counts then
+            Command.emit_raw({ code })
+            return true
+        end
+        return false
     end
 
     -- If mode changed externally, abort any in-flight mapping.
