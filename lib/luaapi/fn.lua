@@ -3452,6 +3452,27 @@ function Builtins.setreg(regname, value, options)
     return 0
 end
 
+local function _macro_register_name(state_key)
+    local value = registers[state_key]
+    if value == nil then
+        return ""
+    end
+    return tostring(value)
+end
+
+-- TODO: Implement these properly once macros are added
+function Builtins.reg_recording()
+    return _macro_register_name("__recording_register")
+end
+
+function Builtins.reg_executing()
+    return _macro_register_name("__executing_register")
+end
+
+function Builtins.reg_recorded()
+    return _macro_register_name("__last_recorded_register")
+end
+
 function Builtins.len(x)
     if type(x) == "string" then
         return #x
