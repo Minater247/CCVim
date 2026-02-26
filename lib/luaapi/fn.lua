@@ -10,6 +10,9 @@ local Syntax
 local Runtime
 local ExMsg
 local EnvVars
+local FrameTree  = loadModule("lib.frame")
+local CmdRead
+local PopupMenu  = loadModule("lib.popupmenu")
 local Buffer     = loadModule("layout.buffer")
 local Tab        = loadModule("lib.tab")
 local scopes     = loadModule("lib.luaapi.scopes")
@@ -1341,6 +1344,94 @@ function Builtins.winline(...)
     return math.floor(row)
 end
 
+function Builtins.screenpos(winid, lnum, col, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "screenpos"):toString())
+    end
+
+    local win = resolve_win(winid)
+    if not win then
+        return { row = 0, col = 0, curscol = 0, endcol = 0 }
+    end
+
+    local x0, y0 = 1, 1
+    if win.frame then
+        local fx, fy = FrameTree.GetXY(win.frame)
+        local tp = tabpages[win.tabpagenr]
+        local yoff = (tp and tp.winyoff) or 0
+        x0, y0 = fx, fy + yoff
+    elseif win.floatpos then
+        x0 = (tonumber(win.floatpos.x) or 0) + 1
+        y0 = (tonumber(win.floatpos.y) or 0) + 1
+    end
+
+    local _, text_x = win:textwidth()
+    local top = (win.scrolly and win.scrolly[1]) or 1
+    local left = win.scrollx or 1
+
+    local row1 = y0 + math.max(0, (tonumber(lnum) or win.cursory or 1) - top)
+    local col1 = x0 + (text_x or 1) + math.max(0, (tonumber(col) or 1) - left) - 1
+
+    if row1 < 1 then row1 = 1 end
+    if col1 < 1 then col1 = 1 end
+
+    return { row = row1, col = col1, curscol = col1, endcol = col1 }
+end
+
+function Builtins.getwininfo(winid, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "getwininfo"):toString())
+    end
+
+    local out = {}
+    local function add(win)
+        local height = 1
+        if win.frame then
+            height = win.frame.height
+        elseif win.floatpos then
+            height = tonumber(win.floatpos.h) or 1
+        end
+        local width = 1
+        if win.frame then
+            width = win.frame.width
+        elseif win.floatpos then
+            width = tonumber(win.floatpos.w) or 1
+        end
+
+        local sp = Builtins.screenpos(win.winnr, (win.scrolly and win.scrolly[1]) or 1, 1)
+        local topline = (win.scrolly and win.scrolly[1]) or 1
+        local botline = topline + math.max(0, height - 1)
+        out[#out + 1] = {
+            winid = win.winnr,
+            winnr = win.winnr,
+            bufnr = win.buffer and win.buffer.bufnr or 0,
+            tabnr = win.tabpagenr or curtp,
+            height = height,
+            width = width,
+            topline = topline,
+            botline = botline,
+            leftcol = win.scrollx or 1,
+            skipcol = 0,
+            winrow = sp.row,
+            wincol = sp.col,
+            textoff = 0,
+        }
+    end
+
+    if winid ~= nil then
+        local win = resolve_win(winid)
+        if win then
+            add(win)
+        end
+        return out
+    end
+
+    for _, win in pairs(windows) do
+        add(win)
+    end
+    return out
+end
+
 -- Minimal getline({lnum} [, {end}]).
 -- Supports ".", "$", and numeric line numbers.
 function Builtins.getline(expr, last)
@@ -1454,6 +1545,103 @@ function Builtins.setline(lnum, text, ...)
     win.need_redraw = true
     need_redraw = true
     return 0
+end
+
+function Builtins.complete(startcol, matches)
+    return PopupMenu.complete(startcol, matches)
+end
+
+function Builtins.complete_add(expr)
+    return PopupMenu.complete_add(expr)
+end
+
+function Builtins.complete_check()
+    return PopupMenu.complete_check()
+end
+
+function Builtins.complete_info(what)
+    return PopupMenu.complete_info(what)
+end
+
+function Builtins.pumvisible()
+    return (PopupMenu.visible() and 1 or 0)
+end
+
+function Builtins.pum_getpos()
+    return PopupMenu.info()
+end
+
+function Builtins.cursor(lnum, col, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "cursor"):toString())
+    end
+    local win = windows[curwin]
+    if not win or not win.buffer then
+        return -1
+    end
+
+    if type(lnum) == "table" then
+        col = lnum[2]
+        lnum = lnum[1]
+    end
+
+    local y = tonumber(lnum or win.cursory) or win.cursory
+    local x = tonumber(col or win.cursorx) or win.cursorx
+    local max_y = math.max(1, win.buffer:line_count(true))
+    y = math.max(1, math.min(max_y, math.floor(y)))
+
+    local line = win.buffer:get_line(y, true) or ""
+    local max_x = win.buffer:str_len(line) + 1
+    x = math.max(1, math.min(max_x, math.floor(x)))
+
+    win.cursory = y
+    win.cursorx = x
+    win.need_redraw = true
+    what_redraw["windows"] = true
+    need_redraw = true
+    return 0
+end
+
+function Builtins.feedkeys(keys, mode, escape_ks, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "feedkeys"):toString())
+    end
+    local Api = loadModule("lib.luaapi.api")
+    local esc = not (escape_ks == nil or escape_ks == false or escape_ks == 0)
+    Api.nvim_feedkeys(tostring(keys or ""), tostring(mode or ""), esc)
+    return 0
+end
+
+function Builtins.getcmdline()
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if CmdRead.is_active() then
+        return CmdRead.getline()
+    end
+    return ""
+end
+
+function Builtins.getcmdpos()
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if CmdRead.is_active() then
+        return CmdRead.getpos()
+    end
+    return 0
+end
+
+function Builtins.getcmdtype()
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if CmdRead.is_active() then
+        return ":"
+    end
+    return ""
+end
+
+function Builtins.setcmdline(str, pos)
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if not CmdRead.is_active() then
+        return 1
+    end
+    return CmdRead.setline(tostring(str or ""), tonumber(pos))
 end
 
 -- add(list, item): append item to list and return the list (mutates in place)
@@ -3452,6 +3640,45 @@ function Builtins.setreg(regname, value, options)
     return 0
 end
 
+function Builtins.getreg(regname, _arg2, list, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "getreg"):toString())
+    end
+
+    local reg = tostring(regname or "")
+    if reg == "" or reg == "@" then
+        reg = '"'
+    end
+    reg = reg:sub(1, 1)
+
+    if reg == "#" then
+        local win = windows[curwin]
+        local alt = win and win.altbuf or nil
+        local name = alt and alt.name or ""
+        if list and list ~= 0 and list ~= false then
+            return _split_lines_for_register(name)
+        end
+        return name
+    end
+
+    local key = _register_storage_key(reg)
+    local entry = registers[key]
+    if entry == nil and reg == '"' then
+        entry = registers.unnamed
+    end
+    if entry == nil then
+        if list and list ~= 0 and list ~= false then
+            return {}
+        end
+        return ""
+    end
+
+    if list and list ~= 0 and list ~= false then
+        return _register_entry_to_lines(entry)
+    end
+    return _register_entry_to_text(entry)
+end
+
 local function _macro_register_name(state_key)
     local value = registers[state_key]
     if value == nil then
@@ -4046,9 +4273,38 @@ function Builtins.strpart(str, start, len)
     return s:sub(from, from + ln - 1)
 end
 
+function Builtins.strchars(str, _skipcc, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "strchars"):toString())
+    end
+    return Utf8.len(tostring(str or ""))
+end
+
+function Builtins.strcharpart(str, start, len, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "strcharpart"):toString())
+    end
+    local s = tostring(str or "")
+    local st = tonumber(start or 0) or 0
+    if st < 0 then st = 0 end
+    local from = st + 1
+    if len == nil then
+        return Utf8.sub(s, from)
+    end
+    local ln = tonumber(len) or 0
+    if ln <= 0 then
+        return ""
+    end
+    return Utf8.sub(s, from, from + ln - 1)
+end
+
 function Builtins.strdisplaywidth(str)
     local s = tostring(str or "")
-    return #s
+    return Utf8.len(s)
+end
+
+function Builtins.tolower(str)
+    return string.lower(tostring(str or ""))
 end
 
 function Builtins.printf(fmt, ...)

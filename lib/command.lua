@@ -7,6 +7,7 @@ local Command                     = {}
 
 local Event                       = loadModule("lib.event")
 local ExMsg                       = loadModule("lib.excmd.exmsg")
+local PopupMenu                   = loadModule("lib.popupmenu")
 
 local POLICY_FULL, POLICY_CB_ONLY = 1, 2
 Command.POLICY_FULL = POLICY_FULL
@@ -1257,6 +1258,12 @@ end
 
 -- Public: normal key from user input (full mapping semantics; counts allowed)
 function Command.HandleKey(k)
+    if vimmode == "insert" then
+        if PopupMenu.visible() then
+            return PopupMenu.handle_key(k)
+        end
+    end
+
     if #Command.override_emitter > 0 then
         Command.override_emitter[#Command.override_emitter](k)
         return

@@ -21,10 +21,14 @@ local function endRead()
     table.remove(Command.emitter_names)
 end
 
+local function current_cmdline_string()
+    return Key.seqtostr(pendingcmd)
+end
+
 local function handler(k)
-    if k:emittable() then
-        if k == crref then
-            local str = Key.seqtostr(pendingcmd)
+        if k:emittable() then
+            if k == crref then
+            local str = current_cmdline_string()
             endRead()
             local state = {
                 g = scopes._g,
@@ -79,7 +83,7 @@ end
 function CmdRead.drawCmdline()
     local cmdheight = options.get("cmdheight")
 
-    local cmd = Key.seqtostr(pendingcmd)
+    local cmd = current_cmdline_string()
 
     -- TODO: wrap this around on cmdheight > 1
     if cmdheight == 1 then
@@ -90,6 +94,26 @@ function CmdRead.drawCmdline()
     else
         error("UNHANDLED: MULTILINE CMDHEIGHT")
     end
+end
+
+function CmdRead.getline()
+    return current_cmdline_string()
+end
+
+function CmdRead.getpos()
+    return #pendingcmd + 1
+end
+
+function CmdRead.setline(str, pos)
+    local seq = Key.strtoseq(tostring(str or ""))
+    pendingcmd = seq
+    if pos ~= nil then
+        -- TODO: support explicit cmdline cursor position; currently ignored.
+        local _ = tonumber(pos)
+    end
+    what_redraw["commandline"] = true
+    need_redraw = true
+    return 0
 end
 
 return CmdRead

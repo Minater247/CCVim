@@ -15,6 +15,8 @@ local Decoration = loadModule("lib.decoration")
 local ScriptSource
 local Error = loadModule("lib.error")
 local Utf8 = loadModule("lib.utf8")
+local PopupMenu = loadModule("lib.popupmenu")
+local Event = loadModule("lib.event")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -104,6 +106,173 @@ local function request_buffer_redraw(buf, full)
         what_redraw["windows"] = true
     end
     need_redraw = true
+end
+
+local keymap_store = {
+    global = {},
+    buffer = {},
+}
+
+local function keymap_mode_key(mode)
+    return tostring(mode or "")
+end
+
+local function keymap_bucket(is_buffer, bufnr, mode, create)
+    local mode_key = keymap_mode_key(mode)
+    if is_buffer then
+        local by_buf = keymap_store.buffer
+        local per_buf = by_buf[bufnr]
+        if not per_buf and create then
+            per_buf = {}
+            by_buf[bufnr] = per_buf
+        end
+        if not per_buf then
+            return nil
+        end
+        local bucket = per_buf[mode_key]
+        if not bucket and create then
+            bucket = { list = {}, by_lhs = {} }
+            per_buf[mode_key] = bucket
+        end
+        return bucket
+    end
+
+    local per_mode = keymap_store.global
+    local bucket = per_mode[mode_key]
+    if not bucket and create then
+        bucket = { list = {}, by_lhs = {} }
+        per_mode[mode_key] = bucket
+    end
+    return bucket
+end
+
+local function keymap_bool_flag(opts, name, default)
+    local v = opts and opts[name]
+    if v == nil then
+        return default and 1 or 0
+    end
+    return (v == true or v == 1) and 1 or 0
+end
+
+local function record_keymap(is_buffer, bufnr, mode, lhs, rhs, opts)
+    opts = opts or {}
+    lhs = tostring(lhs or "")
+    rhs = tostring(rhs or "")
+
+    local bucket = keymap_bucket(is_buffer, bufnr, mode, true)
+    local idx = bucket.by_lhs[lhs]
+    local entry = {
+        lhs = lhs,
+        rhs = rhs,
+        mode = keymap_mode_key(mode),
+        expr = keymap_bool_flag(opts, "expr", false),
+        noremap = keymap_bool_flag(opts, "noremap", false),
+        script = keymap_bool_flag(opts, "script", false),
+        silent = keymap_bool_flag(opts, "silent", false),
+        nowait = keymap_bool_flag(opts, "nowait", false),
+        replace_keycodes = keymap_bool_flag(opts, "replace_keycodes", true),
+        callback = opts.callback,
+        desc = opts.desc,
+    }
+
+    if idx then
+        bucket.list[idx] = entry
+    else
+        bucket.list[#bucket.list + 1] = entry
+        bucket.by_lhs[lhs] = #bucket.list
+    end
+end
+
+local function delete_keymap_record(is_buffer, bufnr, mode, lhs)
+    local bucket = keymap_bucket(is_buffer, bufnr, mode, false)
+    if not bucket then
+        return
+    end
+
+    lhs = tostring(lhs or "")
+    local idx = bucket.by_lhs[lhs]
+    if not idx then
+        return
+    end
+
+    table.remove(bucket.list, idx)
+    bucket.by_lhs = {}
+    for i = 1, #bucket.list do
+        local item = bucket.list[i]
+        bucket.by_lhs[item.lhs] = i
+    end
+end
+
+local function list_keymaps(is_buffer, bufnr, mode)
+    local bucket = keymap_bucket(is_buffer, bufnr, mode, false)
+    if not bucket then
+        return {}
+    end
+
+    local out = {}
+    for i = 1, #bucket.list do
+        local item = bucket.list[i]
+        local copy = {}
+        for k, v in pairs(item) do
+            copy[k] = v
+        end
+        out[#out + 1] = copy
+    end
+    return out
+end
+
+local feedkeys_queue = {}
+local feedkeys_flush_timer = nil
+local feedkeys_flushing = false
+
+local function enqueue_feedkeys(seq, prepend)
+    if #seq == 0 then
+        return
+    end
+
+    if prepend then
+        local merged = {}
+        for i = 1, #seq do
+            merged[#merged + 1] = seq[i]
+        end
+        for i = 1, #feedkeys_queue do
+            merged[#merged + 1] = feedkeys_queue[i]
+        end
+        feedkeys_queue = merged
+    else
+        for i = 1, #seq do
+            feedkeys_queue[#feedkeys_queue + 1] = seq[i]
+        end
+    end
+end
+
+local function flush_feedkeys_queue()
+    if feedkeys_flushing then
+        return
+    end
+    if #feedkeys_queue == 0 then
+        return
+    end
+
+    feedkeys_flushing = true
+    local queue = feedkeys_queue
+    feedkeys_queue = {}
+    for i = 1, #queue do
+        Command.HandleKey(queue[i])
+    end
+    feedkeys_flushing = false
+end
+
+local function schedule_feedkeys_flush()
+    if feedkeys_flush_timer ~= nil then
+        return
+    end
+    feedkeys_flush_timer = Event.StartTimer(0, function(id)
+        if feedkeys_flush_timer == id then
+            feedkeys_flush_timer = nil
+        end
+        flush_feedkeys_queue()
+    end)
 end
 
 -- ========================
@@ -507,20 +676,119 @@ function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
 
-    lhs = Key.strtoseq(lhs)
+    local lhs_text = tostring(lhs or "")
+    local rhs_text = tostring(rhs or "")
+    lhs = Key.strtoseq(lhs_text)
 
     if opts.callback then
         ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local cb = ScriptSource.wrap(nil, opts.callback)
         Command.map_callback(mode, lhs, cb, { buffer = buf })
     else
-        rhs = Key.strtoseq(rhs)
+        rhs = Key.strtoseq(rhs_text)
         if opts.noremap then
             Command.noremap_keys(mode, lhs, rhs, { buffer = buf })
         else
             Command.remap_keys(mode, lhs, rhs, { buffer = buf })
         end
     end
+
+    record_keymap(true, buf.bufnr, mode, lhs_text, rhs_text, opts)
+end
+
+function api.nvim_set_keymap(mode, lhs, rhs, opts)
+    opts = opts or {}
+    local lhs_text = tostring(lhs or "")
+    local rhs_text = tostring(rhs or "")
+    lhs = Key.strtoseq(lhs_text)
+
+    if opts.callback then
+        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
+        local cb = ScriptSource.wrap(nil, opts.callback)
+        Command.map_callback(mode, lhs, cb)
+    else
+        rhs = Key.strtoseq(rhs_text)
+        if opts.noremap then
+            Command.noremap_keys(mode, lhs, rhs)
+        else
+            Command.remap_keys(mode, lhs, rhs)
+        end
+    end
+
+    record_keymap(false, nil, mode, lhs_text, rhs_text, opts)
+end
+
+function api.nvim_get_keymap(mode)
+    return list_keymaps(false, nil, mode)
+end
+
+function api.nvim_buf_get_keymap(buffer, mode)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    return list_keymaps(true, buf.bufnr, mode)
+end
+
+function api.nvim_buf_del_keymap(buffer, mode, lhs)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    Command.unmap_keys(mode, Key.strtoseq(lhs), { buffer = buf })
+    delete_keymap_record(true, buf.bufnr, mode, lhs)
+end
+
+function api.nvim_del_keymap(mode, lhs)
+    Command.unmap_keys(mode, Key.strtoseq(lhs))
+    delete_keymap_record(false, nil, mode, lhs)
+end
+
+function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, replacement)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    buf:ensure_loaded(true)
+
+    local srow = tonumber(start_row or 0) or 0
+    local scol = tonumber(start_col or 0) or 0
+    local erow = tonumber(end_row or srow) or srow
+    local ecol = tonumber(end_col or scol) or scol
+
+    if srow < 0 then srow = 0 end
+    if erow < 0 then erow = 0 end
+    if scol < 0 then scol = 0 end
+    if ecol < 0 then ecol = 0 end
+
+    local lines = buf:lines_ref(true)
+    local line_count = #lines
+    if line_count == 0 then
+        lines[1] = ""
+        line_count = 1
+    end
+
+    local sidx = math.min(line_count - 1, srow) + 1
+    local eidx = math.min(line_count - 1, erow) + 1
+    if sidx > eidx then
+        sidx, eidx = eidx, sidx
+        scol, ecol = ecol, scol
+    end
+
+    local sline = lines[sidx] or ""
+    local eline = lines[eidx] or ""
+    local prefix = buf:str_sub(sline, 1, scol)
+    local suffix = buf:str_sub(eline, ecol + 1)
+
+    local repl = {}
+    if type(replacement) == "table" then
+        for i = 1, #replacement do
+            repl[#repl + 1] = tostring(replacement[i] or "")
+        end
+    end
+    if #repl == 0 then
+        repl[1] = ""
+    end
+
+    repl[1] = prefix .. repl[1]
+    repl[#repl] = repl[#repl] .. suffix
+
+    buf:set_lines(sidx - 1, eidx, false, repl)
+    request_buffer_redraw(buf, true)
 end
 
 -- TODO: use a window displaying the buffer, if it exists in the current tabpage
@@ -1609,7 +1877,61 @@ end
 
 function api.nvim_feedkeys(keys, mode, escape_ks)
     local seq = Key.strtoseq(tostring(keys or ""))
-    Command.emit_raw(seq)
+    mode = tostring(mode or "")
+    local prepend = mode:find("i", 1, true) ~= nil
+    local immediate = mode:find("x", 1, true) ~= nil
+
+    enqueue_feedkeys(seq, prepend)
+
+    if immediate or not prepend then
+        if feedkeys_flush_timer ~= nil then
+            Event.CancelTimer(feedkeys_flush_timer)
+            feedkeys_flush_timer = nil
+        end
+        flush_feedkeys_queue()
+    else
+        schedule_feedkeys_flush()
+    end
+end
+
+function api.nvim_select_popupmenu_item(item, insert, finish, opts)
+    PopupMenu.select(item, insert, finish)
+end
+
+function api.nvim__complete_set(_index, _opts)
+    -- TODO: Preview/info popup for builtin completion.
+    return {}
+end
+
+function api.nvim_win_hide(window)
+    local win = win_for_id(window)
+    if not win then
+        return
+    end
+    return api.nvim_win_close(win.winnr, true)
+end
+
+function api.nvim_get_vvar(name)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_get_vvar: name must be non-empty string")
+    end
+    return scopes._v[name]
+end
+
+function api.nvim_set_vvar(name, value)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_set_vvar: name must be non-empty string")
+    end
+    scopes._v[name] = value
+end
+
+function api.nvim_command(command)
+    local line = tostring(command or "")
+    if line == "" then
+        return
+    end
+    local rv = api.nvim_exec2(line, { output = false })
+    return rv.output or ""
 end
 
 local _term_next_chan_id = 1

@@ -1,18 +1,19 @@
 local Scopes = {}
 
 -- Backing stores
-Scopes._g = Scopes._g or {}
-Scopes._v = Scopes._v or {}
-Scopes._v.errmsg = Scopes._v.errmsg or ""
-Scopes._v.event = Scopes._v.event or {}
+Scopes._g = {}
+Scopes._v = {}
+Scopes._v.errmsg = ""
+Scopes._v.event = {}
+Scopes._v.completed_item = {}
 Scopes._v["true"] = true
 Scopes._v["false"] = false
-Scopes._b_by_buf = Scopes._b_by_buf or {}
-Scopes._w_by_win = Scopes._w_by_win or {}
-Scopes._t_by_tab = Scopes._t_by_tab or {}
+Scopes._b_by_buf = {}
+Scopes._w_by_win = {}
+Scopes._t_by_tab = {}
 
 local function cur_bufnr()
-  return (windows[curwin] and windows[curwin].buffer and windows[curwin].buffer.bufnr) or 0
+  return windows[curwin].buffer.bufnr
 end
 local function cur_winnr()
   return curwin

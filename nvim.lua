@@ -172,6 +172,7 @@ Event.LoadCommandModule()
 loadModule("lib.mappings")
 
 local AutoCmd = loadModule("lib.autocmd")
+local PopupMenu = loadModule("lib.popupmenu")
 _V.rebalance_current_window_soft = FrameTree.RebalanceCurrentTab
 _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
@@ -193,6 +194,11 @@ function _V.setMode(newmode, newx, newy)
         end
     end
     if newmode ~= oldmode then
+        if oldmode == "insert" and newmode ~= "insert" then
+            if PopupMenu.visible() then
+                PopupMenu.close("cancel")
+            end
+        end
         AutoCmd.Run("ModeChanged", { old_mode = oldmode, new_mode = newmode })
     end
     _V.what_redraw["commandline"] = true

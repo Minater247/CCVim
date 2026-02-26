@@ -14,6 +14,7 @@ local AutoCmd = loadModule("lib.autocmd")
 local Event = loadModule("lib.event")
 local ExMsg = loadModule("lib.excmd.exmsg")
 local Decoration = loadModule("lib.decoration")
+local PopupMenu = loadModule("lib.popupmenu")
 
 local function statusline_rows_for_frame(laststatus, window_count, frame_bottom, root_height)
     if frame_bottom < root_height then
@@ -485,6 +486,10 @@ function Tabpage:render()
             Highlight.SetFor(spans[i][2])
             term.write(spans[i][1])
         end
+    end
+
+    if PopupMenu.visible() then
+        PopupMenu.render()
     end
 
     local pendingprnt = Command.PendingPrintable()
