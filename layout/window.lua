@@ -1323,7 +1323,7 @@ function Window:render(xoff, yoff)
         width, height = frame.width, frame.height
     elseif floatpos then
         if floatpos.reltype == "editor" then
-            xoff, yoff, width, height = floatpos.x, floatpos.y, floatpos.w, floatpos.h
+            xoff, yoff, width, height = floatpos.x + 1, floatpos.y + 1, floatpos.w, floatpos.h
         else
             error("Unhandled floating window type: " .. (floatpos.reltype or "nil (lua nil)"))
         end
