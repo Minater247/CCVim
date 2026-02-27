@@ -140,17 +140,24 @@ end
 -- Mapping storage (per-mode tries)
 -- node: { children={ [keynum]=node }, callback|rhs_seq, recursive, ... }
 -- =========================
-local mappings = {}          -- mappings[mode_fullname] = root node
--- Global registry for single-key operators (recognized even inside other mapping paths)
-local operator_registry = {} -- [numeric_key] = operator node (with .operator_cb, .motion_root)
+local user_global_mappings = {} -- user_global_mappings[mode_fullname] = root node
+local builtin_mappings = {}     -- builtin_mappings[mode_fullname] = root node
 
-local function root_for_mode(mode_full)
-    local r = mappings[mode_full]
+local function root_for_mode(storage, mode_full)
+    local r = storage[mode_full]
     if not r then
         r = { children = {} }
-        mappings[mode_full] = r
+        storage[mode_full] = r
     end
     return r
+end
+
+local function user_global_root_for_mode(mode_full)
+    return root_for_mode(user_global_mappings, mode_full)
+end
+
+local function builtin_root_for_mode(mode_full)
+    return root_for_mode(builtin_mappings, mode_full)
 end
 
 -- Are all keys in a sequence digits?
@@ -222,26 +229,29 @@ local function _composite_node(buf_node, glob_node)
 end
 
 
--- Composite *active* root for the current buffer+mode (buffer-local overrides global).
+-- Composite *active* root for the current buffer+mode.
+-- Precedence: buffer-local user > global user > builtin.
 local function composite_root_for_mode(mode_full)
-    local glob = mappings[mode_full] or { children = {} }
+    local builtin = builtin_mappings[mode_full] or { children = {} }
+    local global_user = user_global_mappings[mode_full] or { children = {} }
     local buf  = windows[curwin] and windows[curwin].buffer or nil
-    local bloc = (buf and buf.local_mappings and buf.local_mappings[mode_full]) or nil
-    return _composite_node(bloc, glob)
+    local local_user = (buf and buf.local_mappings and buf.local_mappings[mode_full]) or nil
+    local global_root = _composite_node(global_user, builtin)
+    return _composite_node(local_user, global_root)
 end
 
-local function _get_insert_root(mode_full, opts)
+local function _get_user_insert_root(mode_full, opts)
     if opts and opts.buffer then
         return ensure_buffer_local_root(opts.buffer, mode_full)
     elseif opts and opts.buffer_local then
         local buf = windows[curwin].buffer
         return ensure_buffer_local_root(buf, mode_full)
     else
-        return root_for_mode(mode_full) -- global
+        return user_global_root_for_mode(mode_full)
     end
 end
 
-local function _get_existing_root(mode_full, opts)
+local function _get_existing_user_root(mode_full, opts)
     if opts and opts.buffer then
         local buf = opts.buffer
         return buf and buf.local_mappings and buf.local_mappings[mode_full] or nil
@@ -249,7 +259,7 @@ local function _get_existing_root(mode_full, opts)
         local buf = windows[curwin].buffer
         return buf and buf.local_mappings and buf.local_mappings[mode_full] or nil
     else
-        return mappings[mode_full]
+        return user_global_mappings[mode_full]
     end
 end
 
@@ -283,11 +293,6 @@ local function _delete_mapping(root, seq_nums)
         node = child
     end
 
-    local had_operator = node.operator_cb ~= nil
-    if had_operator and #seq_nums == 1 then
-        operator_registry[seq_nums[1].numeric] = nil
-    end
-
     _clear_leaf(node)
     for i = #stack, 1, -1 do
         local frame = stack[i]
@@ -300,21 +305,14 @@ local function _delete_mapping(root, seq_nums)
     return true
 end
 
-local function _clear_root(root, mode_full)
+local function _clear_root(root)
     if not root then return end
-    if mode_full == "normal" and root.children then
-        for keynum, child in pairs(root.children) do
-            if child and child.operator_cb then
-                operator_registry[keynum] = nil
-            end
-        end
-    end
     root.children = {}
     _clear_leaf(root)
 end
 
 local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
-    local node = _get_insert_root(mode_full, opts)
+    local node = _get_user_insert_root(mode_full, opts)
     for i = 1, #seq_nums do
         local k = seq_nums[i]
         local child = node.children[k.numeric]
@@ -330,8 +328,25 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
     Command.Log("map-callback  mode=%s seq=%s cb=%s%s", mode_full, seq_tostring(seq_nums), tostring(callback), opts and " [buf-local]" or "")
 end
 
+local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
+    local node = builtin_root_for_mode(mode_full)
+    for i = 1, #seq_nums do
+        local k = seq_nums[i]
+        local child = node.children[k.numeric]
+        if not child then
+            child = { children = {} }
+            node.children[k.numeric] = child
+        end
+        node = child
+    end
+    node.callback  = callback
+    node.rhs_seq   = nil
+    node.recursive = nil
+    Command.Log("map-builtin-callback mode=%s seq=%s cb=%s", mode_full, seq_tostring(seq_nums), tostring(callback))
+end
+
 local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts)
-    local node = _get_insert_root(mode_full, opts)
+    local node = _get_user_insert_root(mode_full, opts)
     for i = 1, #seq_nums do
         local k = seq_nums[i]
         local child = node.children[k.numeric]
@@ -360,6 +375,13 @@ function Command.map_callback(modes, lhs_seq, callback, opts)
     end
 end
 
+function Command.map_builtin_callback(modes, lhs_seq, callback)
+    local seq = normalize_seq(lhs_seq)
+    for _, m in ipairs(expand_modes(modes)) do
+        insert_builtin_callback_mapping(m, seq, callback)
+    end
+end
+
 function Command.remap_keys(modes, lhs_seq, rhs_seq, opts)
     local lhs = normalize_seq(lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
@@ -377,15 +399,15 @@ end
 function Command.unmap_keys(modes, lhs_seq, opts)
     local lhs = normalize_seq(lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
-        local root = _get_existing_root(m, opts)
+        local root = _get_existing_user_root(m, opts)
         _delete_mapping(root, lhs)
     end
 end
 
 function Command.clear_mappings(modes, opts)
     for _, m in ipairs(expand_modes(modes)) do
-        local root = _get_existing_root(m, opts)
-        _clear_root(root, m)
+        local root = _get_existing_user_root(m, opts)
+        _clear_root(root)
     end
 end
 
@@ -425,7 +447,7 @@ function Command.has_map_to(modes, what)
     local buf = windows[curwin].buffer
 
     for _, m in ipairs(expand_modes(modes)) do
-        if _subtree_has_rhs(mappings[m], needle) then
+        if _subtree_has_rhs(user_global_mappings[m], needle) then
             return true
         end
         if _subtree_has_rhs(buf.local_mappings and buf.local_mappings[m], needle) then
@@ -498,7 +520,7 @@ function Command.mapcheck(modes, lhs_seq)
             return local_rhs
         end
 
-        local global_rhs = _mapcheck_in_root(mappings[m], lhs_seq)
+        local global_rhs = _mapcheck_in_root(user_global_mappings[m], lhs_seq)
         if global_rhs then
             return global_rhs
         end
@@ -515,6 +537,12 @@ function Command.imap_callback(lhs_seq, cb, opts) return Command.map_callback("i
 
 function Command.nimap_callback(lhs_seq, cb, opts) return Command.map_callback("ni", lhs_seq, cb, opts) end
 
+function Command.nmap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("normal", lhs_seq, cb) end
+
+function Command.imap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("insert", lhs_seq, cb) end
+
+function Command.nimap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("ni", lhs_seq, cb) end
+
 function Command.nnoremap_keys(lhs, rhs, opts) return Command.noremap_keys("normal", lhs, rhs, opts) end
 
 function Command.inoremap_keys(lhs, rhs, opts) return Command.noremap_keys("insert", lhs, rhs, opts) end
@@ -527,9 +555,9 @@ function Command.imap_keys(lhs, rhs, opts) return Command.remap_keys("insert", l
 -- Operators with explicit, per-operator motions (normal mode)
 -- Motions do not have callbacks; the operator's callback receives the motion *name*.
 -- =========================
-local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_spec)
+local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_spec, is_builtin)
     local op_seq = normalize_seq(op_lhs_seq)
-    local node = root_for_mode("normal")
+    local node = is_builtin and builtin_root_for_mode("normal") or user_global_root_for_mode("normal")
     for i = 1, #op_seq do
         local k = op_seq[i]
         local child = node.children[k.numeric]
@@ -543,12 +571,7 @@ local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_sp
     node.rhs_seq     = nil
     node.recursive   = nil
     if not node.motion_root then node.motion_root = { children = {} } end
-    Command.Log("map-operator(mode=normal) seq=%s", seq_tostring(op_seq))
-
-    -- Register single-key operators for GLOBAL recognition too.
-    if #op_seq == 1 then
-        operator_registry[op_seq[1].numeric] = node
-    end
+    Command.Log("map-operator(mode=normal builtin=%s) seq=%s", tostring(is_builtin == true), seq_tostring(op_seq))
 
     local function add_motion(lhs_seq, motion_name)
         local mnode = node.motion_root
@@ -584,7 +607,11 @@ local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_sp
 end
 
 function Command.nmap_operator_with_motions(op_lhs_seq, operator_cb, motions_spec)
-    return _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_spec)
+    return _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_spec, false)
+end
+
+function Command.nmap_builtin_operator_with_motions(op_lhs_seq, operator_cb, motions_spec)
+    return _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_spec, true)
 end
 
 -- =========================
@@ -730,6 +757,11 @@ local function _execute_operator_with_motion(motion_leaf)
     reset_state()
 end
 
+local function _single_key_operator_node(root, keynum)
+    local node = root.children[keynum]
+    return (node and node.operator_cb) and node or nil
+end
+
 local function _op_motion_step(code)
     local ms = state.op_motion
     if not ms or not ms.active then return false end
@@ -857,16 +889,6 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
         return true
     end
 
-    if policy == POLICY_NOREMAP then
-        cancel_ambiguous_timer()
-        reset_state()
-        if capture_counts then
-            Command.emit_raw({ code })
-            return true
-        end
-        return false
-    end
-
     -- If mode changed externally, abort any in-flight mapping.
     if state.active and state.mode ~= vimmode then
         Command.Log("mode-change abort: from %s to %s resetting", state.mode, vimmode)
@@ -876,7 +898,13 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     Command.Log("step code=%d mode=%s active=%s", code.numeric, vimmode, tostring(state.active))
     state.mode = vimmode
 
-    local root = composite_root_for_mode(vimmode)
+    local root
+    if policy == POLICY_NOREMAP then
+        -- noremap still executes builtin key behavior, but ignores user mappings.
+        root = builtin_mappings[vimmode] or { children = {} }
+    else
+        root = composite_root_for_mode(vimmode)
+    end
 
     Command.Log("root children keys=%s", node_keys_tostring(root))
 
@@ -893,7 +921,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     -- ===== Global operator recognition (single-key operators), non-destructive =====
     local op_started_now = false
     if capture_counts and (vimmode == "normal") and not state.pending_op and not state.skip_op_once then
-        local op_node = operator_registry[code.numeric]
+        local op_node = _single_key_operator_node(root, code.numeric)
         if op_node then
             _enter_op_pending_global(op_node)
             if policy == POLICY_FULL then start_ambiguous_timer() end
@@ -1301,7 +1329,7 @@ function Command._debug_dump_mode(mode_full)
             dfs(child, depth + 1)
         end
     end
-    local root = mappings[mode_full]
+    local root = user_global_mappings[mode_full]
     LOG_DEBUG("DUMP mode=" .. tostring(mode_full))
     if not root then
         LOG_DEBUG("  <empty>"); return

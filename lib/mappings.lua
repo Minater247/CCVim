@@ -16,73 +16,73 @@ local function _line_len(buf, s) return buf:str_len(s or "") end
 local function _line_sub(buf, s, i, j) return buf:str_sub(s or "", i, j) end
 local function _line_ch(buf, s, i) return buf:str_char_at(s or "", i) end
 
-Command.nimap_callback(
+Command.nimap_builtin_callback(
     { K(keys.down) },
     function(count)
         windows[curwin]:cursorMove(0, count or 1)
     end)
 
-Command.nimap_callback(
+Command.nimap_builtin_callback(
     { K(keys.up) },
     function(count)
         windows[curwin]:cursorMove(0, count and (count * -1) or -1)
     end)
 
-Command.nimap_callback(
+Command.nimap_builtin_callback(
     { K(keys.left) },
     function(count)
         windows[curwin]:cursorMove(count and (count * -1) or -1, 0)
     end)
 
-Command.nimap_callback(
+Command.nimap_builtin_callback(
     { K(keys.right) },
     function(count)
         windows[curwin]:cursorMove(count or 1, 0)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.j) },
     function(count)
         windows[curwin]:cursorMove(0, count or 1)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.k) },
     function(count)
         windows[curwin]:cursorMove(0, count and (count * -1) or -1)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.h) },
     function(count)
         windows[curwin]:cursorMove(count and (count * -1) or -1, 0)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.l) },
     function(count)
         windows[curwin]:cursorMove(count or 1, 0)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.p, true) },
     function(count)
         windows[curwin]:cursorMove(0, count and (count * -1) or -1)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.j, true) },
     function(count)
         windows[curwin]:cursorMove(0, count or 1)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.n, true) },
     function(count)
         windows[curwin]:cursorMove(0, count or 1)
     end)
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.g), K(keys.g) },
     function(count)
         local win = windows[curwin]
@@ -96,21 +96,21 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.g), K(keys.j) },
     function(count)
         windows[curwin]:cursorMoveScreen(count or 1)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     { K(keys.g), K(keys.k) },
     function(count)
         windows[curwin]:cursorMoveScreen(count and (count * -1) or -1)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g, false, true)},
     function(count)
         local win = windows[curwin]
@@ -123,7 +123,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.h, false, true)},
     function(count)
         local win = windows[curwin]
@@ -131,7 +131,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.m, false, true)},
     function(count)
         local win = windows[curwin]
@@ -141,7 +141,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.l, false, true)},
     function(count)
         local win = windows[curwin]
@@ -151,7 +151,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.zero)},
     function()
         local win = windows[curwin]
@@ -159,7 +159,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.x)},
     function(count)
         local win = windows[curwin]
@@ -214,7 +214,7 @@ Command.nmap_callback(
 )
 
 -- TODO: this mapping is incomplete
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.apostrophe, false, true), K(keys.minus, false, true), K(keys.x)},
     function()
         local win = windows[curwin]
@@ -228,7 +228,7 @@ Command.nmap_callback(
 )
 
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.five, false, true)},
     function(count)
         if count then
@@ -244,14 +244,14 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.e, true)},
     function()
         windows[curwin]:scroll(0, 1)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.y, true)},
     function()
         windows[curwin]:scroll(0, -1)
@@ -261,7 +261,7 @@ Command.nmap_callback(
 -- TODO: <C-b>, <C-f>, <pageDown> and <pageUp> should set the cursor to either be 5 lines from the top
 -- or 4 lines from the bottom, depending on direction scrolled. If no space is available, use the
 -- closest line.
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.b, true)},
     function()
         local win = windows[curwin]
@@ -270,7 +270,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.f, true)},
     function()
         local win = windows[curwin]
@@ -279,7 +279,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.pageUp)},
     function()
         local win = windows[curwin]
@@ -288,7 +288,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.pageDown)},
     function()
         local win = windows[curwin]
@@ -298,7 +298,7 @@ Command.nmap_callback(
 )
 
 -- TODO: scroll options
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.d, true)},
     function()
         local win = windows[curwin]
@@ -309,7 +309,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.u, true)},
     function()
         local win = windows[curwin]
@@ -320,42 +320,42 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.p)},
     function()
         return windows[curwin]:pasteRegister("unnamed", nil, nil, false)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.p, false, true)},
     function()
         return windows[curwin]:pasteRegister("unnamed", nil, nil, true)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.backspace)},
     function()
         windows[curwin]:cursorMove(-1, 0)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.i)},
     function()
         setMode("insert")
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.i, false, true)},
     function()
         setMode("insert", 1)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.a)},
     function()
         local win = windows[curwin]
@@ -363,7 +363,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.a, false, true)},
     function()
         local win = windows[curwin]
@@ -371,7 +371,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.o)},
     function()
         local win = windows[curwin]
@@ -391,7 +391,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.o, false, true)},
     function()
         local win = windows[curwin]
@@ -411,7 +411,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.d), K(keys.d)},
     function(count)
         local win = windows[curwin]
@@ -435,7 +435,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.j, false, true)},
     function(count)
         count = count and math.max(count - 1, 1) or 1
@@ -458,7 +458,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g), K(keys.j, false, true)},
     function(count)
         count = count and math.max(count - 1, 1) or 1
@@ -481,7 +481,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.four, false, true)},
     function(count)
         local win = windows[curwin]
@@ -495,7 +495,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.six, false, true)},
     function()
         local win = windows[curwin]
@@ -510,7 +510,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g), K(keys.minus, false, true)},
     function(count)
         local win = windows[curwin]
@@ -523,7 +523,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.z), K(keys.z)},
     function()
         local win = windows[curwin]
@@ -540,7 +540,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.w)},
     function(count)
         local win = windows[curwin]
@@ -551,7 +551,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.right, false, true)},
     function(count)
         local win = windows[curwin]
@@ -562,7 +562,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.w, false, true)},
     function(count)
         local win = windows[curwin]
@@ -573,7 +573,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.right, true)},
     function(count)
         local win = windows[curwin]
@@ -584,7 +584,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.e)},
     function(count)
         local win = windows[curwin]
@@ -595,7 +595,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.e, false, true)},
     function(count)
         local win = windows[curwin]
@@ -606,7 +606,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.b)},
     function(count)
         local win = windows[curwin]
@@ -617,7 +617,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.left, false, true)},
     function(count)
         local win = windows[curwin]
@@ -628,7 +628,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.b, false, true)},
     function(count)
         local win = windows[curwin]
@@ -639,7 +639,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.left, true)},
     function(count)
         local win = windows[curwin]
@@ -650,7 +650,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g), K(keys.e)},
     function(count)
         local win = windows[curwin]
@@ -661,7 +661,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g), K(keys.e, false, true)},
     function(count)
         local win = windows[curwin]
@@ -672,21 +672,21 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.h, true)},
     function(count)
         windows[curwin]:cursorMove(count and -count or -1, 0)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.space)},
     function(count)
         windows[curwin]:cursorMove(count or 1, 0)
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.minus)},
     function(count)
         local win = windows[curwin]
@@ -698,7 +698,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.equals, false, true)},
     function(count)
         local win = windows[curwin]
@@ -710,7 +710,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.minus, false, true)},
     function(count)
         local win = windows[curwin]
@@ -722,7 +722,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g), K(keys.t)},
     function(count)
         tabpages[curtp].lastwin = curwin
@@ -740,7 +740,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g), K(keys.t, false, true)},
     function(count)
         tabpages[curtp].lastwin = curwin
@@ -755,7 +755,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.y), K(keys.y)},
     function(count)
         local win = windows[curwin]
@@ -774,7 +774,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.semiColon, false, true)},
     function()
         CmdRead.read()
@@ -783,7 +783,7 @@ Command.nmap_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.g, true)},
     function()
         local win = windows[curwin]
@@ -813,7 +813,7 @@ Command.nmap_callback(
 
 -- Normal mode operators
 
-Command.nmap_operator_with_motions(
+Command.nmap_builtin_operator_with_motions(
     {K(keys.d)},
     function(total, motion_name, op_count, mot_count)
         local win = windows[curwin]
@@ -924,7 +924,7 @@ Command.nmap_operator_with_motions(
     }
 )
 
-Command.nmap_operator_with_motions(
+Command.nmap_builtin_operator_with_motions(
     {K(keys.c)},
     function(total, motion_name)
         local win = windows[curwin]
@@ -961,7 +961,7 @@ Command.nmap_operator_with_motions(
     }
 )
 
-Command.nmap_operator_with_motions(
+Command.nmap_builtin_operator_with_motions(
     {K(keys.w, true)},
     function(total, motion_name)
         if motion_name == "c-w" then
@@ -986,14 +986,14 @@ Command.nmap_operator_with_motions(
 
 
 -- Insert mode mappings
-Command.imap_callback(
+Command.imap_builtin_callback(
     {K(keys.tab, true)},
     function()
         setMode("normal")
     end
 )
 
-Command.imap_callback(
+Command.imap_builtin_callback(
     {K(keys.c, true)},
     function()
         setMode("normal")
@@ -1002,14 +1002,14 @@ Command.imap_callback(
 
 
 -- DEBUG MAPPINGS
-Command.nimap_callback(
+Command.nimap_builtin_callback(
     { K(keys.t, true) },
     function()
         Event.HaltLoop()
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.c), K(keys.t), K(keys.p)},
     function()
         LOG_DEBUG("Current tabpage: " .. curtp)
