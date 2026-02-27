@@ -59,6 +59,64 @@ local function key_to_on_key_string(key)
     return key:printable() or ""
 end
 
+function Event.ProcessEvent(ev)
+    if type(ev) ~= "table" then
+        return
+    end
+
+    if ev[1] == "key" then
+        local k = ev[2]
+
+        if is_modifier(k) then
+            mods_down[k] = true
+        elseif not ignored_keys[k] then
+            local c, s, a = current_mod_flags()
+            local key = Key:new(k, c, s, a)
+            local keystr = key_to_on_key_string(key)
+            local discard = OnKey.dispatch(keystr, keystr)
+            if not discard then
+                Command.HandleKey(key)
+            end
+            need_redraw = true
+        end
+    elseif ev[1] == "key_up" then
+        local k = ev[2]
+        if is_modifier(k) then
+            mods_down[k] = false
+        end
+    elseif ev[1] == "timer" then
+        local timer_id = ev[2]
+        local cb = timers[timer_id]
+        timers[timer_id] = nil
+        if cb then
+            cb(timer_id)
+        end
+    elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
+        local w, h = term.getSize()
+        local ok, err = _V.apply_terminal_resize(w, h, ev[1])
+        if not ok and err then
+            local msg
+            if Error.IsError(err) then
+                msg = err:toString()
+            else
+                msg = tostring(err)
+            end
+            ExMsg.echoerr(msg)
+        end
+    end
+
+    ExMsg.Finalize()
+end
+
+function Event.PullAndProcess(filter)
+    local ok, e1, e2, e3, e4, e5, e6 = pcall(os.pullEvent, filter)
+    if not ok then
+        return false, e1
+    end
+    Event.ProcessEvent({ e1, e2, e3, e4, e5, e6 })
+    return true
+end
+
 function Event.RunLoop()
     running = true
 
@@ -72,44 +130,10 @@ function Event.RunLoop()
             what_redraw = {}
         end
 
-        local ev = { os.pullEvent() }
-
-        if ev[1] == "key" then
-            local k = ev[2]
-
-            if is_modifier(k) then
-                mods_down[k] = true
-            elseif not ignored_keys[k] then
-                local c, s, a = current_mod_flags()
-                local key = Key:new(k, c, s, a)
-                local keystr = key_to_on_key_string(key)
-                local discard = OnKey.dispatch(keystr, keystr)
-                if not discard then
-                    Command.HandleKey(key)
-                end
-                need_redraw = true
-            end
-        elseif ev[1] == "key_up" then
-            local k = ev[2]
-            if is_modifier(k) then
-                mods_down[k] = false
-            end
-        elseif ev[1] == "timer" then
-            if timers[ev[2]] then timers[ev[2]](ev[2]) end
-        elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
-            local w, h = term.getSize()
-            local ok, err = _V.apply_terminal_resize(w, h, ev[1])
-            if not ok and err then
-                local msg
-                if Error.IsError(err) then
-                    msg = err:toString()
-                else
-                    msg = tostring(err)
-                end
-                ExMsg.echoerr(msg)
-            end
+        local ok, err = Event.PullAndProcess()
+        if not ok then
+            error(err)
         end
-        ExMsg.Finalize()
     end
 end
 

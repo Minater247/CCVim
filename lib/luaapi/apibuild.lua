@@ -189,6 +189,8 @@ function ApiBuild.Build()
             tbl_deep_extend = tblutils.deep_extend,
             schedule = timerutils.schedule,
             schedule_wrap = timerutils.schedule_wrap,
+            wait = timerutils.wait,
+            in_fast_event = timerutils.in_fast_event,
             log = log,
             notify = notify.notify,
             notify_once = notify.notify_once,
