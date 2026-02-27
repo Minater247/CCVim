@@ -164,6 +164,42 @@ function ApiBuild.Build()
         end,
     })
 
+    local function vim_defer_require(root, mod)
+        return setmetatable({ _submodules = mod }, {
+            __index = function(t, k)
+                if not mod[k] then
+                    return
+                end
+                local name = string.format("%s.%s", root, k)
+                t[k] = require(name)
+                return t[k]
+            end,
+        })
+    end
+
+    local function table_maxn(t)
+        local maxk = 0
+        for k, _ in pairs(t) do
+            if type(k) == "number" and k > maxk then
+                maxk = k
+            end
+        end
+        return maxk
+    end
+
+    local table_compat = setmetatable({
+        maxn = table_maxn,
+    }, { __index = table })
+
+    local lsp_proxy = setmetatable({}, {
+        __index = function(t, key)
+            local mod = require("vim.lsp")
+            mainapi.vim.lsp = mod
+            t = mod
+            return t[key]
+        end,
+    })
+
     mainapi = {
         vim = {
             api = api,
@@ -213,6 +249,7 @@ function ApiBuild.Build()
             filetype = filetype_proxy,
             iter = iter_proxy,
             treesitter = treesitter,
+            lsp = lsp_proxy,
             validate = validate.validate,
             trim = strutils.trim,
             list_extend = tblutils.list_extend,
@@ -227,10 +264,12 @@ function ApiBuild.Build()
             _with = vim_with,
             on_key = on_key.on_key,
             _on_key = on_key.dispatch,
+            _defer_require = vim_defer_require,
         },
         jit = jit,
         require = require,
         package = package,
+        table = table_compat,
 
         -- DEBUG
         LOG_DEBUG = LOG_DEBUG,

@@ -12,7 +12,7 @@ local function compile_with_env(code, chunkname, env)
     return load(code, chunkname or "=(chunk)", "t", env)
 end
 
-function LuaLoader.LoadFile(path)
+function LuaLoader.LoadFile(path, ...)
     path = VimFs.abspath(path)
 
     local plugin
@@ -29,7 +29,7 @@ function LuaLoader.LoadFile(path)
         end
         ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         ScriptSource.PushContext(path)
-        plugin = chunk()
+        plugin = chunk(...)
         ScriptSource.PopContext()
         loaded[path] = plugin
     end

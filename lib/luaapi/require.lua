@@ -39,7 +39,7 @@ return function(dotpath)
         error("module '" .. dotpath .. "' not found: ")
     end
 
-    local ok, loaded = pcall(LuaLoader.LoadFile, realpath)
+    local ok, loaded = pcall(LuaLoader.LoadFile, realpath, dotpath)
     if not ok then
         error(loaded)
     end
