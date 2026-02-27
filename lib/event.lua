@@ -124,10 +124,16 @@ function Event.RunLoop()
     what_redraw["all"] = true
 
     while running do
-        if need_redraw then
+        local defer_redraw = false
+        if need_redraw and options.get("lazyredraw") then
+            defer_redraw = lazyredraw_block > 0 and not lazyredraw_force
+        end
+
+        if need_redraw and not defer_redraw then
             need_redraw = false
             tabpages[curtp]:render()
             what_redraw = {}
+            lazyredraw_force = false
         end
 
         local ok, err = Event.PullAndProcess()

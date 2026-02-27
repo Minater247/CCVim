@@ -65,6 +65,8 @@ function MockEnv.setup(config)
     -- Editor state
     _G.need_redraw = false
     _G.what_redraw = {}
+    _G.lazyredraw_block = 0
+    _G.lazyredraw_force = false
     _G.registers = {}
     _G.keys = config.keys or make_default_keys()
 
@@ -225,6 +227,8 @@ function MockEnv.setup(config)
         end
         error(("loadModule failed for %s (%s)"):format(name, tostring(last_err)))
     end
+
+    _G.options = config.options or _G.options or _G.loadModule("lib.options")
     
     -- Return helper object with metatable interfaces
     local mock = {

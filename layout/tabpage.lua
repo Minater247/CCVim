@@ -448,9 +448,10 @@ function Tabpage:render()
     backwin.setVisible(false)
     local prevTerm = term.redirect(backwin)
     Decoration.begin_redraw()
+    local redraw_windows = what_redraw["all"] or what_redraw["windows"]
 
     for i = 1, #self.windows do
-        if self.windows[i].need_redraw or what_redraw["all"] or self.windows[i].floatpos or what_redraw["windows"] then
+        if self.windows[i].need_redraw or redraw_windows or self.windows[i].floatpos then
             if self.windows[i].frame then
                 local x, y = FrameTree.GetXY(self.windows[i].frame)
                 self.windows[i]:render(x, y + self.winyoff)
@@ -462,7 +463,8 @@ function Tabpage:render()
     end
 
     local stal = options.get("showtabline")
-    if stal == 2 or (stal == 1 and #tabpages > 1) then
+    local redraw_tabline = what_redraw["all"] or what_redraw["tabline"] or redraw_windows
+    if redraw_tabline and (stal == 2 or (stal == 1 and #tabpages > 1)) then
         local tabline = options.get("tabline")
 
         -- TODO: Use a proper default for the tabline string
@@ -478,7 +480,9 @@ function Tabpage:render()
         term.write(string.rep(" ", screen.width - #tabline))
     end
 
-    if options.get("laststatus") == 3 then
+    local redraw_global_statusline = what_redraw["all"] or redraw_windows
+        or what_redraw["statusline"] or what_redraw["winbar"]
+    if redraw_global_statusline and options.get("laststatus") == 3 then
         term.setCursorPos(1, self.winyoff + self.tree.height + 1)
 
         local spans = Statusline.Parse(options.get("statusline", windows[curwin]), windows[curwin], self.tree.width)

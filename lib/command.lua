@@ -852,7 +852,18 @@ function Command.execute_normal_keys(seq, opts)
     opts = opts or {}
     local remap = opts.remap ~= false
     local policy = remap and POLICY_FULL or POLICY_CB_ONLY
-    return Command._feed_seq_with_policy(seq or {}, policy, true)
+    local lazy_block = options.get("lazyredraw")
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block + 1
+    end
+    local ok, rv = pcall(Command._feed_seq_with_policy, seq or {}, policy, true)
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block - 1
+    end
+    if not ok then
+        error(rv)
+    end
+    return rv
 end
 
 function Command._on_timeout()

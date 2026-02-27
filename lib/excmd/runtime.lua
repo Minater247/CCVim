@@ -1211,24 +1211,37 @@ function Runtime.new(state, opts)
     end
 
     function self:exec_script(script)
-        local code, err = Compiler.compile_script(script, { state = self.state })
-        if not code then error(err) end
-        local env = setmetatable({ runtime = self, _G = _G }, { __index = _G })
-        local chunk, lerr = load(code, "excmd_compiled", "t", env)
-        if not chunk then
-            local path = ccvim_path .. "/log/excmd_compiled_last.lua"
-            local f = fs.open(path, "w")
-            if f then
-                f.write(code)
-                f.close()
-            end
-            LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(lerr), path)
-            error(lerr)
+        local lazy_block = Options.get("lazyredraw")
+        if lazy_block then
+            lazyredraw_block = lazyredraw_block + 1
         end
-        local fn = chunk()
-        self:_push_script_ctx()
-        local ok, rv = pcall(fn, self.state, self)
-        self:_pop_script_ctx()
+
+        local ok, rv = pcall(function()
+            local code, err = Compiler.compile_script(script, { state = self.state })
+            if not code then error(err) end
+            local env = setmetatable({ runtime = self, _G = _G }, { __index = _G })
+            local chunk, lerr = load(code, "excmd_compiled", "t", env)
+            if not chunk then
+                local path = ccvim_path .. "/log/excmd_compiled_last.lua"
+                local f = fs.open(path, "w")
+                if f then
+                    f.write(code)
+                    f.close()
+                end
+                LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(lerr), path)
+                error(lerr)
+            end
+            local fn = chunk()
+            self:_push_script_ctx()
+            local fn_ok, fn_rv = pcall(fn, self.state, self)
+            self:_pop_script_ctx()
+            if not fn_ok then error(fn_rv) end
+            return fn_rv
+        end)
+
+        if lazy_block then
+            lazyredraw_block = lazyredraw_block - 1
+        end
         if not ok then error(rv) end
         return rv
     end
@@ -3674,6 +3687,7 @@ function Runtime.new(state, opts)
         elseif cmd == "mode" or cmd == "redraw" then
             what_redraw["all"] = true
             need_redraw = true
+            lazyredraw_force = true
             return true
         elseif cmd == "redrawstatus" then
             if bang then
@@ -3690,11 +3704,12 @@ function Runtime.new(state, opts)
             -- Also refresh commandline display (ruler/showcmd-style content).
             what_redraw["commandline"] = true
             need_redraw = true
+            lazyredraw_force = true
             return true
         elseif cmd == "redrawtabline" then
-            -- We currently do not have a tabline-only redraw path.
-            what_redraw["all"] = true
+            what_redraw["tabline"] = true
             need_redraw = true
+            lazyredraw_force = true
             return true
         elseif cmd == "redir" then
             local spec, perr = _parse_redir_spec(argstr)

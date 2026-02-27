@@ -64,6 +64,8 @@ _V = {
 
     need_redraw = true,
     what_redraw = {},
+    lazyredraw_block = 0,
+    lazyredraw_force = false,
 
     registers = {},
 

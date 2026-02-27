@@ -383,21 +383,34 @@ local function flush_feedkeys_queue()
     end
 
     feedkeys_flushing = true
+    local lazy_block = options.get("lazyredraw")
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block + 1
+    end
     local queue = feedkeys_queue
     feedkeys_queue = {}
-    for i = 1, #queue do
-        local op = queue[i]
-        if op.kind == "keys" then
-            for j = 1, #op.seq do
-                if op.noremap then
-                    Command._handle_key_with_policy(op.seq[j], Command.POLICY_NOREMAP, true)
-                else
-                    Command.HandleKey(op.seq[j])
+    local ok, err = pcall(function()
+        for i = 1, #queue do
+            local op = queue[i]
+            if op.kind == "keys" then
+                for j = 1, #op.seq do
+                    if op.noremap then
+                        Command._handle_key_with_policy(op.seq[j], Command.POLICY_NOREMAP, true)
+                    else
+                        Command.HandleKey(op.seq[j])
+                    end
                 end
+            elseif op.kind == "cmd" then
+                _run_feedkeys_cmdline(op.cmd)
             end
-        elseif op.kind == "cmd" then
-            _run_feedkeys_cmdline(op.cmd)
         end
+    end)
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block - 1
+    end
+    if not ok then
+        feedkeys_flushing = false
+        error(err)
     end
     feedkeys_flushing = false
 end
@@ -1064,39 +1077,78 @@ function api.nvim__redraw(opts)
     local touched_window = false
     local target_buf = nil
 
-    if opts.win ~= nil then
-        local win = win_for_id(opts.win)
+    local function mark_window_for_redraw(win)
         win.need_redraw = true
         touched_window = true
-    elseif opts.buf ~= nil then
-        target_buf = buf_for_bufnr(opts.buf)
-        if target_buf then
-            for _, win in pairs(windows) do
-                if win.buffer == target_buf then
-                    win.need_redraw = true
-                    touched_window = true
-                end
+    end
+
+    local function mark_windows_for_buffer(buf)
+        if not buf then
+            return
+        end
+        for _, win in pairs(windows) do
+            if win.buffer == buf then
+                mark_window_for_redraw(win)
             end
         end
     end
 
-    if not touched_window then
-        if opts.valid == false then
-            what_redraw["all"] = true
-        else
-            what_redraw["windows"] = true
+    local function mark_all_windows_for_redraw()
+        for _, win in pairs(windows) do
+            mark_window_for_redraw(win)
         end
     end
 
-    if opts.tabline then
-        what_redraw["all"] = true
+    if opts.win ~= nil then
+        local win = win_for_id(opts.win)
+        mark_window_for_redraw(win)
+        target_buf = win.buffer
+    elseif opts.buf ~= nil then
+        target_buf = buf_for_bufnr(opts.buf)
+        mark_windows_for_buffer(target_buf)
     end
-    -- TODO: match this granularity in the renderer
-    if opts.statusline or opts.statuscolumn or opts.winbar or opts.cursor then
+
+    if opts.range ~= nil and not touched_window then
+        if not target_buf then
+            target_buf = windows[curwin].buffer
+        end
+        mark_windows_for_buffer(target_buf)
+    end
+
+    if opts.statusline or opts.statuscolumn or opts.winbar then
+        if opts.statusline then
+            what_redraw["statusline"] = true
+        end
+        if opts.statuscolumn then
+            what_redraw["statuscolumn"] = true
+        end
+        if opts.winbar then
+            what_redraw["winbar"] = true
+        end
+        if not touched_window then
+            mark_all_windows_for_redraw()
+        end
+    end
+
+    if opts.cursor then
+        what_redraw["cursor"] = true
+        if not touched_window then
+            mark_window_for_redraw(windows[curwin])
+        end
+    end
+
+    if opts.valid ~= nil and not touched_window then
+        what_redraw["windows"] = true
+    end
+
+    if opts.tabline then
+        what_redraw["tabline"] = true
+    elseif not touched_window and opts.range == nil and opts.valid == nil then
         what_redraw["windows"] = true
     end
 
     need_redraw = true
+    lazyredraw_force = true
 
     if flush and not Decoration.is_redraw_active() then
         local tab = tabpages[curtp]
@@ -1104,6 +1156,7 @@ function api.nvim__redraw(opts)
             need_redraw = false
             tab:render()
             what_redraw = {}
+            lazyredraw_force = false
         end
     end
 end
