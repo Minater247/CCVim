@@ -142,7 +142,8 @@ function VimFs.joinpath(...)
         if type(path) ~= "string" then
             error(("path: expected string, got %s"):format(type(path)))
         end
-        path = path:gsub("\\", "/"):gsub("^/+", "")
+        path = path:gsub("\\", "/")
+        path = path:gsub("^/+", "")
         for component in path:gmatch("[^/]+") do
             parts[#parts + 1] = component
         end

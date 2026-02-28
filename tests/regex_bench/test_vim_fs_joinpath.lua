@@ -16,17 +16,8 @@ local function assert_true(label, cond, detail)
     end
 end
 
-local function is_windows()
-    local cfg = package and package.config or ""
-    return type(cfg) == "string" and cfg:sub(1, 1) == "\\"
-end
-
 assert_eq("joinpath docs example 1", vimapi.fs.joinpath("foo/", "/bar"), "foo/bar")
-if is_windows() then
-    assert_eq("joinpath docs windows example", vimapi.fs.joinpath("a\\foo\\", "\\bar"), "a/foo/bar")
-else
-    assert_eq("joinpath non-windows keeps backslashes", vimapi.fs.joinpath("a\\foo\\", "\\bar"), "a\\foo\\/\\bar")
-end
+assert_eq("joinpath backslashes normalize to slashes", vimapi.fs.joinpath("a\\foo\\", "\\bar"), "a/foo/bar")
 assert_eq("joinpath absolute first path", vimapi.fs.joinpath("/foo//", "///bar", "baz"), "/foo/bar/baz")
 assert_eq("joinpath root first path", vimapi.fs.joinpath("/", "bar"), "/bar")
 assert_eq("joinpath empty first path", vimapi.fs.joinpath("", "bar"), "bar")

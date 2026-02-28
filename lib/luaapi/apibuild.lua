@@ -7,6 +7,7 @@ local jit = _jit or loadModule("lib.luaapi.fakejit")
 local opts = loadModule("lib.luaapi.opts")
 local on_key = loadModule("lib.luaapi.on_key")
 local Runtime = loadModule("lib.excmd.runtime")
+local ExMsg = loadModule("lib.excmd.exmsg")
 local fn = loadModule("lib.luaapi.fn")
 local defer_fn = loadModule("lib.luaapi.deferfn")
 local require = loadModule("lib.luaapi.require")
@@ -70,6 +71,7 @@ local SHARED_VIM_EXPORTS = {
     "ringbuf",
     "_defer_require",
     "_defer_deprecated_module",
+    "_with",
     "_resolve_bufnr",
     "_ensure_list",
 }
@@ -77,46 +79,18 @@ local SHARED_VIM_EXPORTS = {
 -- TODO: we need a print function.
 -- functions print as <function>, so this knowledge is kept somewhere
 
-local function load_shared_vim_functions(vim_table, require_fn, table_compat)
+local function load_shared_vim_functions(vim_table, lua_loader)
     local shared_path = ccvim_path .. "/runtime/lua/vim/shared.lua"
 
     local shared_vim = setmetatable({}, {
         __index = vim_table,
     })
-
-    local shared_env = {
-        assert = assert,
-        error = error,
-        getmetatable = getmetatable,
-        ipairs = ipairs,
-        next = next,
-        pairs = pairs,
-        pcall = pcall,
-        rawequal = rawequal,
-        rawget = rawget,
-        rawset = rawset,
-        select = select,
-        setmetatable = setmetatable,
-        tonumber = tonumber,
-        tostring = tostring,
-        type = type,
-        unpack = unpack or table.unpack,
-        math = math,
-        string = string,
-        table = table_compat,
-        require = require_fn,
-        vim = shared_vim,
-    }
-    shared_env._G = shared_env
-
-    local chunk, chunk_err = loadfile(shared_path, "t", shared_env)
-    if not chunk then
-        error(chunk_err)
-    end
-
-    local ok, exec_err = pcall(chunk)
+    local original_vim = mainapi.vim
+    mainapi.vim = shared_vim
+    local ok, load_err = pcall(lua_loader.LoadFile, shared_path)
+    mainapi.vim = original_vim
     if not ok then
-        error(exec_err)
+        error(load_err, 0)
     end
 
     for i = 1, #SHARED_VIM_EXPORTS do
@@ -128,29 +102,9 @@ local function load_shared_vim_functions(vim_table, require_fn, table_compat)
     end
 end
 
-local function load_runtime_vim_F(table_compat)
+local function load_runtime_vim_F(lua_loader)
     local path = ccvim_path .. "/runtime/lua/vim/F.lua"
-    local env = {
-        assert = assert,
-        error = error,
-        pcall = pcall,
-        select = select,
-        unpack = unpack or table.unpack,
-        type = type,
-        table = table_compat,
-    }
-    env._G = env
-
-    local chunk, chunk_err = loadfile(path, "t", env)
-    if not chunk then
-        error(chunk_err)
-    end
-
-    local ok, mod = pcall(chunk)
-    if not ok then
-        error(mod)
-    end
-    return mod
+    return lua_loader.LoadFile(path)
 end
 
 function ApiBuild.Build()
@@ -158,7 +112,7 @@ function ApiBuild.Build()
 
     on_key.set_namespace_allocator(api.nvim_create_namespace)
 
-    local function vim_with(context, f)
+    local function vim_with_c(context, f)
         if type(context) ~= "table" then
             error("context: expected table", 2)
         end
@@ -166,11 +120,59 @@ function ApiBuild.Build()
             error("f: expected function", 2)
         end
 
-        if context.buf ~= nil then
-            return api.nvim_buf_call(context.buf, f)
+        local function _pack(...)
+            return { n = select("#", ...), ... }
         end
 
-        return f()
+        local exec = f
+        if context.win ~= nil then
+            local win = context.win
+            exec = function()
+                return api.nvim_win_call(win, f)
+            end
+        elseif context.buf ~= nil then
+            local buf = context.buf
+            exec = function()
+                return api.nvim_buf_call(buf, f)
+            end
+        end
+
+        local pushed_silent = false
+        local pushed_unsilent = false
+        local prev_eventignore = nil
+
+        if context.silent == true or context.emsg_silent == true then
+            ExMsg.PushSilent({ skip_errors = context.emsg_silent == true })
+            pushed_silent = true
+        end
+
+        if context.unsilent == true then
+            ExMsg.PushUnsilent()
+            pushed_unsilent = true
+        end
+
+        if context.noautocmd == true then
+            prev_eventignore = mainapi.vim.go.eventignore
+            mainapi.vim.go.eventignore = "all"
+        end
+
+        local rv = _pack(pcall(exec))
+
+        if context.noautocmd == true then
+            mainapi.vim.go.eventignore = prev_eventignore
+        end
+        if pushed_unsilent then
+            ExMsg.PopSilent()
+        end
+        if pushed_silent then
+            ExMsg.PopSilent()
+        end
+
+        if not rv[1] then
+            error(rv[2], 0)
+        end
+        local unpack_fn = unpack or table.unpack
+        return unpack_fn(rv, 2, rv.n)
     end
 
     local filetype_proxy = setmetatable({}, {
@@ -181,27 +183,12 @@ function ApiBuild.Build()
         end,
     })
 
+    local LuaLoader
     local iter_mod
     local function load_iter_mod()
         if iter_mod == nil then
             local path = ccvim_path .. "/runtime/lua/vim/iter.lua"
-            local table_shim = setmetatable({
-                maxn = function(t)
-                    local maxk = 0
-                    for k, _ in pairs(t) do
-                        if type(k) == "number" and k > maxk then
-                            maxk = k
-                        end
-                    end
-                    return maxk
-                end,
-            }, { __index = table })
-            local iter_env = setmetatable({ table = table_shim }, { __index = mainapi })
-            local chunk, err = loadfile(path, "t", iter_env)
-            if not chunk then
-                error(err)
-            end
-            iter_mod = chunk()
+            iter_mod = LuaLoader.LoadFile(path)
         end
         return iter_mod
     end
@@ -339,7 +326,7 @@ function ApiBuild.Build()
             str_utfindex = strutils.str_utfindex,
             str_byteindex = strutils.str_byteindex,
             regex = strutils.regex,
-            _with = vim_with,
+            _with_c = vim_with_c,
             on_key = on_key.on_key,
             _on_key = on_key.dispatch,
         },
@@ -357,6 +344,7 @@ function ApiBuild.Build()
     setmetatable(mainapi, {
         __index = _G
     })
+    mainapi._G = mainapi
 
     mainapi.vim._empty_dict_mt = {}
     mainapi.vim.empty_dict = function()
@@ -369,10 +357,9 @@ function ApiBuild.Build()
     mainapi.dofile = FL.dofile
     mainapi.pcall = FL.pcall
 
-    load_shared_vim_functions(mainapi.vim, require, table_compat)
-    mainapi.vim.F = load_runtime_vim_F(table_compat)
-    -- Keep the local implementation until vim._with_c exists.
-    mainapi.vim._with = vim_with
+    LuaLoader = loadModule("lib.lualoader")
+    load_shared_vim_functions(mainapi.vim, LuaLoader)
+    mainapi.vim.F = load_runtime_vim_F(LuaLoader)
 
     return mainapi
 end

@@ -51,6 +51,35 @@ local function make_default_keys()
     })
 end
 
+local function host_exists(path)
+    local f = io.open(path, "r")
+    if f then
+        f:close()
+        return true
+    end
+
+    local ok, _, code = os.rename(path, path)
+    if ok then
+        return true
+    end
+
+    return code == 13
+end
+
+local function host_is_dir(path)
+    if not host_exists(path) then
+        return false
+    end
+
+    local f = io.open(path, "r")
+    if f then
+        f:close()
+        return false
+    end
+
+    return true
+end
+
 ---Setup basic mock environment
 ---@param config? table Optional configuration for custom globals
 ---@return table mock Helper object with metatable interfaces
@@ -116,15 +145,96 @@ function MockEnv.setup(config)
     _G.curwin = config.curwin or 1
     _G.vimmode = config.vimmode or "normal"
     
+    local custom_fs = config.fs
+    local function is_repo_path(path)
+        if type(path) ~= "string" then
+            return false
+        end
+        local root = tostring(_G.ccvim_path or "")
+        if root == "" then
+            return false
+        end
+        local root_rel = root:sub(1, 1) == "/" and root:sub(2) or root
+        local root_abs = root:sub(1, 1) == "/" and root or ("/" .. root)
+        return path == root_rel
+            or path:sub(1, #root_rel + 1) == (root_rel .. "/")
+            or path == root_abs
+            or path:sub(1, #root_abs + 1) == (root_abs .. "/")
+    end
+
     -- ComputerCraft fs API
-    _G.fs = config.fs or {
-        exists = function() return false end,
-        isDir = function() return false end,
-        list = function() return {} end,
-        open = function() return nil end,
-        isReadOnly = function() return false end,
-        getSize = function() return 0 end,
+    local fs_wrapper = {
+        exists = function(path)
+            if custom_fs and type(custom_fs.exists) == "function" then
+                local custom = custom_fs.exists(path)
+                if custom then
+                    return true
+                end
+                if is_repo_path(path) and host_exists(path) then
+                    return true
+                end
+                if custom ~= nil then
+                    return false
+                end
+            end
+            return host_exists(path)
+        end,
+        isDir = function(path)
+            if custom_fs and type(custom_fs.isDir) == "function" then
+                local custom = custom_fs.isDir(path)
+                if custom then
+                    return true
+                end
+                if is_repo_path(path) and host_is_dir(path) then
+                    return true
+                end
+                if custom ~= nil then
+                    return false
+                end
+            end
+            return host_is_dir(path)
+        end,
+        list = function(path)
+            if custom_fs and type(custom_fs.list) == "function" then
+                local custom = custom_fs.list(path)
+                if custom ~= nil then
+                    return custom
+                end
+            end
+            return {}
+        end,
+        open = function(path, mode)
+            if custom_fs and type(custom_fs.open) == "function" then
+                local custom = custom_fs.open(path, mode)
+                if custom ~= nil then
+                    return custom
+                end
+            end
+            return nil
+        end,
+        isReadOnly = function(path)
+            if custom_fs and type(custom_fs.isReadOnly) == "function" then
+                local custom = custom_fs.isReadOnly(path)
+                if custom ~= nil then
+                    return custom
+                end
+            end
+            return false
+        end,
+        getSize = function(path)
+            if custom_fs and type(custom_fs.getSize) == "function" then
+                local custom = custom_fs.getSize(path)
+                if custom ~= nil then
+                    return custom
+                end
+            end
+            return 0
+        end,
     }
+    if type(custom_fs) == "table" then
+        setmetatable(fs_wrapper, { __index = custom_fs })
+    end
+    _G.fs = fs_wrapper
     
     -- ComputerCraft colors API
     _G.colors = config.colors or make_default_colors()
@@ -338,6 +448,8 @@ function MockEnv.setup(config)
         buf.str_each_codepoint = function(self, s, visitor)
             return Utf8.each_codepoint(s or "", visitor)
         end
+        buf.undo_begin = function() end
+        buf.undo_end = function() end
         buf.line_len = function(self, line_nr, load_if_unloaded)
             local line = self:get_line(line_nr, load_if_unloaded) or ""
             return Utf8.len(line)
