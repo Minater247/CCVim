@@ -176,6 +176,7 @@ local function ensure_state(state)
     state.funcs = state.funcs or {}
     state.frames = state.frames or {}
     state.commands = state.commands or {}
+    state.menus = state.menus or {}
     state.script_ctx = state.script_ctx
     script_sid_for_state(state)
     return state
@@ -893,6 +894,7 @@ local function rejoin_equals(args)
 end
 
 local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
+local MENU_COMMAND_SPECS = Commands.MENU_COMMAND_SPECS
 local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
 local resolve_dispatch_name = Commands.resolve_dispatch_name
 
@@ -2943,6 +2945,453 @@ function Runtime.new(state, opts)
         return true
     end
 
+    local function _menu_state()
+        local menus = self.state.menus
+        if type(menus) ~= "table" then
+            menus = {}
+            self.state.menus = menus
+        end
+        menus.items = menus.items or {}
+        menus.tooltips = menus.tooltips or {}
+        menus.translations = menus.translations or {}
+        return menus
+    end
+
+    local function _menu_mode_bucket(modes)
+        local menus = _menu_state()
+        local key = tostring(modes or "")
+        local bucket = menus.items[key]
+        if type(bucket) ~= "table" then
+            bucket = {}
+            menus.items[key] = bucket
+        end
+        return bucket
+    end
+
+    local function _menu_path_matches(name, pat)
+        if pat == "*" then
+            return true
+        end
+        if pat:sub(-2) == ".*" then
+            pat = pat:sub(1, -3)
+            if pat == "" then
+                return true
+            end
+        end
+        if name == pat then
+            return true
+        end
+        return name:sub(1, #pat + 1) == pat .. "."
+    end
+
+    local function _menu_translate_name(name)
+        local menus = _menu_state()
+        local translated = menus.translations[name]
+        if translated then
+            return translated
+        end
+        local out = {}
+        local changed = false
+        for part in tostring(name or ""):gmatch("([^.]+)") do
+            local p = menus.translations[part]
+            if p then
+                out[#out + 1] = p
+                changed = true
+            else
+                out[#out + 1] = part
+            end
+        end
+        if changed then
+            return table.concat(out, ".")
+        end
+        return name
+    end
+
+    local function _split_menu_path(name)
+        local out = {}
+        for part in tostring(name or ""):gmatch("([^.]+)") do
+            out[#out + 1] = part
+        end
+        return out
+    end
+
+    local function _menu_validate_path(name)
+        name = tostring(name or "")
+        if name == "" or name:sub(1, 1) == "." or name:sub(-1) == "." or name:find("%.%.", 1, true) then
+            return nil, Error(475, name)
+        end
+        return _split_menu_path(name), nil
+    end
+
+    local function _menu_has_prefix(modes, prefix)
+        local bucket = _menu_mode_bucket(modes)
+        for _, item in pairs(bucket) do
+            local raw = item.name
+            local translated = item.translated
+            if raw == prefix or raw:sub(1, #prefix + 1) == prefix .. "." then
+                return true
+            end
+            if translated and (translated == prefix or translated:sub(1, #prefix + 1) == prefix .. ".") then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function _menu_missing_segment(modes, name)
+        local parts, perr = _menu_validate_path(name)
+        if Error.IsError(perr) then
+            return nil, perr
+        end
+        if #parts == 1 and parts[1] == "*" then
+            return nil, nil
+        end
+
+        local prefix = ""
+        for i = 1, #parts do
+            local seg = parts[i]
+            if seg == "*" then
+                return nil, nil
+            end
+            local next_prefix = (prefix == "") and seg or (prefix .. "." .. seg)
+            if not _menu_has_prefix(modes, next_prefix) then
+                return seg, nil
+            end
+            prefix = next_prefix
+        end
+        return nil, nil
+    end
+
+    local function _menu_tooltip_has_prefix(prefix)
+        local menus = _menu_state()
+        for key in pairs(menus.tooltips) do
+            if key == prefix or key:sub(1, #prefix + 1) == prefix .. "." then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function _menu_tooltip_missing_segment(name)
+        local parts, perr = _menu_validate_path(name)
+        if Error.IsError(perr) then
+            return nil, perr
+        end
+        if #parts == 1 and parts[1] == "*" then
+            return nil, nil
+        end
+
+        local prefix = ""
+        for i = 1, #parts do
+            local seg = parts[i]
+            if seg == "*" then
+                return "*", nil
+            end
+            local next_prefix = (prefix == "") and seg or (prefix .. "." .. seg)
+            if not _menu_tooltip_has_prefix(next_prefix) then
+                return seg, nil
+            end
+            prefix = next_prefix
+        end
+        return nil, nil
+    end
+
+    local function _menu_item_matches(name, item, pat)
+        if _menu_path_matches(name, pat) then
+            return true
+        end
+        local translated = item and item.translated
+        if translated and _menu_path_matches(translated, pat) then
+            return true
+        end
+        return false
+    end
+
+    local function _consume_menu_options(args, idx)
+        local out = {}
+        while idx <= #args do
+            local tok = args[idx]
+            local bracket = tok:match("^<([^>]+)>$")
+            if bracket then
+                out[bracket:lower()] = true
+                idx = idx + 1
+            else
+                local k, v = tok:match("^([%a_][%w_]*)=(.*)$")
+                if not k then
+                    break
+                end
+                out[k:lower()] = v
+                idx = idx + 1
+            end
+        end
+        return idx, out
+    end
+
+    local function _is_menu_priority(tok)
+        return type(tok) == "string" and tok:match("^%d+([.]%d+)*$") ~= nil
+    end
+
+    local function _menu_set_enabled(modes, pat, enabled)
+        local bucket = _menu_mode_bucket(modes)
+        local changed = 0
+        for name, item in pairs(bucket) do
+            if _menu_item_matches(name, item, pat) then
+                item.enabled = enabled and true or false
+                changed = changed + 1
+            end
+        end
+        return changed
+    end
+
+    local function _menu_remove(modes, pat)
+        local bucket = _menu_mode_bucket(modes)
+        local changed = 0
+        for name, item in pairs(bucket) do
+            if _menu_item_matches(name, item, pat) then
+                bucket[name] = nil
+                changed = changed + 1
+            end
+        end
+        return changed
+    end
+
+    local function _menu_find_item(name)
+        local menus = _menu_state()
+        local lookup_order = { "a", "nvo", "n", "vs", "x", "s", "o", "i", "c", "tl" }
+        for i = 1, #lookup_order do
+            local bucket = menus.items[lookup_order[i]]
+            local item = bucket and bucket[name]
+            if item then
+                return item
+            end
+            if bucket then
+                for _, v in pairs(bucket) do
+                    if v.translated == name then
+                        return v
+                    end
+                end
+            end
+        end
+        for _, bucket in pairs(menus.items) do
+            local item = bucket and bucket[name]
+            if item then
+                return item
+            end
+        end
+        return nil
+    end
+
+    local function _run_menu_ex_command(cmd_name, argstr, bang)
+        local spec = MENU_COMMAND_SPECS[cmd_name]
+        if not spec then
+            return Error(492, cmd_name)
+        end
+        if bang then
+            return Error(474, "No ! allowed")
+        end
+
+        local raw = strip(argstr)
+        local args = split_ws(raw)
+        local idx = 1
+        local menu_opts
+        idx, menu_opts = _consume_menu_options(args, idx)
+
+        if spec.action == "translate" then
+            local menus = _menu_state()
+            local from = args[idx]
+            if not from then
+                return true
+            end
+            if from:lower() == "clear" and idx == #args then
+                menus.translations = {}
+                return true
+            end
+            local to = table.concat(args, " ", idx + 1)
+            if to == "" then
+                return true
+            end
+            menus.translations[from] = to
+            return true
+        end
+
+        if spec.action == "tooltip" then
+            local priority
+            if _is_menu_priority(args[idx]) then
+                priority = args[idx]
+                idx = idx + 1
+            end
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            idx = idx + 1
+            local text = table.concat(args, " ", idx)
+            local menus = _menu_state()
+            menus.tooltips[name] = {
+                name = name,
+                text = text,
+                priority = priority,
+            }
+            return true
+        end
+
+        if spec.action == "tooltip_remove" then
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            local menus = _menu_state()
+            local missing, merr = _menu_tooltip_missing_segment(name)
+            if Error.IsError(merr) then
+                return merr
+            end
+            if missing then
+                return Error(329, missing)
+            end
+            if name == "*" then
+                menus.tooltips = {}
+                return true
+            end
+
+            for key in pairs(menus.tooltips) do
+                if key == name or key:sub(1, #name + 1) == name .. "." then
+                    menus.tooltips[key] = nil
+                end
+            end
+            return true
+        end
+
+        if spec.action == "remove" then
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            local missing, merr = _menu_missing_segment(spec.modes, name)
+            if Error.IsError(merr) then
+                return merr
+            end
+            if missing then
+                return Error(329, missing)
+            end
+            local changed = _menu_remove(spec.modes, name)
+            if changed == 0 and name ~= "*" then
+                local root = name:match("^[^.]+") or name
+                return Error(329, root)
+            end
+            return true
+        end
+
+        if spec.action == "execute" then
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            local item = _menu_find_item(name)
+            if not item then
+                return Error(334, name)
+            end
+            local rhs = tostring(item.rhs or "")
+            if rhs == "" then
+                return true
+            end
+
+            local run = rhs
+            local low = rhs:lower()
+            if low:sub(1, 5) == "<cmd>" then
+                run = rhs:sub(6)
+                run = run:gsub("<[cC][rR]>%s*$", "")
+                run = strip(run)
+                if run == "" then
+                    return true
+                end
+                return self:exec_script(run)
+            end
+            if rhs:sub(1, 1) == ":" then
+                run = rhs:sub(2)
+                run = run:gsub("<[cC][rR]>%s*$", "")
+                run = strip(run)
+                if run == "" then
+                    return true
+                end
+                return self:exec_script(run)
+            end
+            return self:exec_script(rhs)
+        end
+
+        if spec.action == "define" then
+            local operation
+            local token = args[idx] and args[idx]:lower() or nil
+            if token == "enable" or token == "disable" then
+                operation = token
+                idx = idx + 1
+            end
+
+            local priority
+            if not operation and _is_menu_priority(args[idx]) then
+                priority = args[idx]
+                idx = idx + 1
+            end
+
+            if not operation then
+                token = args[idx] and args[idx]:lower() or nil
+                if token == "enable" or token == "disable" then
+                    operation = token
+                    idx = idx + 1
+                end
+            end
+
+            local name = args[idx]
+            if not name then
+                if operation then
+                    return Error(329, operation)
+                end
+                return true
+            end
+            idx = idx + 1
+
+            if operation then
+                local missing, merr = _menu_missing_segment(spec.modes, name)
+                if Error.IsError(merr) then
+                    return merr
+                end
+                if missing then
+                    return Error(329, missing)
+                end
+                local changed = _menu_set_enabled(spec.modes, name, operation == "enable")
+                if changed == 0 and name ~= "*" then
+                    local root = name:match("^[^.]+") or name
+                    return Error(329, root)
+                end
+                return true
+            end
+
+            local rhs = table.concat(args, " ", idx)
+            local rhs_expanded, serr = _expand_map_sid(rhs)
+            if Error.IsError(serr) then
+                return serr
+            end
+
+            local bucket = _menu_mode_bucket(spec.modes)
+            if bucket[name] and menu_opts.unique then
+                return Error(474, "Menu exists: " .. name)
+            end
+
+            bucket[name] = {
+                name = name,
+                translated = _menu_translate_name(name),
+                rhs = rhs_expanded or "",
+                priority = priority,
+                enabled = true,
+                recursive = spec.recursive and true or false,
+                modes = spec.modes,
+                opts = menu_opts,
+            }
+            return true
+        end
+
+        return Error(474, "Unsupported menu action: " .. tostring(spec.action))
+    end
+
     local function _split_csv(s)
         local t = {}
         for part in tostring(s or ""):gmatch("([^,]+)") do
@@ -3391,6 +3840,11 @@ function Runtime.new(state, opts)
     function self:_invoke_builtin(cmd, argstr, bang, cmdctx)
         if MAP_COMMAND_SPECS[cmd] then
             local rv = _run_map_ex_command(cmd, argstr, bang)
+            if Error.IsError(rv) then error(rv) end
+            return rv
+        end
+        if MENU_COMMAND_SPECS[cmd] then
+            local rv = _run_menu_ex_command(cmd, argstr, bang)
             if Error.IsError(rv) then error(rv) end
             return rv
         end
@@ -4657,7 +5111,7 @@ function Runtime.new(state, opts)
 
         local dispatch_cmd = spec.dispatch
         if not dispatch_cmd then
-            if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] then
+            if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] or MENU_COMMAND_SPECS[lname] then
                 dispatch_cmd = lname
             else
                 dispatch_cmd = resolve_dispatch_name(lname)
@@ -4759,6 +5213,7 @@ function Runtime.CaptureDurableScriptState(opts)
         g = state.g or scopes._g or {},
         s = state.s or {},
         funcs = state.funcs or {},
+        menus = state.menus or {},
         script_ctx = state.script_ctx,
         script_sid = state.script_sid,
     }
@@ -4781,6 +5236,7 @@ function Runtime.MakeRuntimeState(durable, extra_v)
         g = type(durable.g) == "table" and durable.g or scopes._g or {},
         s = type(durable.s) == "table" and durable.s or {},
         funcs = type(durable.funcs) == "table" and durable.funcs or {},
+        menus = type(durable.menus) == "table" and durable.menus or {},
         v = fresh_v(extra_v),
         l = {},
         a = {},

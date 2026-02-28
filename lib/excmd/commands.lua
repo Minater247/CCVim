@@ -111,6 +111,41 @@ local COMMAND_SPECS = {
     { name = "cmapclear", min = 5, dispatch = true, map = { action = "clear", modes = "c", min_abbrev = 5 } },
     { name = "tmapclear", min = 5, dispatch = true, map = { action = "clear", modes = "t", min_abbrev = 5 } },
 
+    { name = "menu", min = 2, dispatch = true, menu = { action = "define", modes = "nvo", recursive = true } },
+    { name = "noremenu", min = 6, dispatch = true, menu = { action = "define", modes = "nvo", recursive = false } },
+    { name = "unmenu", min = 4, dispatch = true, menu = { action = "remove", modes = "nvo" } },
+    { name = "amenu", min = 2, dispatch = true, menu = { action = "define", modes = "a", recursive = true } },
+    { name = "anoremenu", min = 2, dispatch = true, menu = { action = "define", modes = "a", recursive = false } },
+    { name = "aunmenu", min = 3, dispatch = true, menu = { action = "remove", modes = "a" } },
+    { name = "nmenu", min = 3, dispatch = true, menu = { action = "define", modes = "n", recursive = true } },
+    { name = "nnoremenu", min = 7, dispatch = true, menu = { action = "define", modes = "n", recursive = false } },
+    { name = "nunmenu", min = 5, dispatch = true, menu = { action = "remove", modes = "n" } },
+    { name = "vmenu", min = 3, dispatch = true, menu = { action = "define", modes = "vs", recursive = true } },
+    { name = "vnoremenu", min = 7, dispatch = true, menu = { action = "define", modes = "vs", recursive = false } },
+    { name = "vunmenu", min = 5, dispatch = true, menu = { action = "remove", modes = "vs" } },
+    { name = "xmenu", min = 3, dispatch = true, menu = { action = "define", modes = "x", recursive = true } },
+    { name = "xnoremenu", min = 7, dispatch = true, menu = { action = "define", modes = "x", recursive = false } },
+    { name = "xunmenu", min = 5, dispatch = true, menu = { action = "remove", modes = "x" } },
+    { name = "smenu", min = 3, dispatch = true, menu = { action = "define", modes = "s", recursive = true } },
+    { name = "snoremenu", min = 7, dispatch = true, menu = { action = "define", modes = "s", recursive = false } },
+    { name = "sunmenu", min = 5, dispatch = true, menu = { action = "remove", modes = "s" } },
+    { name = "omenu", min = 3, dispatch = true, menu = { action = "define", modes = "o", recursive = true } },
+    { name = "onoremenu", min = 7, dispatch = true, menu = { action = "define", modes = "o", recursive = false } },
+    { name = "ounmenu", min = 5, dispatch = true, menu = { action = "remove", modes = "o" } },
+    { name = "imenu", min = 3, dispatch = true, menu = { action = "define", modes = "i", recursive = true } },
+    { name = "inoremenu", min = 7, dispatch = true, menu = { action = "define", modes = "i", recursive = false } },
+    { name = "iunmenu", min = 5, dispatch = true, menu = { action = "remove", modes = "i" } },
+    { name = "cmenu", min = 3, dispatch = true, menu = { action = "define", modes = "c", recursive = true } },
+    { name = "cnoremenu", min = 7, dispatch = true, menu = { action = "define", modes = "c", recursive = false } },
+    { name = "cunmenu", min = 5, dispatch = true, menu = { action = "remove", modes = "c" } },
+    { name = "emenu", min = 2, dispatch = true, menu = { action = "execute", modes = "a" } },
+    { name = "tmenu", min = 2, dispatch = true, menu = { action = "tooltip", modes = "t" } },
+    { name = "tlmenu", min = 3, dispatch = true, menu = { action = "define", modes = "tl", recursive = true } },
+    { name = "tlnoremenu", min = 3, dispatch = true, menu = { action = "define", modes = "tl", recursive = false } },
+    { name = "tlunmenu", min = 3, dispatch = true, menu = { action = "remove", modes = "tl" } },
+    { name = "tunmenu", min = 2, dispatch = true, menu = { action = "tooltip_remove", modes = "t" } },
+    { name = "menutranslate", min = 5, dispatch = true, menu = { action = "translate", modes = "" } },
+
     { name = "keepjumps", min = 5, dispatch = true },
     { name = "keepalt", min = 5, dispatch = true },
     { name = "keeppatterns", min = 5, dispatch = true },
@@ -153,6 +188,7 @@ local PARSE_REGISTRY = {}
 local DISPATCH_MIN_ABBREV = {}
 local DISPATCH_REGISTRY = {}
 local MAP_COMMAND_SPECS = {}
+local MENU_COMMAND_SPECS = {}
 
 for _, spec in ipairs(COMMAND_SPECS) do
     SPEC_BY_NAME[spec.name] = spec
@@ -165,6 +201,9 @@ for _, spec in ipairs(COMMAND_SPECS) do
     end
     if spec.map then
         MAP_COMMAND_SPECS[spec.name] = spec.map
+    end
+    if spec.menu then
+        MENU_COMMAND_SPECS[spec.name] = spec.menu
     end
 end
 
@@ -230,5 +269,6 @@ end
 
 Commands.DISPATCH_MIN_ABBREV = DISPATCH_MIN_ABBREV
 Commands.MAP_COMMAND_SPECS = MAP_COMMAND_SPECS
+Commands.MENU_COMMAND_SPECS = MENU_COMMAND_SPECS
 
 return Commands
