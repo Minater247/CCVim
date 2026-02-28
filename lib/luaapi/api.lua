@@ -452,6 +452,14 @@ function api.nvim_create_namespace(name)
     return id
 end
 
+function api.nvim_get_namespaces()
+    local out = {}
+    for name, id in pairs(ns_name_to_id) do
+        out[name] = id
+    end
+    return out
+end
+
 function api.nvim_set_decoration_provider(ns_id, opts)
     if type(ns_id) ~= "number" then
         error("nvim_set_decoration_provider: ns_id must be number", 2)

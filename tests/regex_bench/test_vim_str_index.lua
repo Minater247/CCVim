@@ -32,19 +32,8 @@ assert_eq("legacy str_byteindex ascii", api.vim.str_byteindex("abc", 2, false), 
 assert_eq("new str_utfindex utf-8", api.vim.str_utfindex("abc", "utf-8", 2, false), 2)
 assert_eq("new str_byteindex utf-8", api.vim.str_byteindex("abc", "utf-8", 2, false), 2)
 
-local ok_utf16_u = pcall(function()
-    api.vim.str_utfindex("abc", "utf-16", 1, false)
-end)
-assert_eq("utf-16 str_utfindex TODO errors", ok_utf16_u, false)
-
-local ok_utf16_b = pcall(function()
-    api.vim.str_byteindex("abc", "utf-16", 1, false)
-end)
-assert_eq("utf-16 str_byteindex TODO errors", ok_utf16_b, false)
-
-local ok_legacy_utf16 = pcall(function()
-    api.vim.str_byteindex("abc", 1, true)
-end)
-assert_eq("legacy use_utf16 TODO errors", ok_legacy_utf16, false)
+assert_eq("utf-16 str_utfindex ascii", api.vim.str_utfindex("abc", "utf-16", 1, false), 1)
+assert_eq("utf-16 str_byteindex ascii", api.vim.str_byteindex("abc", "utf-16", 1, false), 1)
+assert_eq("legacy use_utf16 ascii", api.vim.str_byteindex("abc", 1, true), 1)
 
 print("vim str index tests: OK")

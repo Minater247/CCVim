@@ -78,6 +78,8 @@ local mock = MockEnv.setup({
             CurrentContext = function()
                 return rawget(_G, "__test_script_ctx")
             end,
+            PushContext = function() end,
+            PopContext = function() end,
         },
     },
 })
@@ -117,7 +119,8 @@ Options.set("suffixesadd", ".lua", true, win, buf)
 Options.set("includeexpr", "substitute(v:fname,'\\.','/','g')", true, win, buf)
 
 local Fn = mock.loadModule("lib.luaapi.fn")
-local Opts = mock.loadModule("lib.luaapi.opts")
+local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
+local vimapi = ApiBuild.Build().vim
 
 assert_eq("findfile includeexpr+suffixesadd", Fn.findfile("pkg.mod"), "/project/lua/pkg/mod.lua")
 assert_eq("finddir", Fn.finddir("pkg", "/project/lua"), "/project/lua/pkg")
@@ -181,12 +184,12 @@ assert_eq("undofile default", Options.get("undofile", win, buf), false)
 Options.set("undofile", true, true, win, buf)
 assert_eq("undofile local set/get", Options.get("undofile", win, buf, true), true)
 
-Opts.wo[0][0].number = false
-assert_eq("wo double index set/get", Opts.wo[0][0].number, false)
-assert_eq("wo single index still works", Opts.wo[0].number, false)
+vimapi.wo[0][0].number = false
+assert_eq("wo double index set/get", vimapi.wo[0][0].number, false)
+assert_eq("wo single index still works", vimapi.wo[0].number, false)
 
 local ok_invalid_buf = pcall(function()
-    return Opts.wo[0][999].number
+    return vimapi.wo[0][999].number
 end)
 assert_eq("wo double index invalid buffer", ok_invalid_buf, false)
 

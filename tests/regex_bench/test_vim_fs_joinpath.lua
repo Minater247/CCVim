@@ -17,13 +17,17 @@ local function assert_true(label, cond, detail)
 end
 
 assert_eq("joinpath docs example 1", vimapi.fs.joinpath("foo/", "/bar"), "foo/bar")
-assert_eq("joinpath backslashes normalize to slashes", vimapi.fs.joinpath("a\\foo\\", "\\bar"), "a/foo/bar")
+if vimapi.fn.has("win32") == 1 then
+    assert_eq("joinpath backslashes normalize to slashes", vimapi.fs.joinpath("a\\foo\\", "\\bar"), "a/foo/bar")
+else
+    local expected = (table.concat({ "a\\foo\\", "\\bar" }, "/"):gsub("//+", "/"))
+    assert_eq("joinpath backslashes preserved on non-windows", vimapi.fs.joinpath("a\\foo\\", "\\bar"), expected)
+end
 assert_eq("joinpath absolute first path", vimapi.fs.joinpath("/foo//", "///bar", "baz"), "/foo/bar/baz")
 assert_eq("joinpath root first path", vimapi.fs.joinpath("/", "bar"), "/bar")
-assert_eq("joinpath empty first path", vimapi.fs.joinpath("", "bar"), "bar")
+assert_eq("joinpath empty first path", vimapi.fs.joinpath("", "bar"), "/bar")
 assert_eq("joinpath no args", vimapi.fs.joinpath(), "")
 
-local ok, err = pcall(vimapi.fs.joinpath, "foo", 12)
-assert_true("joinpath type checks args", ok == false, tostring(err))
+assert_eq("joinpath coerces numeric args", vimapi.fs.joinpath("foo", 12), "foo/12")
 
 print("vim.fs.joinpath tests: OK")

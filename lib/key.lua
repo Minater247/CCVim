@@ -412,6 +412,7 @@ local shiftables_rev = {}
 for k, v in pairs(printables) do
     printables_rev[v] = k
 end
+printables_rev["Space"] = keys.space
 for k, v in pairs(shiftables) do
     shiftables_rev[v] = k
 end

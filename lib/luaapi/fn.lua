@@ -1326,6 +1326,61 @@ function Builtins.charcol(expr, winid)
     return rv[3]
 end
 
+function Builtins.col(expr, winid)
+    local prev_curwin
+    if winid then
+        local win = resolve_win(winid)
+        if not win then
+            return 0
+        end
+        prev_curwin = curwin
+        curwin = win.winnr
+    end
+
+    local function finish(rv)
+        if winid then
+            curwin = prev_curwin
+        end
+        return rv
+    end
+
+    if type(expr) == "table" then
+        local lnum = tonumber(expr[1])
+        local col_expr = expr[2]
+        if not lnum or lnum < 1 then
+            return finish(0)
+        end
+
+        local win = windows[curwin]
+        if not win or not win.buffer then
+            return finish(0)
+        end
+
+        local line = win.buffer:get_line(lnum, true)
+        if line == nil then
+            return finish(0)
+        end
+
+        if col_expr == "$" then
+            return finish(#line + 1)
+        end
+        if type(col_expr) == "number" then
+            return finish(math.floor(col_expr))
+        end
+        return finish(0)
+    end
+
+    if expr == "." then
+        return finish(windows[curwin].cursorx)
+    end
+    if expr == "$" then
+        local line = windows[curwin].buffer:get_line(windows[curwin].cursory, true) or ""
+        return finish(#line + 1)
+    end
+
+    return finish(Builtins.charcol(expr))
+end
+
 function Builtins.winline(...)
     if select("#", ...) > 0 then
         error(Error(118, "winline"):toString())

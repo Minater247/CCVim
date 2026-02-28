@@ -35,10 +35,11 @@ end
 local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
 local env = ApiBuild.Build()
 
-assert_eq("vim.lsp proxy exists", type(env.vim.lsp), "table")
 assert_eq("vim._defer_require exists", type(env.vim._defer_require), "function")
+assert_eq("vim.lsp not materialized before access", rawget(env.vim, "lsp"), nil)
 assert_eq("lsp not required eagerly", #require_calls, 0)
 
+assert_eq("vim.lsp resolves to table", type(env.vim.lsp), "table")
 local util = env.vim.lsp.util
 assert_eq("lsp required lazily", require_calls[1], "vim.lsp")
 assert_eq("util provided via vim.lsp", util, fake_lsp.util)
