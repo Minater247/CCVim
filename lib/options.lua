@@ -86,6 +86,11 @@ local opt_locs = {
     loadplugins = "ggg",
     magic = "ggg",
     matchpairs = "ltb",
+    mouse = "ggg",
+    mousemodel = "ggg",
+    mousemoveevent = "ggg",
+    mousescroll = "ggg",
+    mousetime = "ggg",
     modified = "ltb",
     modifiable = "ltb",
     number = "ltw",
@@ -218,6 +223,11 @@ local opt_defaults = {
     loadplugins = true,
     magic = true,
     matchpairs = "(:),{:},[:],<:>",
+    mouse = "nvi",
+    mousemodel = "popup_setpos",
+    mousemoveevent = false,
+    mousescroll = "ver:3,hor:6",
+    mousetime = 500,
     modifiable = true,
     modified = false,
     number = false,
@@ -353,6 +363,11 @@ local opt_types = {
     loadplugins = "boolean",
     magic = "boolean",
     matchpairs = "string",
+    mouse = "string",
+    mousemodel = "string",
+    mousemoveevent = "boolean",
+    mousescroll = "string",
+    mousetime = "number",
     modifiable = "boolean",
     modified = "boolean",
     number = "boolean",
@@ -498,6 +513,41 @@ local function _normalize_option_value(name, value)
             error(Error(474, "Invalid value for 'bufhidden': " .. tostring(value)):toString())
         end
         return v
+    end
+
+    if name == "mouse" and type(value) == "string" then
+        local v = tostring(value):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+        local allowed = {
+            n = true,
+            v = true,
+            i = true,
+            c = true,
+            h = true,
+            a = true,
+            r = true,
+        }
+        for i = 1, #v do
+            local ch = v:sub(i, i)
+            if not allowed[ch] then
+                error(Error(474, "Invalid value for 'mouse': " .. tostring(value)):toString())
+            end
+        end
+        return v
+    end
+
+    if name == "mousemodel" and type(value) == "string" then
+        local v = tostring(value):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+        if v ~= "extend" and v ~= "popup" and v ~= "popup_setpos" then
+            error(Error(474, "Invalid value for 'mousemodel': " .. tostring(value)):toString())
+        end
+        return v
+    end
+
+    if name == "mousetime" and type(value) == "number" then
+        if value < 0 then
+            return 0
+        end
+        return math.floor(value)
     end
 
     if opt_types[name] == "stringfunc" then
@@ -648,6 +698,9 @@ local opt_aliases = {
     lpl = "loadplugins",
     gd = "gdefault",
     mps = "matchpairs",
+    mousem = "mousemodel",
+    mousemev = "mousemoveevent",
+    mouset = "mousetime",
     mod = "modified",
     ma = "modifiable",
     nu = "number",

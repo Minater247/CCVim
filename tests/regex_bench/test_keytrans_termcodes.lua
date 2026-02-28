@@ -60,6 +60,18 @@ assert_eq("api replace_termcodes delegates", Api.nvim_replace_termcodes("<*C-j>"
 local nonstar = Key.replace_termcodes("<C-j>", true, true)
 assert_eq("keytrans non-star ctrl-j", Key.keytrans(nonstar), "<NL>")
 
+local mouse_term = Key.replace_termcodes("<LeftMouse>", true, true)
+assert_eq("mouse termcode keytrans", Key.keytrans(mouse_term), "<LeftMouse>")
+
+local mouse2 = Key.strtoseq("<2-RightMouse>")
+assert_eq("double-right mouse notation survives parse", Key.to_map_notation(mouse2[1].numeric), "<2-RightMouse>")
+
+local mouse_mod = Key.strtoseq("<2-S-RightMouse>")
+assert_eq("modifier+double-click mouse notation parses", Key.to_map_notation(mouse_mod[1].numeric), "<S-2-RightMouse>")
+
+local constructed_mouse = Key.mouse_key("ScrollWheelUp", false, false, false)
+assert_eq("mouse helper builds wheel key", Key.to_map_notation(constructed_mouse.numeric), "<ScrollWheelUp>")
+
 local state = Runtime.MakeRuntimeState({
     g = {},
     s = {},

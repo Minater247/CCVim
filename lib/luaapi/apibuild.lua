@@ -15,6 +15,7 @@ local timerutils = loadModule("lib.luaapi.timerutils")
 local scopes = loadModule("lib.luaapi.scopes")
 local print = loadModule("lib.luaapi.print")
 local strutils = loadModule("lib.luaapi.strutils")
+local envvars = loadModule("lib.envvars")
 
 local mainapi
 local VIM_NIL = setmetatable({}, {
@@ -22,7 +23,6 @@ local VIM_NIL = setmetatable({}, {
         return "vim.NIL"
     end,
 })
--- TODO: what? is this documented? Why 20?
 local VIM_CMD_ARG_MAX = 20
 
 -- TODO: we need a print function.
@@ -286,6 +286,10 @@ function ApiBuild.Build()
         maxn = table_maxn,
     }, { __index = table })
 
+    local os_compat = setmetatable({
+        getenv = envvars.get,
+    }, { __index = os })
+
     mainapi = {
         vim = {
             api = api,
@@ -314,6 +318,7 @@ function ApiBuild.Build()
         package = package,
         table = table_compat,
         unpack = unpack or table.unpack,
+        os = os_compat,
 
         -- DEBUG
         LOG_DEBUG = LOG_DEBUG,

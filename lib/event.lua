@@ -8,6 +8,9 @@ local Key    = loadModule("lib.key")
 local OnKey = loadModule("lib.luaapi.on_key")
 local ExMsg  = loadModule("lib.excmd.exmsg")
 local Error = loadModule("lib.error")
+local FrameTree
+local Autocmd
+local Scopes
 
 function Event.StartTimer(time, callback)
     local id = os.startTimer(time)
@@ -36,6 +39,18 @@ local ignored_keys = {
     [keys.scrollLock] = true,
 }
 
+local mouse_down = {
+    [1] = false,
+    [2] = false,
+    [3] = false,
+}
+
+local mouse_click_state = {
+    [1] = nil,
+    [2] = nil,
+    [3] = nil,
+}
+
 local function is_modifier(k)
     return mods_down[k] ~= nil
 end
@@ -56,14 +71,344 @@ local function key_to_on_key_string(key)
         end
         return ch
     end
-    return key:printable() or ""
+    return key:printable()
 end
 
-function Event.ProcessEvent(ev)
-    if type(ev) ~= "table" then
+local function shift_is_held()
+    return mods_down[keys.leftShift] or mods_down[keys.rightShift]
+end
+
+local function mouse_enabled_for_current_mode()
+    local mouse = options.get("mouse")
+    if mouse == "" then
+        return false
+    end
+    if mouse:find("a", 1, true) then
+        return true
+    end
+
+    local mode_char = "n"
+    if vimmode == "insert" then
+        mode_char = "i"
+    elseif vimmode == "cmdline" then
+        mode_char = "c"
+    elseif vimmode == "visual" or vimmode == "select" then
+        mode_char = "v"
+    end
+
+    if mouse:find(mode_char, 1, true) then
+        return true
+    end
+
+    if mouse:find("h", 1, true) then
+        local win = windows[curwin]
+        if options.get("filetype", nil, win.buffer) == "help" then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function parse_mousescroll_amount(axis)
+    local amount = (axis == "hor") and 6 or 3
+    local raw = options.get("mousescroll")
+    for part in raw:gmatch("([^,]+)") do
+        local p = part:gsub("^%s+", ""):gsub("%s+$", "")
+        local dir, n = p:match("^([%a]+)%s*:%s*(%d+)$")
+        if dir and dir:lower() == axis then
+            amount = tonumber(n)
+        end
+    end
+    return math.floor(amount)
+end
+
+local function click_count(button, x, y)
+    local now = os.epoch("utc")
+    local max_gap = math.max(0, math.floor(options.get("mousetime")))
+
+    local count = 1
+    local prev = mouse_click_state[button]
+    if prev and prev.x == x and prev.y == y and (now - prev.time) <= max_gap then
+        count = math.min(prev.count + 1, 4)
+    end
+
+    mouse_click_state[button] = {
+        x = x,
+        y = y,
+        time = now,
+        count = count,
+    }
+    return count
+end
+
+local function target_window_at(x, y)
+    local tab = tabpages[curtp]
+    if not tab or not tab.tree then
+        return nil
+    end
+
+    local local_y = y - (tab.winyoff or 0)
+    if local_y < 1 then
+        return nil
+    end
+
+    FrameTree = FrameTree or loadModule("lib.frame")
+    local frame, local_x, local_row = FrameTree.FrameAtWithLocal(tab.tree, x, local_y)
+    if not frame or not frame.window then
+        return nil
+    end
+
+    return frame.window, frame, local_x, local_row
+end
+
+local function focus_window(win)
+    enterWindow(win.winnr)
+end
+
+local function set_mouse_vvars(win, button, x, y, clicks)
+    Scopes = Scopes or loadModule("lib.luaapi.scopes")
+    local v = Scopes._v
+    v.mouse_win = win.winnr
+    v.mouse_winid = win.winnr
+    v.mouse_lnum = win.cursory
+    v.mouse_line = win.cursory
+    v.mouse_col = win.cursorx
+    v.mouse_curscol = win.cursorx
+    v.mouse_button = button
+    v.mouse_clicks = clicks
+    v.mouse_screencol = x
+    v.mouse_screenrow = y
+end
+
+local function mapping_mode_alias()
+    return string.sub(vimmode, 1, 1)
+end
+
+local mouse_button_names = {
+    [1] = "Left",
+    [2] = "Right",
+    [3] = "Middle",
+}
+
+local mouse_kind_suffixes = {
+    click = "Mouse",
+    drag = "Drag",
+    release = "Release",
+}
+
+local function mouse_notation_name(kind, button, clicks, direction)
+    if kind == "scroll" then
+        return direction == -1 and "ScrollWheelUp" or "ScrollWheelDown"
+    end
+
+    local name = mouse_button_names[button] .. mouse_kind_suffixes[kind]
+    if clicks >= 2 then
+        return tostring(clicks) .. "-" .. name
+    end
+    return name
+end
+
+local function last_click_count(button)
+    local prev = mouse_click_state[button]
+    if prev and prev.count then
+        return prev.count
+    end
+    return 1
+end
+
+local function mouse_key_for_event(kind, button, clicks, direction)
+    local name = mouse_notation_name(kind, button, clicks, direction)
+    local ctrld, shifted, alted = current_mod_flags()
+    return Key.mouse_key(name, ctrld, shifted, alted)
+end
+
+local function dispatch_mouse_key(key)
+    local keystr = Key.to_map_notation(key.numeric)
+    local discard = OnKey.dispatch(keystr, keystr)
+    if discard then
+        return true
+    end
+
+    local has_mapping = Command.has_mapping(mapping_mode_alias(), { key })
+    if not has_mapping then
+        return false
+    end
+    Command.HandleKey(key)
+    return true
+end
+
+local function place_cursor_from_click(win, local_x, local_y)
+    local text_rows = win:textheight()
+    if local_y < 1 or local_y > text_rows then
+        return false
+    end
+
+    local text_w, text_x = win:textwidth()
+    if text_w < 1 then
+        return false
+    end
+
+    local row_offset = local_y - 1
+    local vis_col = local_x - text_x + 1
+    if vis_col < 1 then
+        vis_col = 1
+    elseif vis_col > text_w then
+        vis_col = text_w
+    end
+
+    if not win.opts.wrap then
+        vis_col = vis_col + win.scrollx - 1
+    end
+
+    win:cursorSetScreenRow(row_offset, { screen_col = vis_col })
+    return true
+end
+
+local function fire_menu_popup(win, button, x, y, clicks)
+    Autocmd = Autocmd or loadModule("lib.autocmd")
+    Autocmd.Run("MenuPopup", {
+        bufnr = win.buffer.bufnr,
+        bufname = win.buffer.name,
+        data = {
+            button = button,
+            x = x,
+            y = y,
+            clicks = clicks,
+        },
+    })
+end
+
+local function handle_mouse_click(button, x, y)
+    if not mouse_enabled_for_current_mode() then
         return
     end
 
+    local win, _, local_x, local_y = target_window_at(x, y)
+    if not win then
+        return
+    end
+
+    local clicks = click_count(button, x, y)
+    mouse_down[button] = true
+    focus_window(win)
+    set_mouse_vvars(win, button, x, y, clicks)
+
+    local click_key = mouse_key_for_event("click", button, clicks, nil)
+    if dispatch_mouse_key(click_key) then
+        need_redraw = true
+        return
+    end
+
+    local model = options.get("mousemodel")
+
+    if button == 1 then
+        place_cursor_from_click(win, local_x, local_y)
+    elseif button == 2 then
+        if model == "popup_setpos" then
+            place_cursor_from_click(win, local_x, local_y)
+            fire_menu_popup(win, button, x, y, clicks)
+        elseif model == "popup" then
+            fire_menu_popup(win, button, x, y, clicks)
+        else
+            place_cursor_from_click(win, local_x, local_y)
+        end
+    elseif button == 3 then
+        place_cursor_from_click(win, local_x, local_y)
+    end
+
+    need_redraw = true
+end
+
+local function handle_mouse_drag(button, x, y)
+    if not mouse_enabled_for_current_mode() then
+        return
+    end
+    if not mouse_down[button] then
+        return
+    end
+
+    local win, _, local_x, local_y = target_window_at(x, y)
+    if not win then
+        return
+    end
+
+    focus_window(win)
+    local clicks = last_click_count(button)
+    set_mouse_vvars(win, button, x, y, clicks)
+
+    local drag_key = mouse_key_for_event("drag", button, clicks, nil)
+    if dispatch_mouse_key(drag_key) then
+        need_redraw = true
+        return
+    end
+
+    if button == 1 or button == 2 then
+        place_cursor_from_click(win, local_x, local_y)
+    end
+    need_redraw = true
+end
+
+local function handle_mouse_up(button, x, y)
+    mouse_down[button] = false
+    local win = nil
+    local t = target_window_at(x, y)
+    if t then
+        win = t
+    else
+        win = windows[curwin]
+    end
+
+    local clicks = last_click_count(button)
+    set_mouse_vvars(win, button, x, y, clicks)
+
+    if mouse_enabled_for_current_mode() then
+        local release_key = mouse_key_for_event("release", button, clicks, nil)
+        if dispatch_mouse_key(release_key) then
+            need_redraw = true
+            return
+        end
+    end
+    need_redraw = true
+end
+
+local function handle_mouse_scroll(direction, x, y)
+    if not mouse_enabled_for_current_mode() then
+        return
+    end
+    if direction ~= -1 and direction ~= 1 then
+        return
+    end
+
+    local win = target_window_at(x, y)
+    if not win then
+        return
+    end
+
+    focus_window(win)
+    set_mouse_vvars(win, 0, x, y, 0)
+
+    local scroll_key = mouse_key_for_event("scroll", 0, nil, direction)
+    if dispatch_mouse_key(scroll_key) then
+        need_redraw = true
+        return
+    end
+
+    local amount
+    if shift_is_held() then
+        amount = win:textheight()
+    else
+        amount = parse_mousescroll_amount("ver")
+    end
+    if amount < 1 then
+        return
+    end
+
+    win:scroll(0, direction * amount)
+    need_redraw = true
+end
+
+function Event.ProcessEvent(ev)
     if ev[1] == "key" then
         local k = ev[2]
 
@@ -84,6 +429,14 @@ function Event.ProcessEvent(ev)
         if is_modifier(k) then
             mods_down[k] = false
         end
+    elseif ev[1] == "mouse_click" then
+        handle_mouse_click(ev[2], ev[3], ev[4])
+    elseif ev[1] == "mouse_drag" then
+        handle_mouse_drag(ev[2], ev[3], ev[4])
+    elseif ev[1] == "mouse_up" then
+        handle_mouse_up(ev[2], ev[3], ev[4])
+    elseif ev[1] == "mouse_scroll" then
+        handle_mouse_scroll(ev[2], ev[3], ev[4])
     elseif ev[1] == "timer" then
         local timer_id = ev[2]
         local cb = timers[timer_id]

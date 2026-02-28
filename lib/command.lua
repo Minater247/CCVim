@@ -510,6 +510,31 @@ local function _mapcheck_in_root(root, lhs_seq)
     return _find_rhs_in_subtree(node)
 end
 
+local function _lookup_node_in_root(root, lhs_seq)
+    if not root then
+        return nil
+    end
+    local node = root
+    for i = 1, #lhs_seq do
+        local child = node.children and node.children[lhs_seq[i].numeric]
+        if not child then
+            return nil
+        end
+        node = child
+    end
+    return node
+end
+
+local function _node_has_mapping(node)
+    if not node then
+        return false
+    end
+    if node.callback ~= nil or node.rhs_seq ~= nil or node.operator_cb ~= nil then
+        return true
+    end
+    return node_has_children(node)
+end
+
 function Command.mapcheck(modes, lhs_seq)
     local buf = windows[curwin].buffer
 
@@ -527,6 +552,27 @@ function Command.mapcheck(modes, lhs_seq)
     end
 
     return ""
+end
+
+function Command.has_mapping(modes, lhs_seq)
+    local buf = windows[curwin].buffer
+
+    for _, m in ipairs(expand_modes(modes)) do
+        local local_root = buf.local_mappings and buf.local_mappings[m]
+        if _node_has_mapping(_lookup_node_in_root(local_root, lhs_seq)) then
+            return true
+        end
+
+        if _node_has_mapping(_lookup_node_in_root(user_global_mappings[m], lhs_seq)) then
+            return true
+        end
+
+        if _node_has_mapping(_lookup_node_in_root(builtin_mappings[m], lhs_seq)) then
+            return true
+        end
+    end
+
+    return false
 end
 
 -- Convenience wrappers continue to work; add an optional opts:

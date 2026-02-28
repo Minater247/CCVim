@@ -92,6 +92,11 @@ assert_eq("buffer-local checked before global", Fn.mapcheck("xx", "n"), "localrh
 Command.remap_keys("normal", Key.strtoseq("<S-Up>"), Key.strtoseq("shiftup"))
 assert_eq("special key names are supported", Fn.mapcheck("<S-Up>", "n"), "shiftup")
 
+Command.map_callback("normal", Key.strtoseq("qq"), function() end)
+assert_eq("has_mapping finds callback leaf", Command.has_mapping("n", Key.strtoseq("qq")), true)
+assert_eq("has_mapping finds mapped prefix node", Command.has_mapping("n", Key.strtoseq("q")), true)
+assert_eq("has_mapping misses unknown node", Command.has_mapping("n", Key.strtoseq("qz")), false)
+
 assert_eq("abbr mode unsupported returns empty", Fn.mapcheck("xx", "n", 1), "")
 
 local ok, err = pcall(function()

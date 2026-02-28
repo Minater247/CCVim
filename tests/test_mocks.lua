@@ -144,6 +144,13 @@ function MockEnv.setup(config)
     _G.curtp = config.curtp or 1
     _G.curwin = config.curwin or 1
     _G.vimmode = config.vimmode or "normal"
+    _G.enterWindow = config.enterWindow or _G.enterWindow or function(winnr)
+        local win = _G.windows[winnr]
+        _G.curwin = winnr
+        if win and win.tabpagenr then
+            _G.curtp = win.tabpagenr
+        end
+    end
     
     local custom_fs = config.fs
     local function is_repo_path(path)

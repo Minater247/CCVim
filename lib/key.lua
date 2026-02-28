@@ -117,6 +117,54 @@ local printables = {
     plug = "Plug",
 }
 
+local MOUSE_CODES = {}
+local next_mouse_code = 3000
+local CLICK_COUNTABLE_MOUSE = {}
+local MOUSE_LOWER_TO_NAME = {}
+
+local function register_mouse_notation(name)
+    local code = next_mouse_code
+    next_mouse_code = next_mouse_code + 1
+    printables[code] = name
+    MOUSE_CODES[name] = code
+end
+
+local mouse_button_prefixes = { "Left", "Middle", "Right", "X1", "X2" }
+local mouse_button_actions = { "Mouse", "Drag", "Release" }
+
+for i = 1, #mouse_button_prefixes do
+    for j = 1, #mouse_button_actions do
+        local name = mouse_button_prefixes[i] .. mouse_button_actions[j]
+        register_mouse_notation(name)
+        CLICK_COUNTABLE_MOUSE[name] = true
+        MOUSE_LOWER_TO_NAME[string.lower(name)] = name
+    end
+end
+
+local mouse_other_notations = {
+    "ScrollWheelUp",
+    "ScrollWheelDown",
+    "ScrollWheelLeft",
+    "ScrollWheelRight",
+    "MouseMove",
+    "MouseDown",
+    "MouseUp",
+}
+
+for i = 1, #mouse_other_notations do
+    local name = mouse_other_notations[i]
+    register_mouse_notation(name)
+    MOUSE_LOWER_TO_NAME[string.lower(name)] = name
+end
+
+for clicks = 2, 4 do
+    for i = 1, #mouse_button_prefixes do
+        for j = 1, #mouse_button_actions do
+            register_mouse_notation(("%d-%s%s"):format(clicks, mouse_button_prefixes[i], mouse_button_actions[j]))
+        end
+    end
+end
+
 local shiftables = {
     [keys.one] = "!",
     [keys.two] = "@",
@@ -552,6 +600,17 @@ local function canon_name(name)
     }
     if km[lower] then return km[lower] end
 
+    local mouse_clicks, mouse_rest = lower:match("^([234])%-(.+)$")
+    mouse_rest = mouse_rest or lower
+
+    local mouse_name = MOUSE_LOWER_TO_NAME[mouse_rest]
+    if mouse_name then
+        if mouse_clicks then
+            return mouse_clicks .. "-" .. mouse_name
+        end
+        return mouse_name
+    end
+
     -- Navigation / control synonyms
     local syn = {
         ["cr"] = "CR",
@@ -693,6 +752,7 @@ local function parse_angle_content(content)
     end
 
     local ctrl, shift, alt = false, false, false
+    local click_count = nil
     local parts = {}
     for token in raw:gmatch("[^%-]+") do
         parts[#parts + 1] = token
@@ -707,6 +767,11 @@ local function parse_angle_content(content)
             shift = true
         elseif tl == "m" or tl == "meta" or tl == "alt" or tl == "a" then
             alt = true
+        elseif tl:match("^[234]$") then
+            if click_count then
+                error(("Malformed angle key notation: <%s>"):format(content))
+            end
+            click_count = tl
         else
             error(("Malformed angle key notation: <%s>"):format(content))
         end
@@ -718,6 +783,9 @@ local function parse_angle_content(content)
 
     local keynr, inherent_shift = nil, false
     if #base_token == 1 then
+        if click_count then
+            error(("Unknown key name <%s>"):format(content))
+        end
         keynr = printables_rev[base_token]
         if not keynr then
             keynr = shiftables_rev[base_token]
@@ -739,6 +807,12 @@ local function parse_angle_content(content)
         end
     else
         local cname = canon_name(base_token)
+        if click_count then
+            if not CLICK_COUNTABLE_MOUSE[cname] then
+                error(("Unknown key name <%s>"):format(content))
+            end
+            cname = click_count .. "-" .. cname
+        end
         keynr = printables_rev[cname]
         if not keynr then
             error(("Unknown key name <%s>"):format(content))
@@ -1140,6 +1214,11 @@ function Key.to_map_notation(num)
         return p
     end
     return "<" .. p .. ">"
+end
+
+function Key.mouse_key(name, ctrld, shifted, alted)
+    local base = MOUSE_CODES[name]
+    return Key:new(base, ctrld, shifted, alted)
 end
 
 local function raw_keytrans_atom(byte)
