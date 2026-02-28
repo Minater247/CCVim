@@ -112,6 +112,49 @@ function VimFs.normalize(path, opts)
     return path
 end
 
+--- Concatenate path fragments into a single normalized path.
+--- The first fragment may be absolute or relative, later fragments are treated
+--- as relative (leading slashes are ignored).
+---
+--- @param ... string
+--- @return string
+function VimFs.joinpath(...)
+    local argc = select("#", ...)
+    if argc == 0 then
+        return ""
+    end
+
+    local first = select(1, ...)
+    if type(first) ~= "string" then
+        error(("path: expected string, got %s"):format(type(first)))
+    end
+
+    first = first:gsub("\\", "/")
+    local absolute = _startswith(first, "/")
+    local parts = {}
+
+    for component in first:gmatch("[^/]+") do
+        parts[#parts + 1] = component
+    end
+
+    for i = 2, argc do
+        local path = select(i, ...)
+        if type(path) ~= "string" then
+            error(("path: expected string, got %s"):format(type(path)))
+        end
+        path = path:gsub("\\", "/"):gsub("^/+", "")
+        for component in path:gmatch("[^/]+") do
+            parts[#parts + 1] = component
+        end
+    end
+
+    local joined = table.concat(parts, "/")
+    if absolute then
+        return "/" .. joined
+    end
+    return joined
+end
+
 --- Make a path absolute against the current shell directory.
 --- This helper is used internally by modules that need absolute paths.
 ---
