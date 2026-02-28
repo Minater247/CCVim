@@ -962,11 +962,7 @@ function Options.get(opt_name, window, buffer, getlocal, getglobal)
     if not f then
         error("Unhandled option type: " .. tostring(kind) .. (getlocal and " local" or "") .. (getglobal and " global" or ""))
     end
-    local v = f(opt_name, window, buffer)
-    if opt_name == "buftype" then
-        LOG_DEBUG("Options.get buftype bufnr=%s -> %s", tostring(buffer.bufnr), tostring(v))
-    end
-    return v
+    return f(opt_name, window, buffer)
 end
 
 --- Parse a comma-separated list into an array
