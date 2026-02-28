@@ -604,7 +604,7 @@ end
 
 local function keyword_boundary_ok(line, s, e, iskw)
     local b1 = (s > 1) and string.byte(line, s - 1)
-local b2 = (e < #line) and string.byte(line, e + 1)
+    local b2 = (e < #line) and string.byte(line, e + 1)
     if b1 and iskw[b1] then return false end
     if b2 and iskw[b2] then return false end
     return true
@@ -1196,7 +1196,7 @@ local function contains_has_non_keyword(plan, contains_ids)
 end
 
 local function paint_match_contained_keywords(plan, item, line, lower_line, range_s, range_e, max_col, spans)
-    local contains_bits = item.options and item.options.contains_bits
+    local contains_bits = item.options.contains_bits
     if not contains_bits then
         return
     end
@@ -1230,12 +1230,12 @@ local function paint_match_contained_keywords(plan, item, line, lower_line, rang
 end
 
 local function paint_match_contained_items(plan, item, line, lower_line, range_s, range_e, max_col, spans)
-    local contains_bits = item.options and item.options.contains_bits
+    local contains_bits = item.options.contains_bits
     if not contains_bits then
         return
     end
 
-    local contains_ids = item.options and item.options.contains_ids
+    local contains_ids = item.options.contains_ids
     if not contains_has_non_keyword(plan, contains_ids) then
         paint_match_contained_keywords(plan, item, line, lower_line, range_s, range_e, max_col, spans)
         return

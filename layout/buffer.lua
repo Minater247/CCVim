@@ -232,6 +232,8 @@ function Buffer:new(listed, scratch, loaded)
             depth = 0,
             restoring = false,
             seq = 0,
+            last_changed_line = nil,
+            line_undo_anchor = {},
         },
     }, Buffer)
 
