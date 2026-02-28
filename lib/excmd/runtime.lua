@@ -19,6 +19,63 @@ Runtime._LAST_SEARCH_PATTERN = ""
 Runtime._LAST_SUBSTITUTE_PATTERN = ""
 Runtime._LAST_SUBSTITUTE_REPL = ""
 Runtime._LAST_SUBSTITUTE_FLAGS = ""
+local runtime_undo_batch_depth = 0
+local runtime_undo_batch_buffers = nil
+local runtime_undo_batch_active = false
+local runtime_undo_batch_pause_count = 0
+
+local function runtime_undo_batch_begin()
+    runtime_undo_batch_buffers = {}
+    runtime_undo_batch_active = true
+    runtime_undo_batch_pause_count = 0
+    for _, buf in pairs(buffers) do
+        runtime_undo_batch_buffers[#runtime_undo_batch_buffers + 1] = buf
+        buf:undo_begin()
+    end
+end
+
+local function runtime_undo_batch_end()
+    if runtime_undo_batch_active and runtime_undo_batch_buffers then
+        for i = 1, #runtime_undo_batch_buffers do
+            runtime_undo_batch_buffers[i]:undo_end()
+        end
+    end
+    runtime_undo_batch_buffers = nil
+    runtime_undo_batch_active = false
+    runtime_undo_batch_pause_count = 0
+end
+
+local function runtime_undo_batch_pause()
+    if runtime_undo_batch_depth == 0 then
+        return
+    end
+    runtime_undo_batch_pause_count = runtime_undo_batch_pause_count + 1
+    if runtime_undo_batch_pause_count > 1 then
+        return
+    end
+    if runtime_undo_batch_active and runtime_undo_batch_buffers then
+        for i = 1, #runtime_undo_batch_buffers do
+            runtime_undo_batch_buffers[i]:undo_end()
+        end
+        runtime_undo_batch_active = false
+    end
+end
+
+local function runtime_undo_batch_resume()
+    if runtime_undo_batch_depth == 0 or runtime_undo_batch_pause_count == 0 then
+        return
+    end
+    runtime_undo_batch_pause_count = runtime_undo_batch_pause_count - 1
+    if runtime_undo_batch_pause_count > 0 then
+        return
+    end
+    if (not runtime_undo_batch_active) and runtime_undo_batch_buffers then
+        for i = 1, #runtime_undo_batch_buffers do
+            runtime_undo_batch_buffers[i]:undo_begin()
+        end
+        runtime_undo_batch_active = true
+    end
+end
 
 local SCRIPT_SID_BY_SCOPE = setmetatable({}, { __mode = "k" })
 local SCRIPT_SID_BY_CTX = {}
@@ -134,7 +191,7 @@ local function truthy(v)
 end
 
 local function eval_expr(expr, state)
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     local scope = {
         g = state.g,
         s = state.s,
@@ -372,7 +429,7 @@ end
 
 local function resolve_assignment_slot(base, state)
     local scope, name = base:match("^([gslavbtw]):(.+)$")
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     if scope == "g" then return state.g, name end
     if scope == "s" then return state.s, name end
     if scope == "l" then
@@ -441,7 +498,7 @@ local function assign_lhs(lhs, value, state)
     end
 
     local scope, name = s:match("^([gslavbtw]):(.+)$")
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     if scope == "g" then state.g[name] = value; return true end
     if scope == "s" then state.s[name] = value; return true end
     if scope == "l" then if not top then return Error(461, s) end; top.l[name] = value; return true end
@@ -455,7 +512,7 @@ local function assign_lhs(lhs, value, state)
 end
 
 local function unlet(names, bang, state)
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     for tok in names:gmatch("%S+") do
         local name = tok:gsub(",%$", "")
         local scope, key = name:match("^([gslavbtw]):(.+)$")
@@ -610,7 +667,7 @@ end
 
 local function build_error_context(rt, opts, state, script)
     local origin = normalize_origin(opts and opts.origin, state)
-    local cursor = rt and rt:get_exec_cursor() or nil
+    local cursor = rt and rt:get_exec_cursor()
     local parts = {}
 
     append_ctx(parts, "kind", origin.kind, 80)
@@ -621,7 +678,7 @@ local function build_error_context(rt, opts, state, script)
     append_ctx(parts, "fn", origin.func, 120)
     append_ctx(parts, "caller", origin.caller, 160)
     append_ctx(parts, "source", origin.source, 220)
-    append_ctx(parts, "script_ctx", state and state.script_ctx or nil, 220)
+    append_ctx(parts, "script_ctx", state.script_ctx, 220)
 
     if cursor and cursor.line then
         append_ctx(parts, "line", cursor.line, 40)
@@ -980,7 +1037,7 @@ function Runtime.new(state, opts)
 
     function self:eval_expr(expr)
         local state = self.state
-        local top = state.frames and state.frames[#state.frames] or nil
+        local top = state.frames[#state.frames]
         local scope = {
             g = state.g,
             s = state.s,
@@ -1034,7 +1091,7 @@ function Runtime.new(state, opts)
     function self:get_var(name)
         local var = strip(name)
         local scope, key = var:match("^([gslavwb]):(.+)$")
-        local top = self.state.frames and self.state.frames[#self.state.frames] or nil
+        local top = self.state.frames[#self.state.frames]
         if scope == "g" then return self.state.g[key] end
         if scope == "s" then return self.state.s[key] end
         if scope == "l" then return (top and top.l or self.state.l)[key] end
@@ -1138,7 +1195,7 @@ function Runtime.new(state, opts)
         self.__prev_state = Runtime._CURRENT_STATE
         self.__prev_ctrl = Runtime._CURRENT_CTRL
         self.__pushed_ctx = false
-        if state and state.script_ctx and state.script_ctx ~= "" then
+        if state.script_ctx and state.script_ctx ~= "" then
             ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PushContext(state.script_ctx)
             self.__pushed_ctx = true
@@ -1516,8 +1573,7 @@ function Runtime.new(state, opts)
     local function _find_window_for_path(target_abs)
         local fsmod = _vimfs()
         for _, win in pairs(windows) do
-            local buf = win and win.buffer
-            local name = buf and buf.name
+            local name = win.buffer.name
             if type(name) == "string" and name ~= "" then
                 local ok, buf_abs = pcall(fsmod.abspath, name)
                 if ok and buf_abs == target_abs then
@@ -1536,9 +1592,7 @@ function Runtime.new(state, opts)
             windows[win.winnr] = nil
         end
         local buf = win.buffer
-        if buf and type(buf.refcount) == "number" then
-            buf.refcount = math.max(0, buf.refcount - 1)
-        end
+        buf.refcount = math.max(0, buf.refcount - 1)
     end
 
     local function _split_preflight(target_winnr, refwin, vertical)
@@ -1665,15 +1719,15 @@ function Runtime.new(state, opts)
             text = lstrip(text:sub(2))
         end
         local raw = text:match("^([%a][%w]*)")
-        return raw and raw:lower() or nil, l1, l2, has_range
+        return raw and raw:lower(), l1, l2, has_range
     end
 
     local function _build_cmd_context(cursor, win)
         local raw_cmd, l1, l2, has_range = _cursor_parse_head(cursor, win)
         return {
             raw_cmd = raw_cmd,
-            line1 = has_range and l1 or nil,
-            line2 = has_range and l2 or nil,
+            line1 = has_range and l1,
+            line2 = has_range and l2,
         }
     end
 
@@ -2804,6 +2858,16 @@ function Runtime.new(state, opts)
         return seq, nil
     end
 
+    local function _strtoseq_normal_literal(s)
+        local KeyMod = _key_mod()
+        local escaped = tostring(s or ""):gsub("<", "<lt>")
+        local ok, seq = pcall(KeyMod.strtoseq, escaped)
+        if not ok then
+            return nil, Error(474, tostring(seq))
+        end
+        return seq, nil
+    end
+
     local function _expand_map_sid(text)
         if type(text) ~= "string" or text == "" then
             return text, nil
@@ -3499,7 +3563,7 @@ function Runtime.new(state, opts)
                 return true
             elseif sub == "place" then
                 local first = tokens[2]
-                local first_num = first and tonumber(first) or nil
+                local first_num = tonumber(first)
                 local first_is_kv = first and first:find("=", 1, true) ~= nil
 
                 if first_num and not first_is_kv then
@@ -3542,7 +3606,7 @@ function Runtime.new(state, opts)
             elseif sub == "unplace" then
                 local first = tokens[2]
                 local first_is_kv = first and first:find("=", 1, true) ~= nil
-                local first_num = first and tonumber(first) or nil
+                local first_num = tonumber(first)
 
                 if not first then
                     local win = windows[curwin]
@@ -3600,7 +3664,7 @@ function Runtime.new(state, opts)
                 error(Error(471))
             end
 
-            local seq, kerr = _strtoseq_tolerant(keys_text)
+            local seq, kerr = _strtoseq_normal_literal(keys_text)
             if Error.IsError(kerr) then
                 error(kerr)
             end
@@ -3609,6 +3673,28 @@ function Runtime.new(state, opts)
             local win = windows[curwin]
             local l1 = cmdctx.line1
             local l2 = cmdctx.line2
+            local function normal_is_undo_like(seq_keys)
+                if not seq_keys or #seq_keys == 0 then
+                    return false
+                end
+                local last = seq_keys[#seq_keys]
+                local last_num = last and last.numeric
+                local is_undo_key = (
+                    last_num == keys.u or
+                    last_num == bit32.bor(keys.u, 8192) or
+                    last_num == bit32.bor(keys.r, 4096)
+                )
+                if not is_undo_key then
+                    return false
+                end
+                for i = 1, #seq_keys - 1 do
+                    if seq_keys[i]:ToDigit() == nil then
+                        return false
+                    end
+                end
+                return true
+            end
+            local normal_pause_batch = normal_is_undo_like(seq)
 
             local function run_normal_once()
                 local prev_mode = vimmode
@@ -3621,6 +3707,9 @@ function Runtime.new(state, opts)
                 return rv
             end
 
+            if normal_pause_batch then
+                runtime_undo_batch_pause()
+            end
             if l1 ~= nil and l2 ~= nil then
                 local line_count = win.buffer:line_count(true)
                 if line_count < 1 then line_count = 1 end
@@ -3640,10 +3729,55 @@ function Runtime.new(state, opts)
                     end
                     run_normal_once()
                 end
+                if normal_pause_batch then
+                    runtime_undo_batch_resume()
+                end
                 return true
             end
 
             run_normal_once()
+            if normal_pause_batch then
+                runtime_undo_batch_resume()
+            end
+            return true
+        elseif cmd == "undo" then
+            runtime_undo_batch_pause()
+            local win = windows[curwin]
+            local raw = strip(argstr)
+            if raw == "" then
+                win.buffer:undo(win, 1)
+            else
+                local parsed = tonumber(raw)
+                if not parsed then
+                    error(Error(474, argstr))
+                end
+                local ok = win.buffer:undo_change(win, math.floor(parsed))
+                if not ok then
+                    error(Error(474, argstr))
+                end
+            end
+            win.need_redraw = true
+            need_redraw = true
+            runtime_undo_batch_resume()
+            return true
+        elseif cmd == "redo" then
+            runtime_undo_batch_pause()
+            local win = windows[curwin]
+            local raw = strip(argstr)
+            local count = 1
+            if raw ~= "" then
+                local parsed = tonumber(raw)
+                if not parsed then
+                    error(Error(474, argstr))
+                end
+                count = math.max(0, math.floor(parsed))
+            end
+            if count > 0 then
+                win.buffer:redo(win, count)
+                win.need_redraw = true
+                need_redraw = true
+            end
+            runtime_undo_batch_resume()
             return true
         elseif cmd == "put" then
             local rv = self:put(argstr, bang, cmdctx)
@@ -4727,9 +4861,17 @@ function Runtime.run(script, opts)
     Runtime._CURRENT_CTRL = opts.ctrl or {}
 
     local rt = Runtime.new(state)
+    runtime_undo_batch_depth = runtime_undo_batch_depth + 1
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_begin()
+    end
     local ok, rv = pcall(function()
         return rt:exec_script(tostring(script or ""))
     end)
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_end()
+    end
+    runtime_undo_batch_depth = runtime_undo_batch_depth - 1
 
     Runtime._CURRENT_STATE = prev_state
     Runtime._CURRENT_CTRL = prev_ctrl

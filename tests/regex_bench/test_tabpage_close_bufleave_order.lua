@@ -82,8 +82,8 @@ local function fire_enter_window(winnr)
     if winnr == curwin then
         return
     end
-    local oldbuf = windows[curwin] and windows[curwin].buffer or nil
-    local newbuf = windows[winnr] and windows[winnr].buffer or nil
+    local oldbuf = windows[curwin].buffer
+    local newbuf = windows[winnr] and windows[winnr].buffer
     local buf_changed = oldbuf and newbuf and oldbuf ~= newbuf
 
     if buf_changed then

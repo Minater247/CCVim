@@ -91,6 +91,99 @@ local function _notify_buf_lines(buf, payload)
     BufAttach.notify_lines(buf.bufnr, payload)
 end
 
+local function _copy_lines(lines)
+    local out = {}
+    for i = 1, #lines do
+        out[i] = lines[i]
+    end
+    return out
+end
+
+local function _lines_equal(a, b)
+    if #a ~= #b then
+        return false
+    end
+    for i = 1, #a do
+        if a[i] ~= b[i] then
+            return false
+        end
+    end
+    return true
+end
+
+local function _line_diff_span(before, after)
+    local max_count = math.max(#before, #after)
+    local first
+    for i = 1, max_count do
+        if before[i] ~= after[i] then
+            first = i
+            break
+        end
+    end
+    if not first then
+        return nil, nil
+    end
+
+    local last = first
+    for i = max_count, first, -1 do
+        if before[i] ~= after[i] then
+            last = i
+            break
+        end
+    end
+    return first, last
+end
+
+local function _buffer_window(buf)
+    local win = windows[curwin]
+    if win.buffer == buf then
+        return win
+    end
+    for _, candidate in pairs(windows) do
+        if candidate.buffer == buf then
+            return candidate
+        end
+    end
+    return nil
+end
+
+local function _notify_full_replace(buf, old_lines, new_lines)
+    local old_count = #old_lines
+    local new_count = #new_lines
+    local old_byte = _bytes_of_lines(old_lines)
+    local new_byte = _bytes_of_lines(new_lines)
+    _notify_buf_lines(buf, {
+        firstline = 0,
+        lastline = old_count,
+        new_lastline = new_count,
+        byte_count = old_byte,
+        deleted_text = table.concat(old_lines, "\n"),
+        bytes = {
+            start_row = 0,
+            start_col = 0,
+            start_byte = 0,
+            old_end_row = (old_count > 0) and (old_count - 1) or 0,
+            old_end_col = (old_count > 0) and #(old_lines[old_count] or "") or 0,
+            old_end_byte = old_byte,
+            new_end_row = (new_count > 0) and (new_count - 1) or 0,
+            new_end_col = (new_count > 0) and #(new_lines[new_count] or "") or 0,
+            new_end_byte = new_byte,
+        },
+    })
+end
+
+local function _undo_limit(buf)
+    local levels = tonumber(options.get("undolevels", nil, buf))
+    levels = math.floor(levels)
+    if levels < 0 then
+        return -1
+    end
+    if levels == 0 then
+        return 1
+    end
+    return levels
+end
+
 ---@class BufOpts
 ---@field buflisted boolean Whether the buffer shows up in bufer lists.
 ---@field modified boolean Whether the buffer has been modified
@@ -132,6 +225,14 @@ function Buffer:new(listed, scratch, loaded)
         signs = {},
         signs_byln = {},
         signs_nextid = { [""] = 1 },
+        _undo = {
+            entries = {},
+            index = 0,
+            pending = nil,
+            depth = 0,
+            restoring = false,
+            seq = 0,
+        },
     }, Buffer)
 
     buffers[curr_bufno] = obj
@@ -198,6 +299,8 @@ function Buffer:Load(read_contents)
             BufAttach.notify_reload(self.bufnr)
         end
     end
+
+    self:undo_clear()
 end
 
 function Buffer:is_loaded()
@@ -262,6 +365,381 @@ function Buffer:str_each_codepoint(s, visitor)
     return Utf8.each_codepoint(s or "", visitor)
 end
 
+function Buffer:_ensure_undo_state()
+    self._undo = self._undo or {
+        entries = {},
+        index = 0,
+        pending = nil,
+        depth = 0,
+        restoring = false,
+        seq = 0,
+        last_changed_line = nil,
+        line_undo_anchor = {},
+    }
+    return self._undo
+end
+
+function Buffer:undo_clear()
+    local st = self:_ensure_undo_state()
+    st.entries = {}
+    st.index = 0
+    st.pending = nil
+    st.depth = 0
+    st.seq = 0
+    st.last_changed_line = nil
+    st.line_undo_anchor = {}
+end
+
+function Buffer:undo_begin(win)
+    local st = self:_ensure_undo_state()
+    if st.restoring then
+        return
+    end
+
+    st.depth = st.depth + 1
+    if st.depth > 1 then
+        return
+    end
+
+    local limit = _undo_limit(self)
+    if limit < 0 then
+        st.entries = {}
+        st.index = 0
+        st.pending = nil
+        st.last_changed_line = nil
+        st.line_undo_anchor = {}
+        return
+    end
+
+    local target_win = win or _buffer_window(self)
+    local before_cursor = nil
+    if target_win then
+        before_cursor = { target_win.cursorx, target_win.cursory }
+    end
+
+    st.pending = {
+        before_lines = _copy_lines(self.lines),
+        before_modified = self.opts.modified == true,
+        before_cursor = before_cursor,
+        changed = false,
+    }
+end
+
+function Buffer:undo_mark_changed()
+    local st = self:_ensure_undo_state()
+    if st.restoring then
+        return
+    end
+    if st.pending then
+        st.pending.changed = true
+    end
+end
+
+function Buffer:undo_break_line_chain()
+    local st = self:_ensure_undo_state()
+    st.last_changed_line = nil
+end
+
+function Buffer:_undo_note_single_line_change(line_nr, old_line)
+    local st = self:_ensure_undo_state()
+    if st.restoring then
+        return
+    end
+    local ln = math.max(1, math.floor(tonumber(line_nr) or 1))
+    if st.last_changed_line ~= ln then
+        st.line_undo_anchor[ln] = tostring(old_line or "")
+    end
+    st.last_changed_line = ln
+end
+
+function Buffer:undo_end(win)
+    local st = self:_ensure_undo_state()
+    if st.restoring then
+        return
+    end
+    if st.depth == 0 then
+        return
+    end
+
+    st.depth = st.depth - 1
+    if st.depth > 0 then
+        return
+    end
+
+    local pending = st.pending
+    st.pending = nil
+    if not pending or not pending.changed then
+        return
+    end
+
+    local after_lines = _copy_lines(self.lines)
+    local after_modified = self.opts.modified == true
+    if _lines_equal(pending.before_lines, after_lines) and pending.before_modified == after_modified then
+        return
+    end
+
+    for i = #st.entries, st.index + 1, -1 do
+        st.entries[i] = nil
+    end
+
+    local target_win = win or _buffer_window(self)
+    local after_cursor = nil
+    if target_win then
+        after_cursor = { target_win.cursorx, target_win.cursory }
+    end
+
+    local changed_start, changed_end = _line_diff_span(pending.before_lines, after_lines)
+
+    st.seq = st.seq + 1
+    st.index = st.index + 1
+    st.entries[st.index] = {
+        id = st.seq,
+        before_lines = pending.before_lines,
+        after_lines = after_lines,
+        before_modified = pending.before_modified,
+        after_modified = after_modified,
+        before_cursor = pending.before_cursor,
+        after_cursor = after_cursor,
+        changed_start = changed_start,
+        changed_end = changed_end,
+    }
+
+    local limit = _undo_limit(self)
+    if limit < 0 then
+        st.entries = {}
+        st.index = 0
+        return
+    end
+    while #st.entries > limit do
+        table.remove(st.entries, 1)
+        st.index = st.index - 1
+    end
+    if st.index < 0 then
+        st.index = 0
+    end
+end
+
+function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
+    local old_lines = _copy_lines(self.lines)
+    self.lines = _copy_lines(lines)
+    if #self.lines == 0 then
+        self.lines = { "" }
+    end
+    self.opts.modified = modified == true
+
+    Sign = Sign or loadModule("lib.sign")
+    Sign.on_lines_changed(self, 1, #old_lines, #self.lines)
+
+    _notify_full_replace(self, old_lines, self.lines)
+    Syntax.ParseLinetypes(self, 1)
+    _request_full_redraw()
+    _run_textchanged(self, noauto)
+
+    local target_win = win or _buffer_window(self)
+    if target_win and cursor then
+        local new_y = math.max(1, math.min(cursor[2], #self.lines))
+        local max_x = self:str_len(self.lines[new_y] or "") + 1
+        local new_x = math.max(1, math.min(cursor[1], max_x))
+        if type(target_win.cursorSet) == "function" then
+            target_win:cursorSet(new_x, new_y)
+        else
+            target_win.cursorx = new_x
+            target_win.cursory = new_y
+        end
+    end
+
+    for _, candidate in pairs(windows) do
+        if candidate.buffer == self then
+            candidate.need_redraw = true
+        end
+    end
+    what_redraw["windows"] = true
+    need_redraw = true
+end
+
+function Buffer:_undo_jump_to(target, win, noauto)
+    local st = self:_ensure_undo_state()
+    if target < 0 or target > #st.entries then
+        return false
+    end
+    if target == st.index then
+        return true
+    end
+
+    local entry
+    local lines
+    local modified
+    local cursor
+
+    if target < st.index then
+        entry = st.entries[target + 1]
+        lines = entry.before_lines
+        modified = entry.before_modified
+        cursor = entry.before_cursor
+    else
+        entry = st.entries[target]
+        lines = entry.after_lines
+        modified = entry.after_modified
+        cursor = entry.after_cursor
+    end
+
+    st.restoring = true
+    local ok, err = pcall(self._undo_apply, self, lines, modified, cursor, win, noauto)
+    st.restoring = false
+    if not ok then
+        error(err)
+    end
+
+    st.index = target
+    st.last_changed_line = nil
+    st.line_undo_anchor = {}
+    return true
+end
+
+function Buffer:undo_change(win, change_id, noauto)
+    local st = self:_ensure_undo_state()
+    local target_id = math.floor(tonumber(change_id) or -1)
+    if target_id < 0 then
+        return false
+    end
+    if target_id == 0 then
+        return self:_undo_jump_to(0, win, noauto)
+    end
+
+    local target = nil
+    for i = 1, #st.entries do
+        if st.entries[i].id == target_id then
+            target = i
+            break
+        end
+    end
+    if target == nil then
+        return false
+    end
+    return self:_undo_jump_to(target, win, noauto)
+end
+
+function Buffer:undo(win, count, noauto)
+    local st = self:_ensure_undo_state()
+    if st.index == 0 then
+        return false
+    end
+
+    local steps = math.max(1, math.floor(tonumber(count) or 1))
+    if steps > st.index then
+        steps = st.index
+    end
+    local target = st.index - steps
+    return self:_undo_jump_to(target, win, noauto)
+end
+
+function Buffer:redo(win, count, noauto)
+    local st = self:_ensure_undo_state()
+    if st.index >= #st.entries then
+        return false
+    end
+
+    local steps = math.max(1, math.floor(tonumber(count) or 1))
+    local max_forward = #st.entries - st.index
+    if steps > max_forward then
+        steps = max_forward
+    end
+    local target = st.index + steps
+    return self:_undo_jump_to(target, win, noauto)
+end
+
+function Buffer:undo_line(win, noauto)
+    local st = self:_ensure_undo_state()
+    local target_win = win or _buffer_window(self)
+    local line_count = #self.lines
+    if line_count < 1 then
+        return false
+    end
+
+    local target_line = st.last_changed_line
+    if not target_line or target_line < 1 or target_line > line_count then
+        target_line = target_win and target_win.cursory or 1
+    end
+    if target_line < 1 then
+        target_line = 1
+    elseif target_line > line_count then
+        target_line = line_count
+    end
+
+    local target_text = st.line_undo_anchor[target_line]
+    local at_tip = (st.index > 0 and st.index == #st.entries)
+    if at_tip and target_text ~= nil then
+        local old_line = self.lines[target_line] or ""
+        local new_line = tostring(target_text)
+        local start_byte = _bytes_before_row(self.lines, target_line - 1)
+
+        self.lines[target_line] = new_line
+        self.opts.modified = true
+
+        if target_win then
+            if type(target_win.cursorSet) == "function" then
+                target_win:cursorSet(1, target_line)
+            else
+                target_win.cursorx = 1
+                target_win.cursory = target_line
+            end
+        end
+
+        _notify_buf_lines(self, {
+            firstline = target_line - 1,
+            lastline = target_line,
+            new_lastline = target_line,
+            byte_count = #old_line,
+            deleted_text = old_line,
+            bytes = {
+                start_row = target_line - 1,
+                start_col = 0,
+                start_byte = start_byte,
+                old_end_row = 0,
+                old_end_col = #old_line,
+                old_end_byte = #old_line,
+                new_end_row = 0,
+                new_end_col = #new_line,
+                new_end_byte = #new_line,
+            },
+        })
+        _run_textchanged(self, noauto)
+
+        local entry = st.entries[st.index]
+        entry.after_lines = _copy_lines(self.lines)
+        entry.after_modified = true
+        if target_win then
+            entry.after_cursor = { target_win.cursorx, target_win.cursory }
+        end
+        entry.changed_start, entry.changed_end = _line_diff_span(entry.before_lines, entry.after_lines)
+
+        st.last_changed_line = target_line
+        st.line_undo_anchor[target_line] = new_line
+        return true
+    end
+
+    local replacement = target_text
+    if replacement == nil then
+        replacement = self.lines[target_line] or ""
+    end
+
+    self:undo_begin(target_win)
+    self:set_line(target_line, replacement, true, noauto)
+    self:undo_mark_changed()
+    self.opts.modified = true
+    if target_win then
+        if type(target_win.cursorSet) == "function" then
+            target_win:cursorSet(1, target_line)
+        else
+            target_win.cursorx = 1
+            target_win.cursory = target_line
+        end
+    end
+    self:undo_end(target_win)
+
+    return true
+end
+
 function Buffer:line_len(line_nr, load_if_unloaded)
     local line = self:get_line(line_nr, load_if_unloaded) or ""
     return Utf8.len(line)
@@ -294,11 +772,14 @@ end
 
 function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
     local lines = self:lines_ref(load_if_unloaded)
+    self:undo_begin()
     local ln = math.max(1, math.floor(tonumber(line_nr) or 1))
     local old_line = lines[ln] or ""
+    self:_undo_note_single_line_change(ln, old_line)
     local start_byte = _bytes_before_row(lines, ln - 1)
     local new_line = tostring(text or "")
     lines[ln] = new_line
+    self:undo_mark_changed()
     self.opts.modified = true
     _notify_buf_lines(self, {
         firstline = ln - 1,
@@ -319,14 +800,18 @@ function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
         },
     })
     _run_textchanged(self, noauto)
+    self:undo_end()
 end
 
 function Buffer:insert_line(index, item, load_if_unloaded, noauto)
     local lines = self:lines_ref(load_if_unloaded)
+    self:undo_begin()
+    self:undo_break_line_chain()
     local idx = math.max(1, math.floor(tonumber(index) or (#lines + 1)))
     local new_line = tostring(item or "")
     local start_byte = _bytes_before_row(lines, idx - 1)
     table.insert(lines, idx, new_line)
+    self:undo_mark_changed()
     self.opts.modified = true
     _notify_buf_lines(self, {
         firstline = idx - 1,
@@ -347,6 +832,7 @@ function Buffer:insert_line(index, item, load_if_unloaded, noauto)
         },
     })
     _run_textchanged(self, noauto)
+    self:undo_end()
 end
 
 function Buffer:splice_line(line_nr, start_col1, end_col1, replacement, load_if_unloaded)
@@ -377,6 +863,8 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
         return {}
     end
 
+    self:undo_begin()
+    self:undo_break_line_chain()
     local was_empty = (line_count == 1 and self.lines[1] == "")
     local start_byte = _bytes_before_row(self.lines, s - 1)
 
@@ -389,6 +877,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     for _ = 1, k_remove do
         table.remove(self.lines, s)
     end
+    self:undo_mark_changed()
 
     if #self.lines == 0 then
         if not was_empty and not opts.silent_no_lines then
@@ -428,6 +917,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     end
     
     _run_textchanged(self, noauto)
+    self:undo_end()
 
     return removed
 end
@@ -458,6 +948,8 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
         end
     end
 
+    self:undo_begin()
+    self:undo_break_line_chain()
     -- Convert to Lua 1-based for table ops
     local start1 = s + 1
     local k_remove = e - s        -- how many to remove
@@ -484,6 +976,10 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
         for i = 1, m_insert do
             table.insert(self.lines, start1 + i - 1, inserted_lines[i])
         end
+        self:undo_mark_changed()
+    end
+    if k_remove > 0 then
+        self:undo_mark_changed()
     end
 
     -- 3) Ensure buffer has at least one (possibly empty) line
@@ -525,6 +1021,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     _run_textchanged(self, false)
     Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
     _request_full_redraw()
+    self:undo_end()
 end
 
 local function _autowrite_enabled(kind)

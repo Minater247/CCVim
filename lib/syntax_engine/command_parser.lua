@@ -609,7 +609,7 @@ function CommandParser.parse(raw_cmd)
         return {
             kind = "case",
             raw = raw,
-            mode = tokens[2] and tokens[2]:lower() or nil,
+            mode = tokens[2] and tokens[2]:lower(),
         }
     elseif head == "iskeyword" then
         local arg = tokens[2]

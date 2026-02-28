@@ -243,14 +243,14 @@ function loop.fs_read(fd, size, offset, callback)
     end
 
     local ok, rv_or_err = pcall(function()
-        local initseek = fd.seek and fd.seek() or nil
-        if offset and offset >= 0 and fd.seek then
+        local initseek = fd.seek()
+        if offset and offset >= 0 then
             fd.seek("set", offset)
         end
 
-        local data = fd.read and fd.read(size) or nil
+        local data = fd.read and fd.read(size)
 
-        if offset and offset >= 0 and initseek ~= nil and fd.seek then
+        if offset and offset >= 0 and initseek ~= nil then
             fd.seek("set", initseek)
         end
         return data or ""
@@ -322,7 +322,7 @@ function loop.fs_unlink(path, callback)
     local ok, err, errname = _fs_unlink_impl(path)
     if type(callback) == "function" then
         log_loop_fs("fs_unlink(path=%s, cb=true) -> err=%s ok=%s", tostring(path), tostring(err), tostring(ok))
-        callback(err, ok and true or nil)
+        callback(err, ok and true)
         return {
             _type = "uv_fs_t",
             _op = "unlink",
@@ -371,7 +371,7 @@ function loop.fs_rename(path, new_path, callback)
             tostring(err),
             tostring(ok)
         )
-        callback(err, ok and true or nil)
+        callback(err, ok and true)
         return {
             _type = "uv_fs_t",
             _op = "rename",

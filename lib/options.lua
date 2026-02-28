@@ -556,7 +556,7 @@ local function _get_expr_option_state(name, window)
         return nil
     end
     local bucket = expr_option_state_by_window[window]
-    return bucket and bucket[name] or nil
+    return bucket and bucket[name]
 end
 
 local function _apply_expr_option_state(name, loc, window, state)

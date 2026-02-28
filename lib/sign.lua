@@ -52,7 +52,7 @@ local function iter_target_buffers(buf)
         return all
     end
     local one = resolve_buffer(buf)
-    return one and { one } or nil
+    return one and { one }
 end
 
 local function ensure_buffer_sign_state(buf)
@@ -330,8 +330,8 @@ function Sign.getplaced(buf, opts)
     else
         group = tostring(group)
     end
-    local id = opts.id ~= nil and tonumber(opts.id) or nil
-    local lnum = opts.lnum ~= nil and tonumber(opts.lnum) or nil
+    local id = tonumber(opts.id)
+    local lnum = tonumber(opts.lnum)
 
     local targets = iter_target_buffers(buf)
     if not targets then
@@ -431,7 +431,7 @@ function Sign.unplace(group, opts)
     if sign_group == "" and group == nil then
         sign_group = ""
     end
-    local id = opts.id ~= nil and tonumber(opts.id) or nil
+    local id = tonumber(opts.id)
     local targets = iter_target_buffers(opts.buffer)
     if not targets then
         return -1

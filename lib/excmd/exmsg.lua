@@ -100,7 +100,7 @@ function ExMsg.PushSilent(opts)
     silence_stack[#silence_stack + 1] = {
         kind = 'silent',
         skip_errors = not not (opts and opts.skip_errors),
-        on_error = opts and opts.on_error or nil,
+        on_error = opts and opts.on_error,
     }
 end
 

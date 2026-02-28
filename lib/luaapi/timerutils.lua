@@ -59,7 +59,7 @@ function timerutils.wait(timeout_ms, callback, interval_ms, fast_only)
     end
 
     local deadline = os.epoch("utc") + timeout_ms
-    local event_filter = fast_only and "timer" or nil
+    local event_filter = fast_only and "timer"
 
     while true do
         local now = os.epoch("utc")

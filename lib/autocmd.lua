@@ -333,7 +333,7 @@ function Autocmd.CreateAutocommand(events, patterns, callback, command, group, o
         seq      = seq,
         group    = group,
         desc     = desc,
-        script_ctx = (type(script_ctx) == "string" and script_ctx ~= "") and script_ctx or nil,
+        script_ctx = (type(script_ctx) == "string" and script_ctx ~= "") and script_ctx,
         script_state = durable_script_state,
     }
 

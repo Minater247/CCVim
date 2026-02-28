@@ -321,6 +321,36 @@ Command.nmap_builtin_callback(
 )
 
 Command.nmap_builtin_callback(
+    {K(keys.u)},
+    function(count)
+        local win = windows[curwin]
+        win.buffer:undo(win, count or 1)
+        win.need_redraw = true
+        need_redraw = true
+    end
+)
+
+Command.nmap_builtin_callback(
+    {K(keys.r, true)},
+    function(count)
+        local win = windows[curwin]
+        win.buffer:redo(win, count or 1)
+        win.need_redraw = true
+        need_redraw = true
+    end
+)
+
+Command.nmap_builtin_callback(
+    {K(keys.u, false, true)},
+    function()
+        local win = windows[curwin]
+        win.buffer:undo_line(win)
+        win.need_redraw = true
+        need_redraw = true
+    end
+)
+
+Command.nmap_builtin_callback(
     {K(keys.p)},
     function()
         return windows[curwin]:pasteRegister("unnamed", nil, nil, false)

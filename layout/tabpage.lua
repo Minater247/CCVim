@@ -141,7 +141,7 @@ function Tabpage:MakeSplitProbe(refwin)
 
     local probe = {
         opts = opts,
-        style = refwin and refwin.style or nil,
+        style = refwin and refwin.style,
     }
 
     function probe:minwidth()

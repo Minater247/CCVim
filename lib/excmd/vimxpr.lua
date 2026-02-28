@@ -8,6 +8,7 @@ local EnvVars = loadModule("lib.envvars")
 local Scopes  = loadModule("lib.luaapi.scopes")
 local Key = loadModule("lib.key")
 local VimFnBuiltins = loadModule("lib.luaapi.fn") or {}
+local ApiBuild
 -- =========================================================
 
 -- -------- helpers --------
@@ -175,9 +176,9 @@ local function resolve_vlua_path(path)
         end
         return cur
     end
-    local ApiBuild = loadModule("lib.luaapi.apibuild")
-    local api = ApiBuild and ApiBuild.Build and ApiBuild.Build()
-    local f = api and traverse(api) or nil
+    ApiBuild = ApiBuild or loadModule("lib.luaapi.apibuild")
+    local api = ApiBuild.Build()
+    local f = api and traverse(api)
     if type(f) ~= "function" then return Error(117, "v:lua." .. path) end
     return f
 end
@@ -1031,7 +1032,7 @@ local function eval_node(node, vim9, env)
             f = resolve_vlua_path(node.lua_path)
             if is_error(f) then return f end
         else
-            local scoped_name = node.scope and (tostring(node.scope) .. ":" .. tostring(node.name)) or nil
+            local scoped_name = node.scope and (tostring(node.scope) .. ":" .. tostring(node.name))
             if not f and scoped_name and type(env.funcs[scoped_name]) == "function" then
                 f = env.funcs[scoped_name]
             end
@@ -1164,7 +1165,7 @@ local function eval_node(node, vim9, env)
     
     if k == "opt" then
         local win = windows[curwin]
-        local buf = win and win.buffer
+        local buf = win.buffer
         local getlocal, getglobal = false, false
         if node.scope == "l" then
             getlocal = true

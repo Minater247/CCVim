@@ -1082,7 +1082,7 @@ local function _collect_changed_window_ids(tabp, before)
     for i = 1, #tabp.windows do
         local win = tabp.windows[i]
         local now = _window_size_snapshot(win)
-        local prev = before and before[win.winnr] or nil
+        local prev = before and before[win.winnr]
         if now and prev and (now.width ~= prev.width or now.height ~= prev.height) then
             changed[#changed + 1] = win.winnr
         end

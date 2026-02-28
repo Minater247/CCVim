@@ -51,7 +51,7 @@ function Window:new(buffer, refwin)
     local obj = setmetatable({
         winnr     = curr_winno,
         buffer    = buffer or Buffer(true, false, true),
-        altbuf    = refwin and refwin.altbuf or nil,
+        altbuf    = refwin and refwin.altbuf,
         opts      = {},
         scrollx   = refwin and refwin.scrollx or 1,
         scrolly   = refwin and { refwin.scrolly[1], refwin.scrolly[2] } or { 1, 0 }, -- line offset, internal line offset
@@ -629,7 +629,7 @@ function Window:_wrap_params()
     return text_w, {
         wraplen  = wraplen,
         wordwrap = linebreak,
-        breakat  = linebreak and options.get("breakat") or nil,
+        breakat  = linebreak and options.get("breakat"),
         tabcfg   = Tab.get_tab_config(self.buffer)
     }
 end
@@ -657,7 +657,7 @@ end
 function Window:_wrap_layout(line_idx, params, bytepos)
     self.buffer:ensure_loaded(true)
     local line = self.buffer:get_line(line_idx, true) or ""
-    local byte_col = bytepos and self.buffer:str_byte_index(line, bytepos, true) or nil
+    local byte_col = bytepos and self.buffer:str_byte_index(line, bytepos, true)
     local lines, ranges, gsrc, pos = TexRen.layout(line, params, byte_col)
     if #lines < 1 then lines[1] = "" end
     return lines, ranges, gsrc, pos
@@ -973,6 +973,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
     self.buffer:ensure_loaded(true)
     deltax = deltax or 0
     deltay = deltay or 0
+    local oldy = self.cursory
 
     if force_reset_held_x then
         self._held_vx = nil
@@ -1025,6 +1026,9 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
 
     self.cursory = newy
     self.cursorx = newx
+    if newy ~= oldy and type(self.buffer.undo_break_line_chain) == "function" then
+        self.buffer:undo_break_line_chain()
+    end
 
     if self.opts.wrap then
         local height = self:textheight()
@@ -1398,7 +1402,7 @@ function Window:render(xoff, yoff)
         local base_hl = cursorline_active and "CursorLineSign" or "SignColumn"
         local idx = 1
         for _ = 1, sign_slots do
-            local sig = line_signs and line_signs[idx] or nil
+            local sig = line_signs and line_signs[idx]
             if sig then
                 local txt = sign_entry_text(sig)
                 local hl = sign_entry_hl(sig, cursorline_active) or base_hl
@@ -1537,13 +1541,13 @@ function Window:render(xoff, yoff)
         end)
 
         local line_str = lines[i] or ""
-        local cursor_byte = (self.cursory == i) and self.buffer:str_byte_index(line_str, self.cursorx, true) or nil
+        local cursor_byte = (self.cursory == i) and self.buffer:str_byte_index(line_str, self.cursorx, true)
         local rendered, blitLines, cursorPos, ranges, gsrc = TexRen.parse(
             line_str,
             {
                 wraplen  = (self.opts.wrap and text_w) or 0,
                 wordwrap = self.opts.wrap and options.get("linebreak", self),
-                breakat  = (self.opts.wrap and options.get("linebreak", self)) and options.get("breakat") or nil,
+                breakat  = (self.opts.wrap and options.get("linebreak", self)) and options.get("breakat"),
                 listcfg  = listcfg,
                 tabcfg   = tabcfg
             },
@@ -1591,7 +1595,7 @@ function Window:render(xoff, yoff)
             if visual_y >= max_rows then break end
 
             if sign_w > 0 then
-                draw_signcol(visual_y, iscursor_line, (j == 1) and line_signs or nil)
+                draw_signcol(visual_y, iscursor_line, (j == 1) and line_signs)
             end
 
             if show_numbers then

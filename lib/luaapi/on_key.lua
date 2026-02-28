@@ -67,7 +67,7 @@ function on_key.on_key(fn, ns_id, opts)
         end
     end
 
-    callbacks[ns_id] = fn and { fn, opts } or nil
+    callbacks[ns_id] = fn and { fn, opts }
     return ns_id
 end
 

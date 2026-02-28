@@ -212,8 +212,8 @@ end
 
 local function syntax_group_name(ctx, group_id)
     local ir = ctx.syntax_ir
-    local g = ir and ir.groups and ir.groups[group_id] or nil
-    return g and g.name or nil
+    local g = ir and ir.groups and ir.groups[group_id]
+    return g and g.name
 end
 
 function Api.invalidate_from_line(buffer, line)
@@ -237,7 +237,7 @@ function Api.line_to_blit(buffer, line, window)
     end
 
     blits = treesitter()._apply_highlight_blits(buffer, line, line, blits)
-    return blits and blits[line] or nil
+    return blits and blits[line]
 end
 
 function Api.lines_to_blit(buffer, first_line, last_line, window)

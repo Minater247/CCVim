@@ -324,7 +324,7 @@ local function _matches_for_name(name, path_spec, buf, find_dirs, use_suffixes)
     local win = windows[curwin]
     local cwd = Builtins.getcwd()
     local cur_file_dir = ""
-    if win and win.buffer and win.buffer.name and win.buffer.name ~= "" then
+    if win.buffer.name ~= "" then
         cur_file_dir = _dir_of(_abs_path(win.buffer.name))
     end
 
@@ -706,7 +706,7 @@ end
 function Builtins.expand(str, nosuf, list)
     local raw = tostring(str or "")
     if raw:find("<cfile>", 1, true) then
-        local buf = windows[curwin] and windows[curwin].buffer or nil
+        local buf = windows[curwin].buffer
         raw = raw:gsub("<cfile>", _expand_cfile(buf))
     end
 
@@ -804,7 +804,7 @@ function Builtins.jobwait(jobs, timeout)
     local out = {}
     for i = 1, #jobs do
         local id = tonumber(jobs[i])
-        local job = id and _jobs[id] or nil
+        local job = id and _jobs[id]
         if not job then
             out[i] = -3
         elseif job.running then
@@ -1405,7 +1405,7 @@ function Builtins.getwininfo(winid, ...)
         out[#out + 1] = {
             winid = win.winnr,
             winnr = win.winnr,
-            bufnr = win.buffer and win.buffer.bufnr or 0,
+            bufnr = win.buffer.bufnr or 0,
             tabnr = win.tabpagenr or curtp,
             height = height,
             width = width,
@@ -2010,12 +2010,12 @@ end
 
 -- did_filetype(): true if filetype was set by detection (or already set)
 function Builtins.did_filetype()
-    local bnr = (windows[curwin] and windows[curwin].buffer and windows[curwin].buffer.bufnr) or 0
+    local bnr = windows[curwin].buffer.bufnr
     local bt = scopes._b_by_buf[bnr]
     if bt and bt.did_filetype then
         return 1
     end
-    local ft = options.get("filetype", nil, windows[curwin] and windows[curwin].buffer or nil)
+    local ft = options.get("filetype", nil, windows[curwin].buffer)
     if ft ~= nil and ft ~= "" then
         return 1
     end
@@ -2029,10 +2029,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     end
 
     local win = windows[curwin]
-    local buf = win and win.buffer
-    if not win or not buf then
-        return 0
-    end
+    local buf = win.buffer
 
     local lines = buf:lines_ref(true)
     if #lines == 0 then
@@ -2088,7 +2085,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     if timeout_ms < 0 then
         timeout_ms = 0
     end
-    local started_at = (timeout_ms > 0) and os.clock() or nil
+    local started_at = (timeout_ms > 0) and os.clock()
     local function timed_out()
         if timeout_ms <= 0 then
             return false
@@ -2431,13 +2428,13 @@ end
 
 function Builtins.findfile(name, path, count)
     local win = windows[curwin]
-    local buf = win and win.buffer or nil
+    local buf = win.buffer
     local target = tostring(name or "")
     if target == "" then return "" end
 
     local path_spec
     if path == nil then
-        path_spec = (buf and options.get("path", nil, buf)) or ".,,"
+        path_spec = options.get("path", nil, buf) or ".,,"
     else
         path_spec = tostring(path)
     end
@@ -2450,14 +2447,13 @@ function Builtins.findfile(name, path, count)
 end
 
 function Builtins.finddir(name, path, count)
-    local win = windows[curwin]
-    local buf = win and win.buffer or nil
+    local buf = windows[curwin].buffer
     local target = tostring(name or "")
     if target == "" then return "" end
 
     local path_spec
     if path == nil then
-        path_spec = (buf and options.get("path", nil, buf)) or ".,,"
+        path_spec = options.get("path", nil, buf) or ".,,"
     else
         path_spec = tostring(path)
     end
@@ -3181,8 +3177,7 @@ end
 local function _resolve_buffer_ref(expr)
     if type(expr) == "number" then
         if expr == 0 then
-            local win = windows[curwin]
-            local alt = win and win.altbuf
+            local alt = windows[curwin].altbuf
             if type(alt) == "number" then
                 return buffers[alt]
             end
@@ -3390,7 +3385,7 @@ end
 -- bufname([expr]): get buffer name
 function Builtins.bufname(expr)
     if expr == nil or expr == "" or expr == "%" then
-        return _bufname_from_buf(windows[curwin] and windows[curwin].buffer)
+        return _bufname_from_buf(windows[curwin].buffer)
     end
 
     if type(expr) == "number" then
@@ -3653,8 +3648,7 @@ function Builtins.getreg(regname, _arg2, list, ...)
     reg = reg:sub(1, 1)
 
     if reg == "#" then
-        local win = windows[curwin]
-        local alt = win and win.altbuf or nil
+        local alt = windows[curwin].altbuf
         local name = alt and alt.name or ""
         if list and list ~= 0 and list ~= false then
             return _split_lines_for_register(name)
@@ -4263,7 +4257,7 @@ end
 function Builtins.strpart(str, start, len)
     local s = tostring(str or "")
     local st = tonumber(start or 0) or 0
-    local ln = len and (tonumber(len) or 0) or nil
+    local ln = len and (tonumber(len) or 0)
     if st < 0 then st = 0 end
     -- Vim's strpart is 0-based; Lua's string.sub is 1-based.
     local from = st + 1
@@ -4420,7 +4414,7 @@ function Builtins.execute(command, silent, ...)
             ctrl = Runtime._CURRENT_CTRL,
             origin = {
                 kind = "vim-execute",
-                source = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx or nil,
+                source = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx,
             },
         })
     end, function(e)
@@ -4611,7 +4605,7 @@ function Builtins.substitute(expr, pat, sub, flags)
                     if d == 0 then
                         out[#out + 1] = match
                     else
-                        local cap = (type(caps) == "table") and caps[d] or nil
+                        local cap = (type(caps) == "table") and caps[d]
                         out[#out + 1] = cap == nil and "" or tostring(cap)
                     end
                 elseif nxt == "&" then

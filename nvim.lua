@@ -188,6 +188,7 @@ function _V.setMode(newmode, newx, newy)
     }
 
     if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+        win.buffer:undo_end(win)
         AutoCmd.Run("InsertLeavePre", buf_ctx)
     end
 
@@ -227,6 +228,9 @@ function _V.setMode(newmode, newx, newy)
     win:cursorMove(0, 0, false)
     if newmode == "insert" then
         win.insert_curs_start = {win.cursorx, win.cursory}
+        if mode_changed and oldmode ~= "insert" then
+            win.buffer:undo_begin(win)
+        end
     end
     _V.need_redraw = true
 end
@@ -281,9 +285,9 @@ function _V.enterWindow(winnr)
         new_curtp = _V.windows[winnr].tabpagenr
     end
 
-    local oldbuf = _V.windows[_V.curwin] and _V.windows[_V.curwin].buffer or nil
-    local newbuf = _V.windows[new_curwin] and _V.windows[new_curwin].buffer or nil
-    local buf_changed = oldbuf and newbuf and oldbuf ~= newbuf
+    local oldbuf = _V.windows[_V.curwin].buffer
+    local newbuf = _V.windows[new_curwin].buffer
+    local buf_changed = oldbuf ~= newbuf
 
     if buf_changed then
         AutoCmd.Run("BufLeave", { bufnr = oldbuf.bufnr, bufname = oldbuf.name })

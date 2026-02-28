@@ -1026,7 +1026,7 @@ function api.nvim_set_option_value(name, value, opts)
     if opts.buf ~= nil then
         buf = buf_for_bufnr(opts.buf)
     else
-        buf = win and win.buffer or buf_for_bufnr(0)
+        buf = win.buffer
     end
 
     return options.set(name, value, opts.scope == "local", win, buf, opts.scope == "global")
@@ -1047,7 +1047,7 @@ function api.nvim_get_option_value(name, opts)
     if opts.buf ~= nil then
         buf = buf_for_bufnr(opts.buf)
     else
-        buf = win and win.buffer or buf_for_bufnr(0)
+        buf = win.buffer
     end
 
     return options.get(name, win, buf, opts.scope == "local", opts.scope == "global")
@@ -1495,8 +1495,8 @@ function api.nvim_create_autocmd(event, opts)
         end
     end
 
-    local cb = opts.callback and (ScriptSource or loadModule("lib.scriptsource")).wrap(nil, opts.callback) or nil
     ScriptSource = ScriptSource or loadModule("lib.scriptsource")
+    local cb = opts.callback and ScriptSource.wrap(nil, opts.callback)
     local script_ctx = ScriptSource.CurrentContext()
 
     return AutoCmd.CreateAutocommand(event, patterns, cb, opts.command, opts.group, opts.once, opts
@@ -1619,8 +1619,8 @@ function api.nvim_create_user_command(name, command, opts)
                 fargs = info.fargs or {},
                 nargs = def.opts.nargs,
                 bang = info.bang or false,
-                line1 = windows[curwin] and windows[curwin].cursory or 1,
-                line2 = windows[curwin] and windows[curwin].cursory or 1,
+                line1 = windows[curwin].cursory,
+                line2 = windows[curwin].cursory,
                 range = 0,
                 reg = nil,
                 mods = "",
@@ -1809,7 +1809,7 @@ function api.nvim_buf_attach(buffer, send_buffer, opts)
 
     local buf
     if bufnr == 0 then
-        buf = windows[curwin] and windows[curwin].buffer or nil
+        buf = windows[curwin].buffer
     else
         buf = buffers[bufnr]
     end
@@ -1838,11 +1838,11 @@ function api.nvim_buf_attach(buffer, send_buffer, opts)
 
     ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     local listener = {
-        on_lines = opts.on_lines and ScriptSource.wrap(nil, opts.on_lines) or nil,
-        on_bytes = opts.on_bytes and ScriptSource.wrap(nil, opts.on_bytes) or nil,
-        on_changedtick = opts.on_changedtick and ScriptSource.wrap(nil, opts.on_changedtick) or nil,
-        on_detach = opts.on_detach and ScriptSource.wrap(nil, opts.on_detach) or nil,
-        on_reload = opts.on_reload and ScriptSource.wrap(nil, opts.on_reload) or nil,
+        on_lines = opts.on_lines and ScriptSource.wrap(nil, opts.on_lines),
+        on_bytes = opts.on_bytes and ScriptSource.wrap(nil, opts.on_bytes),
+        on_changedtick = opts.on_changedtick and ScriptSource.wrap(nil, opts.on_changedtick),
+        on_detach = opts.on_detach and ScriptSource.wrap(nil, opts.on_detach),
+        on_reload = opts.on_reload and ScriptSource.wrap(nil, opts.on_reload),
         utf_sizes = opts.utf_sizes == true,
         preview = opts.preview == true,
     }
@@ -1863,7 +1863,7 @@ function api.nvim_buf_detach(buffer)
 
     local buf
     if bufnr == 0 then
-        buf = windows[curwin] and windows[curwin].buffer or nil
+        buf = windows[curwin].buffer
     else
         buf = buffers[bufnr]
     end
@@ -2060,7 +2060,7 @@ function api.nvim_buf_del_extmark(buffer, ns_id, id)
         removed = true
     end
 
-    local ropts = removed_mark and removed_mark.opts or nil
+    local ropts = removed_mark and removed_mark.opts
     if ropts and (ropts.sign_text ~= nil or ropts.line_hl_group ~= nil or ropts.number_hl_group ~= nil) then
         request_buffer_redraw(buf, false)
     end

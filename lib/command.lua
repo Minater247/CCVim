@@ -221,8 +221,8 @@ local function _composite_node(buf_node, glob_node)
     if glob_node.children then for k in pairs(glob_node.children) do keys[k] = true end end
     for k in pairs(keys) do
         composite.children[k] = _composite_node(
-            buf_node.children and buf_node.children[k] or nil,
-            glob_node.children and glob_node.children[k] or nil
+            buf_node.children and buf_node.children[k],
+            glob_node.children and glob_node.children[k]
         )
     end
     return composite
@@ -234,8 +234,8 @@ end
 local function composite_root_for_mode(mode_full)
     local builtin = builtin_mappings[mode_full] or { children = {} }
     local global_user = user_global_mappings[mode_full] or { children = {} }
-    local buf  = windows[curwin] and windows[curwin].buffer or nil
-    local local_user = (buf and buf.local_mappings and buf.local_mappings[mode_full]) or nil
+    local buf  = windows[curwin].buffer
+    local local_user = buf.local_mappings and buf.local_mappings[mode_full]
     local global_root = _composite_node(global_user, builtin)
     return _composite_node(local_user, global_root)
 end
@@ -254,10 +254,10 @@ end
 local function _get_existing_user_root(mode_full, opts)
     if opts and opts.buffer then
         local buf = opts.buffer
-        return buf and buf.local_mappings and buf.local_mappings[mode_full] or nil
+        return buf.local_mappings and buf.local_mappings[mode_full]
     elseif opts and opts.buffer_local then
         local buf = windows[curwin].buffer
-        return buf and buf.local_mappings and buf.local_mappings[mode_full] or nil
+        return buf.local_mappings and buf.local_mappings[mode_full]
     else
         return user_global_mappings[mode_full]
     end
@@ -287,7 +287,7 @@ local function _delete_mapping(root, seq_nums)
     local node = root
     for i = 1, #seq_nums do
         local keynum = seq_nums[i].numeric
-        local child = node.children and node.children[keynum] or nil
+        local child = node.children and node.children[keynum]
         if not child then return false end
         stack[#stack + 1] = { parent = node, key = keynum, node = child }
         node = child
@@ -493,7 +493,7 @@ local function _mapcheck_in_root(root, lhs_seq)
     local prefix_rhs = _node_rhs(node)
 
     for i = 1, #lhs_seq do
-        local child = node.children and node.children[lhs_seq[i].numeric] or nil
+        local child = node.children and node.children[lhs_seq[i].numeric]
         if not child then
             return prefix_rhs
         end
@@ -514,7 +514,7 @@ function Command.mapcheck(modes, lhs_seq)
     local buf = windows[curwin].buffer
 
     for _, m in ipairs(expand_modes(modes)) do
-        local local_root = buf.local_mappings and buf.local_mappings[m] or nil
+        local local_root = buf.local_mappings and buf.local_mappings[m]
         local local_rhs = _mapcheck_in_root(local_root, lhs_seq)
         if local_rhs then
             return local_rhs
@@ -691,12 +691,26 @@ end
 -- =========================
 -- Execution helpers
 -- =========================
+local function _with_undo_block(fn)
+    local win = windows[curwin]
+    local buf = win.buffer
+    buf:undo_begin(win)
+    local ok, rv = pcall(fn)
+    buf:undo_end(win)
+    if not ok then
+        error(rv)
+    end
+    return rv
+end
+
 local function execute_node(node)
-    local cnt = (state.count_committed and state.count_value) or nil
+    local cnt = (state.count_committed and state.count_value)
     Command.Log("execute cb=%s rhs_len=%d recursive=%s count=%d", tostring(node.callback), node.rhs_seq and #node.rhs_seq or 0, tostring(node.recursive), cnt)
 
     if node.callback then
-        local rv = node.callback(cnt)
+        local rv = _with_undo_block(function()
+            return node.callback(cnt)
+        end)
         if rv then ExMsg.echoerr(rv:toString()) end
         return
     end
@@ -705,7 +719,9 @@ local function execute_node(node)
         local rhs = node.rhs_seq
         cancel_ambiguous_timer()
         reset_mapping_only()
-        Command._feed_seq_with_policy(rhs, node.recursive and POLICY_FULL or POLICY_CB_ONLY)
+        _with_undo_block(function()
+            Command._feed_seq_with_policy(rhs, node.recursive and POLICY_FULL or POLICY_CB_ONLY)
+        end)
         return
     end
 end
@@ -753,13 +769,15 @@ local function _execute_operator_with_motion(motion_leaf)
     cancel_ambiguous_timer()
     -- Operator callback signature:
     --   cb(total_count, motion_name, op_count, motion_count)
-    state.pending_op.cb(total, mname, op_cnt, mot_cnt)
+    _with_undo_block(function()
+        state.pending_op.cb(total, mname, op_cnt, mot_cnt)
+    end)
     reset_state()
 end
 
 local function _single_key_operator_node(root, keynum)
     local node = root.children[keynum]
-    return (node and node.operator_cb) and node or nil
+    return (node and node.operator_cb) and node
 end
 
 local function _op_motion_step(code)
@@ -776,7 +794,7 @@ local function _op_motion_step(code)
     end
 
     -- Only traverse this operator's motion trie; unknown keys are NOT motions.
-    local next_node = ms.node and ms.node.children and ms.node.children[code.numeric] or nil
+    local next_node = ms.node and ms.node.children and ms.node.children[code.numeric]
     if not next_node then
         return false
     end
@@ -1058,7 +1076,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     end
 
     -- ===== Trie step =====
-    local next_node = state.node and state.node.children and state.node.children[code.numeric] or nil
+    local next_node = state.node and state.node.children and state.node.children[code.numeric]
     if not next_node then
         cancel_ambiguous_timer()
 
