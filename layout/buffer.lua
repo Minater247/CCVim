@@ -65,73 +65,128 @@ local function _bytes_before_row(lines, row0)
     return total
 end
 
--- TODO: implement this properly
-local function _utf16_units(text)
-    local units = 0
-    Utf8.each_codepoint(text or "", function(cp)
+local function _text_sizes(text)
+    text = text or ""
+    if text == "" then
+        return 0, 0
+    end
+    if not text:find("[\128-\255]") then
+        local n = #text
+        return n, n
+    end
+    local codepoints = 0
+    local codeunits = 0
+    Utf8.each_codepoint(text, function(cp)
+        codepoints = codepoints + 1
         if cp > 0xFFFF then
-            units = units + 2
+            codeunits = codeunits + 2
         else
-            units = units + 1
+            codeunits = codeunits + 1
         end
     end)
-    return units
+    return codepoints, codeunits
 end
 
 local function _notify_buf_lines(buf, payload)
     if not buf then
         return
     end
+    local need_utf_sizes = BufAttach.has_utf_sizes_listener(buf.bufnr)
+    local deleted_lines = payload.deleted_lines
+    if deleted_lines ~= nil then
+        if need_utf_sizes then
+            local deleted_codepoints = 0
+            local deleted_codeunits = 0
+            for i = 1, #deleted_lines do
+                local line_cp, line_cu = _text_sizes(deleted_lines[i])
+                deleted_codepoints = deleted_codepoints + line_cp
+                deleted_codeunits = deleted_codeunits + line_cu
+                if i < #deleted_lines then
+                    deleted_codepoints = deleted_codepoints + 1
+                    deleted_codeunits = deleted_codeunits + 1
+                end
+            end
+            payload.deleted_codepoints = payload.deleted_codepoints or deleted_codepoints
+            payload.deleted_codeunits = payload.deleted_codeunits or deleted_codeunits
+        end
+        payload.deleted_lines = nil
+    end
     local deleted_text = payload.deleted_text
     if deleted_text ~= nil then
-        payload.deleted_codepoints = payload.deleted_codepoints or Utf8.len(deleted_text)
-        payload.deleted_codeunits = payload.deleted_codeunits or _utf16_units(deleted_text)
+        if need_utf_sizes then
+            local text_cp, text_cu = _text_sizes(deleted_text)
+            payload.deleted_codepoints = payload.deleted_codepoints or text_cp
+            payload.deleted_codeunits = payload.deleted_codeunits or text_cu
+        end
         payload.deleted_text = nil
     end
     BufAttach.notify_lines(buf.bufnr, payload)
 end
 
-local function _copy_lines(lines)
-    local out = {}
-    for i = 1, #lines do
-        out[i] = lines[i]
+local function _copy_lines(lines, start1, end1)
+    local s = start1 or 1
+    local e = end1 or #lines
+    if e < s then
+        return {}
     end
+    local out = {}
+    table.move(lines, s, e, 1, out)
     return out
 end
 
-local function _lines_equal(a, b)
-    if #a ~= #b then
-        return false
+local function _line_diff_bounds(before, after)
+    local before_len = #before
+    local after_len = #after
+    local shared = math.min(before_len, after_len)
+
+    local first = 1
+    while first <= shared and before[first] == after[first] do
+        first = first + 1
     end
-    for i = 1, #a do
-        if a[i] ~= b[i] then
-            return false
-        end
+
+    if first > before_len and first > after_len then
+        return nil, nil, nil
     end
-    return true
+
+    local before_end = before_len
+    local after_end = after_len
+    while before_end >= first and after_end >= first and before[before_end] == after[after_end] do
+        before_end = before_end - 1
+        after_end = after_end - 1
+    end
+
+    return first, before_end, after_end
 end
 
-local function _line_diff_span(before, after)
-    local max_count = math.max(#before, #after)
-    local first
-    for i = 1, max_count do
-        if before[i] ~= after[i] then
-            first = i
-            break
-        end
-    end
-    if not first then
-        return nil, nil
+local function _undo_entry_after_lines(entry)
+    if not entry.changed_start then
+        return _copy_lines(entry.before_lines)
     end
 
-    local last = first
-    for i = max_count, first, -1 do
-        if before[i] ~= after[i] then
-            last = i
-            break
-        end
+    local start = entry.changed_start
+    local before = entry.before_lines
+    local out = {}
+
+    local prefix_end = start - 1
+    local dst = 1
+    if prefix_end >= 1 then
+        table.move(before, 1, prefix_end, dst, out)
+        dst = dst + prefix_end
     end
-    return first, last
+
+    local after_chunk = entry.after_chunk
+    local after_count = #after_chunk
+    if after_count > 0 then
+        table.move(after_chunk, 1, after_count, dst, out)
+        dst = dst + after_count
+    end
+
+    local suffix_start = start + entry.before_count
+    if suffix_start <= #before then
+        table.move(before, suffix_start, #before, dst, out)
+    end
+
+    return out
 end
 
 local function _buffer_window(buf)
@@ -157,7 +212,7 @@ local function _notify_full_replace(buf, old_lines, new_lines)
         lastline = old_count,
         new_lastline = new_count,
         byte_count = old_byte,
-        deleted_text = table.concat(old_lines, "\n"),
+        deleted_lines = old_lines,
         bytes = {
             start_row = 0,
             start_col = 0,
@@ -474,9 +529,10 @@ function Buffer:undo_end(win)
         return
     end
 
-    local after_lines = _copy_lines(self.lines)
+    local before_lines = pending.before_lines
     local after_modified = self.opts.modified == true
-    if _lines_equal(pending.before_lines, after_lines) and pending.before_modified == after_modified then
+    local changed_start, before_end, after_end = _line_diff_bounds(before_lines, self.lines)
+    if not changed_start and pending.before_modified == after_modified then
         return
     end
 
@@ -490,21 +546,26 @@ function Buffer:undo_end(win)
         after_cursor = { target_win.cursorx, target_win.cursory }
     end
 
-    local changed_start, changed_end = _line_diff_span(pending.before_lines, after_lines)
-
     st.seq = st.seq + 1
     st.index = st.index + 1
-    st.entries[st.index] = {
+    local entry = {
         id = st.seq,
-        before_lines = pending.before_lines,
-        after_lines = after_lines,
+        before_lines = before_lines,
         before_modified = pending.before_modified,
         after_modified = after_modified,
         before_cursor = pending.before_cursor,
         after_cursor = after_cursor,
         changed_start = changed_start,
-        changed_end = changed_end,
+        changed_end = changed_start and math.max(before_end, after_end) or nil,
     }
+    if changed_start then
+        entry.before_count = before_end - changed_start + 1
+        entry.after_chunk = _copy_lines(self.lines, changed_start, after_end)
+    else
+        entry.before_count = 0
+        entry.after_chunk = {}
+    end
+    st.entries[st.index] = entry
 
     local limit = _undo_limit(self)
     if limit < 0 then
@@ -580,7 +641,7 @@ function Buffer:_undo_jump_to(target, win, noauto)
         cursor = entry.before_cursor
     else
         entry = st.entries[target]
-        lines = entry.after_lines
+        lines = _undo_entry_after_lines(entry)
         modified = entry.after_modified
         cursor = entry.after_cursor
     end
@@ -708,12 +769,20 @@ function Buffer:undo_line(win, noauto)
         _run_textchanged(self, noauto)
 
         local entry = st.entries[st.index]
-        entry.after_lines = _copy_lines(self.lines)
         entry.after_modified = true
         if target_win then
             entry.after_cursor = { target_win.cursorx, target_win.cursory }
         end
-        entry.changed_start, entry.changed_end = _line_diff_span(entry.before_lines, entry.after_lines)
+        local changed_start, before_end, after_end = _line_diff_bounds(entry.before_lines, self.lines)
+        entry.changed_start = changed_start
+        entry.changed_end = changed_start and math.max(before_end, after_end) or nil
+        if changed_start then
+            entry.before_count = before_end - changed_start + 1
+            entry.after_chunk = _copy_lines(self.lines, changed_start, after_end)
+        else
+            entry.before_count = 0
+            entry.after_chunk = {}
+        end
 
         st.last_changed_line = target_line
         st.line_undo_anchor[target_line] = new_line

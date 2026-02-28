@@ -23,6 +23,7 @@ local function ensure_state(bufnr)
             next_id = 1,
             listeners = {},
             order = {},
+            utf_sizes_on_lines = 0,
         }
         state_by_buf[bufnr] = st
     end
@@ -30,8 +31,12 @@ local function ensure_state(bufnr)
 end
 
 local function remove_listener(st, id)
-    if not st.listeners[id] then
+    local listener = st.listeners[id]
+    if not listener then
         return
+    end
+    if listener.utf_sizes and type(listener.on_lines) == "function" then
+        st.utf_sizes_on_lines = st.utf_sizes_on_lines - 1
     end
     st.listeners[id] = nil
     for i = 1, #st.order do
@@ -118,6 +123,9 @@ function BufAttach.attach(bufnr, opts)
 
     st.listeners[id] = opts
     st.order[#st.order + 1] = id
+    if opts.utf_sizes and type(opts.on_lines) == "function" then
+        st.utf_sizes_on_lines = st.utf_sizes_on_lines + 1
+    end
     ensure_buf_scope(bufnr)
     return true, id
 end
@@ -156,6 +164,16 @@ function BufAttach.notify_changedtick(bufnr)
     local tick = BufAttach.bump_changedtick(bufnr)
     emit(bufnr, "on_changedtick", { "changedtick", bufnr, tick })
     return tick
+end
+
+function BufAttach.has_listeners(bufnr)
+    local st = state_by_buf[bufnr]
+    return st ~= nil and #st.order > 0
+end
+
+function BufAttach.has_utf_sizes_listener(bufnr)
+    local st = state_by_buf[bufnr]
+    return st ~= nil and st.utf_sizes_on_lines > 0
 end
 
 function BufAttach.notify_lines(bufnr, payload)

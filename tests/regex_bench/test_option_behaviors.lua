@@ -90,7 +90,7 @@ Runtime.CurrentScriptSid = function()
     return rawget(_G, "__test_sid")
 end
 Runtime.CanonicalFunctionName = function(fname, opts)
-    local ctx = type(opts) == "table" and opts.script_ctx or nil
+    local ctx = type(opts) == "table" and opts.script_ctx
     if type(ctx) == "string" and ctx ~= "" then
         local tail = tostring(fname or ""):gsub("^s:", "")
         return "<SNR>88_" .. tail
