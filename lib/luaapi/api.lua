@@ -2345,6 +2345,6 @@ end
 return setmetatable(api, {
     __index = function(_, k)
         LOG_INTERNAL("missing", "vim.api.%s not implemented", tostring(k))
-        error("vim.api." .. tostring(k) .. " not implemented")
+        LOG_DEBUG("Possible error: `vim.api." .. tostring(k) .. " not implemented")
     end
 })

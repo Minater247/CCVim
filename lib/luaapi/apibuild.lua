@@ -239,6 +239,14 @@ function ApiBuild.Build()
         return rv
     end
 
+    local function vim_call(func, ...)
+        local name = tostring(func)
+        if select("#", ...) == 0 then
+            return fn._call(name)
+        end
+        return fn._call(name, ...)
+    end
+
     local cmd_proxy = setmetatable({}, {
         __call = function(_, command)
             if type(command) == "table" then
@@ -296,7 +304,6 @@ function ApiBuild.Build()
             loop = loop,
             uv = loop,
             cmd = cmd_proxy,
-            fn = fn._proxy,
             g = scopes.g,
             v = scopes.v,
             b = scopes.b,
@@ -310,6 +317,7 @@ function ApiBuild.Build()
             inspect = print.inspect,
             regex = strutils.regex,
             _with_c = vim_with_c,
+            call = vim_call,
             on_key = on_key.on_key,
             _on_key = on_key.dispatch,
         },
@@ -348,7 +356,6 @@ function ApiBuild.Build()
     load_runtime_vim_init_packages(LuaLoader)
     load_runtime_vim_underscore_modules(LuaLoader)
     mainapi.vim.cmd = cmd_proxy
-    mainapi.vim.fn = fn._proxy
     mainapi.vim.g = scopes.g
     mainapi.vim.v = scopes.v
     mainapi.vim.b = scopes.b
