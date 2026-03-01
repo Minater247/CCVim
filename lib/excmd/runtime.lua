@@ -985,7 +985,7 @@ function Runtime.new(state, opts)
         end
 
         local VimFnMod = loadModule("lib.luaapi.fn")
-        local f_builtin = VimFnMod[name]
+        local f_builtin = VimFnMod.fn[name]
         if type(f_builtin) == "function" then
             return f_builtin(unpack_fn(args or {}))
         end
@@ -1565,7 +1565,7 @@ function Runtime.new(state, opts)
         if target == "" then
             return nil, Error(471)
         end
-        local found = _vimfn().findfile(target)
+        local found = _vimfn().fn.findfile(target)
         if not found or found == "" then
             return nil, Error(484, target)
         end
@@ -4000,19 +4000,19 @@ function Runtime.new(state, opts)
                 if kv.texthl ~= nil then dict.texthl = kv.texthl end
                 if kv.culhl ~= nil then dict.culhl = kv.culhl end
                 if kv.priority ~= nil then dict.priority = tonumber(kv.priority) end
-                local rv = _vimfn().sign_define(name, dict)
+                local rv = _vimfn().fn.sign_define(name, dict)
                 if rv ~= 0 then
                     error(Error(474, argstr))
                 end
                 return true
             elseif sub == "undefine" then
-                local rv = _vimfn().sign_undefine(tokens[2])
+                local rv = _vimfn().fn.sign_undefine(tokens[2])
                 if rv ~= 0 and rv ~= nil then
                     error(Error(474, argstr))
                 end
                 return true
             elseif sub == "list" then
-                local defs = _vimfn().sign_getdefined(tokens[2])
+                local defs = _vimfn().fn.sign_getdefined(tokens[2])
                 echo_defs(defs)
                 return true
             elseif sub == "place" then
@@ -4028,7 +4028,7 @@ function Runtime.new(state, opts)
                         if kv.lnum ~= nil then opts.lnum = tonumber(kv.lnum) end
                         if kv.priority ~= nil then opts.priority = tonumber(kv.priority) end
                         if next(opts) == nil then opts = nil end
-                        local rv = _vimfn().sign_place(
+                        local rv = _vimfn().fn.sign_place(
                             first_num,
                             kv.group or "",
                             kv.name,
@@ -4054,7 +4054,7 @@ function Runtime.new(state, opts)
                 if kv.line ~= nil then dict.lnum = tonumber(kv.line) end
                 if kv.lnum ~= nil then dict.lnum = tonumber(kv.lnum) end
                 if next(dict) == nil then dict = nil end
-                local placed = _vimfn().sign_getplaced(resolve_buf_arg(kv), dict)
+                local placed = _vimfn().fn.sign_getplaced(resolve_buf_arg(kv), dict)
                 echo_placed(placed)
                 return true
             elseif sub == "unplace" then
@@ -4066,10 +4066,10 @@ function Runtime.new(state, opts)
                     local win = windows[curwin]
                     local curbuf = win.buffer.bufnr
                     local curline = win.cursory
-                    local placed = _vimfn().sign_getplaced(curbuf, { group = "*", lnum = curline })
+                    local placed = _vimfn().fn.sign_getplaced(curbuf, { group = "*", lnum = curline })
                     if #placed > 0 and #placed[1].signs > 0 then
                         local top = placed[1].signs[1]
-                        _vimfn().sign_unplace(top.group, { buffer = curbuf, id = top.id })
+                        _vimfn().fn.sign_unplace(top.group, { buffer = curbuf, id = top.id })
                     end
                     return true
                 end
@@ -4094,7 +4094,7 @@ function Runtime.new(state, opts)
                 if kv.id ~= nil then opts.id = tonumber(kv.id) end
                 if id ~= nil then opts.id = id end
                 if next(opts) == nil then opts = nil end
-                local rv = _vimfn().sign_unplace(group, opts)
+                local rv = _vimfn().fn.sign_unplace(group, opts)
                 if rv == -1 then
                     error(Error(474, argstr))
                 end
@@ -4105,7 +4105,7 @@ function Runtime.new(state, opts)
                     error(Error(474, argstr))
                 end
                 local kv = parse_kv(3)
-                local lnum = _vimfn().sign_jump(id, kv.group or "", resolve_buf_arg(kv))
+                local lnum = _vimfn().fn.sign_jump(id, kv.group or "", resolve_buf_arg(kv))
                 if lnum == -1 then
                     error(Error(474, argstr))
                 end
@@ -5035,7 +5035,7 @@ function Runtime.new(state, opts)
             local exmsg = _exmsg()
 
             local verb = Options.get("verbose")
-            local msg = Builtins.getcwd()
+            local msg = Builtins.fn.getcwd()
 
             if verb > 0 then
                 if windows[curwin].curdir then

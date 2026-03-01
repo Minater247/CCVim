@@ -1043,8 +1043,8 @@ local function eval_node(node, vim9, env)
                 end
             end
             -- Builtins first
-            if not f and type(VimFnBuiltins[node.name]) == "function" then
-                f = VimFnBuiltins[node.name]
+            if not f and type(VimFnBuiltins.fn[node.name]) == "function" then
+                f = VimFnBuiltins.fn[node.name]
             end
             -- Then user-provided functions map
             if not f and type(env.funcs[node.name]) == "function" then

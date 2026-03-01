@@ -42,7 +42,7 @@ curwin = 1
 
 local Fn = mock.loadModule("lib.luaapi.fn")
 
-local a = Fn.bufadd("/tmp/a.txt")
+local a = Fn.fn.bufadd("/tmp/a.txt")
 assert_true("bufadd created buffer", a > 0, a)
 assert_eq("bufadd does not trigger BufAdd autocmds", autocmd_run_count, 0)
 assert_true("bufadd creates unloaded buffer", buffers[a].loaded == false, tostring(buffers[a].loaded))
@@ -50,34 +50,34 @@ assert_eq("bufadd creates unloaded buffer lines empty", #buffers[a].lines, 0)
 assert_eq("bufadd creates unlisted buffer", buffers[a].opts.buflisted and 1 or 0, 0)
 assert_eq("bufadd preserves name", buffers[a].name, "/tmp/a.txt")
 
-local a2 = Fn.bufadd("/tmp/a.txt")
+local a2 = Fn.fn.bufadd("/tmp/a.txt")
 assert_eq("bufadd returns existing by name", a2, a)
 
-local scratch = Fn.bufadd("")
+local scratch = Fn.fn.bufadd("")
 assert_true("bufadd empty creates new buffer", scratch ~= a, scratch)
 assert_eq("bufadd empty does not trigger BufAdd autocmds", autocmd_run_count, 0)
 assert_eq("bufadd empty has empty name", buffers[scratch].name, "")
 assert_true("bufadd empty is unloaded", buffers[scratch].loaded == false, tostring(buffers[scratch].loaded))
 assert_eq("bufadd empty lines are empty", #buffers[scratch].lines, 0)
 
-assert_eq("setreg charwise ok", Fn.setreg("a", "hello"), 0)
+assert_eq("setreg charwise ok", Fn.fn.setreg("a", "hello"), 0)
 assert_eq("setreg charwise stored", registers["a"][2], "hello")
 assert_eq("setreg updates unnamed", registers.unnamed[2], "hello")
 
-assert_eq("setreg append via uppercase ok", Fn.setreg("A", " world"), 0)
+assert_eq("setreg append via uppercase ok", Fn.fn.setreg("A", " world"), 0)
 assert_eq("setreg append via uppercase merged", registers["a"][2], "hello world")
 
-assert_eq("setreg linewise list ok", Fn.setreg("b", { "one", "two" }), 0)
+assert_eq("setreg linewise list ok", Fn.fn.setreg("b", { "one", "two" }), 0)
 assert_eq("setreg linewise kind", registers["b"][1], "linewise")
 assert_eq("setreg linewise payload size", #registers["b"][2], 2)
 assert_eq("setreg linewise payload 1", registers["b"][2][1], "one")
 assert_eq("setreg linewise payload 2", registers["b"][2][2], "two")
 
-local alt = Fn.bufadd("/tmp/alt.txt")
-assert_eq("setreg # accepts bufnr", Fn.setreg("#", alt), 0)
-assert_eq("bufnr(#) tracks alt register", Fn.bufnr("#"), alt)
+local alt = Fn.fn.bufadd("/tmp/alt.txt")
+assert_eq("setreg # accepts bufnr", Fn.fn.setreg("#", alt), 0)
+assert_eq("bufnr(#) tracks alt register", Fn.fn.bufnr("#"), alt)
 
-assert_eq("setreg # clear", Fn.setreg("#", ""), 0)
-assert_eq("bufnr(#) cleared", Fn.bufnr("#"), -1)
+assert_eq("setreg # clear", Fn.fn.setreg("#", ""), 0)
+assert_eq("bufnr(#) cleared", Fn.fn.bufnr("#"), -1)
 
 print("bufadd/setreg builtin tests: OK")

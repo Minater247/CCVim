@@ -33,7 +33,6 @@ local modules = {
         _FUNCS = {},
     },
     ["lib.luaapi.fn"] = {
-        _proxy = {},
         _call = function(name, ...)
             local packed = { n = select("#", ...), ... }
             calls[#calls + 1] = {

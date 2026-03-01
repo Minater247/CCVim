@@ -249,9 +249,10 @@ do
     assert_lines("global continue keeps processing later lines", win.buffer.lines, { "OK", "bad", "OK" })
 end
 
+-- TODO: Remove this test. This is a horrible test. Testing stub behavior is almost never a good idea.
 do
-    assert_eq("histdel slash index stub success", Fn.histdel("/", -1), 1)
-    assert_eq("histdel cmd stub success", Fn.histdel("cmd"), 1)
+    assert_eq("histdel slash index stub success", Fn.fn.histdel("/", -1), 1)
+    assert_eq("histdel cmd stub success", Fn.fn.histdel("cmd"), 1)
 end
 
 print("global/substitute/histdel runtime tests: OK")

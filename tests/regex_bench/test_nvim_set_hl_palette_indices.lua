@@ -87,7 +87,7 @@ assert_eq("nvim_get_hl preserves palette fg", direct_hl.fg, colors.white)
 assert_eq("nvim_get_hl preserves palette bg", direct_hl.bg, colors.black)
 
 -- cmp highlight inheritance path: synIDattr('...','fg') returns palette bits.
-local pmenu_fg = Fn.synIDattr(Fn.hlID("Pmenu"), "fg")
+local pmenu_fg = Fn.fn.synIDattr(Fn.fn.hlID("Pmenu"), "fg")
 assert_eq("synIDattr fg returns palette bit", type(pmenu_fg), "number")
 api.nvim_set_hl(0, "RegressionFromSynIDattr", {
     fg = pmenu_fg,

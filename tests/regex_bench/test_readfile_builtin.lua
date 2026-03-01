@@ -194,21 +194,21 @@ do
     local bom = "\239\187\191"
     set_file(p, bom .. "alpha\r\nbeta\nmu\0nu\n")
 
-    local plain = Fn.readfile(p)
+    local plain = Fn.fn.readfile(p)
     assert_list_eq("readfile text mode", plain, { "alpha", "beta", "mu", "nu" })
 
-    local binary = Fn.readfile(p, "b")
+    local binary = Fn.fn.readfile(p, "b")
     assert_list_eq("readfile binary mode", binary, { bom .. "alpha\r", "beta", "mu", "nu", "" })
 
-    assert_list_eq("readfile max positive", Fn.readfile(p, "", 2), { "alpha", "beta" })
-    assert_list_eq("readfile max negative", Fn.readfile(p, "", -2), { "mu", "nu" })
-    assert_list_eq("readfile max zero", Fn.readfile(p, "", 0), {})
+    assert_list_eq("readfile max positive", Fn.fn.readfile(p, "", 2), { "alpha", "beta" })
+    assert_list_eq("readfile max negative", Fn.fn.readfile(p, "", -2), { "mu", "nu" })
+    assert_list_eq("readfile max zero", Fn.fn.readfile(p, "", 0), {})
 end
 
 do
     local missing = "/tmp/readfile-missing-" .. tostring(math.random(100000, 999999)) .. ".txt"
     echoerr_calls = {}
-    local rv = Fn.readfile(missing)
+    local rv = Fn.fn.readfile(missing)
     assert_list_eq("readfile missing returns empty list", rv, {})
     assert_true(
         "readfile missing emits E484",
@@ -239,16 +239,16 @@ let b:tutor_metadata = json_decode(join(readfile(expand('%').'.json'), "\n"))
 end
 
 do
-    local decoded = Fn.json_decode("{\"title\":\"Direct\"}")
+    local decoded = Fn.fn.json_decode("{\"title\":\"Direct\"}")
     assert_true("json_decode string returns dict", type(decoded) == "table", type(decoded))
     assert_eq("json_decode string title", decoded.title, "Direct")
 
-    local decoded_list = Fn.json_decode({ "{\"title\":", "\"List\"}" })
+    local decoded_list = Fn.fn.json_decode({ "{\"title\":", "\"List\"}" })
     assert_true("json_decode list returns dict", type(decoded_list) == "table", type(decoded_list))
     assert_eq("json_decode list title", decoded_list.title, "List")
 
     local ok_err, err = pcall(function()
-        return Fn.json_decode("{invalid")
+        return Fn.fn.json_decode("{invalid")
     end)
     assert_eq("json_decode invalid throws", ok_err, false)
     assert_true("json_decode invalid uses E474", tostring(err):find("E474", 1, true) ~= nil, tostring(err))

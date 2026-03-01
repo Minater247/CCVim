@@ -2026,7 +2026,7 @@ function Window:_eval_indentexpr(lnum)
 
     local rv = VimExpr.evaluate(expr, {
         scope = { g = Scopes._g, v = { lnum = lnum } },
-        funcs = VimFn,
+        funcs = VimFn.fn,
     })
 
     self.cursory, self.cursorx = save_y, save_x

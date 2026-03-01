@@ -152,22 +152,22 @@ do
     Syntax.MatchClear(win, 1)
     Syntax.ExecuteCommand(win, "keyword String foo")
 
-    local syn_id = Fn.synID(1, 1, 0)
+    local syn_id = Fn.fn.synID(1, 1, 0)
     assert_true("synID returns non-zero", syn_id > 0)
-    assert_eq("synIDattr(name)", Fn.synIDattr(syn_id, "name"), "String")
+    assert_eq("synIDattr(name)", Fn.fn.synIDattr(syn_id, "name"), "String")
 
-    local stack = Fn.synstack(1, 1)
+    local stack = Fn.fn.synstack(1, 1)
     assert_true("synstack has at least one id", #stack >= 1)
     assert_eq("synstack top id", stack[#stack], syn_id)
 
-    local trans = Fn.synIDtrans(syn_id)
+    local trans = Fn.fn.synIDtrans(syn_id)
     assert_true("synIDtrans returns id", trans > 0)
 
-    local concealed = Fn.synconcealed(1, 1)
+    local concealed = Fn.fn.synconcealed(1, 1)
     assert_eq("synconcealed has 3 fields", #concealed, 3)
     assert_eq("synconcealed not concealed", concealed[1], 0)
 
-    local hl_id = Fn.hlID("String")
+    local hl_id = Fn.fn.hlID("String")
     assert_true("hlID(String) non-zero", hl_id > 0)
 end
 

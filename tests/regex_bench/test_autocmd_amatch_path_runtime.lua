@@ -167,11 +167,11 @@ local function netrw_file(curdir, fname)
     if tostring(fname):sub(1, 1) == "/" then
         return tostring(fname)
     end
-    return Builtins.simplify(tostring(curdir) .. "/" .. tostring(fname))
+    return Builtins.fn.simplify(tostring(curdir) .. "/" .. tostring(fname))
 end
 
 local legacy_dir = "./tests"
-local legacy_match = Builtins.glob(legacy_dir .. "/*", 0, 1, 1)[1]
+local legacy_match = Builtins.fn.glob(legacy_dir .. "/*", 0, 1, 1)[1]
 assert_eq(
     "legacy relative curdir reproduces netrw path doubling",
     netrw_file(legacy_dir, legacy_match),
@@ -179,7 +179,7 @@ assert_eq(
 )
 
 local fixed_dir = Scopes._g.probe_amatch
-local fixed_match = Builtins.glob(fixed_dir .. "/*", 0, 1, 1)[1]
+local fixed_match = Builtins.fn.glob(fixed_dir .. "/*", 0, 1, 1)[1]
 assert_eq(
     "absolute curdir avoids netrw path doubling",
     netrw_file(fixed_dir, fixed_match),

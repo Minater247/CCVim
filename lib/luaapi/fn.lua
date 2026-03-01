@@ -1,6 +1,4 @@
 -- Builtins table: used by Vimscript evaluator and :call to dispatch core functions.
--- Additionally, we export a Lua-side proxy (fn._proxy) that mimics Neovim's vim.fn:
--- it resolves to Vimscript functions (user-defined) and falls back to builtins.
 
 local Builtins   = {}
 
@@ -4734,17 +4732,10 @@ function Builtins.getenv(name)
     return EnvVars.get(name)
 end
 
--- Export: the builtins table for evaluator and :call; plus a Lua proxy for vim.fn usage
-local export = Builtins
-
-export._proxy = setmetatable({}, {
-    __index = function(_, key)
-        -- Return a callable that looks up Vimscript function or builtin at call time
-        return function(...)
-            return call_vimfunc(key, ...)
-        end
-    end
-})
+-- Non-builtin exports
+local export = {
+    fn = Builtins
+}
 
 export._call = call_vimfunc
 export._funcref_name = function(fn)

@@ -73,18 +73,18 @@ end
 
 local Fn = mock.loadModule("lib.luaapi.fn")
 
-assert_eq("mkdir -p creates nested path", Fn.mkdir("/tmp/a/b", "p", 448), 1)
+assert_eq("mkdir -p creates nested path", Fn.fn.mkdir("/tmp/a/b", "p", 448), 1)
 assert_eq("mkdir -p made parent", dirs["/tmp/a"], true)
 assert_eq("mkdir -p made child", dirs["/tmp/a/b"], true)
 
-assert_eq("mkdir existing dir with -p succeeds", Fn.mkdir("/tmp/a/b", "p"), 1)
-assert_eq("mkdir existing dir without -p fails", Fn.mkdir("/tmp/a/b"), 0)
+assert_eq("mkdir existing dir with -p succeeds", Fn.fn.mkdir("/tmp/a/b", "p"), 1)
+assert_eq("mkdir existing dir without -p fails", Fn.fn.mkdir("/tmp/a/b"), 0)
 
-assert_eq("mkdir without -p requires parent", Fn.mkdir("/tmp/no-parent/x"), 0)
-assert_eq("mkdir without -p works with parent", Fn.mkdir("/tmp/a/c"), 1)
+assert_eq("mkdir without -p requires parent", Fn.fn.mkdir("/tmp/no-parent/x"), 0)
+assert_eq("mkdir without -p works with parent", Fn.fn.mkdir("/tmp/a/c"), 1)
 assert_eq("mkdir no -p created child", dirs["/tmp/a/c"], true)
 
-assert_eq("mkdir path that is existing file fails", Fn.mkdir("/tmp/existing-file", "p"), 0)
-assert_eq("mkdir with empty name fails", Fn.mkdir(""), 0)
+assert_eq("mkdir path that is existing file fails", Fn.fn.mkdir("/tmp/existing-file", "p"), 0)
+assert_eq("mkdir with empty name fails", Fn.fn.mkdir(""), 0)
 
 print("mkdir builtin tests: OK")

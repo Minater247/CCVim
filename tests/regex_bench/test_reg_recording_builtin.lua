@@ -16,24 +16,24 @@ curwin = 1
 
 local Fn = mock.loadModule("lib.luaapi.fn")
 
-assert_eq("reg_recording default", Fn.reg_recording(), "")
-assert_eq("reg_executing default", Fn.reg_executing(), "")
-assert_eq("reg_recorded default", Fn.reg_recorded(), "")
+assert_eq("reg_recording default", Fn.fn.reg_recording(), "")
+assert_eq("reg_executing default", Fn.fn.reg_executing(), "")
+assert_eq("reg_recorded default", Fn.fn.reg_recorded(), "")
 
 registers.__recording_register = "q"
 registers.__executing_register = "a"
 registers.__last_recorded_register = "z"
 
-assert_eq("reg_recording set", Fn.reg_recording(), "q")
-assert_eq("reg_executing set", Fn.reg_executing(), "a")
-assert_eq("reg_recorded set", Fn.reg_recorded(), "z")
+assert_eq("reg_recording set", Fn.fn.reg_recording(), "q")
+assert_eq("reg_executing set", Fn.fn.reg_executing(), "a")
+assert_eq("reg_recorded set", Fn.fn.reg_recorded(), "z")
 
 registers.__recording_register = ""
 registers.__executing_register = nil
 registers.__last_recorded_register = "x"
 
-assert_eq("reg_recording empty", Fn.reg_recording(), "")
-assert_eq("reg_executing nil", Fn.reg_executing(), "")
-assert_eq("reg_recorded reset", Fn.reg_recorded(), "x")
+assert_eq("reg_recording empty", Fn.fn.reg_recording(), "")
+assert_eq("reg_executing nil", Fn.fn.reg_executing(), "")
+assert_eq("reg_recorded reset", Fn.fn.reg_recorded(), "x")
 
 print("reg_* builtin tests: OK")

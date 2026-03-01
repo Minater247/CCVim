@@ -26,7 +26,7 @@ end
 local Fn = mock.loadModule("lib.luaapi.fn")
 
 do
-    local out = Fn.keys({ a = 1, b = 2 })
+    local out = Fn.fn.keys({ a = 1, b = 2 })
     assert_eq("keys(dict) returns list", type(out), "table")
     assert_eq("keys(dict) count", #out, 2)
     assert_true("keys(dict) contains a", contains(out, "a"), table.concat(out, ","))
@@ -34,14 +34,14 @@ do
 end
 
 do
-    local out = Fn.keys({})
+    local out = Fn.fn.keys({})
     assert_eq("keys(empty dict) returns list", type(out), "table")
     assert_eq("keys(empty dict) count", #out, 0)
 end
 
 do
     local ok, err = pcall(function()
-        return Fn.keys({ 1, 2 })
+        return Fn.fn.keys({ 1, 2 })
     end)
     assert_eq("keys(list) errors", ok, false)
     assert_true("keys(list) emits E1206", tostring(err):find("E1206", 1, true) ~= nil, err)
@@ -49,7 +49,7 @@ end
 
 do
     local ok, err = pcall(function()
-        return Fn.keys(1)
+        return Fn.fn.keys(1)
     end)
     assert_eq("keys(number) errors", ok, false)
     assert_true("keys(number) emits E1206", tostring(err):find("E1206", 1, true) ~= nil, err)
@@ -57,7 +57,7 @@ end
 
 do
     local ok, err = pcall(function()
-        return Fn.keys({ a = 1 }, 2)
+        return Fn.fn.keys({ a = 1 }, 2)
     end)
     assert_eq("keys too many args errors", ok, false)
     assert_true("keys too many args emits E118", tostring(err):find("E118", 1, true) ~= nil, err)

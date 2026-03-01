@@ -1,7 +1,3 @@
--- vim.lib.envvars - unified environment variable backend.
--- Default behavior is a simulated in-process environment with sensible defaults.
--- Callers can install a provider to bridge to a host/OS environment.
-
 local M = {}
 
 local defaults = {}

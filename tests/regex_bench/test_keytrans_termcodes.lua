@@ -54,7 +54,7 @@ assert_eq("replace_termcodes Cmd keytrans", Key.keytrans(repl_cmd), "<Cmd>echo<S
 
 local star = Key.replace_termcodes("<*C-j>", true, true)
 assert_eq("keytrans star ctrl-j", Key.keytrans(star), "<NL>")
-assert_eq("builtin keytrans star ctrl-j", Fn.keytrans(star), "<NL>")
+assert_eq("builtin keytrans star ctrl-j", Fn.fn.keytrans(star), "<NL>")
 assert_eq("api replace_termcodes delegates", Api.nvim_replace_termcodes("<*C-j>", true, true, true), star)
 
 local nonstar = Key.replace_termcodes("<C-j>", true, true)

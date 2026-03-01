@@ -122,26 +122,26 @@ local Fn = mock.loadModule("lib.luaapi.fn")
 local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
 local vimapi = ApiBuild.Build().vim
 
-assert_eq("findfile includeexpr+suffixesadd", Fn.findfile("pkg.mod"), "/project/lua/pkg/mod.lua")
-assert_eq("finddir", Fn.finddir("pkg", "/project/lua"), "/project/lua/pkg")
-assert_eq("expand <cfile>", Fn.expand("<cfile>"), "/project/lua/pkg/mod.lua")
-assert_eq("resolve simplifies path", Fn.resolve("/project/src/../lua/pkg"), "/project/lua/pkg")
-assert_eq("resolve preserves trailing slash", Fn.resolve("/project/src/../lua/pkg/"), "/project/lua/pkg/")
-assert_eq("expand <SID> without script id", Fn.expand("<SID>"), "")
+assert_eq("findfile includeexpr+suffixesadd", Fn.fn.findfile("pkg.mod"), "/project/lua/pkg/mod.lua")
+assert_eq("finddir", Fn.fn.finddir("pkg", "/project/lua"), "/project/lua/pkg")
+assert_eq("expand <cfile>", Fn.fn.expand("<cfile>"), "/project/lua/pkg/mod.lua")
+assert_eq("resolve simplifies path", Fn.fn.resolve("/project/src/../lua/pkg"), "/project/lua/pkg")
+assert_eq("resolve preserves trailing slash", Fn.fn.resolve("/project/src/../lua/pkg/"), "/project/lua/pkg/")
+assert_eq("expand <SID> without script id", Fn.fn.expand("<SID>"), "")
 _G.__test_script_ctx = "/project/plugin/test.vim"
-assert_eq("expand <SID> with script context", Fn.expand("<SID>"), "<SNR>88_")
+assert_eq("expand <SID> with script context", Fn.fn.expand("<SID>"), "<SNR>88_")
 _G.__test_script_ctx = nil
 _G.__test_sid = 42
-assert_eq("expand <SID> with script id", Fn.expand("<SID>"), "<SNR>42_")
+assert_eq("expand <SID> with script id", Fn.fn.expand("<SID>"), "<SNR>42_")
 _G.__test_sid = nil
 
 buf.lines = { "one", "two", "three" }
-assert_eq("getline single", Fn.getline(2), "two")
-local range = Fn.getline(1, 3)
+assert_eq("getline single", Fn.fn.getline(2), "two")
+local range = Fn.fn.getline(1, 3)
 assert_eq("getline range count", #range, 3)
 assert_eq("getline range first", range[1], "one")
 assert_eq("getline range last", range[3], "three")
-assert_eq("join(getline range)", Fn.join(range, "\n"), "one\ntwo\nthree")
+assert_eq("join(getline range)", Fn.fn.join(range, "\n"), "one\ntwo\nthree")
 
 assert_eq("keywordprg abbreviation resolves", Options.resolve_abbrev("kp"), "keywordprg")
 assert_eq("mousemodel abbreviation resolves", Options.resolve_abbrev("mousem"), "mousemodel")
