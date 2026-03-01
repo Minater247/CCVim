@@ -321,7 +321,7 @@ local function tokenize(input)
 
         -- environment variable: $NAME or ${NAME}
         if c == "$" and peek(1) == "'" then
-            -- $'...'-style single-quoted string (used heavily by :execute).
+            -- $'...' single-quoted string.
             -- Parse as one string token so splitExpressions() can segment
             -- execute arguments without being confused by interpolation text.
             adv(2) -- skip $'

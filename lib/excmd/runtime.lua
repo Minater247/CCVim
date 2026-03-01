@@ -1355,7 +1355,7 @@ function Runtime.new(state, opts)
             return table.concat(out), true
         end
 
-        -- Support the $'...'-style single-quoted execute string with
+        -- Support the $'...' single-quoted execute string with
         -- interpolation (pre-JIT behavior).  Match and expand before
         -- feeding the expression parser which would otherwise treat
         -- a leading '$' as an env-var and error on $'...'.
@@ -4289,7 +4289,7 @@ function Runtime.new(state, opts)
                     win.need_redraw = true
                 end
             end
-            -- Also refresh commandline display (ruler/showcmd-style content).
+            -- Also refresh commandline display (ruler/showcmd content).
             what_redraw["commandline"] = true
             need_redraw = true
             lazyredraw_force = true

@@ -696,4 +696,17 @@ function loop.os_homedir()
     return EnvVars.get("HOME")
 end
 
+function loop.os_getenv(name, size)
+    local value = EnvVars.get(name)
+    if not value then
+        return nil, "ENOENT: no such environment variable"
+    end
+    
+    if size and #value > size then
+        return nil, "ENOBUFS: buffer too small for environment variable"
+    end
+    
+    return value
+end
+
 return loop

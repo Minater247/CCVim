@@ -1,8 +1,3 @@
--- command.lua
--- Minimal Vim-like mapping engine with modes, recursive/noremap, prefix timeout,
--- and Vim-like numeric prefixes that can coexist with digit-leading mappings.
--- Modes are full strings. Aliases from Ex-style map commands are accepted in APIs.
-
 local Command                     = {}
 
 local Event                       = loadModule("lib.event")
@@ -943,7 +938,7 @@ function Command._on_timeout()
 end
 
 -- =========================
--- Count helpers (Vim-like)
+-- Count helpers
 -- =========================
 local function at_sequence_start()
     return state.active and #state.seq == 0
@@ -1022,7 +1017,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
         end
     end
 
-    -- ===== Count-or-mapping disambiguation (Vim-like) =====
+    -- ===== Count-or-mapping disambiguation =====
     if capture_counts and Command.count_modes[state.mode] then
         local d = code:ToDigit()          -- 0..9 or nil
         local handled_count_digit = false -- ensures we push a digit at most once per keypress

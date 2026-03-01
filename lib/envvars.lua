@@ -116,25 +116,25 @@ end
 
 function M.get(name)
     local key = normalize_name(name)
-    if not key then return "" end
+    if not key then return end
 
     if has_key(overrides, key) then
-        return normalize_value(overrides[key]) or ""
+        return normalize_value(overrides[key])
     end
     if deleted[key] then
-        return ""
+        return
     end
 
     local pval, got = provider_get(key)
     if got and pval ~= nil then
-        return normalize_value(pval) or ""
+        return normalize_value(pval)
     end
 
     local dval = defaults[key]
     if dval == nil then
-        return ""
+        return
     end
-    return normalize_value(dval) or ""
+    return normalize_value(dval)
 end
 
 function M.exists(name)

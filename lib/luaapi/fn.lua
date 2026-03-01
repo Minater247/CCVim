@@ -543,7 +543,6 @@ local function _search_submatch_nr(text, compiled, case_sensitive, match_s, matc
     return first_idx + 1
 end
 
--- Vim-like stringification for non-string values (minimal subset used by join())
 local function vim_string(v)
     local t = type(v)
     if t == "string" then
@@ -4722,12 +4721,17 @@ function Builtins.substitute(expr, pat, sub, flags)
     return table.concat(out)
 end
 
--- string({expr}): Vimscript-style stringification
+-- string({expr}): Convert to an arbitrary input to a string
 function Builtins.string(expr, ...)
     if select("#", ...) > 0 then
         error(Error(118, "string"):toString())
     end
     return vim_string(expr)
+end
+
+function Builtins.getenv(name)
+    EnvVars = EnvVars or loadModule("lib.envvars")
+    return EnvVars.get(name)
 end
 
 -- Export: the builtins table for evaluator and :call; plus a Lua proxy for vim.fn usage

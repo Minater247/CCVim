@@ -1304,6 +1304,8 @@ function api.nvim_exec_autocmds(events, opts)
     local base_ctx = {}
     if opts.group ~= nil then base_ctx.group = opts.group end
     if opts.buffer ~= nil then base_ctx.bufnr = opts.buffer end
+
+    -- TODO: This needs to be implemented. Comments should also NOT be in second person!
     -- NOTE: We do NOT force bufname: for buffer-local execution <buffer=N> matching
     -- doesn't need it. If you want <afile>/<amatch>-like values for callbacks,
     -- you could resolve bufnr -> name here and set base_ctx.bufname.
