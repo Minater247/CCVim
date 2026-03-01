@@ -5,6 +5,8 @@
 -- backend adapters without changing the public API surface.
 
 local M = {}
+local LANGUAGE_VERSION = 1
+local MINIMUM_LANGUAGE_VERSION = 1
 
 local api = loadModule("lib.luaapi.api")
 local options = loadModule("lib.options")
@@ -1635,6 +1637,14 @@ function M._apply_highlight_blits(buffer, first_line, last_line, base_blits)
     end
 
     return active:build_blits(buffer, first_line, last_line, base_blits)
+end
+
+function M._ts_get_language_version()
+    return LANGUAGE_VERSION
+end
+
+function M._ts_get_minimum_language_version()
+    return MINIMUM_LANGUAGE_VERSION
 end
 
 M.language = language

@@ -998,6 +998,8 @@ function Builtins.stdpath(type)
         return ccvim_path .. "/log"
     elseif type == "data" then
         return ccvim_path .. "/data"
+    elseif type == "cache" then
+        return ccvim_path .. "/cache"
     else
         error("stdpath: idk what to do with: " .. tostring(type))
     end

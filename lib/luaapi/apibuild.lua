@@ -16,6 +16,8 @@ local scopes = loadModule("lib.luaapi.scopes")
 local print = loadModule("lib.luaapi.print")
 local strutils = loadModule("lib.luaapi.strutils")
 local envvars = loadModule("lib.envvars")
+local lpeg = loadModule("lib.luaapi.lpeg")
+local treesitter = loadModule("lib.luaapi.treesitter")
 
 local mainapi
 local VIM_NIL = setmetatable({}, {
@@ -316,6 +318,9 @@ function ApiBuild.Build()
             in_fast_event = timerutils.in_fast_event,
             inspect = print.inspect,
             regex = strutils.regex,
+            lpeg = lpeg,
+            _ts_get_language_version = treesitter._ts_get_language_version,
+            _ts_get_minimum_language_version = treesitter._ts_get_minimum_language_version,
             _with_c = vim_with_c,
             call = vim_call,
             on_key = on_key.on_key,
@@ -350,6 +355,13 @@ function ApiBuild.Build()
     mainapi.dofile = FL.dofile
     mainapi.pcall = FL.pcall
 
+    if type(mainapi.package.loaded) ~= "table" then
+        mainapi.package.loaded = {}
+    end
+
+    mainapi.package.loaded.bit = bit
+    mainapi.package.loaded.lpeg = lpeg
+
     LuaLoader = loadModule("lib.lualoader")
     mainapi.vim._str_utfindex = strutils._str_utfindex
     mainapi.vim._str_byteindex = strutils._str_byteindex
@@ -365,6 +377,7 @@ function ApiBuild.Build()
     mainapi.vim.wait = timerutils.wait
     mainapi.vim.in_fast_event = timerutils.in_fast_event
     mainapi.vim.regex = strutils.regex
+    mainapi.vim.lpeg = lpeg
     mainapi.vim._with_c = vim_with_c
     mainapi.vim.on_key = on_key.on_key
     mainapi.vim._on_key = on_key.dispatch
