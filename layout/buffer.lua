@@ -280,6 +280,7 @@ function Buffer:new(listed, scratch, loaded)
         signs = {},
         signs_byln = {},
         signs_nextid = { [""] = 1 },
+        marks = {},
         _undo = {
             entries = {},
             index = 0,
@@ -445,6 +446,8 @@ function Buffer:undo_clear()
     st.seq = 0
     st.last_changed_line = nil
     st.line_undo_anchor = {}
+    st.join_next = nil
+    st.after_undo = nil
 end
 
 function Buffer:undo_begin(win)
@@ -546,6 +549,27 @@ function Buffer:undo_end(win)
         after_cursor = { target_win.cursorx, target_win.cursory }
     end
 
+    if st.join_next and st.index > 0 then
+        st.join_next = nil
+        st.after_undo = nil
+        local prev = st.entries[st.index]
+        local jstart, jbefore_end, jafter_end = _line_diff_bounds(prev.before_lines, self.lines)
+        prev.after_modified = after_modified
+        prev.after_cursor = after_cursor
+        prev.changed_start = jstart
+        prev.changed_end = jstart and math.max(jbefore_end, jafter_end)
+        if jstart then
+            prev.before_count = jbefore_end - jstart + 1
+            prev.after_chunk = _copy_lines(self.lines, jstart, jafter_end)
+        else
+            prev.before_count = 0
+            prev.after_chunk = {}
+        end
+        return
+    end
+
+    st.join_next = nil
+    st.after_undo = nil
     st.seq = st.seq + 1
     st.index = st.index + 1
     local entry = {
@@ -580,6 +604,15 @@ function Buffer:undo_end(win)
     if st.index < 0 then
         st.index = 0
     end
+end
+
+function Buffer:undojoin()
+    local st = self:_ensure_undo_state()
+    if st.after_undo then
+        return false
+    end
+    st.join_next = true
+    return true
 end
 
 function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
@@ -656,6 +689,7 @@ function Buffer:_undo_jump_to(target, win, noauto)
     st.index = target
     st.last_changed_line = nil
     st.line_undo_anchor = {}
+    st.after_undo = true
     return true
 end
 

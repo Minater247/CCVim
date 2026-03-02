@@ -1282,11 +1282,75 @@ function Builtins.getpos(expr)
         return { 0, windows[curwin].cursory, windows[curwin].cursorx, 0 } -- TODO: 'virtualedit'
     elseif expr == "$" then
         return { 0, windows[curwin].buffer:line_count(true), 1, 0 }
+    elseif type(expr) == "string" and expr:sub(1, 1) == "'" and #expr == 2 then
+        local ch = expr:sub(2, 2)
+        if ch:match("^[a-z'\".`]$") then
+            local m = windows[curwin].buffer.marks[ch]
+            if m then
+                return { windows[curwin].buffer.bufnr, m.lnum, m.col, 0 }
+            end
+        elseif ch:match("^[A-Z]$") then
+            local m = global_marks[ch]
+            if m then
+                return { m.bufnr, m.lnum, m.col, 0 }
+            end
+        end
     else
         LOG_INTERNAL("unimplemented", "Builtins.getpos: unhandled expr %s", (expr or "<<nil>>"))
     end
 
     return { 0, 0, 0, 0 }
+end
+
+local function _resolve_buf_for_marklist(expr)
+    if type(expr) == "number" then
+        if expr == 0 then
+            return windows[curwin].buffer
+        end
+        return buffers[expr]
+    end
+    if type(expr) == "string" then
+        if expr == "" or expr == "%" then
+            return windows[curwin].buffer
+        end
+        for _, buf in pairs(buffers) do
+            if buf and buf.name == expr then
+                return buf
+            end
+        end
+    end
+    return nil
+end
+
+function Builtins.getmarklist(expr)
+    local out = {}
+    if expr == nil then
+        for ch, m in pairs(global_marks) do
+            local fname = ""
+            local buf = buffers[m.bufnr]
+            if buf and buf.name then
+                fname = buf.name
+            end
+            out[#out + 1] = {
+                mark = "'" .. ch,
+                pos = { m.bufnr, m.lnum, m.col, 0 },
+                file = fname,
+            }
+        end
+    else
+        local buf = _resolve_buf_for_marklist(expr)
+        if not buf then
+            return {}
+        end
+        for ch, m in pairs(buf.marks) do
+            out[#out + 1] = {
+                mark = "'" .. ch,
+                pos = { buf.bufnr, m.lnum, m.col, 0 },
+                file = buf.name or "",
+            }
+        end
+    end
+    return out
 end
 
 function Builtins.line(expr, winid)

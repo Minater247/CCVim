@@ -78,8 +78,10 @@ local COMMAND_SPECS = {
     { name = "edit", min = 1, dispatch = true },
     { name = "file", min = 1, dispatch = true },
     { name = "delete", min = 1, dispatch = true },
+    { name = "mark", min = 2, dispatch = true },
     { name = "undo", min = 1, dispatch = true },
     { name = "redo", min = 3, dispatch = true },
+    { name = "undojoin", min = 5, dispatch = true },
 
     { name = "map", min = 3, dispatch = true, map = { action = "map", recursive = true, modes = "nvo", bang_modes = "ic", min_abbrev = 3 } },
     { name = "vmap", min = 2, dispatch = true, map = { action = "map", recursive = true, modes = "vs", min_abbrev = 2 } },

@@ -69,6 +69,8 @@ _V = {
 
     registers = {},
 
+    global_marks = {},
+
     startuptime = false,
 
     ccvim_path = ccvim_path,

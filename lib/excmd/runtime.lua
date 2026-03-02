@@ -4233,6 +4233,11 @@ function Runtime.new(state, opts)
             end
             runtime_undo_batch_resume()
             return true
+        elseif cmd == "undojoin" then
+            if not windows[curwin].buffer:undojoin() then
+                error(Error(790))
+            end
+            return true
         elseif cmd == "put" then
             local rv = self:put(argstr, bang, cmdctx)
             if Error.IsError(rv) then error(rv) end
@@ -4505,6 +4510,24 @@ function Runtime.new(state, opts)
             end
             win.need_redraw = true
             need_redraw = true
+            return true
+        elseif cmd == "mark" then
+            local char = strip(argstr)
+            if char == "" then
+                error(Error(471))
+            end
+            if not char:match("^[a-zA-Z'\".]$") then
+                error(Error(191))
+            end
+            local win = windows[curwin]
+            local buf = win.buffer
+            local lnum = cmdctx.line2 or win.cursory
+            local col = win.cursorx
+            if char:match("^[A-Z]$") then
+                global_marks[char] = { bufnr = buf.bufnr, lnum = lnum, col = col }
+            else
+                buf.marks[char] = { lnum = lnum, col = col }
+            end
             return true
         elseif cmd == "copy" or cmd == "t" then
             local win = windows[curwin]
