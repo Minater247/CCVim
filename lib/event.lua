@@ -462,10 +462,7 @@ function Event.ProcessEvent(ev)
 end
 
 function Event.PullAndProcess(filter)
-    local ok, e1, e2, e3, e4, e5, e6 = pcall(os.pullEvent, filter)
-    if not ok then
-        return false, e1
-    end
+    local e1, e2, e3, e4, e5, e6 = os.pullEvent(filter)
     Event.ProcessEvent({ e1, e2, e3, e4, e5, e6 })
     return true
 end
