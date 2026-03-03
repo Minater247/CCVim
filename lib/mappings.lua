@@ -804,8 +804,8 @@ Command.nmap_builtin_callback(
     end
 )
 
-Command.nmap_builtin_callback(
-    {K(keys.semiColon, false, true)},
+Command.nmap_callback(
+    {K(keys.semiColon or keys.semicolon, false, true)},
     function()
         CmdRead.read()
         what_redraw["commandline"] = true

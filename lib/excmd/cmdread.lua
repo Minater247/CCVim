@@ -70,7 +70,7 @@ function CmdRead.read()
     table.insert(Command.emitter_names, "CmdRead.handler")
 
     active = true
-    pendingcmd = { Key:new(keys.semiColon, false, true) }
+    pendingcmd = { Key:new(keys.semiColon or keys.semicolon, false, true) }
 
     what_redraw["commandline"] = true
     need_redraw = true

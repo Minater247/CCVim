@@ -340,7 +340,7 @@ local uref     = Key:new(keys.u)
 local kref     = Key:new(keys.k)
 local qref     = Key:new(keys.q)
 local enterref = Key:new(keys.enter)
-local colonref = Key:new(keys.semiColon, false, true)
+local colonref = Key:new(keys.semiColon or keys.semicolon, false, true)
 
 local function exit_more()
     in_more = false

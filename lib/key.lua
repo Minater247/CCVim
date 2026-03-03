@@ -88,7 +88,7 @@ local printables = {
 
     [keys.leftBracket] = "[",
     [keys.rightBracket] = "]",
-    [keys.semiColon] = ";",
+    [keys.semiColon or keys.semicolon] = ";",
     [keys.apostrophe] = "'",
     [keys.grave] = "`",
     [keys.backslash] = "\\",
@@ -110,7 +110,7 @@ local printables = {
     [keys.numPadSubtract] = "kMinus",
     [keys.numPadAdd] = "kPlus",
     [keys.numPadDecimal] = "kPoint",
-    [keys.multiply] = "kMultiply",
+    [keys.multiply or keys.numPadMultiply] = "kMultiply",
     [keys.numPadEnter] = "kEnter",
     [keys.numPadDivide] = "kDivide",
 
@@ -208,7 +208,7 @@ local shiftables = {
 
     [keys.leftBracket] = "{",
     [keys.rightBracket] = "}",
-    [keys.semiColon] = ":",
+    [keys.semiColon or keys.semicolon] = ":",
     [keys.apostrophe] = "\"",
     [keys.grave] = "~",
     [keys.backslash] = "|",
@@ -266,7 +266,7 @@ local emittables = {
 
     [keys.leftBracket] = "[",
     [keys.rightBracket] = "]",
-    [keys.semiColon] = ";",
+    [keys.semiColon or keys.semicolon] = ";",
     [keys.apostrophe] = "'",
     [keys.grave] = "`",
     [keys.backslash] = "\\",
@@ -288,7 +288,7 @@ local emittables = {
     [keys.numPadSubtract] = "-",
     [keys.numPadAdd] = "+",
     [keys.numPadDecimal] = "",
-    [keys.multiply] = "*",
+    [keys.multiply or keys.numPadMultiply] = "*",
     [keys.numPadEnter] = "\n",
     [keys.numPadDivide] = "/",
 
@@ -334,7 +334,7 @@ local emittables = {
 
     [S(keys.leftBracket)] = "{",
     [S(keys.rightBracket)] = "}",
-    [S(keys.semiColon)] = ":",
+    [S(keys.semiColon or keys.semicolon)] = ":",
     [S(keys.apostrophe)] = "\"",
     [S(keys.grave)] = "~",
     [S(keys.backslash)] = "|",
