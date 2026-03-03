@@ -47,6 +47,10 @@ local function colorDistance(color1, color2)
     return math.sqrt(0.30 * dr * dr + 0.59 * dg * dg + 0.11 * db * db)
 end
 
+local function is_palette_index(val)
+    return type(val) == "number" and palette[val] ~= nil
+end
+
 ---Highlight groups. Items are {fg, bg}. If fg is -1, it reverses the default colors.
 -- Namespaced highlight tables. Index = ns_id + 1.
 -- Namespace 0 (index 1) is the global namespace containing the default groups.
@@ -231,6 +235,10 @@ function Highlight.HasGroup(name, ns)
 end
 
 local function findClosestColor(val)
+    if is_palette_index(val) then
+        return val
+    end
+
     local closest = math.huge
     local colorKey
     for k, v in pairs(palette) do
@@ -275,8 +283,13 @@ function Highlight.SetHL(ns, name, val)
             error("Normal not defined")
         end
         newval[1] = hlfor[1]
+        local normal_raw = Highlight.RawFor("Normal")
+        if normal_raw and normal_raw._raw_fg ~= nil then
+            newval._raw_fg = normal_raw._raw_fg
+        end
     elseif val.fg ~= nil then
         newval[1] = findClosestColor(val.fg)
+        newval._raw_fg = val.fg
     end
 
     if val.bg == "bg" then
@@ -285,8 +298,13 @@ function Highlight.SetHL(ns, name, val)
             error("Normal not defined")
         end
         newval[2] = hlfor[2]
+        local normal_raw = Highlight.RawFor("Normal")
+        if normal_raw and normal_raw._raw_bg ~= nil then
+            newval._raw_bg = normal_raw._raw_bg
+        end
     elseif val.bg ~= nil then
         newval[2] = findClosestColor(val.bg)
+        newval._raw_bg = val.bg
     end
 
     if val.reverse then

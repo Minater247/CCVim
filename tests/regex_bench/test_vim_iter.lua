@@ -42,9 +42,9 @@ do
             return not extmark[4].invalid
         end)
         :totable()
-    assert_eq("vim.iter tutor-style filter count", #out, 2)
-    assert_eq("vim.iter tutor-style first id", out[1][1], 2)
-    assert_eq("vim.iter tutor-style second id", out[2][1], 3)
+    assert_eq("vim.iter tutor filter count", #out, 2)
+    assert_eq("vim.iter tutor first id", out[1][1], 2)
+    assert_eq("vim.iter tutor second id", out[2][1], 3)
 end
 
 do

@@ -176,7 +176,7 @@ do
     what_redraw = {}
     local ok, out = run_compiled("redrawtabline", "/tmp/redrawtabline_runtime.vim")
     assert_true("redrawtabline runs", ok == true, tostring(out))
-    assert_eq("redrawtabline requests full redraw", what_redraw.all, true)
+    assert_eq("redrawtabline requests tabline redraw", what_redraw.tabline, true)
 end
 
 print("redrawstatus runtime tests: OK")

@@ -1,6 +1,4 @@
 -- Builtins table: used by Vimscript evaluator and :call to dispatch core functions.
--- Additionally, we export a Lua-side proxy (fn._proxy) that mimics Neovim's vim.fn:
--- it resolves to Vimscript functions (user-defined) and falls back to builtins.
 
 local Builtins   = {}
 
@@ -10,6 +8,9 @@ local Syntax
 local Runtime
 local ExMsg
 local EnvVars
+local FrameTree  = loadModule("lib.frame")
+local CmdRead
+local PopupMenu  = loadModule("lib.popupmenu")
 local Buffer     = loadModule("layout.buffer")
 local Tab        = loadModule("lib.tab")
 local scopes     = loadModule("lib.luaapi.scopes")
@@ -19,6 +20,7 @@ local Filesystem = loadModule("lib.filesystem")
 local TblUtils   = loadModule("lib.luaapi.tblutils")
 local VimFs      = loadModule("lib.luaapi.fs")
 local RuntimePath = loadModule("lib.runtimepath")
+local Utf8       = loadModule("lib.utf8")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -320,7 +322,7 @@ local function _matches_for_name(name, path_spec, buf, find_dirs, use_suffixes)
     local win = windows[curwin]
     local cwd = Builtins.getcwd()
     local cur_file_dir = ""
-    if win and win.buffer and win.buffer.name and win.buffer.name ~= "" then
+    if win.buffer.name ~= "" then
         cur_file_dir = _dir_of(_abs_path(win.buffer.name))
     end
 
@@ -539,7 +541,6 @@ local function _search_submatch_nr(text, compiled, case_sensitive, match_s, matc
     return first_idx + 1
 end
 
--- Vim-like stringification for non-string values (minimal subset used by join())
 local function vim_string(v)
     local t = type(v)
     if t == "string" then
@@ -702,7 +703,7 @@ end
 function Builtins.expand(str, nosuf, list)
     local raw = tostring(str or "")
     if raw:find("<cfile>", 1, true) then
-        local buf = windows[curwin] and windows[curwin].buffer or nil
+        local buf = windows[curwin].buffer
         raw = raw:gsub("<cfile>", _expand_cfile(buf))
     end
 
@@ -800,7 +801,7 @@ function Builtins.jobwait(jobs, timeout)
     local out = {}
     for i = 1, #jobs do
         local id = tonumber(jobs[i])
-        local job = id and _jobs[id] or nil
+        local job = id and _jobs[id]
         if not job then
             out[i] = -3
         elseif job.running then
@@ -994,6 +995,8 @@ function Builtins.stdpath(type)
         return ccvim_path .. "/log"
     elseif type == "data" then
         return ccvim_path .. "/data"
+    elseif type == "cache" then
+        return ccvim_path .. "/cache"
     else
         error("stdpath: idk what to do with: " .. tostring(type))
     end
@@ -1279,11 +1282,75 @@ function Builtins.getpos(expr)
         return { 0, windows[curwin].cursory, windows[curwin].cursorx, 0 } -- TODO: 'virtualedit'
     elseif expr == "$" then
         return { 0, windows[curwin].buffer:line_count(true), 1, 0 }
+    elseif type(expr) == "string" and expr:sub(1, 1) == "'" and #expr == 2 then
+        local ch = expr:sub(2, 2)
+        if ch:match("^[a-z'\".`]$") then
+            local m = windows[curwin].buffer.marks[ch]
+            if m then
+                return { windows[curwin].buffer.bufnr, m.lnum, m.col, 0 }
+            end
+        elseif ch:match("^[A-Z]$") then
+            local m = global_marks[ch]
+            if m then
+                return { m.bufnr, m.lnum, m.col, 0 }
+            end
+        end
     else
         LOG_INTERNAL("unimplemented", "Builtins.getpos: unhandled expr %s", (expr or "<<nil>>"))
     end
 
     return { 0, 0, 0, 0 }
+end
+
+local function _resolve_buf_for_marklist(expr)
+    if type(expr) == "number" then
+        if expr == 0 then
+            return windows[curwin].buffer
+        end
+        return buffers[expr]
+    end
+    if type(expr) == "string" then
+        if expr == "" or expr == "%" then
+            return windows[curwin].buffer
+        end
+        for _, buf in pairs(buffers) do
+            if buf and buf.name == expr then
+                return buf
+            end
+        end
+    end
+    return nil
+end
+
+function Builtins.getmarklist(expr)
+    local out = {}
+    if expr == nil then
+        for ch, m in pairs(global_marks) do
+            local fname = ""
+            local buf = buffers[m.bufnr]
+            if buf and buf.name then
+                fname = buf.name
+            end
+            out[#out + 1] = {
+                mark = "'" .. ch,
+                pos = { m.bufnr, m.lnum, m.col, 0 },
+                file = fname,
+            }
+        end
+    else
+        local buf = _resolve_buf_for_marklist(expr)
+        if not buf then
+            return {}
+        end
+        for ch, m in pairs(buf.marks) do
+            out[#out + 1] = {
+                mark = "'" .. ch,
+                pos = { buf.bufnr, m.lnum, m.col, 0 },
+                file = buf.name or "",
+            }
+        end
+    end
+    return out
 end
 
 function Builtins.line(expr, winid)
@@ -1322,6 +1389,61 @@ function Builtins.charcol(expr, winid)
     return rv[3]
 end
 
+function Builtins.col(expr, winid)
+    local prev_curwin
+    if winid then
+        local win = resolve_win(winid)
+        if not win then
+            return 0
+        end
+        prev_curwin = curwin
+        curwin = win.winnr
+    end
+
+    local function finish(rv)
+        if winid then
+            curwin = prev_curwin
+        end
+        return rv
+    end
+
+    if type(expr) == "table" then
+        local lnum = tonumber(expr[1])
+        local col_expr = expr[2]
+        if not lnum or lnum < 1 then
+            return finish(0)
+        end
+
+        local win = windows[curwin]
+        if not win or not win.buffer then
+            return finish(0)
+        end
+
+        local line = win.buffer:get_line(lnum, true)
+        if line == nil then
+            return finish(0)
+        end
+
+        if col_expr == "$" then
+            return finish(#line + 1)
+        end
+        if type(col_expr) == "number" then
+            return finish(math.floor(col_expr))
+        end
+        return finish(0)
+    end
+
+    if expr == "." then
+        return finish(windows[curwin].cursorx)
+    end
+    if expr == "$" then
+        local line = windows[curwin].buffer:get_line(windows[curwin].cursory, true) or ""
+        return finish(#line + 1)
+    end
+
+    return finish(Builtins.charcol(expr))
+end
+
 function Builtins.winline(...)
     if select("#", ...) > 0 then
         error(Error(118, "winline"):toString())
@@ -1339,6 +1461,94 @@ function Builtins.winline(...)
         row = 1
     end
     return math.floor(row)
+end
+
+function Builtins.screenpos(winid, lnum, col, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "screenpos"):toString())
+    end
+
+    local win = resolve_win(winid)
+    if not win then
+        return { row = 0, col = 0, curscol = 0, endcol = 0 }
+    end
+
+    local x0, y0 = 1, 1
+    if win.frame then
+        local fx, fy = FrameTree.GetXY(win.frame)
+        local tp = tabpages[win.tabpagenr]
+        local yoff = (tp and tp.winyoff) or 0
+        x0, y0 = fx, fy + yoff
+    elseif win.floatpos then
+        x0 = (tonumber(win.floatpos.x) or 0) + 1
+        y0 = (tonumber(win.floatpos.y) or 0) + 1
+    end
+
+    local _, text_x = win:textwidth()
+    local top = (win.scrolly and win.scrolly[1]) or 1
+    local left = win.scrollx or 1
+
+    local row1 = y0 + math.max(0, (tonumber(lnum) or win.cursory or 1) - top)
+    local col1 = x0 + (text_x or 1) + math.max(0, (tonumber(col) or 1) - left) - 1
+
+    if row1 < 1 then row1 = 1 end
+    if col1 < 1 then col1 = 1 end
+
+    return { row = row1, col = col1, curscol = col1, endcol = col1 }
+end
+
+function Builtins.getwininfo(winid, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "getwininfo"):toString())
+    end
+
+    local out = {}
+    local function add(win)
+        local height = 1
+        if win.frame then
+            height = win.frame.height
+        elseif win.floatpos then
+            height = tonumber(win.floatpos.h) or 1
+        end
+        local width = 1
+        if win.frame then
+            width = win.frame.width
+        elseif win.floatpos then
+            width = tonumber(win.floatpos.w) or 1
+        end
+
+        local sp = Builtins.screenpos(win.winnr, (win.scrolly and win.scrolly[1]) or 1, 1)
+        local topline = (win.scrolly and win.scrolly[1]) or 1
+        local botline = topline + math.max(0, height - 1)
+        out[#out + 1] = {
+            winid = win.winnr,
+            winnr = win.winnr,
+            bufnr = win.buffer.bufnr or 0,
+            tabnr = win.tabpagenr or curtp,
+            height = height,
+            width = width,
+            topline = topline,
+            botline = botline,
+            leftcol = win.scrollx or 1,
+            skipcol = 0,
+            winrow = sp.row,
+            wincol = sp.col,
+            textoff = 0,
+        }
+    end
+
+    if winid ~= nil then
+        local win = resolve_win(winid)
+        if win then
+            add(win)
+        end
+        return out
+    end
+
+    for _, win in pairs(windows) do
+        add(win)
+    end
+    return out
 end
 
 -- Minimal getline({lnum} [, {end}]).
@@ -1454,6 +1664,103 @@ function Builtins.setline(lnum, text, ...)
     win.need_redraw = true
     need_redraw = true
     return 0
+end
+
+function Builtins.complete(startcol, matches)
+    return PopupMenu.complete(startcol, matches)
+end
+
+function Builtins.complete_add(expr)
+    return PopupMenu.complete_add(expr)
+end
+
+function Builtins.complete_check()
+    return PopupMenu.complete_check()
+end
+
+function Builtins.complete_info(what)
+    return PopupMenu.complete_info(what)
+end
+
+function Builtins.pumvisible()
+    return (PopupMenu.visible() and 1 or 0)
+end
+
+function Builtins.pum_getpos()
+    return PopupMenu.info()
+end
+
+function Builtins.cursor(lnum, col, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "cursor"):toString())
+    end
+    local win = windows[curwin]
+    if not win or not win.buffer then
+        return -1
+    end
+
+    if type(lnum) == "table" then
+        col = lnum[2]
+        lnum = lnum[1]
+    end
+
+    local y = tonumber(lnum or win.cursory) or win.cursory
+    local x = tonumber(col or win.cursorx) or win.cursorx
+    local max_y = math.max(1, win.buffer:line_count(true))
+    y = math.max(1, math.min(max_y, math.floor(y)))
+
+    local line = win.buffer:get_line(y, true) or ""
+    local max_x = win.buffer:str_len(line) + 1
+    x = math.max(1, math.min(max_x, math.floor(x)))
+
+    win.cursory = y
+    win.cursorx = x
+    win.need_redraw = true
+    what_redraw["windows"] = true
+    need_redraw = true
+    return 0
+end
+
+function Builtins.feedkeys(keys, mode, escape_ks, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "feedkeys"):toString())
+    end
+    local Api = loadModule("lib.luaapi.api")
+    local esc = not (escape_ks == nil or escape_ks == false or escape_ks == 0)
+    Api.nvim_feedkeys(tostring(keys or ""), tostring(mode or ""), esc)
+    return 0
+end
+
+function Builtins.getcmdline()
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if CmdRead.is_active() then
+        return CmdRead.getline()
+    end
+    return ""
+end
+
+function Builtins.getcmdpos()
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if CmdRead.is_active() then
+        return CmdRead.getpos()
+    end
+    return 0
+end
+
+function Builtins.getcmdtype()
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if CmdRead.is_active() then
+        return ":"
+    end
+    return ""
+end
+
+function Builtins.setcmdline(str, pos)
+    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
+    if not CmdRead.is_active() then
+        return 1
+    end
+    return CmdRead.setline(tostring(str or ""), tonumber(pos))
 end
 
 -- add(list, item): append item to list and return the list (mutates in place)
@@ -1821,12 +2128,12 @@ end
 
 -- did_filetype(): true if filetype was set by detection (or already set)
 function Builtins.did_filetype()
-    local bnr = (windows[curwin] and windows[curwin].buffer and windows[curwin].buffer.bufnr) or 0
+    local bnr = windows[curwin].buffer.bufnr
     local bt = scopes._b_by_buf[bnr]
     if bt and bt.did_filetype then
         return 1
     end
-    local ft = options.get("filetype", nil, windows[curwin] and windows[curwin].buffer or nil)
+    local ft = options.get("filetype", nil, windows[curwin].buffer)
     if ft ~= nil and ft ~= "" then
         return 1
     end
@@ -1840,10 +2147,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     end
 
     local win = windows[curwin]
-    local buf = win and win.buffer
-    if not win or not buf then
-        return 0
-    end
+    local buf = win.buffer
 
     local lines = buf:lines_ref(true)
     if #lines == 0 then
@@ -1899,7 +2203,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     if timeout_ms < 0 then
         timeout_ms = 0
     end
-    local started_at = (timeout_ms > 0) and os.clock() or nil
+    local started_at = (timeout_ms > 0) and os.clock()
     local function timed_out()
         if timeout_ms <= 0 then
             return false
@@ -2242,13 +2546,13 @@ end
 
 function Builtins.findfile(name, path, count)
     local win = windows[curwin]
-    local buf = win and win.buffer or nil
+    local buf = win.buffer
     local target = tostring(name or "")
     if target == "" then return "" end
 
     local path_spec
     if path == nil then
-        path_spec = (buf and options.get("path", nil, buf)) or ".,,"
+        path_spec = options.get("path", nil, buf) or ".,,"
     else
         path_spec = tostring(path)
     end
@@ -2261,14 +2565,13 @@ function Builtins.findfile(name, path, count)
 end
 
 function Builtins.finddir(name, path, count)
-    local win = windows[curwin]
-    local buf = win and win.buffer or nil
+    local buf = windows[curwin].buffer
     local target = tostring(name or "")
     if target == "" then return "" end
 
     local path_spec
     if path == nil then
-        path_spec = (buf and options.get("path", nil, buf)) or ".,,"
+        path_spec = options.get("path", nil, buf) or ".,,"
     else
         path_spec = tostring(path)
     end
@@ -2992,8 +3295,7 @@ end
 local function _resolve_buffer_ref(expr)
     if type(expr) == "number" then
         if expr == 0 then
-            local win = windows[curwin]
-            local alt = win and win.altbuf
+            local alt = windows[curwin].altbuf
             if type(alt) == "number" then
                 return buffers[alt]
             end
@@ -3201,7 +3503,7 @@ end
 -- bufname([expr]): get buffer name
 function Builtins.bufname(expr)
     if expr == nil or expr == "" or expr == "%" then
-        return _bufname_from_buf(windows[curwin] and windows[curwin].buffer)
+        return _bufname_from_buf(windows[curwin].buffer)
     end
 
     if type(expr) == "number" then
@@ -3452,6 +3754,65 @@ function Builtins.setreg(regname, value, options)
     return 0
 end
 
+function Builtins.getreg(regname, _arg2, list, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "getreg"):toString())
+    end
+
+    local reg = tostring(regname or "")
+    if reg == "" or reg == "@" then
+        reg = '"'
+    end
+    reg = reg:sub(1, 1)
+
+    if reg == "#" then
+        local alt = windows[curwin].altbuf
+        local name = alt and alt.name or ""
+        if list and list ~= 0 and list ~= false then
+            return _split_lines_for_register(name)
+        end
+        return name
+    end
+
+    local key = _register_storage_key(reg)
+    local entry = registers[key]
+    if entry == nil and reg == '"' then
+        entry = registers.unnamed
+    end
+    if entry == nil then
+        if list and list ~= 0 and list ~= false then
+            return {}
+        end
+        return ""
+    end
+
+    if list and list ~= 0 and list ~= false then
+        return _register_entry_to_lines(entry)
+    end
+    return _register_entry_to_text(entry)
+end
+
+local function _macro_register_name(state_key)
+    local value = registers[state_key]
+    if value == nil then
+        return ""
+    end
+    return tostring(value)
+end
+
+-- TODO: Implement these properly once macros are added
+function Builtins.reg_recording()
+    return _macro_register_name("__recording_register")
+end
+
+function Builtins.reg_executing()
+    return _macro_register_name("__executing_register")
+end
+
+function Builtins.reg_recorded()
+    return _macro_register_name("__last_recorded_register")
+end
+
 function Builtins.len(x)
     if type(x) == "string" then
         return #x
@@ -3504,6 +3865,14 @@ function Builtins.keys(dict, ...)
         out[#out + 1] = tostring(k)
     end
     return out
+end
+
+function Builtins.keytrans(str, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "keytrans"):toString())
+    end
+    local Key = loadModule("lib.key")
+    return Key.keytrans(tostring(str or ""))
 end
 
 function Builtins.items(dict, ...)
@@ -4006,7 +4375,7 @@ end
 function Builtins.strpart(str, start, len)
     local s = tostring(str or "")
     local st = tonumber(start or 0) or 0
-    local ln = len and (tonumber(len) or 0) or nil
+    local ln = len and (tonumber(len) or 0)
     if st < 0 then st = 0 end
     -- Vim's strpart is 0-based; Lua's string.sub is 1-based.
     local from = st + 1
@@ -4017,9 +4386,38 @@ function Builtins.strpart(str, start, len)
     return s:sub(from, from + ln - 1)
 end
 
+function Builtins.strchars(str, _skipcc, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "strchars"):toString())
+    end
+    return Utf8.len(tostring(str or ""))
+end
+
+function Builtins.strcharpart(str, start, len, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "strcharpart"):toString())
+    end
+    local s = tostring(str or "")
+    local st = tonumber(start or 0) or 0
+    if st < 0 then st = 0 end
+    local from = st + 1
+    if len == nil then
+        return Utf8.sub(s, from)
+    end
+    local ln = tonumber(len) or 0
+    if ln <= 0 then
+        return ""
+    end
+    return Utf8.sub(s, from, from + ln - 1)
+end
+
 function Builtins.strdisplaywidth(str)
     local s = tostring(str or "")
-    return #s
+    return Utf8.len(s)
+end
+
+function Builtins.tolower(str)
+    return string.lower(tostring(str or ""))
 end
 
 function Builtins.printf(fmt, ...)
@@ -4134,7 +4532,7 @@ function Builtins.execute(command, silent, ...)
             ctrl = Runtime._CURRENT_CTRL,
             origin = {
                 kind = "vim-execute",
-                source = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx or nil,
+                source = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx,
             },
         })
     end, function(e)
@@ -4325,7 +4723,7 @@ function Builtins.substitute(expr, pat, sub, flags)
                     if d == 0 then
                         out[#out + 1] = match
                     else
-                        local cap = (type(caps) == "table") and caps[d] or nil
+                        local cap = (type(caps) == "table") and caps[d]
                         out[#out + 1] = cap == nil and "" or tostring(cap)
                     end
                 elseif nxt == "&" then
@@ -4385,7 +4783,7 @@ function Builtins.substitute(expr, pat, sub, flags)
     return table.concat(out)
 end
 
--- string({expr}): Vimscript-style stringification
+-- string({expr}): Convert to an arbitrary input to a string
 function Builtins.string(expr, ...)
     if select("#", ...) > 0 then
         error(Error(118, "string"):toString())
@@ -4393,17 +4791,15 @@ function Builtins.string(expr, ...)
     return vim_string(expr)
 end
 
--- Export: the builtins table for evaluator and :call; plus a Lua proxy for vim.fn usage
-local export = Builtins
+function Builtins.getenv(name)
+    EnvVars = EnvVars or loadModule("lib.envvars")
+    return EnvVars.get(name)
+end
 
-export._proxy = setmetatable({}, {
-    __index = function(_, key)
-        -- Return a callable that looks up Vimscript function or builtin at call time
-        return function(...)
-            return call_vimfunc(key, ...)
-        end
-    end
-})
+-- Non-builtin exports
+local export = {
+    fn = Builtins
+}
 
 export._call = call_vimfunc
 export._funcref_name = function(fn)

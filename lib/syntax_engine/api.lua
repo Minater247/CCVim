@@ -9,6 +9,12 @@ local Options = loadModule("lib.options")
 local Highlight = loadModule("lib.highlight")
 local VimRegex = loadModule("lib.excmd.vim_regex")
 
+local treesitter_mod
+local function treesitter()
+    treesitter_mod = treesitter_mod or loadModule("lib.luaapi.treesitter")
+    return treesitter_mod
+end
+
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -206,8 +212,8 @@ end
 
 local function syntax_group_name(ctx, group_id)
     local ir = ctx.syntax_ir
-    local g = ir and ir.groups and ir.groups[group_id] or nil
-    return g and g.name or nil
+    local g = ir and ir.groups and ir.groups[group_id]
+    return g and g.name
 end
 
 function Api.invalidate_from_line(buffer, line)
@@ -221,16 +227,17 @@ function Api.line_to_blit(buffer, line, window)
     ensure_compiled(ctx)
 
     local out = Runtime.line_to_blit(ctx, buffer, line)
-    if not has_active_window_match(win) then
-        return out
-    end
-
     local blits = {}
     if out then
         blits[line] = out
     end
-    local overlaid = apply_window_matches(win, buffer, line, line, blits)
-    return overlaid[line]
+
+    if has_active_window_match(win) then
+        blits = apply_window_matches(win, buffer, line, line, blits)
+    end
+
+    blits = treesitter()._apply_highlight_blits(buffer, line, line, blits)
+    return blits and blits[line]
 end
 
 function Api.lines_to_blit(buffer, first_line, last_line, window)
@@ -239,7 +246,8 @@ function Api.lines_to_blit(buffer, first_line, last_line, window)
     ensure_compiled(ctx)
 
     local out = Runtime.lines_to_blit(ctx, buffer, first_line, last_line)
-    return apply_window_matches(win, buffer, first_line, last_line, out)
+    local overlaid = apply_window_matches(win, buffer, first_line, last_line, out)
+    return treesitter()._apply_highlight_blits(buffer, first_line, last_line, overlaid)
 end
 
 function Api.on_syntax_option(buffer, value)

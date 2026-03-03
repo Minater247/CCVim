@@ -82,7 +82,7 @@ local target_line, token_start, token_end = find_luaapi_in_nvim(source_lines)
 local buf = mk_buf(source_lines)
 local error_fg = colors.toBlit(Highlight.For("Error")[1])
 
--- Lua-style form: contains=TOP,Group should add Group, not subtract it.
+-- Lua form: contains=TOP,Group should add Group, not subtract it.
 do
     local ctx = mk_ctx({
         "match Error /luaapi/ contained",
@@ -93,7 +93,7 @@ do
     assert_fg_range("TOP+group highlights contained token", blit, token_start, token_end, error_fg)
 end
 
--- Vimscript-style form: clusters using contains=TOP,Group must also add Group.
+-- Vimscript form: clusters using contains=TOP,Group must also add Group.
 do
     local ctx = mk_ctx({
         "match Error /luaapi/ contained",

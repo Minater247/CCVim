@@ -39,39 +39,39 @@ curwin = 1
 
 local Fn = mock.loadModule("lib.luaapi.fn")
 
-assert_eq("setline numeric line success", Fn.setline(2, "TWO"), 0)
+assert_eq("setline numeric line success", Fn.fn.setline(2, "TWO"), 0)
 assert_eq("line 2 updated", buf.lines[2], "TWO")
 
-assert_eq("setline $ success", Fn.setline("$", "THREE"), 0)
+assert_eq("setline $ success", Fn.fn.setline("$", "THREE"), 0)
 assert_eq("last line updated", buf.lines[3], "THREE")
 
-assert_eq("setline append at last+1", Fn.setline(4, "FOUR"), 0)
+assert_eq("setline append at last+1", Fn.fn.setline(4, "FOUR"), 0)
 assert_eq("line appended", buf.lines[4], "FOUR")
 
-assert_eq("setline . uses cursor line", Fn.setline(".", "CUR"), 0)
+assert_eq("setline . uses cursor line", Fn.fn.setline(".", "CUR"), 0)
 assert_eq("cursor line updated", buf.lines[2], "CUR")
 
-assert_eq("setline list converts values", Fn.setline(1, { 10, true }), 0)
+assert_eq("setline list converts values", Fn.fn.setline(1, { 10, true }), 0)
 assert_eq("list item 1 converted", buf.lines[1], "10")
 assert_eq("list item 2 converted", buf.lines[2], "v:true")
 
-assert_eq("setline list extends below last line", Fn.setline(4, { "x", "y", "z" }), 0)
+assert_eq("setline list extends below last line", Fn.fn.setline(4, { "x", "y", "z" }), 0)
 assert_eq("extended line 4", buf.lines[4], "x")
 assert_eq("extended line 5", buf.lines[5], "y")
 assert_eq("extended line 6", buf.lines[6], "z")
 
 local before_empty = table.concat(buf.lines, "\n")
-assert_eq("setline empty list is success-noop", Fn.setline(3, {}), 0)
+assert_eq("setline empty list is success-noop", Fn.fn.setline(3, {}), 0)
 assert_eq("empty list leaves lines unchanged", table.concat(buf.lines, "\n"), before_empty)
 
 local before_invalid = table.concat(buf.lines, "\n")
-assert_eq("setline invalid low lnum fails", Fn.setline(0, "bad"), 1)
+assert_eq("setline invalid low lnum fails", Fn.fn.setline(0, "bad"), 1)
 assert_eq("invalid low lnum leaves lines unchanged", table.concat(buf.lines, "\n"), before_invalid)
-assert_eq("setline invalid high lnum fails", Fn.setline(#buf.lines + 2, "bad"), 1)
+assert_eq("setline invalid high lnum fails", Fn.fn.setline(#buf.lines + 2, "bad"), 1)
 assert_eq("invalid high lnum leaves lines unchanged", table.concat(buf.lines, "\n"), before_invalid)
 
 local ok, err = pcall(function()
-    Fn.setline(1, "x", "extra")
+    Fn.fn.setline(1, "x", "extra")
 end)
 assert_true("setline too many args E118", (not ok) and tostring(err):find("E118", 1, true), tostring(err))
 

@@ -260,7 +260,7 @@ function Filesystem.Expand(str, nosuf)
 
     if str:sub(1, 1) == "%" then
         str = str:sub(2)
-        local name = windows[curwin] and windows[curwin].buffer and windows[curwin].buffer.name or ""
+        local name = windows[curwin].buffer.name or ""
         if name == nil then name = "" end
         expansions = { name }
     elseif str:sub(1, 1) == "<" then
@@ -289,7 +289,7 @@ function Filesystem.Expand(str, nosuf)
                 local v = ve.file or windows[curwin].buffer.name or ""
                 expansions = { _normalize_autocmd_path(v) }
             else -- abuf
-                local v = ve.buf or (windows[curwin] and windows[curwin].buffer and windows[curwin].buffer.bufnr) or 0
+                local v = ve.buf or windows[curwin].buffer.bufnr
                 expansions = { tostring(v) }
             end
             str = rest

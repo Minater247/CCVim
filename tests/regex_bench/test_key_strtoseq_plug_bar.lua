@@ -39,6 +39,7 @@ assert_eq("plug token canonicalizes", parse_text("<plug>(Foo)"), "<Plug>(Foo)")
 assert_eq("plug token keeps canonical form", parse_text("<Plug>(Foo)"), "<Plug>(Foo)")
 assert_eq("bar token maps to literal pipe", parse_text("<bar>"), "|")
 assert_eq("bar token case-insensitive", parse_text("<Bar>"), "|")
+assert_eq("space token maps to literal space", parse_text("<Space>"), " ")
 local ctrl_s = Key.strtoseq("<C-s>")
 assert_eq("ctrl-s parses as key, not shift modifier", Key.printable_number(ctrl_s[1].numeric), "<C-s>")
 

@@ -2,8 +2,8 @@ local LuaLoader = {}
 
 local vimapi = loadModule("lib.luaapi.apibuild").Build()
 setmetatable(vimapi, { __index = _G })
+vimapi._G = vimapi
 local Error = loadModule("lib.error")
-local VimFs = loadModule("lib.luaapi.fs")
 local ScriptSource
 
 local loaded = {}
@@ -12,9 +12,7 @@ local function compile_with_env(code, chunkname, env)
     return load(code, chunkname or "=(chunk)", "t", env)
 end
 
-function LuaLoader.LoadFile(path)
-    path = VimFs.abspath(path)
-
+function LuaLoader.LoadFile(path, ...)
     local plugin
     if loaded[path] then
         plugin = loaded[path]
@@ -29,7 +27,7 @@ function LuaLoader.LoadFile(path)
         end
         ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         ScriptSource.PushContext(path)
-        plugin = chunk()
+        plugin = chunk(...)
         ScriptSource.PopContext()
         loaded[path] = plugin
     end

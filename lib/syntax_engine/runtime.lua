@@ -180,7 +180,7 @@ local function split_delim_pattern(raw)
         elseif ch == d then
             local patt = s:sub(2, i - 1)
             local tail = s:sub(i + 1)
-            local offs = (tail ~= "") and VimRegex.parse_syntax_offsets(tail) or nil
+            local offs = (tail ~= "") and VimRegex.parse_syntax_offsets(tail)
             return patt, offs
         end
         i = i + 1
@@ -363,8 +363,8 @@ local function build_compiled_spec(raw_pattern, ignore_case, attrs, matchgroup, 
         lc = lc,
         matchgroup = matchgroup,
         excludenl = excludenl and true or false,
-        profile_key = profile and profile.key or nil,
-        profile_name = profile and profile.name or nil,
+        profile_key = profile and profile.key,
+        profile_name = profile and profile.name,
     }
 end
 
@@ -603,8 +603,8 @@ local function active_visible_group(state)
 end
 
 local function keyword_boundary_ok(line, s, e, iskw)
-    local b1 = (s > 1) and string.byte(line, s - 1) or nil
-    local b2 = (e < #line) and string.byte(line, e + 1) or nil
+    local b1 = (s > 1) and string.byte(line, s - 1)
+    local b2 = (e < #line) and string.byte(line, e + 1)
     if b1 and iskw[b1] then return false end
     if b2 and iskw[b2] then return false end
     return true
@@ -1155,7 +1155,7 @@ local function ensure_highlight_version(ctx, plan)
 end
 
 local function get_matchgroup_name(spec)
-    local mg = spec and spec.matchgroup or nil
+    local mg = spec and spec.matchgroup
     if not mg or mg == "" or mg == "NONE" then
         return nil
     end
@@ -1196,7 +1196,7 @@ local function contains_has_non_keyword(plan, contains_ids)
 end
 
 local function paint_match_contained_keywords(plan, item, line, lower_line, range_s, range_e, max_col, spans)
-    local contains_bits = item.options and item.options.contains_bits or nil
+    local contains_bits = item.options.contains_bits
     if not contains_bits then
         return
     end
@@ -1230,12 +1230,12 @@ local function paint_match_contained_keywords(plan, item, line, lower_line, rang
 end
 
 local function paint_match_contained_items(plan, item, line, lower_line, range_s, range_e, max_col, spans)
-    local contains_bits = item.options and item.options.contains_bits or nil
+    local contains_bits = item.options.contains_bits
     if not contains_bits then
         return
     end
 
-    local contains_ids = item.options and item.options.contains_ids or nil
+    local contains_ids = item.options.contains_ids
     if not contains_has_non_keyword(plan, contains_ids) then
         paint_match_contained_keywords(plan, item, line, lower_line, range_s, range_e, max_col, spans)
         return
@@ -1504,7 +1504,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
         end
 
         local top = state.stack[#state.stack]
-        local end_ev = top and find_region_end_event(top, line, lower_line, pos, max_col) or nil
+        local end_ev = top and find_region_end_event(top, line, lower_line, pos, max_col)
         local start_ev = find_best_start_event(plan, state, line, lower_line, pos, false, max_col)
 
         local event = nil
@@ -1720,7 +1720,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
             local cp_next = ctx.checkpoints[ln + 1]
             old_next_hash = checkpoint_hash(cp_next)
             local sp = ctx.span_cache[ln]
-            old_text = sp and sp.line_text or nil
+            old_text = sp and sp.line_text
         end
 
         local before = state

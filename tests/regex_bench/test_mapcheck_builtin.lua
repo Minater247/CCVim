@@ -66,36 +66,41 @@ Command.clear_mappings({
 })
 
 Command.remap_keys("normal", Key.strtoseq("abc"), Key.strtoseq("rhsabc"))
-assert_eq("mapping starts with name", Fn.mapcheck("a", "n"), "rhsabc")
-assert_eq("mapping is prefix of name", Fn.mapcheck("abcd", "n"), "rhsabc")
-assert_eq("no mapping returns empty", Fn.mapcheck("zzz", "n"), "")
+assert_eq("mapping starts with name", Fn.fn.mapcheck("a", "n"), "rhsabc")
+assert_eq("mapping is prefix of name", Fn.fn.mapcheck("abcd", "n"), "rhsabc")
+assert_eq("no mapping returns empty", Fn.fn.mapcheck("zzz", "n"), "")
 
 Command.remap_keys("insert", Key.strtoseq("ii"), Key.strtoseq("insrhs"))
-assert_eq("default mode excludes insert", Fn.mapcheck("ii"), "")
-assert_eq("insert mode finds insert mapping", Fn.mapcheck("ii", "i"), "insrhs")
+assert_eq("default mode excludes insert", Fn.fn.mapcheck("ii"), "")
+assert_eq("insert mode finds insert mapping", Fn.fn.mapcheck("ii", "i"), "insrhs")
 
 Command.remap_keys("select", Key.strtoseq("ss"), Key.strtoseq("selrhs"))
-assert_eq("v mode includes select", Fn.mapcheck("ss", "v"), "selrhs")
-assert_eq("x mode excludes select-only", Fn.mapcheck("ss", "x"), "")
+assert_eq("v mode includes select", Fn.fn.mapcheck("ss", "v"), "selrhs")
+assert_eq("x mode excludes select-only", Fn.fn.mapcheck("ss", "x"), "")
 
 Command.remap_keys("", Key.strtoseq("mm"), Key.strtoseq("emptymap"))
-assert_eq("empty mode maps in normal", Fn.mapcheck("mm", "n"), "emptymap")
-assert_eq("empty mode maps in visual", Fn.mapcheck("mm", "x"), "emptymap")
-assert_eq("empty mode maps in select", Fn.mapcheck("mm", "s"), "emptymap")
-assert_eq("empty mode maps in operator-pending", Fn.mapcheck("mm", "o"), "emptymap")
-assert_eq("empty mode does not map in insert", Fn.mapcheck("mm", "i"), "")
+assert_eq("empty mode maps in normal", Fn.fn.mapcheck("mm", "n"), "emptymap")
+assert_eq("empty mode maps in visual", Fn.fn.mapcheck("mm", "x"), "emptymap")
+assert_eq("empty mode maps in select", Fn.fn.mapcheck("mm", "s"), "emptymap")
+assert_eq("empty mode maps in operator-pending", Fn.fn.mapcheck("mm", "o"), "emptymap")
+assert_eq("empty mode does not map in insert", Fn.fn.mapcheck("mm", "i"), "")
 
 Command.remap_keys("normal", Key.strtoseq("xx"), Key.strtoseq("globalrhs"))
 Command.remap_keys("normal", Key.strtoseq("xx"), Key.strtoseq("localrhs"), { buffer_local = true })
-assert_eq("buffer-local checked before global", Fn.mapcheck("xx", "n"), "localrhs")
+assert_eq("buffer-local checked before global", Fn.fn.mapcheck("xx", "n"), "localrhs")
 
 Command.remap_keys("normal", Key.strtoseq("<S-Up>"), Key.strtoseq("shiftup"))
-assert_eq("special key names are supported", Fn.mapcheck("<S-Up>", "n"), "shiftup")
+assert_eq("special key names are supported", Fn.fn.mapcheck("<S-Up>", "n"), "shiftup")
 
-assert_eq("abbr mode unsupported returns empty", Fn.mapcheck("xx", "n", 1), "")
+Command.map_callback("normal", Key.strtoseq("qq"), function() end)
+assert_eq("has_mapping finds callback leaf", Command.has_mapping("n", Key.strtoseq("qq")), true)
+assert_eq("has_mapping finds mapped prefix node", Command.has_mapping("n", Key.strtoseq("q")), true)
+assert_eq("has_mapping misses unknown node", Command.has_mapping("n", Key.strtoseq("qz")), false)
+
+assert_eq("abbr mode unsupported returns empty", Fn.fn.mapcheck("xx", "n", 1), "")
 
 local ok, err = pcall(function()
-    Fn.mapcheck("xx", "n", 0, 1)
+    Fn.fn.mapcheck("xx", "n", 0, 1)
 end)
 assert_true("too many args keeps E118", (not ok) and tostring(err):find("E118", 1, true), tostring(err))
 

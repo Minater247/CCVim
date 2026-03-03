@@ -6,7 +6,9 @@ local Error = loadModule("lib.error")
 local VimRegex = loadModule("lib.excmd.vim_regex")
 local EnvVars = loadModule("lib.envvars")
 local Scopes  = loadModule("lib.luaapi.scopes")
+local Key = loadModule("lib.key")
 local VimFnBuiltins = loadModule("lib.luaapi.fn") or {}
+local ApiBuild
 -- =========================================================
 
 -- -------- helpers --------
@@ -149,21 +151,7 @@ local function decode_angle_escape(content)
         end
     end
 
-    local ctrl = c:match("^[cC]%-(.)$")
-    if ctrl then
-        local b = string.byte(ctrl)
-        if b then
-            if b >= string.byte("a") and b <= string.byte("z") then
-                b = b - 32
-            end
-            if b == string.byte("?") then
-                return string.char(127)
-            end
-            return string.char(bit32.band(b, 0x1f))
-        end
-    end
-
-    return nil
+    return Key.decode_angle_escape(c)
 end
 
 local function resolve_vlua_path(path)
@@ -188,9 +176,9 @@ local function resolve_vlua_path(path)
         end
         return cur
     end
-    local ApiBuild = loadModule("lib.luaapi.apibuild")
-    local api = ApiBuild and ApiBuild.Build and ApiBuild.Build()
-    local f = api and traverse(api) or nil
+    ApiBuild = ApiBuild or loadModule("lib.luaapi.apibuild")
+    local api = ApiBuild.Build()
+    local f = api and traverse(api)
     if type(f) ~= "function" then return Error(117, "v:lua." .. path) end
     return f
 end
@@ -333,7 +321,7 @@ local function tokenize(input)
 
         -- environment variable: $NAME or ${NAME}
         if c == "$" and peek(1) == "'" then
-            -- $'...'-style single-quoted string (used heavily by :execute).
+            -- $'...' single-quoted string.
             -- Parse as one string token so splitExpressions() can segment
             -- execute arguments without being confused by interpolation text.
             adv(2) -- skip $'
@@ -1044,7 +1032,7 @@ local function eval_node(node, vim9, env)
             f = resolve_vlua_path(node.lua_path)
             if is_error(f) then return f end
         else
-            local scoped_name = node.scope and (tostring(node.scope) .. ":" .. tostring(node.name)) or nil
+            local scoped_name = node.scope and (tostring(node.scope) .. ":" .. tostring(node.name))
             if not f and scoped_name and type(env.funcs[scoped_name]) == "function" then
                 f = env.funcs[scoped_name]
             end
@@ -1055,8 +1043,8 @@ local function eval_node(node, vim9, env)
                 end
             end
             -- Builtins first
-            if not f and type(VimFnBuiltins[node.name]) == "function" then
-                f = VimFnBuiltins[node.name]
+            if not f and type(VimFnBuiltins.fn[node.name]) == "function" then
+                f = VimFnBuiltins.fn[node.name]
             end
             -- Then user-provided functions map
             if not f and type(env.funcs[node.name]) == "function" then
@@ -1177,7 +1165,7 @@ local function eval_node(node, vim9, env)
     
     if k == "opt" then
         local win = windows[curwin]
-        local buf = win and win.buffer
+        local buf = win.buffer
         local getlocal, getglobal = false, false
         if node.scope == "l" then
             getlocal = true

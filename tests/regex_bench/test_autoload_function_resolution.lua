@@ -179,7 +179,7 @@ end
 
 do
     clear_calls()
-    local rv = VimFn._proxy["proxyauto#Loaded"]()
+    local rv = VimFn._call("proxyauto#Loaded")
     assert_eq("vim.fn proxy autoload return value", rv, 123)
     assert_eq("vim.fn proxy autoload path", autoload_calls[1], "autoload/proxyauto.vim")
     assert_eq("vim.fn proxy no lua fallback", autoload_calls[2], nil)

@@ -64,9 +64,9 @@ local function build_glyphs_with_map_noblit(s, bytepos, cfg, listcfg)
     local gch, issp, gsrc = {}, {}, {}
     local target = nil
     local col = 0
-    local list_space = listcfg and listcfg.space or nil
-    local tab_head = listcfg and listcfg.tab_head or nil
-    local tab_fill = listcfg and listcfg.tab_fill or tab_head or nil
+    local list_space = listcfg and listcfg.space
+    local tab_head = listcfg and listcfg.tab_head
+    local tab_fill = listcfg and listcfg.tab_fill or tab_head
 
     local function push(ch, src_i)
         local k = #gch + 1
@@ -116,9 +116,9 @@ local function build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listc
     local gch, issp, gfg, gbg, gsrc = {}, {}, {}, {}, {}
     local target = nil
     local col = 0
-    local list_space = listcfg and listcfg.space or nil
-    local tab_head = listcfg and listcfg.tab_head or nil
-    local tab_fill = listcfg and listcfg.tab_fill or tab_head or nil
+    local list_space = listcfg and listcfg.space
+    local tab_head = listcfg and listcfg.tab_head
+    local tab_fill = listcfg and listcfg.tab_fill or tab_head
 
     local function color_at(i)
         local f = s_sub(blitfg, i, i); if f == "" then f = "0" end
@@ -239,7 +239,7 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
     end
 
     local mapped_line, mapped_col, mapped_ch_explicit
-    local ranges = want_ranges and {} or nil
+    local ranges = want_ranges and {}
 
     local function finish_pos(line, col)
         local ch = mapped_ch_explicit or gch[target_idx]
@@ -276,12 +276,12 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
             if wl > 0 and (not target_idx) then
                 local line_len = (rv[1] and #rv[1]) or 0
                 if line_len > 0 and col == line_len + 1 and line_len == wl then
-                    return rv, (want_blit and { fg = rbfg, bg = rbbg } or nil), finish_pos(2, 1), ranges, gsrc
+                    return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(2, 1), ranges, gsrc
                 end
             end
-            return rv, (want_blit and { fg = rbfg, bg = rbbg } or nil), finish_pos(1, col), ranges, gsrc
+            return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(1, col), ranges, gsrc
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg } or nil), nil, ranges, gsrc
+        return rv, (want_blit and { fg = rbfg, bg = rbbg }), nil, ranges, gsrc
     end
 
     local i, n = 1, #gch
@@ -348,9 +348,9 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
                 mapped_ch_explicit = " "
             end
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg } or nil), finish_pos(mapped_line, mapped_col), ranges, gsrc
+        return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(mapped_line, mapped_col), ranges, gsrc
     else
-        return rv, (want_blit and { fg = rbfg, bg = rbbg } or nil), nil, ranges, gsrc
+        return rv, (want_blit and { fg = rbfg, bg = rbbg }), nil, ranges, gsrc
     end
 end
 
@@ -358,14 +358,18 @@ end
 --- If `bytepos` is provided, also returns {line,column,ch} for the rendered cell.
 --- If a blit pair { fg, bg } is provided (4th arg), returns rendered blits
 --- as the SECOND return value: { fg = {..lines..}, bg = {..lines..} }.
+--- Additional return values expose layout mapping metadata used by window
+--- decorations:
+--- - ranges: per-rendered-row glyph bounds
+--- - gsrc: glyph index -> source byte index
 ---@param str string
 ---@param params TexRenParseParams
 ---@param bytepos integer|nil
 ---@param blit_pair table|nil  -- { fg=string, bg=string } or { [1]=fg, [2]=bg }
----@return string[] lines, table|nil rendered_blits, table|nil pos
+---@return string[] lines, table|nil rendered_blits, table|nil pos, table ranges, table gsrc
 TexRen.parse = function(str, params, bytepos, blit_pair)
-    local lines, blits, pos = parse_internal(str, params, bytepos, blit_pair, false)
-    return lines, blits, pos
+    local lines, blits, pos, ranges, gsrc = parse_internal(str, params, bytepos, blit_pair, true)
+    return lines, blits, pos, ranges, gsrc
 end
 
 --- Parse & wrap, returning additional layout info for cursor/scroll helpers.

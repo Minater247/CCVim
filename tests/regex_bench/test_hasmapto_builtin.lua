@@ -65,30 +65,30 @@ Command.clear_mappings({
 })
 
 Command.remap_keys("normal", seq("g"), seq("<Plug>GlobalTarget"))
-assert_eq("default nvo finds normal mapping", Fn.hasmapto("<Plug>GlobalTarget"), 1)
+assert_eq("default nvo finds normal mapping", Fn.fn.hasmapto("<Plug>GlobalTarget"), 1)
 
 Command.remap_keys("insert", seq("i"), seq("InsertOnly"))
-assert_eq("default nvo excludes insert", Fn.hasmapto("InsertOnly"), 0)
-assert_eq("explicit insert mode finds insert mapping", Fn.hasmapto("InsertOnly", "i"), 1)
+assert_eq("default nvo excludes insert", Fn.fn.hasmapto("InsertOnly"), 0)
+assert_eq("explicit insert mode finds insert mapping", Fn.fn.hasmapto("InsertOnly", "i"), 1)
 
 Command.remap_keys("select", seq("s"), seq("SelectOnly"))
-assert_eq("v mode includes select", Fn.hasmapto("SelectOnly", "v"), 1)
-assert_eq("x mode excludes select-only mapping", Fn.hasmapto("SelectOnly", "x"), 0)
+assert_eq("v mode includes select", Fn.fn.hasmapto("SelectOnly", "v"), 1)
+assert_eq("x mode excludes select-only mapping", Fn.fn.hasmapto("SelectOnly", "x"), 0)
 
 Command.remap_keys("", seq("m"), seq("MapEmptyMode"))
-assert_eq("empty mode includes normal", Fn.hasmapto("MapEmptyMode", "n"), 1)
-assert_eq("empty mode includes visual", Fn.hasmapto("MapEmptyMode", "x"), 1)
-assert_eq("empty mode includes select", Fn.hasmapto("MapEmptyMode", "s"), 1)
-assert_eq("empty mode includes operator", Fn.hasmapto("MapEmptyMode", "o"), 1)
-assert_eq("empty mode excludes insert", Fn.hasmapto("MapEmptyMode", "i"), 0)
+assert_eq("empty mode includes normal", Fn.fn.hasmapto("MapEmptyMode", "n"), 1)
+assert_eq("empty mode includes visual", Fn.fn.hasmapto("MapEmptyMode", "x"), 1)
+assert_eq("empty mode includes select", Fn.fn.hasmapto("MapEmptyMode", "s"), 1)
+assert_eq("empty mode includes operator", Fn.fn.hasmapto("MapEmptyMode", "o"), 1)
+assert_eq("empty mode excludes insert", Fn.fn.hasmapto("MapEmptyMode", "i"), 0)
 
 Command.remap_keys("normal", seq("b"), seq("BufLocalOnly"), { buffer_local = true })
-assert_eq("buffer-local mappings are searched", Fn.hasmapto("BufLocalOnly", "n"), 1)
+assert_eq("buffer-local mappings are searched", Fn.fn.hasmapto("BufLocalOnly", "n"), 1)
 
-assert_eq("abbr mode returns no mapping", Fn.hasmapto("<Plug>GlobalTarget", "n", 1), 0)
+assert_eq("abbr mode returns no mapping", Fn.fn.hasmapto("<Plug>GlobalTarget", "n", 1), 0)
 
 local ok, err = pcall(function()
-    Fn.hasmapto("x", "n", 0, 1)
+    Fn.fn.hasmapto("x", "n", 0, 1)
 end)
 assert_true("too many args keeps E118", (not ok) and tostring(err):find("E118", 1, true), tostring(err))
 

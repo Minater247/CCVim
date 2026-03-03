@@ -7,7 +7,9 @@ lib/
 	aliastable.lua
 	args.lua
 	autocmd.lua
+	bufattach.lua
 	command.lua
+	decoration.lua
 	envvars.lua
 	error.lua
 	event.lua
@@ -25,30 +27,20 @@ lib/
 	key.lua
 	listchars.lua
 	luaapi/
-		F.lua
 		api.lua
 		apibuild.lua
-		deferfn.lua
-		diagnostic.lua
-		env.lua
 		fakejit.lua
 		fileload.lua
 		fn.lua
 		fs.lua
-		keymap.lua
-		log.lua
 		loop.lua
-		notify.lua
+		lpeg.lua
 		on_key.lua
-		opt.lua
-		opts.lua
 		package.lua
 		print.lua
 		require.lua
 		scopes.lua
-		split.lua
 		strutils.lua
-		system.lua
 		tblutils.lua
 		timerutils.lua
 		treesitter.lua
@@ -56,6 +48,7 @@ lib/
 	mappings.lua
 	options.lua
 	pack.lua
+	popupmenu.lua
 	runtimepath.lua
 	scriptsource.lua
 	sign.lua
@@ -71,8 +64,6 @@ lib/
 	tab.lua
 	tags.lua
 	texren.lua
-	treesitter/
-		backends/
 	utf8.lua
 	wordnav.lua
 runtime/
@@ -309,9 +300,6 @@ runtime/
 		zig_build_exe.vim
 		zig_test.vim
 		zsh.vim
-	data/
-		plenary/
-			filetypes/
 	delmenu.vim
 	doc/
 		api.txt
@@ -1407,7 +1395,6 @@ runtime/
 		main.py
 		mswin.vim
 		requirements.txt
-		vararg/
 	spell/
 		cleanadd.vim
 		en.utf-8.spl
@@ -2181,11 +2168,6 @@ runtime/
 		zir.vim
 		zserio.vim
 		zsh.vim
-	tests/
-		manual/
-		plenary/
-			async/
-			job/
 	tutor/
 		en/
 			vim-01-beginner.tutor

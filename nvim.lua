@@ -64,8 +64,12 @@ _V = {
 
     need_redraw = true,
     what_redraw = {},
+    lazyredraw_block = 0,
+    lazyredraw_force = false,
 
     registers = {},
+
+    global_marks = {},
 
     startuptime = false,
 
@@ -172,13 +176,25 @@ Event.LoadCommandModule()
 loadModule("lib.mappings")
 
 local AutoCmd = loadModule("lib.autocmd")
+local PopupMenu = loadModule("lib.popupmenu")
 _V.rebalance_current_window_soft = FrameTree.RebalanceCurrentTab
 _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
 function _V.setMode(newmode, newx, newy)
     local oldmode = _V.vimmode
-    _V.vimmode = newmode
     local win = _V.windows[_V.curwin]
+    local mode_changed = (newmode ~= oldmode)
+    local buf_ctx = {
+        bufnr = win.buffer.bufnr,
+        bufname = win.buffer.name,
+    }
+
+    if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+        win.buffer:undo_end(win)
+        AutoCmd.Run("InsertLeavePre", buf_ctx)
+    end
+
+    _V.vimmode = newmode
     if newy then
         win:cursorSetY(newy)
     end
@@ -192,13 +208,31 @@ function _V.setMode(newmode, newx, newy)
             lines[1] = ""
         end
     end
-    if newmode ~= oldmode then
+    if mode_changed then
+        if oldmode == "insert" and newmode ~= "insert" then
+            if PopupMenu.visible() then
+                PopupMenu.close("cancel")
+            end
+            AutoCmd.Run("InsertLeave", buf_ctx)
+        elseif oldmode ~= "insert" and newmode == "insert" then
+            AutoCmd.Run("InsertEnter", buf_ctx)
+        end
+
+        if oldmode == "cmdline" and newmode ~= "cmdline" then
+            AutoCmd.Run("CmdlineLeave", buf_ctx)
+        elseif oldmode ~= "cmdline" and newmode == "cmdline" then
+            AutoCmd.Run("CmdlineEnter", buf_ctx)
+        end
+
         AutoCmd.Run("ModeChanged", { old_mode = oldmode, new_mode = newmode })
     end
     _V.what_redraw["commandline"] = true
     win:cursorMove(0, 0, false)
     if newmode == "insert" then
         win.insert_curs_start = {win.cursorx, win.cursory}
+        if mode_changed and oldmode ~= "insert" then
+            win.buffer:undo_begin(win)
+        end
     end
     _V.need_redraw = true
 end
@@ -253,9 +287,9 @@ function _V.enterWindow(winnr)
         new_curtp = _V.windows[winnr].tabpagenr
     end
 
-    local oldbuf = _V.windows[_V.curwin] and _V.windows[_V.curwin].buffer or nil
-    local newbuf = _V.windows[new_curwin] and _V.windows[new_curwin].buffer or nil
-    local buf_changed = oldbuf and newbuf and oldbuf ~= newbuf
+    local oldbuf = _V.windows[_V.curwin].buffer
+    local newbuf = _V.windows[new_curwin].buffer
+    local buf_changed = oldbuf ~= newbuf
 
     if buf_changed then
         AutoCmd.Run("BufLeave", { bufnr = oldbuf.bufnr, bufname = oldbuf.name })

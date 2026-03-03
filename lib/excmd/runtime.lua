@@ -19,6 +19,63 @@ Runtime._LAST_SEARCH_PATTERN = ""
 Runtime._LAST_SUBSTITUTE_PATTERN = ""
 Runtime._LAST_SUBSTITUTE_REPL = ""
 Runtime._LAST_SUBSTITUTE_FLAGS = ""
+local runtime_undo_batch_depth = 0
+local runtime_undo_batch_buffers = nil
+local runtime_undo_batch_active = false
+local runtime_undo_batch_pause_count = 0
+
+local function runtime_undo_batch_begin()
+    runtime_undo_batch_buffers = {}
+    runtime_undo_batch_active = true
+    runtime_undo_batch_pause_count = 0
+    for _, buf in pairs(buffers) do
+        runtime_undo_batch_buffers[#runtime_undo_batch_buffers + 1] = buf
+        buf:undo_begin()
+    end
+end
+
+local function runtime_undo_batch_end()
+    if runtime_undo_batch_active and runtime_undo_batch_buffers then
+        for i = 1, #runtime_undo_batch_buffers do
+            runtime_undo_batch_buffers[i]:undo_end()
+        end
+    end
+    runtime_undo_batch_buffers = nil
+    runtime_undo_batch_active = false
+    runtime_undo_batch_pause_count = 0
+end
+
+local function runtime_undo_batch_pause()
+    if runtime_undo_batch_depth == 0 then
+        return
+    end
+    runtime_undo_batch_pause_count = runtime_undo_batch_pause_count + 1
+    if runtime_undo_batch_pause_count > 1 then
+        return
+    end
+    if runtime_undo_batch_active and runtime_undo_batch_buffers then
+        for i = 1, #runtime_undo_batch_buffers do
+            runtime_undo_batch_buffers[i]:undo_end()
+        end
+        runtime_undo_batch_active = false
+    end
+end
+
+local function runtime_undo_batch_resume()
+    if runtime_undo_batch_depth == 0 or runtime_undo_batch_pause_count == 0 then
+        return
+    end
+    runtime_undo_batch_pause_count = runtime_undo_batch_pause_count - 1
+    if runtime_undo_batch_pause_count > 0 then
+        return
+    end
+    if (not runtime_undo_batch_active) and runtime_undo_batch_buffers then
+        for i = 1, #runtime_undo_batch_buffers do
+            runtime_undo_batch_buffers[i]:undo_begin()
+        end
+        runtime_undo_batch_active = true
+    end
+end
 
 local SCRIPT_SID_BY_SCOPE = setmetatable({}, { __mode = "k" })
 local SCRIPT_SID_BY_CTX = {}
@@ -119,6 +176,7 @@ local function ensure_state(state)
     state.funcs = state.funcs or {}
     state.frames = state.frames or {}
     state.commands = state.commands or {}
+    state.menus = state.menus or {}
     state.script_ctx = state.script_ctx
     script_sid_for_state(state)
     return state
@@ -134,7 +192,7 @@ local function truthy(v)
 end
 
 local function eval_expr(expr, state)
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     local scope = {
         g = state.g,
         s = state.s,
@@ -372,7 +430,7 @@ end
 
 local function resolve_assignment_slot(base, state)
     local scope, name = base:match("^([gslavbtw]):(.+)$")
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     if scope == "g" then return state.g, name end
     if scope == "s" then return state.s, name end
     if scope == "l" then
@@ -441,7 +499,7 @@ local function assign_lhs(lhs, value, state)
     end
 
     local scope, name = s:match("^([gslavbtw]):(.+)$")
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     if scope == "g" then state.g[name] = value; return true end
     if scope == "s" then state.s[name] = value; return true end
     if scope == "l" then if not top then return Error(461, s) end; top.l[name] = value; return true end
@@ -455,7 +513,7 @@ local function assign_lhs(lhs, value, state)
 end
 
 local function unlet(names, bang, state)
-    local top = state.frames and state.frames[#state.frames] or nil
+    local top = state.frames[#state.frames]
     for tok in names:gmatch("%S+") do
         local name = tok:gsub(",%$", "")
         local scope, key = name:match("^([gslavbtw]):(.+)$")
@@ -610,7 +668,7 @@ end
 
 local function build_error_context(rt, opts, state, script)
     local origin = normalize_origin(opts and opts.origin, state)
-    local cursor = rt and rt:get_exec_cursor() or nil
+    local cursor = rt and rt:get_exec_cursor()
     local parts = {}
 
     append_ctx(parts, "kind", origin.kind, 80)
@@ -621,7 +679,7 @@ local function build_error_context(rt, opts, state, script)
     append_ctx(parts, "fn", origin.func, 120)
     append_ctx(parts, "caller", origin.caller, 160)
     append_ctx(parts, "source", origin.source, 220)
-    append_ctx(parts, "script_ctx", state and state.script_ctx or nil, 220)
+    append_ctx(parts, "script_ctx", state.script_ctx, 220)
 
     if cursor and cursor.line then
         append_ctx(parts, "line", cursor.line, 40)
@@ -836,6 +894,7 @@ local function rejoin_equals(args)
 end
 
 local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
+local MENU_COMMAND_SPECS = Commands.MENU_COMMAND_SPECS
 local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
 local resolve_dispatch_name = Commands.resolve_dispatch_name
 
@@ -926,7 +985,7 @@ function Runtime.new(state, opts)
         end
 
         local VimFnMod = loadModule("lib.luaapi.fn")
-        local f_builtin = VimFnMod[name]
+        local f_builtin = VimFnMod.fn[name]
         if type(f_builtin) == "function" then
             return f_builtin(unpack_fn(args or {}))
         end
@@ -980,7 +1039,7 @@ function Runtime.new(state, opts)
 
     function self:eval_expr(expr)
         local state = self.state
-        local top = state.frames and state.frames[#state.frames] or nil
+        local top = state.frames[#state.frames]
         local scope = {
             g = state.g,
             s = state.s,
@@ -1034,7 +1093,7 @@ function Runtime.new(state, opts)
     function self:get_var(name)
         local var = strip(name)
         local scope, key = var:match("^([gslavwb]):(.+)$")
-        local top = self.state.frames and self.state.frames[#self.state.frames] or nil
+        local top = self.state.frames[#self.state.frames]
         if scope == "g" then return self.state.g[key] end
         if scope == "s" then return self.state.s[key] end
         if scope == "l" then return (top and top.l or self.state.l)[key] end
@@ -1138,7 +1197,7 @@ function Runtime.new(state, opts)
         self.__prev_state = Runtime._CURRENT_STATE
         self.__prev_ctrl = Runtime._CURRENT_CTRL
         self.__pushed_ctx = false
-        if state and state.script_ctx and state.script_ctx ~= "" then
+        if state.script_ctx and state.script_ctx ~= "" then
             ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PushContext(state.script_ctx)
             self.__pushed_ctx = true
@@ -1211,24 +1270,37 @@ function Runtime.new(state, opts)
     end
 
     function self:exec_script(script)
-        local code, err = Compiler.compile_script(script, { state = self.state })
-        if not code then error(err) end
-        local env = setmetatable({ runtime = self, _G = _G }, { __index = _G })
-        local chunk, lerr = load(code, "excmd_compiled", "t", env)
-        if not chunk then
-            local path = ccvim_path .. "/log/excmd_compiled_last.lua"
-            local f = fs.open(path, "w")
-            if f then
-                f.write(code)
-                f.close()
-            end
-            LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(lerr), path)
-            error(lerr)
+        local lazy_block = Options.get("lazyredraw")
+        if lazy_block then
+            lazyredraw_block = lazyredraw_block + 1
         end
-        local fn = chunk()
-        self:_push_script_ctx()
-        local ok, rv = pcall(fn, self.state, self)
-        self:_pop_script_ctx()
+
+        local ok, rv = pcall(function()
+            local code, err = Compiler.compile_script(script, { state = self.state })
+            if not code then error(err) end
+            local env = setmetatable({ runtime = self, _G = _G }, { __index = _G })
+            local chunk, lerr = load(code, "excmd_compiled", "t", env)
+            if not chunk then
+                local path = ccvim_path .. "/log/excmd_compiled_last.lua"
+                local f = fs.open(path, "w")
+                if f then
+                    f.write(code)
+                    f.close()
+                end
+                LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(lerr), path)
+                error(lerr)
+            end
+            local fn = chunk()
+            self:_push_script_ctx()
+            local fn_ok, fn_rv = pcall(fn, self.state, self)
+            self:_pop_script_ctx()
+            if not fn_ok then error(fn_rv) end
+            return fn_rv
+        end)
+
+        if lazy_block then
+            lazyredraw_block = lazyredraw_block - 1
+        end
         if not ok then error(rv) end
         return rv
     end
@@ -1283,7 +1355,7 @@ function Runtime.new(state, opts)
             return table.concat(out), true
         end
 
-        -- Support the $'...'-style single-quoted execute string with
+        -- Support the $'...' single-quoted execute string with
         -- interpolation (pre-JIT behavior).  Match and expand before
         -- feeding the expression parser which would otherwise treat
         -- a leading '$' as an env-var and error on $'...'.
@@ -1493,7 +1565,7 @@ function Runtime.new(state, opts)
         if target == "" then
             return nil, Error(471)
         end
-        local found = _vimfn().findfile(target)
+        local found = _vimfn().fn.findfile(target)
         if not found or found == "" then
             return nil, Error(484, target)
         end
@@ -1503,8 +1575,7 @@ function Runtime.new(state, opts)
     local function _find_window_for_path(target_abs)
         local fsmod = _vimfs()
         for _, win in pairs(windows) do
-            local buf = win and win.buffer
-            local name = buf and buf.name
+            local name = win.buffer.name
             if type(name) == "string" and name ~= "" then
                 local ok, buf_abs = pcall(fsmod.abspath, name)
                 if ok and buf_abs == target_abs then
@@ -1523,9 +1594,7 @@ function Runtime.new(state, opts)
             windows[win.winnr] = nil
         end
         local buf = win.buffer
-        if buf and type(buf.refcount) == "number" then
-            buf.refcount = math.max(0, buf.refcount - 1)
-        end
+        buf.refcount = math.max(0, buf.refcount - 1)
     end
 
     local function _split_preflight(target_winnr, refwin, vertical)
@@ -1652,15 +1721,15 @@ function Runtime.new(state, opts)
             text = lstrip(text:sub(2))
         end
         local raw = text:match("^([%a][%w]*)")
-        return raw and raw:lower() or nil, l1, l2, has_range
+        return raw and raw:lower(), l1, l2, has_range
     end
 
     local function _build_cmd_context(cursor, win)
         local raw_cmd, l1, l2, has_range = _cursor_parse_head(cursor, win)
         return {
             raw_cmd = raw_cmd,
-            line1 = has_range and l1 or nil,
-            line2 = has_range and l2 or nil,
+            line1 = has_range and l1,
+            line2 = has_range and l2,
         }
     end
 
@@ -2791,6 +2860,16 @@ function Runtime.new(state, opts)
         return seq, nil
     end
 
+    local function _strtoseq_normal_literal(s)
+        local KeyMod = _key_mod()
+        local escaped = tostring(s or ""):gsub("<", "<lt>")
+        local ok, seq = pcall(KeyMod.strtoseq, escaped)
+        if not ok then
+            return nil, Error(474, tostring(seq))
+        end
+        return seq, nil
+    end
+
     local function _expand_map_sid(text)
         if type(text) ~= "string" or text == "" then
             return text, nil
@@ -2864,6 +2943,453 @@ function Runtime.new(state, opts)
             CommandMod.noremap_keys(modes, lhs_seq, rhs_seq, map_opts)
         end
         return true
+    end
+
+    local function _menu_state()
+        local menus = self.state.menus
+        if type(menus) ~= "table" then
+            menus = {}
+            self.state.menus = menus
+        end
+        menus.items = menus.items or {}
+        menus.tooltips = menus.tooltips or {}
+        menus.translations = menus.translations or {}
+        return menus
+    end
+
+    local function _menu_mode_bucket(modes)
+        local menus = _menu_state()
+        local key = tostring(modes or "")
+        local bucket = menus.items[key]
+        if type(bucket) ~= "table" then
+            bucket = {}
+            menus.items[key] = bucket
+        end
+        return bucket
+    end
+
+    local function _menu_path_matches(name, pat)
+        if pat == "*" then
+            return true
+        end
+        if pat:sub(-2) == ".*" then
+            pat = pat:sub(1, -3)
+            if pat == "" then
+                return true
+            end
+        end
+        if name == pat then
+            return true
+        end
+        return name:sub(1, #pat + 1) == pat .. "."
+    end
+
+    local function _menu_translate_name(name)
+        local menus = _menu_state()
+        local translated = menus.translations[name]
+        if translated then
+            return translated
+        end
+        local out = {}
+        local changed = false
+        for part in tostring(name or ""):gmatch("([^.]+)") do
+            local p = menus.translations[part]
+            if p then
+                out[#out + 1] = p
+                changed = true
+            else
+                out[#out + 1] = part
+            end
+        end
+        if changed then
+            return table.concat(out, ".")
+        end
+        return name
+    end
+
+    local function _split_menu_path(name)
+        local out = {}
+        for part in tostring(name or ""):gmatch("([^.]+)") do
+            out[#out + 1] = part
+        end
+        return out
+    end
+
+    local function _menu_validate_path(name)
+        name = tostring(name or "")
+        if name == "" or name:sub(1, 1) == "." or name:sub(-1) == "." or name:find("%.%.", 1, true) then
+            return nil, Error(475, name)
+        end
+        return _split_menu_path(name), nil
+    end
+
+    local function _menu_has_prefix(modes, prefix)
+        local bucket = _menu_mode_bucket(modes)
+        for _, item in pairs(bucket) do
+            local raw = item.name
+            local translated = item.translated
+            if raw == prefix or raw:sub(1, #prefix + 1) == prefix .. "." then
+                return true
+            end
+            if translated and (translated == prefix or translated:sub(1, #prefix + 1) == prefix .. ".") then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function _menu_missing_segment(modes, name)
+        local parts, perr = _menu_validate_path(name)
+        if Error.IsError(perr) then
+            return nil, perr
+        end
+        if #parts == 1 and parts[1] == "*" then
+            return nil, nil
+        end
+
+        local prefix = ""
+        for i = 1, #parts do
+            local seg = parts[i]
+            if seg == "*" then
+                return nil, nil
+            end
+            local next_prefix = (prefix == "") and seg or (prefix .. "." .. seg)
+            if not _menu_has_prefix(modes, next_prefix) then
+                return seg, nil
+            end
+            prefix = next_prefix
+        end
+        return nil, nil
+    end
+
+    local function _menu_tooltip_has_prefix(prefix)
+        local menus = _menu_state()
+        for key in pairs(menus.tooltips) do
+            if key == prefix or key:sub(1, #prefix + 1) == prefix .. "." then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function _menu_tooltip_missing_segment(name)
+        local parts, perr = _menu_validate_path(name)
+        if Error.IsError(perr) then
+            return nil, perr
+        end
+        if #parts == 1 and parts[1] == "*" then
+            return nil, nil
+        end
+
+        local prefix = ""
+        for i = 1, #parts do
+            local seg = parts[i]
+            if seg == "*" then
+                return "*", nil
+            end
+            local next_prefix = (prefix == "") and seg or (prefix .. "." .. seg)
+            if not _menu_tooltip_has_prefix(next_prefix) then
+                return seg, nil
+            end
+            prefix = next_prefix
+        end
+        return nil, nil
+    end
+
+    local function _menu_item_matches(name, item, pat)
+        if _menu_path_matches(name, pat) then
+            return true
+        end
+        local translated = item and item.translated
+        if translated and _menu_path_matches(translated, pat) then
+            return true
+        end
+        return false
+    end
+
+    local function _consume_menu_options(args, idx)
+        local out = {}
+        while idx <= #args do
+            local tok = args[idx]
+            local bracket = tok:match("^<([^>]+)>$")
+            if bracket then
+                out[bracket:lower()] = true
+                idx = idx + 1
+            else
+                local k, v = tok:match("^([%a_][%w_]*)=(.*)$")
+                if not k then
+                    break
+                end
+                out[k:lower()] = v
+                idx = idx + 1
+            end
+        end
+        return idx, out
+    end
+
+    local function _is_menu_priority(tok)
+        return type(tok) == "string" and tok:match("^%d+([.]%d+)*$") ~= nil
+    end
+
+    local function _menu_set_enabled(modes, pat, enabled)
+        local bucket = _menu_mode_bucket(modes)
+        local changed = 0
+        for name, item in pairs(bucket) do
+            if _menu_item_matches(name, item, pat) then
+                item.enabled = enabled and true or false
+                changed = changed + 1
+            end
+        end
+        return changed
+    end
+
+    local function _menu_remove(modes, pat)
+        local bucket = _menu_mode_bucket(modes)
+        local changed = 0
+        for name, item in pairs(bucket) do
+            if _menu_item_matches(name, item, pat) then
+                bucket[name] = nil
+                changed = changed + 1
+            end
+        end
+        return changed
+    end
+
+    local function _menu_find_item(name)
+        local menus = _menu_state()
+        local lookup_order = { "a", "nvo", "n", "vs", "x", "s", "o", "i", "c", "tl" }
+        for i = 1, #lookup_order do
+            local bucket = menus.items[lookup_order[i]]
+            local item = bucket and bucket[name]
+            if item then
+                return item
+            end
+            if bucket then
+                for _, v in pairs(bucket) do
+                    if v.translated == name then
+                        return v
+                    end
+                end
+            end
+        end
+        for _, bucket in pairs(menus.items) do
+            local item = bucket and bucket[name]
+            if item then
+                return item
+            end
+        end
+        return nil
+    end
+
+    local function _run_menu_ex_command(cmd_name, argstr, bang)
+        local spec = MENU_COMMAND_SPECS[cmd_name]
+        if not spec then
+            return Error(492, cmd_name)
+        end
+        if bang then
+            return Error(474, "No ! allowed")
+        end
+
+        local raw = strip(argstr)
+        local args = split_ws(raw)
+        local idx = 1
+        local menu_opts
+        idx, menu_opts = _consume_menu_options(args, idx)
+
+        if spec.action == "translate" then
+            local menus = _menu_state()
+            local from = args[idx]
+            if not from then
+                return true
+            end
+            if from:lower() == "clear" and idx == #args then
+                menus.translations = {}
+                return true
+            end
+            local to = table.concat(args, " ", idx + 1)
+            if to == "" then
+                return true
+            end
+            menus.translations[from] = to
+            return true
+        end
+
+        if spec.action == "tooltip" then
+            local priority
+            if _is_menu_priority(args[idx]) then
+                priority = args[idx]
+                idx = idx + 1
+            end
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            idx = idx + 1
+            local text = table.concat(args, " ", idx)
+            local menus = _menu_state()
+            menus.tooltips[name] = {
+                name = name,
+                text = text,
+                priority = priority,
+            }
+            return true
+        end
+
+        if spec.action == "tooltip_remove" then
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            local menus = _menu_state()
+            local missing, merr = _menu_tooltip_missing_segment(name)
+            if Error.IsError(merr) then
+                return merr
+            end
+            if missing then
+                return Error(329, missing)
+            end
+            if name == "*" then
+                menus.tooltips = {}
+                return true
+            end
+
+            for key in pairs(menus.tooltips) do
+                if key == name or key:sub(1, #name + 1) == name .. "." then
+                    menus.tooltips[key] = nil
+                end
+            end
+            return true
+        end
+
+        if spec.action == "remove" then
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            local missing, merr = _menu_missing_segment(spec.modes, name)
+            if Error.IsError(merr) then
+                return merr
+            end
+            if missing then
+                return Error(329, missing)
+            end
+            local changed = _menu_remove(spec.modes, name)
+            if changed == 0 and name ~= "*" then
+                local root = name:match("^[^.]+") or name
+                return Error(329, root)
+            end
+            return true
+        end
+
+        if spec.action == "execute" then
+            local name = args[idx]
+            if not name then
+                return true
+            end
+            local item = _menu_find_item(name)
+            if not item then
+                return Error(334, name)
+            end
+            local rhs = tostring(item.rhs or "")
+            if rhs == "" then
+                return true
+            end
+
+            local run = rhs
+            local low = rhs:lower()
+            if low:sub(1, 5) == "<cmd>" then
+                run = rhs:sub(6)
+                run = run:gsub("<[cC][rR]>%s*$", "")
+                run = strip(run)
+                if run == "" then
+                    return true
+                end
+                return self:exec_script(run)
+            end
+            if rhs:sub(1, 1) == ":" then
+                run = rhs:sub(2)
+                run = run:gsub("<[cC][rR]>%s*$", "")
+                run = strip(run)
+                if run == "" then
+                    return true
+                end
+                return self:exec_script(run)
+            end
+            return self:exec_script(rhs)
+        end
+
+        if spec.action == "define" then
+            local operation
+            local token = args[idx] and args[idx]:lower() or nil
+            if token == "enable" or token == "disable" then
+                operation = token
+                idx = idx + 1
+            end
+
+            local priority
+            if not operation and _is_menu_priority(args[idx]) then
+                priority = args[idx]
+                idx = idx + 1
+            end
+
+            if not operation then
+                token = args[idx] and args[idx]:lower() or nil
+                if token == "enable" or token == "disable" then
+                    operation = token
+                    idx = idx + 1
+                end
+            end
+
+            local name = args[idx]
+            if not name then
+                if operation then
+                    return Error(329, operation)
+                end
+                return true
+            end
+            idx = idx + 1
+
+            if operation then
+                local missing, merr = _menu_missing_segment(spec.modes, name)
+                if Error.IsError(merr) then
+                    return merr
+                end
+                if missing then
+                    return Error(329, missing)
+                end
+                local changed = _menu_set_enabled(spec.modes, name, operation == "enable")
+                if changed == 0 and name ~= "*" then
+                    local root = name:match("^[^.]+") or name
+                    return Error(329, root)
+                end
+                return true
+            end
+
+            local rhs = table.concat(args, " ", idx)
+            local rhs_expanded, serr = _expand_map_sid(rhs)
+            if Error.IsError(serr) then
+                return serr
+            end
+
+            local bucket = _menu_mode_bucket(spec.modes)
+            if bucket[name] and menu_opts.unique then
+                return Error(474, "Menu exists: " .. name)
+            end
+
+            bucket[name] = {
+                name = name,
+                translated = _menu_translate_name(name),
+                rhs = rhs_expanded or "",
+                priority = priority,
+                enabled = true,
+                recursive = spec.recursive and true or false,
+                modes = spec.modes,
+                opts = menu_opts,
+            }
+            return true
+        end
+
+        return Error(474, "Unsupported menu action: " .. tostring(spec.action))
     end
 
     local function _split_csv(s)
@@ -3317,6 +3843,11 @@ function Runtime.new(state, opts)
             if Error.IsError(rv) then error(rv) end
             return rv
         end
+        if MENU_COMMAND_SPECS[cmd] then
+            local rv = _run_menu_ex_command(cmd, argstr, bang)
+            if Error.IsError(rv) then error(rv) end
+            return rv
+        end
 
         if cmd == "write" then
             local status = windows[curwin].buffer:write(bang, argstr)
@@ -3469,24 +4000,24 @@ function Runtime.new(state, opts)
                 if kv.texthl ~= nil then dict.texthl = kv.texthl end
                 if kv.culhl ~= nil then dict.culhl = kv.culhl end
                 if kv.priority ~= nil then dict.priority = tonumber(kv.priority) end
-                local rv = _vimfn().sign_define(name, dict)
+                local rv = _vimfn().fn.sign_define(name, dict)
                 if rv ~= 0 then
                     error(Error(474, argstr))
                 end
                 return true
             elseif sub == "undefine" then
-                local rv = _vimfn().sign_undefine(tokens[2])
+                local rv = _vimfn().fn.sign_undefine(tokens[2])
                 if rv ~= 0 and rv ~= nil then
                     error(Error(474, argstr))
                 end
                 return true
             elseif sub == "list" then
-                local defs = _vimfn().sign_getdefined(tokens[2])
+                local defs = _vimfn().fn.sign_getdefined(tokens[2])
                 echo_defs(defs)
                 return true
             elseif sub == "place" then
                 local first = tokens[2]
-                local first_num = first and tonumber(first) or nil
+                local first_num = tonumber(first)
                 local first_is_kv = first and first:find("=", 1, true) ~= nil
 
                 if first_num and not first_is_kv then
@@ -3497,7 +4028,7 @@ function Runtime.new(state, opts)
                         if kv.lnum ~= nil then opts.lnum = tonumber(kv.lnum) end
                         if kv.priority ~= nil then opts.priority = tonumber(kv.priority) end
                         if next(opts) == nil then opts = nil end
-                        local rv = _vimfn().sign_place(
+                        local rv = _vimfn().fn.sign_place(
                             first_num,
                             kv.group or "",
                             kv.name,
@@ -3523,22 +4054,22 @@ function Runtime.new(state, opts)
                 if kv.line ~= nil then dict.lnum = tonumber(kv.line) end
                 if kv.lnum ~= nil then dict.lnum = tonumber(kv.lnum) end
                 if next(dict) == nil then dict = nil end
-                local placed = _vimfn().sign_getplaced(resolve_buf_arg(kv), dict)
+                local placed = _vimfn().fn.sign_getplaced(resolve_buf_arg(kv), dict)
                 echo_placed(placed)
                 return true
             elseif sub == "unplace" then
                 local first = tokens[2]
                 local first_is_kv = first and first:find("=", 1, true) ~= nil
-                local first_num = first and tonumber(first) or nil
+                local first_num = tonumber(first)
 
                 if not first then
                     local win = windows[curwin]
                     local curbuf = win.buffer.bufnr
                     local curline = win.cursory
-                    local placed = _vimfn().sign_getplaced(curbuf, { group = "*", lnum = curline })
+                    local placed = _vimfn().fn.sign_getplaced(curbuf, { group = "*", lnum = curline })
                     if #placed > 0 and #placed[1].signs > 0 then
                         local top = placed[1].signs[1]
-                        _vimfn().sign_unplace(top.group, { buffer = curbuf, id = top.id })
+                        _vimfn().fn.sign_unplace(top.group, { buffer = curbuf, id = top.id })
                     end
                     return true
                 end
@@ -3563,7 +4094,7 @@ function Runtime.new(state, opts)
                 if kv.id ~= nil then opts.id = tonumber(kv.id) end
                 if id ~= nil then opts.id = id end
                 if next(opts) == nil then opts = nil end
-                local rv = _vimfn().sign_unplace(group, opts)
+                local rv = _vimfn().fn.sign_unplace(group, opts)
                 if rv == -1 then
                     error(Error(474, argstr))
                 end
@@ -3574,7 +4105,7 @@ function Runtime.new(state, opts)
                     error(Error(474, argstr))
                 end
                 local kv = parse_kv(3)
-                local lnum = _vimfn().sign_jump(id, kv.group or "", resolve_buf_arg(kv))
+                local lnum = _vimfn().fn.sign_jump(id, kv.group or "", resolve_buf_arg(kv))
                 if lnum == -1 then
                     error(Error(474, argstr))
                 end
@@ -3587,7 +4118,7 @@ function Runtime.new(state, opts)
                 error(Error(471))
             end
 
-            local seq, kerr = _strtoseq_tolerant(keys_text)
+            local seq, kerr = _strtoseq_normal_literal(keys_text)
             if Error.IsError(kerr) then
                 error(kerr)
             end
@@ -3596,6 +4127,28 @@ function Runtime.new(state, opts)
             local win = windows[curwin]
             local l1 = cmdctx.line1
             local l2 = cmdctx.line2
+            local function normal_is_undo_like(seq_keys)
+                if not seq_keys or #seq_keys == 0 then
+                    return false
+                end
+                local last = seq_keys[#seq_keys]
+                local last_num = last and last.numeric
+                local is_undo_key = (
+                    last_num == keys.u or
+                    last_num == bit32.bor(keys.u, 8192) or
+                    last_num == bit32.bor(keys.r, 4096)
+                )
+                if not is_undo_key then
+                    return false
+                end
+                for i = 1, #seq_keys - 1 do
+                    if seq_keys[i]:ToDigit() == nil then
+                        return false
+                    end
+                end
+                return true
+            end
+            local normal_pause_batch = normal_is_undo_like(seq)
 
             local function run_normal_once()
                 local prev_mode = vimmode
@@ -3608,6 +4161,9 @@ function Runtime.new(state, opts)
                 return rv
             end
 
+            if normal_pause_batch then
+                runtime_undo_batch_pause()
+            end
             if l1 ~= nil and l2 ~= nil then
                 local line_count = win.buffer:line_count(true)
                 if line_count < 1 then line_count = 1 end
@@ -3627,10 +4183,60 @@ function Runtime.new(state, opts)
                     end
                     run_normal_once()
                 end
+                if normal_pause_batch then
+                    runtime_undo_batch_resume()
+                end
                 return true
             end
 
             run_normal_once()
+            if normal_pause_batch then
+                runtime_undo_batch_resume()
+            end
+            return true
+        elseif cmd == "undo" then
+            runtime_undo_batch_pause()
+            local win = windows[curwin]
+            local raw = strip(argstr)
+            if raw == "" then
+                win.buffer:undo(win, 1)
+            else
+                local parsed = tonumber(raw)
+                if not parsed then
+                    error(Error(474, argstr))
+                end
+                local ok = win.buffer:undo_change(win, math.floor(parsed))
+                if not ok then
+                    error(Error(474, argstr))
+                end
+            end
+            win.need_redraw = true
+            need_redraw = true
+            runtime_undo_batch_resume()
+            return true
+        elseif cmd == "redo" then
+            runtime_undo_batch_pause()
+            local win = windows[curwin]
+            local raw = strip(argstr)
+            local count = 1
+            if raw ~= "" then
+                local parsed = tonumber(raw)
+                if not parsed then
+                    error(Error(474, argstr))
+                end
+                count = math.max(0, math.floor(parsed))
+            end
+            if count > 0 then
+                win.buffer:redo(win, count)
+                win.need_redraw = true
+                need_redraw = true
+            end
+            runtime_undo_batch_resume()
+            return true
+        elseif cmd == "undojoin" then
+            if not windows[curwin].buffer:undojoin() then
+                error(Error(790))
+            end
             return true
         elseif cmd == "put" then
             local rv = self:put(argstr, bang, cmdctx)
@@ -3674,6 +4280,7 @@ function Runtime.new(state, opts)
         elseif cmd == "mode" or cmd == "redraw" then
             what_redraw["all"] = true
             need_redraw = true
+            lazyredraw_force = true
             return true
         elseif cmd == "redrawstatus" then
             if bang then
@@ -3687,14 +4294,15 @@ function Runtime.new(state, opts)
                     win.need_redraw = true
                 end
             end
-            -- Also refresh commandline display (ruler/showcmd-style content).
+            -- Also refresh commandline display (ruler/showcmd content).
             what_redraw["commandline"] = true
             need_redraw = true
+            lazyredraw_force = true
             return true
         elseif cmd == "redrawtabline" then
-            -- We currently do not have a tabline-only redraw path.
-            what_redraw["all"] = true
+            what_redraw["tabline"] = true
             need_redraw = true
+            lazyredraw_force = true
             return true
         elseif cmd == "redir" then
             local spec, perr = _parse_redir_spec(argstr)
@@ -3902,6 +4510,24 @@ function Runtime.new(state, opts)
             end
             win.need_redraw = true
             need_redraw = true
+            return true
+        elseif cmd == "mark" then
+            local char = strip(argstr)
+            if char == "" then
+                error(Error(471))
+            end
+            if not char:match("^[a-zA-Z'\".]$") then
+                error(Error(191))
+            end
+            local win = windows[curwin]
+            local buf = win.buffer
+            local lnum = cmdctx.line2 or win.cursory
+            local col = win.cursorx
+            if char:match("^[A-Z]$") then
+                global_marks[char] = { bufnr = buf.bufnr, lnum = lnum, col = col }
+            else
+                buf.marks[char] = { lnum = lnum, col = col }
+            end
             return true
         elseif cmd == "copy" or cmd == "t" then
             local win = windows[curwin]
@@ -4432,7 +5058,7 @@ function Runtime.new(state, opts)
             local exmsg = _exmsg()
 
             local verb = Options.get("verbose")
-            local msg = Builtins.getcwd()
+            local msg = Builtins.fn.getcwd()
 
             if verb > 0 then
                 if windows[curwin].curdir then
@@ -4508,7 +5134,7 @@ function Runtime.new(state, opts)
 
         local dispatch_cmd = spec.dispatch
         if not dispatch_cmd then
-            if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] then
+            if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] or MENU_COMMAND_SPECS[lname] then
                 dispatch_cmd = lname
             else
                 dispatch_cmd = resolve_dispatch_name(lname)
@@ -4610,6 +5236,7 @@ function Runtime.CaptureDurableScriptState(opts)
         g = state.g or scopes._g or {},
         s = state.s or {},
         funcs = state.funcs or {},
+        menus = state.menus or {},
         script_ctx = state.script_ctx,
         script_sid = state.script_sid,
     }
@@ -4632,6 +5259,7 @@ function Runtime.MakeRuntimeState(durable, extra_v)
         g = type(durable.g) == "table" and durable.g or scopes._g or {},
         s = type(durable.s) == "table" and durable.s or {},
         funcs = type(durable.funcs) == "table" and durable.funcs or {},
+        menus = type(durable.menus) == "table" and durable.menus or {},
         v = fresh_v(extra_v),
         l = {},
         a = {},
@@ -4712,9 +5340,17 @@ function Runtime.run(script, opts)
     Runtime._CURRENT_CTRL = opts.ctrl or {}
 
     local rt = Runtime.new(state)
+    runtime_undo_batch_depth = runtime_undo_batch_depth + 1
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_begin()
+    end
     local ok, rv = pcall(function()
         return rt:exec_script(tostring(script or ""))
     end)
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_end()
+    end
+    runtime_undo_batch_depth = runtime_undo_batch_depth - 1
 
     Runtime._CURRENT_STATE = prev_state
     Runtime._CURRENT_CTRL = prev_ctrl

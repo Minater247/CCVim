@@ -11,9 +11,13 @@ local Runtime = loadModule("lib.excmd.runtime")
 local scopes = loadModule("lib.luaapi.scopes")
 local AutoCmd = loadModule("lib.autocmd")
 local Fn = loadModule("lib.luaapi.fn")
+local Decoration = loadModule("lib.decoration")
 local ScriptSource
 local Error = loadModule("lib.error")
 local Utf8 = loadModule("lib.utf8")
+local PopupMenu = loadModule("lib.popupmenu")
+local Event = loadModule("lib.event")
+local BufAttach = loadModule("lib.bufattach")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -46,8 +50,22 @@ local function rgb_for_palette_index(idx)
     return colors.packRGB(r, g, b)
 end
 
+local function api_color_value(raw_value, palette_value)
+    if raw_value ~= nil then
+        return raw_value
+    end
+    if palette_value ~= nil then
+        return rgb_for_palette_index(palette_value)
+    end
+    return nil
+end
+
 local function normalize_color_value(val)
-    if val == nil or type(val) == "number" or val == "fg" or val == "bg" then
+    if val == nil or val == "fg" or val == "bg" then
+        return val
+    end
+    if type(val) == "number" then
+        -- Preserve numeric values as-is (palette indices and RGB numbers).
         return val
     end
     if type(val) == "string" then
@@ -56,7 +74,7 @@ local function normalize_color_value(val)
 
         local alias = COLOR_ALIASES[string.lower(val)]
         if alias then
-            return rgb_for_palette_index(alias)
+            return alias
         end
     end
     return nil
@@ -105,6 +123,310 @@ local function request_buffer_redraw(buf, full)
     need_redraw = true
 end
 
+local keymap_store = {
+    global = {},
+    buffer = {},
+}
+
+local function keymap_mode_key(mode)
+    return tostring(mode or "")
+end
+
+local function keymap_bucket(is_buffer, bufnr, mode, create)
+    local mode_key = keymap_mode_key(mode)
+    if is_buffer then
+        local by_buf = keymap_store.buffer
+        local per_buf = by_buf[bufnr]
+        if not per_buf and create then
+            per_buf = {}
+            by_buf[bufnr] = per_buf
+        end
+        if not per_buf then
+            return nil
+        end
+        local bucket = per_buf[mode_key]
+        if not bucket and create then
+            bucket = { list = {}, by_lhs = {} }
+            per_buf[mode_key] = bucket
+        end
+        return bucket
+    end
+
+    local per_mode = keymap_store.global
+    local bucket = per_mode[mode_key]
+    if not bucket and create then
+        bucket = { list = {}, by_lhs = {} }
+        per_mode[mode_key] = bucket
+    end
+    return bucket
+end
+
+local function keymap_bool_flag(opts, name, default)
+    local v = opts and opts[name]
+    if v == nil then
+        return default and 1 or 0
+    end
+    return (v == true or v == 1) and 1 or 0
+end
+
+local function record_keymap(is_buffer, bufnr, mode, lhs, rhs, opts)
+    opts = opts or {}
+    lhs = tostring(lhs or "")
+    rhs = tostring(rhs or "")
+
+    local bucket = keymap_bucket(is_buffer, bufnr, mode, true)
+    local idx = bucket.by_lhs[lhs]
+    local entry = {
+        lhs = lhs,
+        rhs = rhs,
+        mode = keymap_mode_key(mode),
+        expr = keymap_bool_flag(opts, "expr", false),
+        noremap = keymap_bool_flag(opts, "noremap", false),
+        script = keymap_bool_flag(opts, "script", false),
+        silent = keymap_bool_flag(opts, "silent", false),
+        nowait = keymap_bool_flag(opts, "nowait", false),
+        replace_keycodes = keymap_bool_flag(opts, "replace_keycodes", true),
+        callback = opts.callback,
+        desc = opts.desc,
+    }
+
+    if idx then
+        bucket.list[idx] = entry
+    else
+        bucket.list[#bucket.list + 1] = entry
+        bucket.by_lhs[lhs] = #bucket.list
+    end
+end
+
+local function delete_keymap_record(is_buffer, bufnr, mode, lhs)
+    local bucket = keymap_bucket(is_buffer, bufnr, mode, false)
+    if not bucket then
+        return
+    end
+
+    lhs = tostring(lhs or "")
+    local idx = bucket.by_lhs[lhs]
+    if not idx then
+        return
+    end
+
+    table.remove(bucket.list, idx)
+    bucket.by_lhs = {}
+    for i = 1, #bucket.list do
+        local item = bucket.list[i]
+        bucket.by_lhs[item.lhs] = i
+    end
+end
+
+local function list_keymaps(is_buffer, bufnr, mode)
+    local bucket = keymap_bucket(is_buffer, bufnr, mode, false)
+    if not bucket then
+        return {}
+    end
+
+    local out = {}
+    for i = 1, #bucket.list do
+        local item = bucket.list[i]
+        local copy = {}
+        for k, v in pairs(item) do
+            copy[k] = v
+        end
+        out[#out + 1] = copy
+    end
+    return out
+end
+
+local feedkeys_queue = {}
+local feedkeys_flush_timer = nil
+local feedkeys_flushing = false
+
+local NVIM_CMD_MARKER = string.char(128, 253, 104)
+
+local function _run_feedkeys_cmdline(cmdline)
+    local state = {
+        g = scopes._g,
+        s = {},
+        v = scopes._v,
+        funcs = Runtime._FUNCS,
+    }
+
+    local ok, err = Runtime.run(tostring(cmdline or ""), {
+        state = state,
+        origin = {
+            kind = "feedkeys-cmd",
+        },
+    })
+    if not ok and err and err.toString then
+        ExMsg.echoerr(err:toString())
+    elseif not ok then
+        ExMsg.echoerr(tostring(err))
+    end
+    ExMsg.Finalize()
+end
+
+local function _parse_feedkeys_ops(text)
+    local ops = {}
+    local n = #text
+    local i = 1
+    local normal_start = 1
+
+    local function push_keys_segment(start_i, stop_i)
+        if stop_i < start_i then
+            return
+        end
+        local seq = Key.strtoseq(text:sub(start_i, stop_i))
+        if #seq > 0 then
+            ops[#ops + 1] = { kind = "keys", seq = seq }
+        end
+    end
+
+    local function marker_len_at(idx)
+        local b1, b2, b3 = string.byte(text, idx, idx + 2)
+        if b1 == 128 and b2 == 253 and b3 == 104 then
+            return #NVIM_CMD_MARKER
+        end
+        if idx + 4 <= n then
+            local s = text:sub(idx, idx + 4)
+            if s:lower() == "<cmd>" then
+                return 5
+            end
+        end
+        return nil
+    end
+
+    local function cmd_terminator_len_at(idx)
+        local b = string.byte(text, idx)
+        if b == 13 or b == 10 then
+            return 1
+        end
+
+        if idx + 3 <= n and text:sub(idx, idx) == "<" then
+            local s = text:sub(idx, idx + 3):lower()
+            if s == "<cr>" or s == "<nl>" then
+                return 4
+            end
+        end
+        return nil
+    end
+
+    while i <= n do
+        local mlen = marker_len_at(i)
+        if not mlen then
+            i = i + 1
+        else
+            push_keys_segment(normal_start, i - 1)
+
+            local cmd_start = i + mlen
+            local j = cmd_start
+            local tend = nil
+            local tlen = nil
+            while j <= n do
+                local len = cmd_terminator_len_at(j)
+                if len then
+                    tend = j - 1
+                    tlen = len
+                    break
+                end
+                j = j + 1
+            end
+
+            if not tend then
+                -- Unterminated <Cmd>: keep legacy behavior for the remainder.
+                local seq = Key.strtoseq(":" .. text:sub(cmd_start))
+                if #seq > 0 then
+                    ops[#ops + 1] = { kind = "keys", seq = seq }
+                end
+                normal_start = n + 1
+                i = n + 1
+            else
+                local cmd_seq = Key.strtoseq(text:sub(cmd_start, tend))
+                local cmdline = Key.seqtostr(cmd_seq)
+                ops[#ops + 1] = { kind = "cmd", cmd = cmdline }
+                i = tend + tlen + 1
+                normal_start = i
+            end
+        end
+    end
+
+    push_keys_segment(normal_start, n)
+
+    return ops
+end
+
+local function enqueue_feedkeys(ops, prepend)
+    if #ops == 0 then
+        return
+    end
+
+    if prepend then
+        local merged = {}
+        for i = 1, #ops do
+            merged[#merged + 1] = ops[i]
+        end
+        for i = 1, #feedkeys_queue do
+            merged[#merged + 1] = feedkeys_queue[i]
+        end
+        feedkeys_queue = merged
+    else
+        for i = 1, #ops do
+            feedkeys_queue[#feedkeys_queue + 1] = ops[i]
+        end
+    end
+end
+
+local function flush_feedkeys_queue()
+    if feedkeys_flushing then
+        return
+    end
+    if #feedkeys_queue == 0 then
+        return
+    end
+
+    feedkeys_flushing = true
+    local lazy_block = options.get("lazyredraw")
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block + 1
+    end
+    local queue = feedkeys_queue
+    feedkeys_queue = {}
+    local ok, err = pcall(function()
+        for i = 1, #queue do
+            local op = queue[i]
+            if op.kind == "keys" then
+                for j = 1, #op.seq do
+                    if op.noremap then
+                        Command._handle_key_with_policy(op.seq[j], Command.POLICY_NOREMAP, true)
+                    else
+                        Command.HandleKey(op.seq[j])
+                    end
+                end
+            elseif op.kind == "cmd" then
+                _run_feedkeys_cmdline(op.cmd)
+            end
+        end
+    end)
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block - 1
+    end
+    if not ok then
+        feedkeys_flushing = false
+        error(err)
+    end
+    feedkeys_flushing = false
+end
+
+local function schedule_feedkeys_flush()
+    if feedkeys_flush_timer ~= nil then
+        return
+    end
+    feedkeys_flush_timer = Event.StartTimer(0, function(id)
+        if feedkeys_flush_timer == id then
+            feedkeys_flush_timer = nil
+        end
+        flush_feedkeys_queue()
+    end)
+end
+
 -- ========================
 -- Namespace Management
 -- ========================
@@ -128,6 +450,27 @@ function api.nvim_create_namespace(name)
         ns_id_to_name[id] = name
     end
     return id
+end
+
+function api.nvim_get_namespaces()
+    local out = {}
+    for name, id in pairs(ns_name_to_id) do
+        out[name] = id
+    end
+    return out
+end
+
+function api.nvim_set_decoration_provider(ns_id, opts)
+    if type(ns_id) ~= "number" then
+        error("nvim_set_decoration_provider: ns_id must be number", 2)
+    end
+    if opts ~= nil and type(opts) ~= "table" then
+        error("nvim_set_decoration_provider: opts must be table or nil", 2)
+    end
+
+    Decoration.set_provider(ns_id, opts)
+    what_redraw["windows"] = true
+    need_redraw = true
 end
 
 -- ========================
@@ -493,20 +836,119 @@ function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
 
-    lhs = Key.strtoseq(lhs)
+    local lhs_text = tostring(lhs or "")
+    local rhs_text = tostring(rhs or "")
+    lhs = Key.strtoseq(lhs_text)
 
     if opts.callback then
         ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local cb = ScriptSource.wrap(nil, opts.callback)
         Command.map_callback(mode, lhs, cb, { buffer = buf })
     else
-        rhs = Key.strtoseq(rhs)
+        rhs = Key.strtoseq(rhs_text)
         if opts.noremap then
             Command.noremap_keys(mode, lhs, rhs, { buffer = buf })
         else
             Command.remap_keys(mode, lhs, rhs, { buffer = buf })
         end
     end
+
+    record_keymap(true, buf.bufnr, mode, lhs_text, rhs_text, opts)
+end
+
+function api.nvim_set_keymap(mode, lhs, rhs, opts)
+    opts = opts or {}
+    local lhs_text = tostring(lhs or "")
+    local rhs_text = tostring(rhs or "")
+    lhs = Key.strtoseq(lhs_text)
+
+    if opts.callback then
+        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
+        local cb = ScriptSource.wrap(nil, opts.callback)
+        Command.map_callback(mode, lhs, cb)
+    else
+        rhs = Key.strtoseq(rhs_text)
+        if opts.noremap then
+            Command.noremap_keys(mode, lhs, rhs)
+        else
+            Command.remap_keys(mode, lhs, rhs)
+        end
+    end
+
+    record_keymap(false, nil, mode, lhs_text, rhs_text, opts)
+end
+
+function api.nvim_get_keymap(mode)
+    return list_keymaps(false, nil, mode)
+end
+
+function api.nvim_buf_get_keymap(buffer, mode)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    return list_keymaps(true, buf.bufnr, mode)
+end
+
+function api.nvim_buf_del_keymap(buffer, mode, lhs)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    Command.unmap_keys(mode, Key.strtoseq(lhs), { buffer = buf })
+    delete_keymap_record(true, buf.bufnr, mode, lhs)
+end
+
+function api.nvim_del_keymap(mode, lhs)
+    Command.unmap_keys(mode, Key.strtoseq(lhs))
+    delete_keymap_record(false, nil, mode, lhs)
+end
+
+function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, replacement)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    buf:ensure_loaded(true)
+
+    local srow = tonumber(start_row or 0) or 0
+    local scol = tonumber(start_col or 0) or 0
+    local erow = tonumber(end_row or srow) or srow
+    local ecol = tonumber(end_col or scol) or scol
+
+    if srow < 0 then srow = 0 end
+    if erow < 0 then erow = 0 end
+    if scol < 0 then scol = 0 end
+    if ecol < 0 then ecol = 0 end
+
+    local lines = buf:lines_ref(true)
+    local line_count = #lines
+    if line_count == 0 then
+        lines[1] = ""
+        line_count = 1
+    end
+
+    local sidx = math.min(line_count - 1, srow) + 1
+    local eidx = math.min(line_count - 1, erow) + 1
+    if sidx > eidx then
+        sidx, eidx = eidx, sidx
+        scol, ecol = ecol, scol
+    end
+
+    local sline = lines[sidx] or ""
+    local eline = lines[eidx] or ""
+    local prefix = buf:str_sub(sline, 1, scol)
+    local suffix = buf:str_sub(eline, ecol + 1)
+
+    local repl = {}
+    if type(replacement) == "table" then
+        for i = 1, #replacement do
+            repl[#repl + 1] = tostring(replacement[i] or "")
+        end
+    end
+    if #repl == 0 then
+        repl[1] = ""
+    end
+
+    repl[1] = prefix .. repl[1]
+    repl[#repl] = repl[#repl] .. suffix
+
+    buf:set_lines(sidx - 1, eidx, false, repl)
+    request_buffer_redraw(buf, true)
 end
 
 -- TODO: use a window displaying the buffer, if it exists in the current tabpage
@@ -571,11 +1013,12 @@ end
 -- Highlighting Functions
 -- =================
 function api.nvim_get_hl_by_name(name)
-    local hl = Highlight.For(name)
+    local hl = Highlight.For(name, 0, true)
+    local raw = Highlight.RawFor(name) or {}
 
     return {
-        foreground = colors.packRGB(term.getPaletteColor(hl[1])),
-        background = colors.packRGB(term.getPaletteColor(hl[2])),
+        foreground = api_color_value(raw._raw_fg, hl[1]),
+        background = api_color_value(raw._raw_bg, hl[2]),
     }
 end
 
@@ -591,7 +1034,7 @@ function api.nvim_set_option_value(name, value, opts)
     if opts.buf ~= nil then
         buf = buf_for_bufnr(opts.buf)
     else
-        buf = win and win.buffer or buf_for_bufnr(0)
+        buf = win.buffer
     end
 
     return options.set(name, value, opts.scope == "local", win, buf, opts.scope == "global")
@@ -612,7 +1055,7 @@ function api.nvim_get_option_value(name, opts)
     if opts.buf ~= nil then
         buf = buf_for_bufnr(opts.buf)
     else
-        buf = win and win.buffer or buf_for_bufnr(0)
+        buf = win.buffer
     end
 
     return options.get(name, win, buf, opts.scope == "local", opts.scope == "global")
@@ -626,6 +1069,103 @@ function api.nvim_get_mode()
         return { mode = "i" }
     else
         error("unhandled mode in nvim_get_mode")
+    end
+end
+
+function api.nvim__redraw(opts)
+    opts = opts or {}
+
+    local flush = opts.flush
+    if flush == nil then
+        flush = true
+    else
+        flush = not not flush
+    end
+
+    local touched_window = false
+    local target_buf = nil
+
+    local function mark_window_for_redraw(win)
+        win.need_redraw = true
+        touched_window = true
+    end
+
+    local function mark_windows_for_buffer(buf)
+        if not buf then
+            return
+        end
+        for _, win in pairs(windows) do
+            if win.buffer == buf then
+                mark_window_for_redraw(win)
+            end
+        end
+    end
+
+    local function mark_all_windows_for_redraw()
+        for _, win in pairs(windows) do
+            mark_window_for_redraw(win)
+        end
+    end
+
+    if opts.win ~= nil then
+        local win = win_for_id(opts.win)
+        mark_window_for_redraw(win)
+        target_buf = win.buffer
+    elseif opts.buf ~= nil then
+        target_buf = buf_for_bufnr(opts.buf)
+        mark_windows_for_buffer(target_buf)
+    end
+
+    if opts.range ~= nil and not touched_window then
+        if not target_buf then
+            target_buf = windows[curwin].buffer
+        end
+        mark_windows_for_buffer(target_buf)
+    end
+
+    if opts.statusline or opts.statuscolumn or opts.winbar then
+        if opts.statusline then
+            what_redraw["statusline"] = true
+        end
+        if opts.statuscolumn then
+            what_redraw["statuscolumn"] = true
+        end
+        if opts.winbar then
+            what_redraw["winbar"] = true
+        end
+        if not touched_window then
+            mark_all_windows_for_redraw()
+        end
+    end
+
+    if opts.cursor then
+        what_redraw["cursor"] = true
+        if not touched_window then
+            mark_window_for_redraw(windows[curwin])
+        end
+    end
+
+    if opts.valid ~= nil and not touched_window then
+        what_redraw["windows"] = true
+    end
+
+    if opts.tabline then
+        what_redraw["tabline"] = true
+    elseif not touched_window and opts.range == nil and opts.valid == nil then
+        what_redraw["windows"] = true
+    end
+
+    need_redraw = true
+    lazyredraw_force = true
+
+    if flush and not Decoration.is_redraw_active() then
+        local tab = tabpages[curtp]
+        if tab and type(tab.render) == "function" then
+            need_redraw = false
+            tab:render()
+            what_redraw = {}
+            lazyredraw_force = false
+        end
     end
 end
 
@@ -764,6 +1304,8 @@ function api.nvim_exec_autocmds(events, opts)
     local base_ctx = {}
     if opts.group ~= nil then base_ctx.group = opts.group end
     if opts.buffer ~= nil then base_ctx.bufnr = opts.buffer end
+
+    -- TODO: This needs to be implemented. Comments should also NOT be in second person!
     -- NOTE: We do NOT force bufname: for buffer-local execution <buffer=N> matching
     -- doesn't need it. If you want <afile>/<amatch>-like values for callbacks,
     -- you could resolve bufnr -> name here and set base_ctx.bufname.
@@ -811,15 +1353,16 @@ function api.nvim_get_hl(ns_id, opts)
         return { link = link }
     end
 
-    local hl = Highlight.For(name, ns)
+    local hl = Highlight.For(name, ns, true)
+    local raw = Highlight.RawFor(name, ns) or {}
     local out = {}
-    if hl[1] then
-        local r, g, b = term.getPaletteColor(hl[1])
-        out.fg = colors.packRGB(r, g, b)
+    local fg = api_color_value(raw._raw_fg, hl[1])
+    if fg ~= nil then
+        out.fg = fg
     end
-    if hl[2] then
-        local r, g, b = term.getPaletteColor(hl[2])
-        out.bg = colors.packRGB(r, g, b)
+    local bg = api_color_value(raw._raw_bg, hl[2])
+    if bg ~= nil then
+        out.bg = bg
     end
     return out
 end
@@ -962,8 +1505,8 @@ function api.nvim_create_autocmd(event, opts)
         end
     end
 
-    local cb = opts.callback and (ScriptSource or loadModule("lib.scriptsource")).wrap(nil, opts.callback) or nil
     ScriptSource = ScriptSource or loadModule("lib.scriptsource")
+    local cb = opts.callback and ScriptSource.wrap(nil, opts.callback)
     local script_ctx = ScriptSource.CurrentContext()
 
     return AutoCmd.CreateAutocommand(event, patterns, cb, opts.command, opts.group, opts.once, opts
@@ -1086,8 +1629,8 @@ function api.nvim_create_user_command(name, command, opts)
                 fargs = info.fargs or {},
                 nargs = def.opts.nargs,
                 bang = info.bang or false,
-                line1 = windows[curwin] and windows[curwin].cursory or 1,
-                line2 = windows[curwin] and windows[curwin].cursory or 1,
+                line1 = windows[curwin].cursory,
+                line2 = windows[curwin].cursory,
                 range = 0,
                 reg = nil,
                 mods = "",
@@ -1105,6 +1648,11 @@ end
 
 function api.nvim_get_current_buf()
     return windows[curwin].buffer.bufnr
+end
+
+function api.nvim_get_current_line()
+    local win = windows[curwin]
+    return win.buffer:get_line(win.cursory, true) or ""
 end
 
 function api.nvim_set_current_buf(buffer)
@@ -1246,6 +1794,7 @@ function api.nvim_buf_delete(buffer, opts)
         end
     end
 
+    BufAttach.detach(buf.bufnr)
     scopes._b_by_buf[buf.bufnr] = nil
 
     if unload then
@@ -1261,6 +1810,86 @@ function api.nvim_buf_delete(buffer, opts)
     need_redraw = true
 end
 
+-- TODO: set up proper RPC handling for send_buffer
+function api.nvim_buf_attach(buffer, send_buffer, opts)
+    local bufnr = tonumber(buffer)
+    if not bufnr then
+        return false
+    end
+
+    local buf
+    if bufnr == 0 then
+        buf = windows[curwin].buffer
+    else
+        buf = buffers[bufnr]
+    end
+    if not buf then
+        return false
+    end
+    if not buf:is_loaded() then
+        return false
+    end
+
+    if opts == nil then
+        opts = {}
+    end
+    if type(opts) ~= "table" then
+        return false
+    end
+
+    local callback_keys = { "on_lines", "on_bytes", "on_changedtick", "on_detach", "on_reload" }
+    for i = 1, #callback_keys do
+        local key = callback_keys[i]
+        local cb = opts[key]
+        if cb ~= nil and type(cb) ~= "function" then
+            return false
+        end
+    end
+
+    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
+    local listener = {
+        on_lines = opts.on_lines and ScriptSource.wrap(nil, opts.on_lines),
+        on_bytes = opts.on_bytes and ScriptSource.wrap(nil, opts.on_bytes),
+        on_changedtick = opts.on_changedtick and ScriptSource.wrap(nil, opts.on_changedtick),
+        on_detach = opts.on_detach and ScriptSource.wrap(nil, opts.on_detach),
+        on_reload = opts.on_reload and ScriptSource.wrap(nil, opts.on_reload),
+        utf_sizes = opts.utf_sizes == true,
+        preview = opts.preview == true,
+    }
+
+    local ok = BufAttach.attach(buf.bufnr, listener)
+    if not ok then
+        return false
+    end
+
+    return true
+end
+
+function api.nvim_buf_detach(buffer)
+    local bufnr = tonumber(buffer)
+    if not bufnr then
+        return false
+    end
+
+    local buf
+    if bufnr == 0 then
+        buf = windows[curwin].buffer
+    else
+        buf = buffers[bufnr]
+    end
+    if not buf then
+        return false
+    end
+
+    return BufAttach.detach(buf.bufnr)
+end
+
+function api.nvim_buf_get_changedtick(buffer)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    return BufAttach.get_changedtick(buf.bufnr)
+end
+
 function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
@@ -1268,10 +1897,12 @@ function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
 
     if ns_id == -1 then
         buf._extmarks = {}
+        Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
         return
     end
 
     if not buf._extmarks[ns_id] then
+        Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
         return
     end
 
@@ -1281,6 +1912,7 @@ function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
 
     if line_start == 0 and line_end == -1 then
         buf._extmarks[ns_id] = {}
+        Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
         return
     end
 
@@ -1291,6 +1923,7 @@ function api.nvim_buf_clear_namespace(buffer, ns_id, line_start, line_end)
             ns_marks[id] = nil
         end
     end
+    Decoration.clear_ephemeral_namespace(buf.bufnr, ns_id, line_start, line_end)
 end
 
 local function _extmark_pos_from_arg(arg)
@@ -1338,24 +1971,13 @@ function api.nvim_buf_get_extmarks(buffer, ns_id, start, _end, opts)
 
     local items = {}
 
-    local function collect_ns(ns_marks)
-        for id, mark in pairs(ns_marks) do
+    Decoration.iter_extmarks(buf, function(mark_ns, id, mark)
+        if ns_id == -1 or mark_ns == ns_id then
             if _extmark_in_range(mark, start_line, start_col, end_line, end_col) then
                 items[#items + 1] = { id = id, mark = mark }
             end
         end
-    end
-
-    if ns_id == -1 then
-        for _, ns_marks in pairs(buf._extmarks) do
-            collect_ns(ns_marks)
-        end
-    else
-        local ns_marks = buf._extmarks[ns_id]
-        if ns_marks then
-            collect_ns(ns_marks)
-        end
-    end
+    end)
 
     table.sort(items, function(a, b)
         local la = a.mark.line or 0
@@ -1411,15 +2033,49 @@ function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
         buf._next_extmark_id[ns_id] = nextid + 1
     end
 
-    ns_marks[id] = {
+    local mark = {
         line = line,
         col = col,
         opts = opts,
     }
-    if opts.sign_text ~= nil or opts.line_hl_group ~= nil or opts.number_hl_group ~= nil then
-        request_buffer_redraw(buf, false)
+    local stored_ephemeral = false
+    if opts.ephemeral then
+        stored_ephemeral = Decoration.add_ephemeral_extmark(buf.bufnr, ns_id, id, mark)
+    end
+
+    if not stored_ephemeral then
+        ns_marks[id] = mark
+        if opts.sign_text ~= nil or opts.line_hl_group ~= nil or opts.number_hl_group ~= nil then
+            request_buffer_redraw(buf, false)
+        end
     end
     return id
+end
+
+function api.nvim_buf_del_extmark(buffer, ns_id, id)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    buf._extmarks = buf._extmarks or {}
+
+    local removed = false
+    local ns_marks = buf._extmarks[ns_id]
+    local removed_mark = nil
+    if ns_marks and ns_marks[id] ~= nil then
+        removed_mark = ns_marks[id]
+        ns_marks[id] = nil
+        removed = true
+    end
+
+    if Decoration.del_ephemeral_extmark(buf.bufnr, ns_id, id) then
+        removed = true
+    end
+
+    local ropts = removed_mark and removed_mark.opts
+    if ropts and (ropts.sign_text ~= nil or ropts.line_hl_group ~= nil or ropts.number_hl_group ~= nil) then
+        request_buffer_redraw(buf, false)
+    end
+
+    return removed
 end
 
 function api.nvim_buf_add_highlight(buffer, ns_id, hl_group, line, col_start, col_end)
@@ -1501,12 +2157,78 @@ function api.nvim_win_set_config(window, config)
 end
 
 function api.nvim_replace_termcodes(str, from_part, do_lt, special)
-    return tostring(str or "")
+    return Key.replace_termcodes(str, do_lt, special)
 end
 
 function api.nvim_feedkeys(keys, mode, escape_ks)
-    local seq = Key.strtoseq(tostring(keys or ""))
-    Command.emit_raw(seq)
+    local ops = _parse_feedkeys_ops(tostring(keys or ""))
+    mode = tostring(mode or "")
+    local remap = true
+    if mode:find("n", 1, true) ~= nil then
+        remap = false
+    end
+    if mode:find("m", 1, true) ~= nil then
+        remap = true
+    end
+    for i = 1, #ops do
+        if ops[i].kind == "keys" then
+            ops[i].noremap = not remap
+        end
+    end
+    local prepend = mode:find("i", 1, true) ~= nil
+    local immediate = mode:find("x", 1, true) ~= nil
+
+    enqueue_feedkeys(ops, prepend)
+
+    if immediate or not prepend then
+        if feedkeys_flush_timer ~= nil then
+            Event.CancelTimer(feedkeys_flush_timer)
+            feedkeys_flush_timer = nil
+        end
+        flush_feedkeys_queue()
+    else
+        schedule_feedkeys_flush()
+    end
+end
+
+function api.nvim_select_popupmenu_item(item, insert, finish, opts)
+    PopupMenu.select(item, insert, finish)
+end
+
+function api.nvim__complete_set(_index, _opts)
+    -- TODO: Preview/info popup for builtin completion.
+    return {}
+end
+
+function api.nvim_win_hide(window)
+    local win = win_for_id(window)
+    if not win then
+        return
+    end
+    return api.nvim_win_close(win.winnr, true)
+end
+
+function api.nvim_get_vvar(name)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_get_vvar: name must be non-empty string")
+    end
+    return scopes._v[name]
+end
+
+function api.nvim_set_vvar(name, value)
+    if type(name) ~= "string" or name == "" then
+        error("nvim_set_vvar: name must be non-empty string")
+    end
+    scopes._v[name] = value
+end
+
+function api.nvim_command(command)
+    local line = tostring(command or "")
+    if line == "" then
+        return
+    end
+    local rv = api.nvim_exec2(line, { output = false })
+    return rv.output or ""
 end
 
 local _term_next_chan_id = 1
@@ -1625,6 +2347,6 @@ end
 return setmetatable(api, {
     __index = function(_, k)
         LOG_INTERNAL("missing", "vim.api.%s not implemented", tostring(k))
-        error("vim.api." .. tostring(k) .. " not implemented")
+        LOG_DEBUG("Possible error: `vim.api." .. tostring(k) .. " not implemented")
     end
 })

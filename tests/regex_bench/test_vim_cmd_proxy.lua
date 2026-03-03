@@ -46,7 +46,6 @@ local modules = {
     },
     ["lib.luaapi.fn"] = { _proxy = {} },
     ["lib.luaapi.deferfn"] = function() end,
-    ["lib.luaapi.split"] = function(s) return s end,
     ["lib.luaapi.require"] = function(name) return require(name) end,
     ["lib.luaapi.keymap"] = {},
     ["lib.luaapi.package"] = {},
@@ -61,65 +60,6 @@ local modules = {
         end,
     },
     ["lib.luaapi.opt"] = {},
-    ["lib.luaapi.tblutils"] = {
-        extend = function(_, lhs, rhs)
-            local out = {}
-            for k, v in pairs(lhs or {}) do out[k] = v end
-            for k, v in pairs(rhs or {}) do out[k] = v end
-            return out
-        end,
-        deep_extend = function(_, lhs, rhs)
-            local out = {}
-            for k, v in pairs(lhs or {}) do out[k] = v end
-            for k, v in pairs(rhs or {}) do out[k] = v end
-            return out
-        end,
-        contains = function(tbl, value)
-            for i = 1, #tbl do
-                if tbl[i] == value then return true end
-            end
-            return false
-        end,
-        filter = function(f, tbl)
-            local out = {}
-            for i = 1, #tbl do
-                if f(tbl[i]) then out[#out + 1] = tbl[i] end
-            end
-            return out
-        end,
-        isempty = function(tbl)
-            return next(tbl) == nil
-        end,
-        map = function(f, tbl)
-            local out = {}
-            for i = 1, #tbl do
-                out[i] = f(tbl[i])
-            end
-            return out
-        end,
-        keys = function(tbl)
-            local out = {}
-            for k in pairs(tbl) do
-                out[#out + 1] = k
-            end
-            return out
-        end,
-        values = function(tbl)
-            local out = {}
-            for _, v in pairs(tbl) do
-                out[#out + 1] = v
-            end
-            return out
-        end,
-        deepcopy = function(v)
-            if type(v) ~= "table" then return v end
-            local out = {}
-            for k, vv in pairs(v) do
-                out[k] = vv
-            end
-            return out
-        end,
-    },
     ["lib.luaapi.timerutils"] = {
         schedule = function(fn) return fn() end,
         schedule_wrap = function(fn) return fn end,
@@ -137,12 +77,21 @@ local modules = {
     ["lib.luaapi.env"] = {},
     ["lib.luaapi.system"] = {},
     ["lib.luaapi.strutils"] = {
-        startswith = function(s, p)
-            return tostring(s):sub(1, #p) == p
+        str_utfindex = function(s)
+            return #tostring(s or "")
+        end,
+        str_byteindex = function(_, _, idx)
+            return idx or 0
+        end,
+        regex = function()
+            return {
+                match_str = function()
+                    return nil
+                end,
+            }
         end,
     },
     ["lib.luaapi.fs"] = {},
-    ["lib.luaapi.F"] = {},
     ["lib.excmd.vim_regex"] = {
         compile = function(_)
             return true

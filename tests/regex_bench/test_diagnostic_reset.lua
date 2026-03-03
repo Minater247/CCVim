@@ -8,20 +8,11 @@ local function assert_eq(label, got, want)
     end
 end
 
-local function count_keys(t)
-    local n = 0
-    if type(t) ~= "table" then
-        return 0
-    end
-    for _ in pairs(t) do
-        n = n + 1
-    end
-    return n
-end
-
 local Buffer = mock.loadModule("layout.buffer")
-local Api = mock.loadModule("lib.luaapi.api")
-local Diagnostic = mock.loadModule("lib.luaapi.diagnostic")
+local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
+local vimapi = ApiBuild.Build().vim
+local Api = vimapi.api
+local Diagnostic = vimapi.diagnostic
 
 local b1 = Buffer(true, false)
 b1.name = "/tmp/diag1"
@@ -55,22 +46,44 @@ curwin = 1
 local ns = Api.nvim_create_namespace("diag-reset-test")
 local ns_other = Api.nvim_create_namespace("diag-reset-other")
 
-Api.nvim_buf_set_extmark(b1.bufnr, ns, 0, 0, { virt_text = { { "a", "ErrorMsg" } } })
-Api.nvim_buf_set_extmark(b2.bufnr, ns, 0, 0, { virt_text = { { "b", "ErrorMsg" } } })
-Api.nvim_buf_set_extmark(b1.bufnr, ns_other, 0, 0, { virt_text = { { "c", "ErrorMsg" } } })
+local function put_diag(namespace, bufnr, msg)
+    Diagnostic.set(namespace, bufnr, {
+        {
+            lnum = 0,
+            col = 0,
+            end_lnum = 0,
+            end_col = 1,
+            severity = Diagnostic.severity.ERROR,
+            message = msg,
+            source = "test",
+        },
+    }, {
+        underline = false,
+        virtual_text = false,
+        signs = false,
+    })
+end
+
+local function diag_count(bufnr, namespace)
+    return #Diagnostic.get(bufnr, { namespace = namespace })
+end
+
+put_diag(ns, b1.bufnr, "a")
+put_diag(ns, b2.bufnr, "b")
+put_diag(ns_other, b1.bufnr, "c")
 
 Diagnostic.reset(ns, b1.bufnr)
-assert_eq("reset(ns, bufnr) clears target buffer namespace", count_keys(buffers[b1.bufnr]._extmarks[ns]), 0)
-assert_eq("reset(ns, bufnr) leaves other buffer namespace", count_keys(buffers[b2.bufnr]._extmarks[ns]), 1)
-assert_eq("reset(ns, bufnr) leaves other namespaces", count_keys(buffers[b1.bufnr]._extmarks[ns_other]), 1)
+assert_eq("reset(ns, bufnr) clears target buffer namespace", diag_count(b1.bufnr, ns), 0)
+assert_eq("reset(ns, bufnr) leaves other buffer namespace", diag_count(b2.bufnr, ns), 1)
+assert_eq("reset(ns, bufnr) leaves other namespaces", diag_count(b1.bufnr, ns_other), 1)
 
-Api.nvim_buf_set_extmark(b1.bufnr, ns, 0, 0, { virt_text = { { "a2", "ErrorMsg" } } })
+put_diag(ns, b1.bufnr, "a2")
 Diagnostic.reset(ns, 0)
-assert_eq("reset(ns, 0) uses current buffer", count_keys(buffers[b1.bufnr]._extmarks[ns]), 0)
-assert_eq("reset(ns, 0) does not clear other buffers", count_keys(buffers[b2.bufnr]._extmarks[ns]), 1)
+assert_eq("reset(ns, 0) uses current buffer", diag_count(b1.bufnr, ns), 0)
+assert_eq("reset(ns, 0) does not clear other buffers", diag_count(b2.bufnr, ns), 1)
 
 Diagnostic.reset(ns)
-assert_eq("reset(ns) clears all buffers", count_keys(buffers[b2.bufnr]._extmarks[ns]), 0)
-assert_eq("reset(ns) leaves other namespaces", count_keys(buffers[b1.bufnr]._extmarks[ns_other]), 1)
+assert_eq("reset(ns) clears all buffers", diag_count(b2.bufnr, ns), 0)
+assert_eq("reset(ns) leaves other namespaces", diag_count(b1.bufnr, ns_other), 1)
 
 print("diagnostic reset tests: OK")

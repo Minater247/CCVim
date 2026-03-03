@@ -83,11 +83,11 @@ for i = 1, #opts do
     assert_eq(spec.name .. " nil clears", Options.get(spec.name, win, buf), "")
 end
 
-local named = Fn["function"]("strlen")
+local named = Fn.fn["function"]("strlen")
 Options.set("operatorfunc", named, false, win, buf)
 assert_eq("operatorfunc named funcref", Options.get("operatorfunc", win, buf), "strlen")
 
-local named2 = Fn.funcref("strlen")
+local named2 = Fn.fn.funcref("strlen")
 Options.set("quickfixtextfunc", named2, false, win, buf)
 assert_eq("quickfixtextfunc named funcref", Options.get("quickfixtextfunc", win, buf), "strlen")
 
@@ -146,6 +146,6 @@ if qf_b == op_a then
 end
 assert_eq("script A canonical still resolves to A", Fn._call(op_a), 11)
 assert_eq("script B canonical resolves to B", Fn._call(qf_b), 22)
-assert_eq("plain s: name hidden outside script context", Fn.exists("*s:LocalScope"), 0)
+assert_eq("plain s: name hidden outside script context", Fn.fn.exists("*s:LocalScope"), 0)
 
 print("option-value-function tests: OK")

@@ -4,165 +4,156 @@ local api = loadModule("lib.luaapi.api")
 local loop = loadModule("lib.luaapi.loop")
 local _jit = rawget(_G, 'jit')
 local jit = _jit or loadModule("lib.luaapi.fakejit")
-local opts = loadModule("lib.luaapi.opts")
 local on_key = loadModule("lib.luaapi.on_key")
 local Runtime = loadModule("lib.excmd.runtime")
+local ExMsg = loadModule("lib.excmd.exmsg")
 local fn = loadModule("lib.luaapi.fn")
-local defer_fn = loadModule("lib.luaapi.deferfn")
-local split = loadModule("lib.luaapi.split")
 local require = loadModule("lib.luaapi.require")
-local keymap = loadModule("lib.luaapi.keymap")
 local package = loadModule("lib.luaapi.package")
 local fileload = loadModule("lib.luaapi.fileload")
-local opt = loadModule("lib.luaapi.opt")
-local tblutils = loadModule("lib.luaapi.tblutils")
 local timerutils = loadModule("lib.luaapi.timerutils")
-local log = loadModule("lib.luaapi.log")
-local notify = loadModule("lib.luaapi.notify")
 local scopes = loadModule("lib.luaapi.scopes")
 local print = loadModule("lib.luaapi.print")
-local diagnostic = loadModule("lib.luaapi.diagnostic")
-local env = loadModule("lib.luaapi.env")
-local system = loadModule("lib.luaapi.system")
 local strutils = loadModule("lib.luaapi.strutils")
-local vimfs = loadModule("lib.luaapi.fs")
-local F = loadModule("lib.luaapi.F")
-local VimRegex = loadModule("lib.excmd.vim_regex")
+local envvars = loadModule("lib.envvars")
+local lpeg = loadModule("lib.luaapi.lpeg")
 local treesitter = loadModule("lib.luaapi.treesitter")
 
 local mainapi
--- TODO: what? is this documented? Why 20?
+local VIM_NIL = setmetatable({}, {
+    __tostring = function()
+        return "vim.NIL"
+    end,
+})
 local VIM_CMD_ARG_MAX = 20
 
 -- TODO: we need a print function.
 -- functions print as <function>, so this knowledge is kept somewhere
+
+local function resolve_runtime_module_path(module_name)
+    local rel = module_name:gsub("%.", "/")
+    local path = ccvim_path .. "/runtime/lua/" .. rel .. ".lua"
+    if fs.exists(path) then
+        return path
+    end
+    local init_module_path = ccvim_path .. "/runtime/lua/" .. rel .. "/init.lua"
+    if fs.exists(init_module_path) then
+        return init_module_path
+    end
+    return nil
+end
+
+local function load_runtime_module_by_path(lua_loader, module_name, ...)
+    local path = resolve_runtime_module_path(module_name)
+    if not path then
+        error("module '" .. tostring(module_name) .. "' not found in runtime", 0)
+    end
+    local loaded = lua_loader.LoadFile(path, ...)
+    if loaded == nil then
+        loaded = true
+    end
+    mainapi.package.loaded[module_name] = loaded
+    return loaded
+end
+
+local function list_runtime_vim_underscore_modules()
+    local dir = ccvim_path .. "/runtime/lua/vim"
+    local modules = {}
+    for _, name in ipairs(fs.list(dir)) do
+        if name:sub(1, 1) == "_" and name:sub(-4) == ".lua" then
+            modules[#modules + 1] = "vim." .. name:sub(1, -5)
+        end
+    end
+    table.sort(modules)
+    return modules
+end
+
+local function load_runtime_vim_init_packages(lua_loader)
+    local init_path = ccvim_path .. "/runtime/lua/vim/_init_packages.lua"
+    local package_loaded = mainapi.package.loaded
+    if type(package_loaded) ~= "table" then
+        package_loaded = {}
+        mainapi.package.loaded = package_loaded
+    end
+    if type(mainapi.package.cpath) ~= "string" then
+        mainapi.package.cpath = ""
+    end
+    if type(mainapi.package.path) ~= "string" then
+        mainapi.package.path = ""
+    end
+    if type(mainapi.package.loadlib) ~= "function" then
+        mainapi.package.loadlib = function()
+            return nil, "package.loadlib is unavailable"
+        end
+    end
+    if type(mainapi.package.loaders) ~= "table" then
+        mainapi.package.loaders = { function() end }
+    elseif #mainapi.package.loaders == 0 then
+        mainapi.package.loaders[1] = function() end
+    end
+
+    local original_require = mainapi.require
+    local bootstrap_require = function(module_name)
+        if type(module_name) == "string" and module_name:sub(1, 4) == "vim." then
+            return load_runtime_module_by_path(lua_loader, module_name, module_name)
+        end
+        return original_require(module_name)
+    end
+
+    local runtime_require = function(module_name)
+        if type(module_name) == "string" and module_name:sub(1, 4) == "vim." then
+            local ok, loaded = pcall(original_require, module_name)
+            if ok then
+                return loaded
+            end
+            return load_runtime_module_by_path(lua_loader, module_name, module_name)
+        end
+        return original_require(module_name)
+    end
+
+    mainapi.require = bootstrap_require
+    if mainapi.vim.is_thread == nil then
+        mainapi.vim.is_thread = function()
+            return false
+        end
+    end
+
+    local ok, load_err = pcall(function()
+        local chunk, compile_err = loadfile(init_path, "t", mainapi)
+        if not chunk then
+            error(compile_err, 0)
+        end
+        chunk()
+        package_loaded["vim._init_packages"] = true
+    end)
+
+    mainapi.require = runtime_require
+    if not ok then
+        error(load_err, 0)
+    end
+end
+
+local function load_runtime_vim_underscore_modules(lua_loader)
+    local unpack_fn = unpack or table.unpack
+    local module_args = {
+        ["vim._meta"] = { mainapi.vim.uv },
+    }
+    for _, module_name in ipairs(list_runtime_vim_underscore_modules()) do
+        local args = module_args[module_name]
+        if args then
+            load_runtime_module_by_path(lua_loader, module_name, unpack_fn(args))
+        else
+            mainapi.require(module_name)
+        end
+    end
+end
 
 function ApiBuild.Build()
     if mainapi then return mainapi end
 
     on_key.set_namespace_allocator(api.nvim_create_namespace)
 
-    local function is_callable(v)
-        if type(v) == "function" then
-            return true
-        end
-        local mt = getmetatable(v)
-        return mt ~= nil and type(mt.__call) == "function"
-    end
-
-    local function validate_one(name, value, validator, optional, message)
-        if value == nil and optional == true then
-            return
-        end
-
-        local function type_ok(expected)
-            if expected == "callable" then
-                return is_callable(value)
-            end
-            return type(value) == expected
-        end
-
-        local ok = false
-        if type(validator) == "string" then
-            ok = type_ok(validator)
-        elseif type(validator) == "table" then
-            for i = 1, #validator do
-                local v = validator[i]
-                if type(v) == "string" and type_ok(v) then
-                    ok = true
-                    break
-                end
-            end
-        elseif type(validator) == "function" then
-            local rv = validator(value)
-            ok = rv and true or false
-        end
-
-        if not ok then
-            local expected = message
-            if not expected then
-                if type(validator) == "table" then
-                    expected = table.concat(validator, "|")
-                else
-                    expected = tostring(validator)
-                end
-            end
-            error(("%s: expected %s, got %s"):format(tostring(name), tostring(expected), type(value)), 3)
-        end
-    end
-
-    local function vim_validate(name, value, validator, optional, message)
-        if validator ~= nil then
-            if type(optional) == "string" and message == nil then
-                message = optional
-                optional = false
-            end
-            validate_one(name, value, validator, optional, message)
-            return
-        end
-
-        -- Minimal legacy form support: vim.validate({ key = {value, validator, optional_or_msg}, ... })
-        if type(name) ~= "table" then
-            error("invalid arguments", 2)
-        end
-        for k, spec in pairs(name) do
-            if type(spec) ~= "table" then
-                error(("invalid validation spec for %s"):format(tostring(k)), 2)
-            end
-            local v = spec[1]
-            local vd = spec[2]
-            local opt = spec[3]
-            local msg = nil
-            if type(opt) == "string" then
-                msg = opt
-                opt = false
-            end
-            validate_one(k, v, vd, opt, msg)
-        end
-    end
-
-    local function vim_pesc(s)
-        if type(s) ~= "string" then
-            error(("s: expected string, got %s"):format(type(s)), 2)
-        end
-        return (s:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1"))
-    end
-
-    local function vim_trim(s)
-        vim_validate("s", s, "string")
-        return s:match("^%s*(.*%S)") or ""
-    end
-
-    local function vim_list_extend(dst, src, start, finish)
-        vim_validate("dst", dst, "table")
-        vim_validate("src", src, "table")
-        vim_validate("start", start, "number", true)
-        vim_validate("finish", finish, "number", true)
-        for i = start or 1, finish or #src do
-            table.insert(dst, src[i])
-        end
-        return dst
-    end
-
-    local function vim_regex(re)
-        local compiled, c_err = VimRegex.compile(re)
-        if not compiled then
-            error(c_err or ("invalid regex: " .. tostring(re)), 2)
-        end
-
-        return {
-            match_str = function(_, s)
-                local ss = tostring(s or "")
-                local a, b = VimRegex.find_compiled(ss, compiled, true)
-                if a then
-                    return a - 1, b - 1
-                end
-                return nil
-            end,
-        }
-    end
-
-    local function vim_with(context, f)
+    local function vim_with_c(context, f)
         if type(context) ~= "table" then
             error("context: expected table", 2)
         end
@@ -170,58 +161,62 @@ function ApiBuild.Build()
             error("f: expected function", 2)
         end
 
-        if context.buf ~= nil then
-            return api.nvim_buf_call(context.buf, f)
+        local function _pack(...)
+            return { n = select("#", ...), ... }
         end
 
-        return f()
-    end
-
-    local filetype_proxy = setmetatable({}, {
-        __index = function(_, key)
-            local mod = require("vim.filetype")
-            mainapi.vim.filetype = mod
-            return mod[key]
-        end,
-    })
-
-    local iter_mod
-    local function load_iter_mod()
-        if iter_mod == nil then
-            local path = ccvim_path .. "/runtime/lua/vim/iter.lua"
-            local table_shim = setmetatable({
-                maxn = function(t)
-                    local maxk = 0
-                    for k, _ in pairs(t) do
-                        if type(k) == "number" and k > maxk then
-                            maxk = k
-                        end
-                    end
-                    return maxk
-                end,
-            }, { __index = table })
-            local iter_env = setmetatable({ table = table_shim }, { __index = mainapi })
-            local chunk, err = loadfile(path, "t", iter_env)
-            if not chunk then
-                error(err)
+        local exec = f
+        if context.win ~= nil then
+            local win = context.win
+            exec = function()
+                return api.nvim_win_call(win, f)
             end
-            iter_mod = chunk()
+        elseif context.buf ~= nil then
+            local buf = context.buf
+            exec = function()
+                return api.nvim_buf_call(buf, f)
+            end
         end
-        return iter_mod
+
+        local pushed_silent = false
+        local pushed_unsilent = false
+        local prev_eventignore = nil
+
+        if context.silent == true or context.emsg_silent == true then
+            ExMsg.PushSilent({ skip_errors = context.emsg_silent == true })
+            pushed_silent = true
+        end
+
+        if context.unsilent == true then
+            ExMsg.PushUnsilent()
+            pushed_unsilent = true
+        end
+
+        if context.noautocmd == true then
+            prev_eventignore = mainapi.vim.go.eventignore
+            mainapi.vim.go.eventignore = "all"
+        end
+
+        local rv = _pack(pcall(exec))
+
+        if context.noautocmd == true then
+            mainapi.vim.go.eventignore = prev_eventignore
+        end
+        if pushed_unsilent then
+            ExMsg.PopSilent()
+        end
+        if pushed_silent then
+            ExMsg.PopSilent()
+        end
+
+        if not rv[1] then
+            error(rv[2], 0)
+        end
+        local unpack_fn = unpack or table.unpack
+        return unpack_fn(rv, 2, rv.n)
     end
 
-    local iter_proxy = setmetatable({}, {
-        __call = function(_, ...)
-            local mod = load_iter_mod()
-            mainapi.vim.iter = mod
-            return mod(...)
-        end,
-        __index = function(_, key)
-            local mod = load_iter_mod()
-            mainapi.vim.iter = mod
-            return mod[key]
-        end,
-    })
+    local LuaLoader
 
     local function run_cmdline(line)
         local ok, rv = Runtime.run(line, {
@@ -244,6 +239,14 @@ function ApiBuild.Build()
             error(msg)
         end
         return rv
+    end
+
+    local function vim_call(func, ...)
+        local name = tostring(func)
+        if select("#", ...) == 0 then
+            return fn._call(name)
+        end
+        return fn._call(name, ...)
     end
 
     local cmd_proxy = setmetatable({}, {
@@ -279,64 +282,56 @@ function ApiBuild.Build()
         end,
     })
 
+    local function table_maxn(t)
+        local maxk = 0
+        for k, _ in pairs(t) do
+            if type(k) == "number" and k > maxk then
+                maxk = k
+            end
+        end
+        return maxk
+    end
+
+    local table_compat = setmetatable({
+        maxn = table_maxn,
+    }, { __index = table })
+
+    local os_compat = setmetatable({
+        getenv = envvars.get,
+    }, { __index = os })
+
     mainapi = {
         vim = {
             api = api,
             loop = loop,
             uv = loop,
-            wo = opts.wo,
-            bo = opts.bo,
-            go = opts.go,
-            o = opts.o,
             cmd = cmd_proxy,
-            fn = fn._proxy,
             g = scopes.g,
             v = scopes.v,
             b = scopes.b,
             w = scopes.w,
             t = scopes.t,
-            defer_fn = defer_fn,
-            split = split,
-            keymap = keymap,
-            opt = opt,
-            tbl_extend = tblutils.extend,
-            tbl_deep_extend = tblutils.deep_extend,
+            NIL = VIM_NIL,
+            deprecate = function() end,
             schedule = timerutils.schedule,
-            schedule_wrap = timerutils.schedule_wrap,
-            log = log,
-            notify = notify.notify,
-            notify_once = notify.notify_once,
-            tbl_contains = tblutils.contains,
-            tbl_filter = tblutils.filter,
-            tbl_isempty = tblutils.isempty,
-            tbl_keys = tblutils.keys,
-            tbl_map = tblutils.map,
-            tbl_values = tblutils.values,
-            deepcopy = tblutils.deepcopy,
-            print = print.print,
+            wait = timerutils.wait,
+            in_fast_event = timerutils.in_fast_event,
             inspect = print.inspect,
-            diagnostic = diagnostic,
-            env = env,
-            system = system,
-            startswith = strutils.startswith,
-            endswith = strutils.endswith,
-            fs = vimfs,
-            F = F,
-            filetype = filetype_proxy,
-            iter = iter_proxy,
-            treesitter = treesitter,
-            validate = vim_validate,
-            trim = vim_trim,
-            list_extend = vim_list_extend,
-            pesc = vim_pesc,
-            regex = vim_regex,
-            _with = vim_with,
+            regex = strutils.regex,
+            lpeg = lpeg,
+            _ts_get_language_version = treesitter._ts_get_language_version,
+            _ts_get_minimum_language_version = treesitter._ts_get_minimum_language_version,
+            _with_c = vim_with_c,
+            call = vim_call,
             on_key = on_key.on_key,
             _on_key = on_key.dispatch,
         },
         jit = jit,
         require = require,
         package = package,
+        table = table_compat,
+        unpack = unpack or table.unpack,
+        os = os_compat,
 
         -- DEBUG
         LOG_DEBUG = LOG_DEBUG,
@@ -347,12 +342,45 @@ function ApiBuild.Build()
     setmetatable(mainapi, {
         __index = _G
     })
+    mainapi._G = mainapi
+
+    mainapi.vim._empty_dict_mt = {}
+    mainapi.vim.empty_dict = function()
+        return setmetatable({}, mainapi.vim._empty_dict_mt)
+    end
 
     local FL = fileload.Bind(mainapi)
     mainapi.loadfile = FL.loadfile
     mainapi.load = FL.load
     mainapi.dofile = FL.dofile
     mainapi.pcall = FL.pcall
+
+    if type(mainapi.package.loaded) ~= "table" then
+        mainapi.package.loaded = {}
+    end
+
+    mainapi.package.loaded.bit = bit
+    mainapi.package.loaded.lpeg = lpeg
+
+    LuaLoader = loadModule("lib.lualoader")
+    mainapi.vim._str_utfindex = strutils._str_utfindex
+    mainapi.vim._str_byteindex = strutils._str_byteindex
+    load_runtime_vim_init_packages(LuaLoader)
+    load_runtime_vim_underscore_modules(LuaLoader)
+    mainapi.vim.cmd = cmd_proxy
+    mainapi.vim.g = scopes.g
+    mainapi.vim.v = scopes.v
+    mainapi.vim.b = scopes.b
+    mainapi.vim.w = scopes.w
+    mainapi.vim.t = scopes.t
+    mainapi.vim.schedule = timerutils.schedule
+    mainapi.vim.wait = timerutils.wait
+    mainapi.vim.in_fast_event = timerutils.in_fast_event
+    mainapi.vim.regex = strutils.regex
+    mainapi.vim.lpeg = lpeg
+    mainapi.vim._with_c = vim_with_c
+    mainapi.vim.on_key = on_key.on_key
+    mainapi.vim._on_key = on_key.dispatch
 
     return mainapi
 end

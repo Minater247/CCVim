@@ -34,20 +34,20 @@ curwin = 1
 
 local Fn = mock.loadModule("lib.luaapi.fn")
 
-assert_eq("number loaded", Fn.bufloaded(1), 1)
-assert_eq("number unloaded", Fn.bufloaded(2), 0)
-assert_eq("number missing", Fn.bufloaded(99), 0)
+assert_eq("number loaded", Fn.fn.bufloaded(1), 1)
+assert_eq("number unloaded", Fn.fn.bufloaded(2), 0)
+assert_eq("number missing", Fn.fn.bufloaded(99), 0)
 
-assert_eq("name loaded", Fn.bufloaded("/tmp/loaded.txt"), 1)
-assert_eq("name unloaded", Fn.bufloaded("/tmp/unloaded.txt"), 0)
-assert_eq("name missing", Fn.bufloaded("/tmp/missing.txt"), 0)
+assert_eq("name loaded", Fn.fn.bufloaded("/tmp/loaded.txt"), 1)
+assert_eq("name unloaded", Fn.fn.bufloaded("/tmp/unloaded.txt"), 0)
+assert_eq("name missing", Fn.fn.bufloaded("/tmp/missing.txt"), 0)
 
-assert_eq("alt buffer via 0", Fn.bufloaded(0), 0)
+assert_eq("alt buffer via 0", Fn.fn.bufloaded(0), 0)
 win.altbuf = 1
-assert_eq("alt loaded via 0", Fn.bufloaded(0), 1)
+assert_eq("alt loaded via 0", Fn.fn.bufloaded(0), 1)
 win.altbuf = nil
-assert_eq("no alt buffer", Fn.bufloaded(0), 0)
+assert_eq("no alt buffer", Fn.fn.bufloaded(0), 0)
 
-assert_eq("invalid arg type", Fn.bufloaded({}), 0)
+assert_eq("invalid arg type", Fn.fn.bufloaded({}), 0)
 
 print("bufloaded builtin tests: OK")

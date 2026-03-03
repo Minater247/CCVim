@@ -51,19 +51,6 @@ local function _expand_home(path)
     return home .. tail
 end
 
-local function _dirname(path)
-    if not path:match("/") then
-        return "."
-    end
-    if path == "/" or path:match("^/[^/]+$") then
-        return "/"
-    end
-    if path:sub(-1) == "/" then
-        return path:sub(1, #path - 1)
-    end
-    return path:match("^(/?.+)/")
-end
-
 --- Normalize a path per :help vim.fs.normalize() (POSIX behavior only).
 --- - Expands leading "~" to $HOME.
 --- - Expands "$VARS" when opts.expand_env is not false.
@@ -148,26 +135,6 @@ function VimFs.abspath(path)
         return VimFs.normalize("/" .. normalized, { expand_env = false })
     end
     return VimFs.normalize(cwd .. "/" .. normalized, { expand_env = false })
-end
-
---- Iterate parent directories for a given path.
---- The initial value yielded is dirname(start).
----
---- @param start string
---- @return fun(_, dir: string): string?
---- @return nil
---- @return string
-function VimFs.parents(start)
-    if type(start) ~= "string" then
-        error(("start: expected string, got %s"):format(type(start)))
-    end
-    return function(_, dir)
-        local parent = _dirname(dir)
-        if parent == dir then
-            return nil
-        end
-        return parent
-    end, nil, start
 end
 
 return VimFs

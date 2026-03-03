@@ -87,13 +87,13 @@ windows[1] = win
 tabpages[1].windows = { win }
 curwin = 1
 
-assert_eq("bufnr('%') resolves current buffer", VimFn._proxy.bufnr("%"), buf.bufnr)
-assert_eq("bufnr(0) resolves current buffer", VimFn._proxy.bufnr(0), buf.bufnr)
+assert_eq("bufnr('%') resolves current buffer", VimFn._call("bufnr", "%"), buf.bufnr)
+assert_eq("bufnr(0) resolves current buffer", VimFn._call("bufnr", 0), buf.bufnr)
 
 do
     local prev_dir = shell.dir
     shell.dir = function() return "vim" end
-    assert_eq("getcwd canonicalizes relative shell.dir()", VimFn._proxy.getcwd(), "/vim")
+    assert_eq("getcwd canonicalizes relative shell.dir()", VimFn._call("getcwd"), "/vim")
     shell.dir = prev_dir
 end
 

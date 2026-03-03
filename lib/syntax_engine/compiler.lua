@@ -167,7 +167,7 @@ local function add_sync_item(state, parsed_item)
             start = copy_array(parsed_item.patterns.start) or {},
             skip = copy_array(parsed_item.patterns.skip) or {},
             ["end"] = copy_array(parsed_item.patterns["end"]) or {},
-        } or nil,
+        },
         options = copy_options(parsed_item.options) or { flags = {}, attrs = {}, unknown = {} },
     }
 end
@@ -637,7 +637,7 @@ function Compiler.compile(parsed_commands)
             sync_group = item.sync_group,
             sync_point = item.sync_point,
             target_group = item.target_group,
-            target_group_id = item.target_group and group_id_map[item.target_group] or nil,
+            target_group_id = item.target_group and group_id_map[item.target_group],
             pattern = item.pattern,
             patterns = item.patterns,
             options = decorate_options_with_resolved_ids(state, item.options, resolve_cluster),

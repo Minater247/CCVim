@@ -333,7 +333,7 @@ function Autocmd.CreateAutocommand(events, patterns, callback, command, group, o
         seq      = seq,
         group    = group,
         desc     = desc,
-        script_ctx = (type(script_ctx) == "string" and script_ctx ~= "") and script_ctx or nil,
+        script_ctx = (type(script_ctx) == "string" and script_ctx ~= "") and script_ctx,
         script_state = durable_script_state,
     }
 
@@ -683,6 +683,24 @@ local function _call_callback(cb, ac, event, ctx)
         end
     elseif event == "WinResized" then
         ve.windows = (ctx and ctx.data and ctx.data.windows) or {}
+    elseif event == "CompleteChanged" then
+        if ctx and ctx.data then
+            ve.completed_item = ctx.data.completed_item or {}
+            ve.height = ctx.data.height
+            ve.width = ctx.data.width
+            ve.row = ctx.data.row
+            ve.col = ctx.data.col
+            ve.size = ctx.data.size
+            ve.scrollbar = ctx.data.scrollbar
+            ve.complete_type = ctx.data.complete_type
+        end
+    elseif event == "CompleteDonePre" or event == "CompleteDone" then
+        if ctx and ctx.data then
+            ve.completed_item = ctx.data.completed_item or {}
+            ve.reason = ctx.data.reason
+            ve.complete_type = ctx.data.complete_type
+            ve.complete_word = ctx.data.complete_word
+        end
     end
 
     if type(cb) == "function" then

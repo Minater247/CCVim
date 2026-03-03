@@ -896,7 +896,7 @@ local function compile_simple_uncached(vim_pat)
         mode = "simple",
         branches = branches,
         _branch_specs = specs,
-        _single_spec = (#specs == 1) and specs[1] or nil,
+        _single_spec = (#specs == 1) and specs[1],
         _vim_pat = vim_pat,
         _vm_fallback = nil,
     }
@@ -936,7 +936,7 @@ end
 
 local function vm_parse_quant_fields(min_s, max_s, greedy)
     local min_n = tonumber(min_s)
-    local max_n = max_s and tonumber(max_s) or nil
+    local max_n = max_s and tonumber(max_s)
 
     if min_n and max_n and max_n < min_n then
         return nil, "Bad counted repeat {n<m}"
@@ -2010,8 +2010,8 @@ local function vm_clone_ext(ext_in)
 end
 
 local function vm_make_matcher(ast, hints)
-    local lead_literal = hints and hints.lead_literal or nil
-    local lead_literal_lower = lead_literal and lead_literal:lower() or nil
+    local lead_literal = hints and hints.lead_literal
+    local lead_literal_lower = lead_literal and lead_literal:lower()
     local ic_hay, ic_lower = nil, nil
 
     local function find_vm(hay, case_sensitive, ext_in, start_pos)
@@ -2735,7 +2735,7 @@ local function get_folded_specs(compiled)
     end
 
     compiled._folded_specs = folded
-    compiled._folded_single = (#folded == 1) and folded[1] or nil
+    compiled._folded_single = (#folded == 1) and folded[1]
     return folded
 end
 
