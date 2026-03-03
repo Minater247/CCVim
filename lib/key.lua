@@ -110,7 +110,7 @@ local printables = {
     [keys.numPadSubtract] = "kMinus",
     [keys.numPadAdd] = "kPlus",
     [keys.numPadDecimal] = "kPoint",
-    [keys.multiply] = "kMultiply",
+    [keys.multiply or keys.numPadMultiply] = "kMultiply",
     [keys.numPadEnter] = "kEnter",
     [keys.numPadDivide] = "kDivide",
 
@@ -240,7 +240,7 @@ local emittables = {
     [keys.numPadSubtract] = "-",
     [keys.numPadAdd] = "+",
     [keys.numPadDecimal] = "",
-    [keys.multiply] = "*",
+    [keys.multiply or keys.numPadMultiply] = "*",
     [keys.numPadEnter] = "\n",
     [keys.numPadDivide] = "/",
 
