@@ -26,8 +26,8 @@ local function current_cmdline_string()
 end
 
 local function handler(k)
-        if k:emittable() then
-            if k == crref then
+    if k:emittable() then
+        if k == crref then
             local str = current_cmdline_string()
             endRead()
             local state = {
