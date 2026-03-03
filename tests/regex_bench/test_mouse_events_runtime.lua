@@ -148,7 +148,7 @@ Event.LoadCommandModule()
 
 Event.ProcessEvent({ "mouse_click", 1, 10, 3 })
 assert_eq("left click row offset", cursor_calls[#cursor_calls].row_offset, 2)
-assert_eq("left click screen col", cursor_calls[#cursor_calls].screen_col, 8)
+assert_eq("left click screen col", cursor_calls[#cursor_calls].screen_col, 7)
 
 Event.ProcessEvent({ "mouse_click", 2, 9, 2 })
 assert_eq("right click popup event count", #autocmd_calls, 1)

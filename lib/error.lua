@@ -45,6 +45,7 @@ local errStrings = {
     [492] = function(params) return "Not an editor command: " .. params[1] end,
     [518] = function(params) return "Unknown option: " .. params[1] end,
     [519] = function(params) return "Option not supported: " .. params[1] end,
+    [539] = function(params) return "Illegal character <" .. (params[1] or "") .. ">: " .. (params[2] or "") end,
     [580] = ":endif without :if",
     [581] = ":else without :if",
     [586] = ":continue without :while or :for",

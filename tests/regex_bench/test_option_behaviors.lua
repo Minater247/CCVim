@@ -114,12 +114,19 @@ local function assert_eq(label, got, want)
     end
 end
 
+local function assert_match(label, got, pattern)
+    if type(got) ~= "string" or not got:match(pattern) then
+        error(("FAIL %s: expected pattern %s, got %s"):format(label, tostring(pattern), tostring(got)))
+    end
+end
+
 Options.set("path", ".,/project/lua,/project/inc", false, win, buf)
 Options.set("suffixesadd", ".lua", true, win, buf)
 Options.set("includeexpr", "substitute(v:fname,'\\.','/','g')", true, win, buf)
 
 local Fn = mock.loadModule("lib.luaapi.fn")
 local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
+local Error = mock.loadModule("lib.error")
 local vimapi = ApiBuild.Build().vim
 
 assert_eq("findfile includeexpr+suffixesadd", Fn.fn.findfile("pkg.mod"), "/project/lua/pkg/mod.lua")
@@ -200,6 +207,44 @@ local ok_bad_mouse = pcall(function()
 end)
 assert_eq("mouse invalid value rejects", ok_bad_mouse, false)
 
+Options.exset_token("mouse=nvn", "both", win, buf)
+assert_eq("mouse = deduplicates repeated flags", Options.get("mouse", win, buf), "vn")
+Options.exset_token("mouse+=ni", "both", win, buf)
+assert_eq("mouse += moves flags to end", Options.get("mouse", win, buf), "vni")
+Options.exset_token("mouse=nvi", "both", win, buf)
+Options.exset_token("mouse^=ca", "both", win, buf)
+assert_eq("mouse ^= prepends missing flags", Options.get("mouse", win, buf), "canvi")
+Options.exset_token("mouse-=ni", "both", win, buf)
+assert_eq("mouse -= keeps non-contiguous flags", Options.get("mouse", win, buf), "canvi")
+Options.exset_token("mouse=vni", "both", win, buf)
+Options.exset_token("mouse-=ni", "both", win, buf)
+assert_eq("mouse -= removes contiguous substring", Options.get("mouse", win, buf), "v")
+Options.exset_token("mouse=nvi", "both", win, buf)
+Options.exset_token("mouse-=ni", "both", win, buf)
+assert_eq("mouse -= keeps non-contiguous flags from base value", Options.get("mouse", win, buf), "nvi")
+local ok_mouse_remove_unknown = pcall(function()
+    Options.exset_token("mouse-=N", "both", win, buf)
+end)
+assert_eq("mouse -= with unknown flag is a no-op", ok_mouse_remove_unknown, true)
+
+local ok_mouse_upper, err_mouse_upper = pcall(function()
+    Options.exset_token("mouse=N", "both", win, buf)
+end)
+assert_eq("mouse uppercase flag rejects", ok_mouse_upper, false)
+assert_match("mouse uppercase error uses E539", Error.IsError(err_mouse_upper) and err_mouse_upper:toString(), "E539: Illegal character <N>: mouse=N")
+
+local ok_mouse_plus_upper, err_mouse_plus_upper = pcall(function()
+    Options.exset_token("mouse+=N", "both", win, buf)
+end)
+assert_eq("mouse += uppercase flag rejects", ok_mouse_plus_upper, false)
+assert_match("mouse += error keeps operator in rhs", Error.IsError(err_mouse_plus_upper) and err_mouse_plus_upper:toString(), "E539: Illegal character <N>: mouse%+=N")
+
+local ok_mouse_caret_upper, err_mouse_caret_upper = pcall(function()
+    Options.exset_token("mouse^=N", "both", win, buf)
+end)
+assert_eq("mouse ^= uppercase flag rejects", ok_mouse_caret_upper, false)
+assert_match("mouse ^= error keeps operator in rhs", Error.IsError(err_mouse_caret_upper) and err_mouse_caret_upper:toString(), "E539: Illegal character <N>: mouse%^=N")
+
 vimapi.wo[0][0].number = false
 assert_eq("wo double index set/get", vimapi.wo[0][0].number, false)
 assert_eq("wo single index still works", vimapi.wo[0].number, false)
@@ -216,6 +261,12 @@ assert_eq("cpoptions&vim resets value", Options.get("cpoptions", win, buf), "aAB
 assert_eq("cpoptions&vim does not echo value", #ExMsg.messages, msg_count_before_cpo_reset)
 
 local rt = Runtime.new()
+local ok_mouse_multi, err_mouse_multi = pcall(function()
+    rt:set_options("number mouse=nv!", "global")
+end)
+assert_eq("set with invalid mouse in multi-token command fails", ok_mouse_multi, false)
+assert_match("set with invalid mouse reports single option token", Error.IsError(err_mouse_multi) and err_mouse_multi:toString(), "E539: Illegal character <!>: mouse=nv!")
+
 local msg_count_before_setlocal_comment = #ExMsg.messages
 rt:set_options('path-=. " remove cwd from path', "local")
 assert_eq("setlocal path-=. with comment applies change", Options.get("path", win, buf, true), ",/project/lua,/project/inc")

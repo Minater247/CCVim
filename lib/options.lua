@@ -499,7 +499,23 @@ local function _canonicalize_script_local_function_name(raw)
     return canon
 end
 
-local function _normalize_option_value(name, value)
+local function _normalize_mouse_flags(value)
+    local v = value:gsub("^%s+", ""):gsub("%s+$", "")
+    local out = {}
+    for i = 1, #v do
+        local ch = v:sub(i, i)
+        for j = #out, 1, -1 do
+            if out[j] == ch then
+                table.remove(out, j)
+                break
+            end
+        end
+        out[#out + 1] = ch
+    end
+    return table.concat(out)
+end
+
+local function _normalize_option_value(name, value, source_expr)
     if name == "bufhidden" and type(value) == "string" then
         local v = tostring(value):gsub("^%s+", ""):gsub("%s+$", ""):lower()
         local allowed = {
@@ -510,13 +526,13 @@ local function _normalize_option_value(name, value)
             wipe = true,
         }
         if not allowed[v] then
-            error(Error(474, "Invalid value for 'bufhidden': " .. tostring(value)):toString())
+            error(Error(474, "Invalid value for 'bufhidden': " .. tostring(value)))
         end
         return v
     end
 
     if name == "mouse" and type(value) == "string" then
-        local v = tostring(value):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+        local v = _normalize_mouse_flags(value)
         local allowed = {
             n = true,
             v = true,
@@ -529,7 +545,7 @@ local function _normalize_option_value(name, value)
         for i = 1, #v do
             local ch = v:sub(i, i)
             if not allowed[ch] then
-                error(Error(474, "Invalid value for 'mouse': " .. tostring(value)):toString())
+                error(Error(539, ch, source_expr))
             end
         end
         return v
@@ -538,7 +554,7 @@ local function _normalize_option_value(name, value)
     if name == "mousemodel" and type(value) == "string" then
         local v = tostring(value):gsub("^%s+", ""):gsub("%s+$", ""):lower()
         if v ~= "extend" and v ~= "popup" and v ~= "popup_setpos" then
-            error(Error(474, "Invalid value for 'mousemodel': " .. tostring(value)):toString())
+            error(Error(474, "Invalid value for 'mousemodel': " .. tostring(value)))
         end
         return v
     end
@@ -873,6 +889,7 @@ local append_type_special = {
     selectmode = "csl",
     suffixesadd = "csl",
     wildignore = "csl",
+    mouse = "flags",
 }
 
 function Options._append_type(name)
@@ -1275,7 +1292,7 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
     end
 
     if removed_options[name] ~= nil or legacy_options[name] ~= nil then
-        error(Error(519, name):toString())
+        error(Error(519, name))
     end
 
     local loc = opt_locs[name]
@@ -1284,7 +1301,7 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
         error("UNKNOWN OR UNHANDLED OPTION: " .. name)
     end
 
-    value = _normalize_option_value(name, value)
+    value = _normalize_option_value(name, value, name .. "=" .. tostring(value))
     if not _is_valid_option_type(name, value) then
         error("Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value))
     end
@@ -1383,14 +1400,14 @@ local function parse_number(s)
     local n = tonumber(s, 10); if n then return sign * n end; return nil
 end
 
-local function _apply_value(name, value, mode, window, buffer)
+local function _apply_value(name, value, mode, window, buffer, source_expr)
     local oldvalue = nil
     if name == "filetype" and buffer then
         oldvalue = buffer.opts.filetype
     end
 
     -- type-check
-    value = _normalize_option_value(name, value)
+    value = _normalize_option_value(name, value, source_expr)
     if not _is_valid_option_type(name, value) then
         error("Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value))
     end
@@ -1475,58 +1492,63 @@ function Options.exset_token(token, mode, window, buffer)
     token = tostring(token or "")
     if token == "" then return true end
 
+    local function parse_assignment(tok)
+        local name, op, rhs = tok:match("^([%w_]+)(%+=)(.*)$")
+        if not name then
+            name, op, rhs = tok:match("^([%w_]+)(%-=)(.*)$")
+        end
+        if not name then
+            name, op, rhs = tok:match("^([%w_]+)(%^=)(.*)$")
+        end
+        if not name then
+            name, op, rhs = tok:match("^([%w_]+)([:=])(.*)$")
+        end
+        return name, op, rhs
+    end
+
     -- Suffixes: ?, &, <, !
     local disp, to_def, to_glob, toggle_tail = false, false, false, false
     local def_kind = nil -- "vim" (default) or "vi"
-    while #token > 0 do
-        if token:sub(-4) == "&vim" then
-            to_def = true
-            def_kind = "vim"
-            token = token:sub(1, -5)
-        elseif token:sub(-3) == "&vi" then
-            to_def = true
-            def_kind = "vi"
-            token = token:sub(1, -4)
-        else
-        local last = token:sub(-1)
-        if last == "?" then
-            disp = true; token = token:sub(1, -2)
-        elseif last == "&" then
-            to_def = true; token = token:sub(1, -2)
-        elseif last == "<" then
-            to_glob = true; token = token:sub(1, -2)
-        elseif last == "!" then
-            toggle_tail = true; token = token:sub(1, -2)
-        else
-            break
-        end
-        end
-    end
-
-    -- Prefixes for booleans: no{opt}, inv{opt}
     local neg_prefix, inv_prefix = false, false
-    if token:sub(1, 2) == "no" then
-        neg_prefix = true; token = token:sub(3)
-    elseif token:sub(1, 3) == "inv" then
-        inv_prefix = true; token = token:sub(4)
-    end
+    local name, op, rhs = parse_assignment(token)
+    if not name then
+        while #token > 0 do
+            if token:sub(-4) == "&vim" then
+                to_def = true
+                def_kind = "vim"
+                token = token:sub(1, -5)
+            elseif token:sub(-3) == "&vi" then
+                to_def = true
+                def_kind = "vi"
+                token = token:sub(1, -4)
+            else
+                local last = token:sub(-1)
+                if last == "?" then
+                    disp = true; token = token:sub(1, -2)
+                elseif last == "&" then
+                    to_def = true; token = token:sub(1, -2)
+                elseif last == "<" then
+                    to_glob = true; token = token:sub(1, -2)
+                elseif last == "!" then
+                    toggle_tail = true; token = token:sub(1, -2)
+                else
+                    break
+                end
+            end
+        end
 
-    -- Operators: +=, -=, ^=, =, : (colon == equals), or none
-    local name, op, rhs
+        -- Prefixes for booleans: no{opt}, inv{opt}
+        if token:sub(1, 2) == "no" then
+            neg_prefix = true; token = token:sub(3)
+        elseif token:sub(1, 3) == "inv" then
+            inv_prefix = true; token = token:sub(4)
+        end
 
-    name, op, rhs = token:match("^([%w_]+)(%+=)(.*)$")
-    if not name then
-        name, op, rhs = token:match("^([%w_]+)(%-=)(.*)$")
-    end
-    if not name then
-        name, op, rhs = token:match("^([%w_]+)(%^=)(.*)$")
-    end
-    if not name then
-        name, op, rhs = token:match("^([%w_]+)([:=])(.*)$")
-    end
-    if not name then
-        name = token:match("^([%w_]+)$")
-        op, rhs = "", ""
+        name, op, rhs = parse_assignment(token)
+        if not name then
+            name = token:match("^([%w_]+)$")
+            op, rhs = "", ""
+        end
     end
 
     local canon = Options.resolve_abbrev(name or "")
@@ -1560,28 +1582,28 @@ function Options.exset_token(token, mode, window, buffer)
     -- & default
     if to_def then
         local defval = (def_kind == "vi" and opt_defaults_vi[name]) or opt_defaults_vim[name] or opt_defaults[name]
-        _apply_value(name, defval, mode, window, buffer)
+        _apply_value(name, defval, mode, window, buffer, origtoken)
         return true
     end
 
     -- < copy global -> local
     if to_glob then
         local gval = Options.get(name, window, buffer, false, true) -- global flavor
-        _apply_value(name, gval, "local", window, buffer)
+        _apply_value(name, gval, "local", window, buffer, origtoken)
         return true
     end
 
     -- Booleans
     if typ == "boolean" then
         if neg_prefix then
-            _apply_value(name, false, mode, window, buffer); return true
+            _apply_value(name, false, mode, window, buffer, origtoken); return true
         end
         if inv_prefix or toggle_tail then
             local cur = Options.get(name, window, buffer, (mode ~= "global"))
-            _apply_value(name, not cur, mode, window, buffer); return true
+            _apply_value(name, not cur, mode, window, buffer, origtoken); return true
         end
         if not op or op == "" then
-            _apply_value(name, true, mode, window, buffer); return true
+            _apply_value(name, true, mode, window, buffer, origtoken); return true
         end
         if op == "=" or op == ":" then
             return Error(474, origtoken)
@@ -1602,11 +1624,11 @@ function Options.exset_token(token, mode, window, buffer)
             LOG_DEBUG("Invalid number for " .. name .. ": " .. tostring(rhs)); return false
         end
         if op == "=" then
-            _apply_value(name, num, mode, window, buffer)
+            _apply_value(name, num, mode, window, buffer, origtoken)
         elseif op == "+=" then
-            _apply_value(name, cur + num, mode, window, buffer)
+            _apply_value(name, cur + num, mode, window, buffer, origtoken)
         elseif op == "-=" then
-            _apply_value(name, cur - num, mode, window, buffer)
+            _apply_value(name, cur - num, mode, window, buffer, origtoken)
         else
             LOG_DEBUG("Invalid operator for number option " .. name .. ": " .. op); return false
         end
@@ -1631,19 +1653,38 @@ function Options.exset_token(token, mode, window, buffer)
             s = evaluated
         end
     end
+    local append_type = Options._append_type(name)
     if op == "=" then
-        _apply_value(name, s, mode, window, buffer)
+        _apply_value(name, s, mode, window, buffer, origtoken)
     elseif op == "+=" then
-        local append_type = Options._append_type(name)
-        if append_type == "csl" and cur ~= "" and s ~= "" then
-            _apply_value(name, tostring(cur) .. "," .. s, mode, window, buffer)
+        if append_type == "flags" then
+            local merged = tostring(cur)
+            for i = 1, #s do
+                local ch = s:sub(i, i)
+                merged = merged:gsub(_escape_lua_pat(ch), "")
+                merged = merged .. ch
+            end
+            _apply_value(name, merged, mode, window, buffer, origtoken)
+        elseif append_type == "csl" and cur ~= "" and s ~= "" then
+            _apply_value(name, tostring(cur) .. "," .. s, mode, window, buffer, origtoken)
         else
-            _apply_value(name, tostring(cur) .. s, mode, window, buffer)
+            _apply_value(name, tostring(cur) .. s, mode, window, buffer, origtoken)
         end
     elseif op == "^=" then
-        _apply_value(name, s .. tostring(cur), mode, window, buffer)
+        if append_type == "flags" then
+            local merged = tostring(cur)
+            for i = #s, 1, -1 do
+                local ch = s:sub(i, i)
+                if not merged:find(ch, 1, true) then
+                    merged = ch .. merged
+                end
+            end
+            _apply_value(name, merged, mode, window, buffer, origtoken)
+        else
+            _apply_value(name, s .. tostring(cur), mode, window, buffer, origtoken)
+        end
     elseif op == "-=" then
-        _apply_value(name, tostring(cur):gsub(_escape_lua_pat(s), ""), mode, window, buffer)
+        _apply_value(name, tostring(cur):gsub(_escape_lua_pat(s), ""), mode, window, buffer, origtoken)
     else
         LOG_DEBUG("Invalid operator for string option " .. name .. ": " .. op); return false
     end
