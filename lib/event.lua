@@ -258,7 +258,7 @@ local function place_cursor_from_click(win, local_x, local_y)
     end
 
     if not win.opts.wrap then
-        vis_col = vis_col + win.scrollx - 1
+        vis_col = vis_col + (win.scrollx - 1) - 1
     end
 
     win:cursorSetScreenRow(row_offset, { screen_col = vis_col })
