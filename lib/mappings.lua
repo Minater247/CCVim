@@ -804,7 +804,7 @@ Command.nmap_builtin_callback(
     end
 )
 
-Command.nmap_callback(
+Command.nmap_builtin_callback(
     {K(keys.semiColon or keys.semicolon, false, true)},
     function()
         CmdRead.read()
