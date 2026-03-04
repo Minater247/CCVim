@@ -198,6 +198,32 @@ local function normalize_pattern(p)
     return p
 end
 
+-- Build a lookup set from an array, applying a normalizer, plus wildcard detection.
+-- Returns (set_or_nil, has_wildcard).  Returns nil if the array is empty/absent.
+local function events_to_set(events)
+    if not events or #events == 0 then return nil, false end
+    local evset, anyevent = {}, false
+    for _, e in ipairs(events) do
+        if e == "*" then
+            anyevent = true
+        else
+            evset[Autocmd.NormalizeEvent(e)] = true
+        end
+    end
+    return evset, anyevent
+end
+
+local function patterns_to_set(patterns)
+    if not patterns or #patterns == 0 then return nil, false end
+    local pset, anypat = {}, false
+    for _, p in ipairs(patterns) do
+        local np = normalize_pattern(p)
+        if p == "*" then anypat = true end
+        pset[np] = true
+    end
+    return pset, anypat
+end
+
 -- ===== Groups =====
 
 function Autocmd.CreateAugroup(name, clear)
@@ -382,27 +408,8 @@ function Autocmd.RemoveAutocommands(group, events, patterns)
     local list = autocommands_by_group[group]
     if not list or #list == 0 then return 0 end
 
-    local evset, anyevent = nil, false
-    if events and #events > 0 then
-        evset = {}
-        for _, e in ipairs(events) do
-            if e == "*" then
-                anyevent = true
-            else
-                evset[Autocmd.NormalizeEvent(e)] = true
-            end
-        end
-    end
-
-    local pset, anypat = nil, false
-    if patterns and #patterns > 0 then
-        pset = {}
-        for _, p in ipairs(patterns) do
-            if p == "*" then anypat = true end
-            local np = normalize_pattern(p)
-            pset[np] = true
-        end
-    end
+    local evset, anyevent = events_to_set(events)
+    local pset, anypat = patterns_to_set(patterns)
 
     local removed = 0
     for i = #list, 1, -1 do
@@ -985,26 +992,8 @@ function Autocmd.List(opts)
     local events          = opts.events
     local pats            = opts.pattern
 
-    local evset, anyevent = nil, false
-    if events and #events > 0 then
-        evset = {}
-        for _, e in ipairs(events) do
-            if e == "*" then
-                anyevent = true
-            else
-                evset[Autocmd.NormalizeEvent(e)] = true
-            end
-        end
-    end
-
-    local pset, anypat = nil, false
-    if pats and #pats > 0 then
-        pset = {}
-        for _, p in ipairs(pats) do
-            if p == "*" then anypat = true end
-            pset[normalize_pattern(p)] = true
-        end
-    end
+    local evset, anyevent = events_to_set(events)
+    local pset, anypat = patterns_to_set(pats)
 
     -- which groups to show?
     local groups = {}
@@ -1134,29 +1123,13 @@ function Autocmd.GetAutocommands(opts)
     if type(events) == "string" then
         events = { events }
     end
-    local evset = nil
-    if type(events) == "table" and #events > 0 then
-        evset = {}
-        for _, ev in ipairs(events) do
-            evset[Autocmd.NormalizeEvent(ev)] = true
-        end
-    end
+    local evset = events_to_set(events)
 
     local patterns = opts.pattern
     if type(patterns) == "string" then
         patterns = { patterns }
     end
-    local pset, anypat = nil, false
-    if type(patterns) == "table" and #patterns > 0 then
-        pset = {}
-        for _, p in ipairs(patterns) do
-            local np = normalize_pattern(p)
-            if np == "*" then
-                anypat = true
-            end
-            pset[np] = true
-        end
-    end
+    local pset, anypat = patterns_to_set(patterns)
 
     local buffer_pattern = nil
     if opts.buffer ~= nil then

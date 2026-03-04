@@ -92,12 +92,12 @@ Options.set("quickfixtextfunc", named2, false, win, buf)
 assert_eq("quickfixtextfunc named funcref", Options.get("quickfixtextfunc", win, buf), "strlen")
 
 local durable_by_ctx = {}
-local function run_compiled(script, opts)
-    opts = opts or {}
-    local key = opts.script_ctx or "__default"
+local function run_compiled(script, cpl_opts)
+    cpl_opts = cpl_opts or {}
+    local key = cpl_opts.script_ctx or "__default"
     local durable = durable_by_ctx[key]
     if not durable then
-        durable = Runtime.CaptureDurableScriptState({ script_ctx = opts.script_ctx }) or { s = {}, funcs = {} }
+        durable = Runtime.CaptureDurableScriptState({ script_ctx = cpl_opts.script_ctx }) or { s = {}, funcs = {} }
         durable.g = durable.g or Scopes._g
         durable_by_ctx[key] = durable
     end

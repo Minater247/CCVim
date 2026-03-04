@@ -348,13 +348,13 @@ _source_runtime_startup("ftplugin.vim")
 _source_runtime_startup("indent.vim")
 
 _V.writestartup("sourcing vimrc file(s)")
-local ok, err = ScriptSource.source(ccvim_path .. "/config/init.lua")
-if not ok then
+local srcok, srcerr = ScriptSource.source(ccvim_path .. "/config/init.lua")
+if not srcok then
     local cause
-    if Error.IsError(err) then
-        cause = err:toString()
+    if Error.IsError(srcerr) then
+        cause = srcerr:toString()
     else
-        cause = tostring(err)
+        cause = tostring(srcerr)
     end
     _V.LOG_DEBUG("Failed to source init file! Reason: %s", cause)
 end
@@ -431,7 +431,7 @@ end
 
 -- Run the main loop
 
-ok, err = xpcall(Event.RunLoop, function(e)
+local ok, err = xpcall(Event.RunLoop, function(e)
     return debug.traceback("A critical internal error occurred:\n" .. tostring(e), 2)
 end)
 

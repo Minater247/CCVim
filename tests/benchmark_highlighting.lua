@@ -103,32 +103,6 @@ local function sorted_keys(set)
     return out
 end
 
-local function parse_line_selector(raw)
-    if not raw or raw == "" then
-        return nil
-    end
-    local picked = {}
-    for _, part in ipairs(split_csv(raw)) do
-        local a, b = part:match("^(%d+)%-(%d+)$")
-        if a then
-            local x = tonumber(a)
-            local y = tonumber(b)
-            if x and y then
-                if x > y then x, y = y, x end
-                for n = x, y do
-                    picked[n] = true
-                end
-            end
-        else
-            local n = tonumber(part)
-            if n then
-                picked[n] = true
-            end
-        end
-    end
-    return picked
-end
-
 local function usage()
     io.write([[
 Usage: lua vim/benchmark_highlighting.lua [file] [options]
@@ -539,7 +513,7 @@ local function load_syntax_commands(ft, opts)
             end,
         })
 
-        local chunk, lerr = load("return (" .. lua_expr .. ")", "cond", "t", env)
+        local chunk = load("return (" .. lua_expr .. ")", "cond", "t", env)
         if not chunk then
             return false
         end

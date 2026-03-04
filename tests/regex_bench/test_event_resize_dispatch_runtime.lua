@@ -76,15 +76,13 @@ end
 
 local resize_calls = {}
 local Error = mock.loadModule("lib.error")
-_G._V = {
-    apply_terminal_resize = function(w, h, source)
-        resize_calls[#resize_calls + 1] = { w = w, h = h, source = source }
-        if source == "monitor_resize" then
-            return false, Error(36)
-        end
-        return true
-    end,
-}
+_G.apply_terminal_resize = function(w, h, source)
+    resize_calls[#resize_calls + 1] = { w = w, h = h, source = source }
+    if source == "monitor_resize" then
+        return false, Error(36)
+    end
+    return true
+end
 
 need_redraw = false
 what_redraw = {}

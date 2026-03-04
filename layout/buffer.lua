@@ -1180,7 +1180,7 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
                 BufAttach.detach(self.bufnr)
                 buffers[self.bufnr] = nil
             end
-        else
+        elseif bufhidden ~= "hide" then
             error("Unhandled: bufhidden = " .. bufhidden)
         end
     else

@@ -30,6 +30,25 @@ local function is_after(path)
     return n:sub(-6) == "/after"
 end
 
+local function list_dir_sorted(path)
+    local entries = fs.list(path) or {}
+    table.sort(entries)
+    return entries
+end
+
+local function dedup_normalize(list, out, seen)
+    out = out or {}
+    seen = seen or {}
+    for _, p in ipairs(list) do
+        local n = normalize(p)
+        if n ~= "" and not seen[n] then
+            out[#out + 1] = n
+            seen[n] = true
+        end
+    end
+    return out, seen
+end
+
 local function list_start_packages()
     local raw = Options.get("packpath", nil, nil, false, true)
     local roots = split_csv(raw)
@@ -39,14 +58,10 @@ local function list_start_packages()
         if base ~= "" then
             local packdir = base .. "/pack"
             if fs.isDir(packdir) then
-                local groups = fs.list(packdir) or {}
-                table.sort(groups)
-                for _, group in ipairs(groups) do
+                for _, group in ipairs(list_dir_sorted(packdir)) do
                     local startdir = packdir .. "/" .. group .. "/start"
                     if fs.isDir(startdir) then
-                        local pkgs = fs.list(startdir) or {}
-                        table.sort(pkgs)
-                        for _, pkg in ipairs(pkgs) do
+                        for _, pkg in ipairs(list_dir_sorted(startdir)) do
                             local pkgpath = startdir .. "/" .. pkg
                             if fs.isDir(pkgpath) and not seen[pkgpath] then
                                 out[#out + 1] = pkgpath
@@ -61,64 +76,23 @@ local function list_start_packages()
     return out
 end
 
-function RuntimePath.split(s)
-    return split_csv(s)
-end
-
-function RuntimePath.normalize(path)
-    return normalize(path)
-end
-
-function RuntimePath.is_after(path)
-    return is_after(path)
-end
+RuntimePath.split = split_csv
+RuntimePath.normalize = normalize
+RuntimePath.is_after = is_after
 
 function RuntimePath.get_list()
     local raw = Options.get("runtimepath", nil, nil, false, true)
-    local list = split_csv(raw)
-    local out, seen = {}, {}
-    for _, p in ipairs(list) do
-        local n = normalize(p)
-        if n ~= "" and not seen[n] then
-            out[#out + 1] = n
-            seen[n] = true
-        end
-    end
-    return out
+    return (dedup_normalize(split_csv(raw)))
 end
 
 function RuntimePath.get_search_list()
-    local out, seen = {}, {}
-    local rtp = RuntimePath.get_list()
-    for _, p in ipairs(rtp) do
-        local n = normalize(p)
-        if n ~= "" and not seen[n] then
-            out[#out + 1] = n
-            seen[n] = true
-        end
-    end
-
-    local starts = list_start_packages()
-    for _, p in ipairs(starts) do
-        local n = normalize(p)
-        if n ~= "" and not seen[n] then
-            out[#out + 1] = n
-            seen[n] = true
-        end
-    end
-
+    local out, seen = dedup_normalize(RuntimePath.get_list())
+    dedup_normalize(list_start_packages(), out, seen)
     return out
 end
 
 function RuntimePath.set_list(list)
-    local out, seen = {}, {}
-    for _, p in ipairs(list or {}) do
-        local n = normalize(p)
-        if n ~= "" and not seen[n] then
-            out[#out + 1] = n
-            seen[n] = true
-        end
-    end
+    local out = dedup_normalize(list or {})
     Options.set("runtimepath", table.concat(out, ","))
 end
 

@@ -302,14 +302,8 @@ function Filesystem.Expand(str)
     elseif str:sub(1, 1) == "#" then
         error("UNHANDLED: expand(\"#...\"): " .. str)
     else
-        -- TODO: make this work better using regex
-        local out = ""
-        local c = str:sub(1, 1)
-        while c ~= ":" and c ~= "" do
-            out = out .. c
-            str = str:sub(2)
-            c = str:sub(1, 1)
-        end
+        local out = str:match("^([^:]*)") or ""
+        str = str:sub(#out + 1)
         expansions = { out }
     end
 

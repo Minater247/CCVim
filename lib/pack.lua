@@ -4,39 +4,16 @@ local Options = loadModule("lib.options")
 local RuntimePath = loadModule("lib.runtimepath")
 local Error = loadModule("lib.error")
 local Scopes = loadModule("lib.luaapi.scopes")
-local VimFs = loadModule("lib.luaapi.fs")
 local ScriptSource
 
 Pack.loaded = Pack.loaded or {}
 
-local function split_csv(s)
-    local t = {}
-    for part in tostring(s or ""):gmatch("([^,]+)") do
-        local p = part:gsub("^%s+", ""):gsub("%s+$", "")
-        if p ~= "" then
-            t[#t + 1] = p
-        end
-    end
-    return t
-end
-
-local function normalize(path)
-    if not path or path == "" then
-        return ""
-    end
-    local out = VimFs.abspath(path)
-    if #out > 1 and out:sub(-1) == "/" then
-        out = out:sub(1, -2)
-    end
-    return out
-end
-
 local function packpath_list()
     local raw = Options.get("packpath", nil, nil, false, true)
-    local list = split_csv(raw)
+    local list = RuntimePath.split(raw)
     local out, seen = {}, {}
     for _, p in ipairs(list) do
-        local n = normalize(p)
+        local n = RuntimePath.normalize(p)
         if n ~= "" and not seen[n] then
             out[#out + 1] = n
             seen[n] = true
@@ -61,16 +38,12 @@ local function find_package_paths(name)
                 if fs.isDir(gpath) then
                     local start = gpath .. "/start/" .. name
                     local opt = gpath .. "/opt/" .. name
-                    if fs.isDir(start) then
-                        if not seen[start] then
-                            results[#results + 1] = { path = start, kind = "start" }
-                            seen[start] = true
-                        end
-                    elseif fs.isDir(opt) then
-                        if not seen[opt] then
-                            results[#results + 1] = { path = opt, kind = "opt" }
-                            seen[opt] = true
-                        end
+                    if fs.isDir(start) and not seen[start] then
+                        results[#results + 1] = { path = start, kind = "start" }
+                        seen[start] = true
+                    elseif fs.isDir(opt) and not seen[opt] then
+                        results[#results + 1] = { path = opt, kind = "opt" }
+                        seen[opt] = true
                     end
                 end
             end
@@ -139,8 +112,12 @@ local function source_files(paths)
     return true
 end
 
-local function should_load_ftdetect()
-    return Scopes.g.did_load_filetypes
+local function register_pkg(pkg)
+    RuntimePath.add(pkg, { after = false })
+    local after = pkg .. "/after"
+    if fs.isDir(after) then
+        RuntimePath.add(after, { after = true })
+    end
 end
 
 function Pack.add(name, opts)
@@ -156,11 +133,7 @@ function Pack.add(name, opts)
 
     for _, match in ipairs(matches) do
         local pkg = match.path
-        RuntimePath.add(pkg, { after = false })
-        local after = pkg .. "/after"
-        if fs.isDir(after) then
-            RuntimePath.add(after, { after = true })
-        end
+        register_pkg(pkg)
 
         if not opts.no_load then
             if not Pack.loaded[pkg] then
@@ -174,7 +147,7 @@ function Pack.add(name, opts)
                     return false, err_after
                 end
 
-                if match.kind == "opt" and should_load_ftdetect() then
+                if match.kind == "opt" and Scopes.g.did_load_filetypes then
                     local ok_ft, err_ft = source_files(collect_scripts(pkg .. "/ftdetect", false))
                     if not ok_ft then
                         return false, err_ft
@@ -205,11 +178,7 @@ function Pack.load_start()
                     for _, pkg in ipairs(list_dir_sorted(startdir)) do
                         local pkgpath = startdir .. "/" .. pkg
                         if fs.isDir(pkgpath) then
-                            RuntimePath.add(pkgpath, { after = false })
-                            local after = pkgpath .. "/after"
-                            if fs.isDir(after) then
-                                RuntimePath.add(after, { after = true })
-                            end
+                            register_pkg(pkgpath)
 
                             if not Pack.loaded[pkgpath] then
                                 local ok, err = source_files(collect_scripts(pkgpath .. "/plugin", true))

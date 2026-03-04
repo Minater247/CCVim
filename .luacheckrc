@@ -2,6 +2,7 @@ std = "lua51"
 
 exclude_files = {
     "runtime/**",
+    "log/**"
 }
 
 globals = {

@@ -2328,9 +2328,9 @@ local function vm_make_matcher(ast, hints)
             return false
         end
 
-        local function run_from(start_pos)
+        local function run_from(start_posn)
             local init = {
-                pos = start_pos,
+                pos = start_posn,
                 zs = nil,
                 ze = nil,
                 ext = vm_clone_ext(ext_in),
@@ -2343,7 +2343,7 @@ local function vm_make_matcher(ast, hints)
             end)
 
             if winner then
-                local s = winner.zs or start_pos
+                local s = winner.zs or start_posn
                 local e
                 if winner.ze ~= nil then
                     e = winner.ze - 1
