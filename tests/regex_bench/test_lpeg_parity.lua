@@ -304,7 +304,7 @@ local parity_cases = {
     {
         name = 'match-time capture with extra',
         fn = function(M)
-            return M.match(M.Cmt(M.Cc('x'), function(s, i, c)
+            return M.match(M.Cmt(M.Cc('x'), function(_s, i, c)
                 return i, c .. '!'
             end), '')
         end,
@@ -312,7 +312,7 @@ local parity_cases = {
     {
         name = 'runtime function pattern',
         fn = function(M)
-            return M.match(M.P(function(s, i)
+            return M.match(M.P(function(_s, i)
                 return i + 1
             end), 'a')
         end,
@@ -398,7 +398,7 @@ local parity_cases = {
     {
         name = 'substitution capture with Cmt no extra',
         fn = function(M)
-            return M.match(M.Cs(M.Cmt(M.P('a'), function(s, i)
+            return M.match(M.Cs(M.Cmt(M.P('a'), function(_s, i)
                 return i
             end)), 'a')
         end,

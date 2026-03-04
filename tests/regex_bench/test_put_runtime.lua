@@ -251,13 +251,21 @@ do
     reset_buffer({ "one" }, nil, 1)
     registers["z"] = nil
     local ok, rv = run_compiled("put z", "/tmp/put_missing_reg.vim")
-    assert_true("put missing register fails with E353", ok == false and err_string(rv):find("E353", 1, true) ~= nil, err_string(rv))
+    assert_true(
+        "put missing register fails with E353",
+        ok == false and err_string(rv):find("E353", 1, true) ~= nil,
+        err_string(rv)
+    )
 end
 
 do
     reset_buffer({ "one" }, nil, 1)
     local ok, rv = run_compiled("put aa", "/tmp/put_bad_arg.vim")
-    assert_true("put invalid arg fails with E474", ok == false and err_string(rv):find("E474", 1, true) ~= nil, err_string(rv))
+    assert_true(
+        "put invalid arg fails with E474",
+        ok == false and err_string(rv):find("E474", 1, true) ~= nil,
+        err_string(rv)
+    )
 end
 
 print("put runtime tests: OK")

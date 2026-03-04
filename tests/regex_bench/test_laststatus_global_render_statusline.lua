@@ -25,7 +25,7 @@ do
 end
 
 _G.window = {
-    create = function(parent, x, y, w, h, visible)
+    create = function()
         local win = {}
         function win.setVisible() end
         function win.reposition() end

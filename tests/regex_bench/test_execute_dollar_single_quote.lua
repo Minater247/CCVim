@@ -84,7 +84,7 @@ end
 
 -- Test: execute $'...' with interpolation of {expr}
 do
-    local ok, rv, state, code = run_compiled([[
+    local ok, _, state, _ = run_compiled([[
 let s_val = 42
 execute $'let g:interp_exec = {s_val}'
 ]], { script_ctx = "/tmp/exec_interp.vim" })
@@ -95,7 +95,7 @@ end
 -- Test: execute with mixed expression args where some args are $'...'
 -- (same shape used by runtime/syntax/help.vim).
 do
-    local ok, rv, state, code = run_compiled([[
+    local ok, _, _, _ = run_compiled([[
 let s_lang = 'vim'
 let s_syntax = 'vim'
 execute 'echo' $'"@helpExampleHighlight_{s_lang}"' $'"syntax/{s_syntax}.vim"'
@@ -106,7 +106,7 @@ end
 -- Repro: help.vim pattern that previously caused
 -- "Invalid numeric coercion! Type=nil" under MockEnv.
 do
-    local ok, rv, state, code = run_compiled([[
+    local ok, _, _, _ = run_compiled([[
 if !exists('g:help_example_languages')
   let g:help_example_languages = #{ vim: 'vim' }
 endif

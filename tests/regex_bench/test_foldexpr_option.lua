@@ -91,7 +91,7 @@ windows[1] = win
 tabpages[1].windows = { win }
 curwin = 1
 
-local ok_a, err_a = run_compiled([[
+local ok_a = run_compiled([[
 let s:base = 40
 function s:FoldExpr()
   return s:base + v:lnum
@@ -108,7 +108,7 @@ local val_a, ok_eval_a = Options.EvalExprOption("foldexpr", expr_a, win, buf, { 
 assert_eq("foldexpr script A eval ok", ok_eval_a, true)
 assert_eq("foldexpr script A sees script-local state", val_a, 45)
 
-local ok_b, err_b = run_compiled([[
+local ok_b = run_compiled([[
 let s:tick = 0
 function s:FoldExpr()
   let s:tick = s:tick + 1

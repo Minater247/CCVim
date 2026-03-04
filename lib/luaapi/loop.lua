@@ -1,6 +1,5 @@
 local loop = {}
 
-local VimRegex = loadModule("lib.excmd.vim_regex")
 local Event = loadModule("lib.event")
 local VimFs = loadModule("lib.luaapi.fs")
 local EnvVars = loadModule("lib.envvars")
@@ -53,7 +52,12 @@ end
 function loop.fs_stat(path, callback)
     local stat, err = _fs_stat_impl(path)
     if type(callback) == "function" then
-        log_loop_fs("fs_stat(path=%s, cb=true) -> err=%s type=%s", tostring(path), tostring(err), tostring(stat and stat.type))
+        log_loop_fs(
+            "fs_stat(path=%s, cb=true) -> err=%s type=%s",
+            tostring(path),
+            tostring(err),
+            tostring(stat and stat.type)
+        )
         callback(err, stat)
         return
     end
@@ -673,7 +677,7 @@ function loop.fs_event_start(fs_event, path, flags, callback)
 end
 
 -- TODO: stop the scheduled timer per above
-function loop.fs_event_stop(fs_event)
+function loop.fs_event_stop(_)
     return 0
 end
 

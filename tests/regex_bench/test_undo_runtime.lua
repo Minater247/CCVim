@@ -229,7 +229,11 @@ end
 do
     reset_buffer({ "one" })
     local ok, rv = run_compiled("undo nope", "/tmp/undo_bad_arg.vim")
-    assert_true("ex undo invalid arg fails E474", ok == false and err_string(rv):find("E474", 1, true) ~= nil, err_string(rv))
+    assert_true(
+        "ex undo invalid arg fails E474",
+        ok == false and err_string(rv):find("E474", 1, true) ~= nil,
+        err_string(rv)
+    )
 end
 
 do

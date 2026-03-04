@@ -225,7 +225,11 @@ unloadbuf.lines = { "x" }
 Api.nvim_buf_delete(unloadbuf.bufnr, { force = true, unload = true })
 assert_true("nvim_buf_delete unload keeps buffer entry", buffers[unloadbuf.bufnr] ~= nil, buffers[unloadbuf.bufnr])
 assert_eq("nvim_buf_delete unload clears lines", #buffers[unloadbuf.bufnr].lines, 0)
-assert_true("nvim_buf_delete unload marks buffer unloaded", buffers[unloadbuf.bufnr].loaded == false, tostring(buffers[unloadbuf.bufnr].loaded))
+assert_true(
+    "nvim_buf_delete unload marks buffer unloaded",
+    buffers[unloadbuf.bufnr].loaded == false,
+    tostring(buffers[unloadbuf.bufnr].loaded)
+)
 
 local vimapi = ApiBuild.Build().vim
 assert_true("vim.endswith is exposed", vimapi.endswith("oil:///", "/"), vimapi.endswith("oil:///", "/"))

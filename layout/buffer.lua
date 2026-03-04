@@ -1147,7 +1147,12 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     local bufhidden = options.get("bufhidden", nil, self)
     local hidden = options.get("hidden")
 
-    if not forceabandon and self.opts.modified and _autowrite_enabled(autowrite_kind) and not _autowrite_blocked_buftype(self) then
+    if
+        not forceabandon
+        and self.opts.modified
+        and _autowrite_enabled(autowrite_kind)
+        and not _autowrite_blocked_buftype(self)
+    then
         local status = self:write(false)
         if status ~= true then
             return status
@@ -1155,9 +1160,8 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     end
 
     if bufhidden ~= "" then
-        if bufhidden == "hide" then
-            -- Keep buffer loaded and listed regardless of global 'hidden'.
-        elseif bufhidden == "unload" then
+        -- If bufhidden is "hidden", then this is ignored
+        if bufhidden == "unload" then
             -- Approximate unload semantics: keep the buffer object, but drop
             -- transient parse context and clear loaded contents.
             self.syntax_ctx = nil

@@ -30,7 +30,7 @@ local curr_winno = 1
 ---@field tabpagenr number The tabpage number of the tabpage containing this window.
 ---@field opts table<string, any>
 ---@field scrollx number
----@field scrolly number[]
+---@field scrolly number[] An array of the line offset and the internal line offset
 ---@field cursorx number
 ---@field cursory number
 ---@field quickfix number
@@ -54,7 +54,7 @@ function Window:new(buffer, refwin)
         altbuf    = refwin and refwin.altbuf,
         opts      = {},
         scrollx   = refwin and refwin.scrollx or 1,
-        scrolly   = refwin and { refwin.scrolly[1], refwin.scrolly[2] } or { 1, 0 }, -- line offset, internal line offset
+        scrolly   = refwin and { refwin.scrolly[1], refwin.scrolly[2] } or { 1, 0 },
         cursorx   = refwin and refwin.cursorx or 1,
         cursory   = refwin and refwin.cursory or 1,
         quickfix  = 0,
@@ -257,7 +257,7 @@ local function _virt_text_cells(chunks, default_fg, default_bg)
 
     for i = 1, #list do
         local chunk = list[i]
-        local text = ""
+        local text
         local hl_group = nil
         if type(chunk) == "table" then
             text = tostring(chunk[1] or "")
@@ -401,7 +401,7 @@ local function _extmark_text_effects_for_line(buf, lnum, line_str)
     return out
 end
 
-local function _ensure_row_at(rows_t, rows_fg, rows_bg, row, fill_fg, fill_bg)
+local function _ensure_row_at(rows_t, rows_fg, rows_bg, row)
     while #rows_t < row do
         rows_t[#rows_t + 1] = {}
         rows_fg[#rows_fg + 1] = {}
@@ -776,21 +776,13 @@ function Window:_wrap_scroll_rows(delta, params)
     self.scrolly[2] = math.max(0, off)
 end
 
-function Window:_wrap_pos_from_row_offset(row_offset, params, include_virtual)
+function Window:_wrap_pos_from_row_offset(row_offset, params)
     local linecnt = self.buffer:line_count(true)
     local line = self.scrolly[1]
     local off = self.scrolly[2] or 0
 
     if line < 1 then line = 1 end
     if line > linecnt then line = linecnt end
-
-    local use_virtual = (include_virtual ~= false)
-    local function row_count(idx)
-        if use_virtual and idx == self.cursory then
-            return self:_wrap_row_count_with_cursor(idx, params)
-        end
-        return self:_wrap_row_count(idx, params)
-    end
 
     local function layout_for(idx)
         return self:_wrap_layout(idx, params, nil)
@@ -929,7 +921,8 @@ function Window:cursorSetScreenRow(row_offset, opts)
             local idx = (self.buffer:get_line(line, true) or ""):find("%S")
             col = idx or 1
         elseif opts.screen_col then
-            col = self:_col1_for_visual_col(self.buffer:get_line(line, true) or "", opts.screen_col, vimmode == "insert")
+            col = self:_col1_for_visual_col(self.buffer:get_line(line, true) or "",
+                                                opts.screen_col, vimmode == "insert")
         end
 
         self:cursorSet(col, line, true)
@@ -952,7 +945,15 @@ function Window:cursorSetScreenRow(row_offset, opts)
         screen_col = nb or 1
     end
 
-    local col1 = self:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lines, ranges, gsrc, vimmode == "insert")
+    local col1 = self:_wrap_bytecol_from_layout(
+        line_idx,
+        row_in_line,
+        screen_col,
+        lines,
+        ranges,
+        gsrc,
+        vimmode == "insert"
+    )
     self:cursorSet(col1, line_idx, true)
 end
 
@@ -1246,7 +1247,7 @@ function Window:textwidth()
         error("textwidth: no floatpos or frame!")
     end
 
-    local view_rows, dostatus = self:textheight()
+    local view_rows = self:textheight()
 
     local number              = (self.style ~= "minimal") and options.get("number", self)
     local rnu                 = (self.style ~= "minimal") and options.get("relativenumber", self)
@@ -1282,8 +1283,8 @@ function Window:textwidth()
     local sign_in_num = false
     local sign_slots = 0
     local sign_w = 0
-    local legacy_max_signs = 0
-    local extmark_max_signs = 0
+    local legacy_max_signs
+    local extmark_max_signs
 
     if self.style ~= "minimal" then
         if sign_spec.mode == "number" then
@@ -1349,7 +1350,6 @@ function Window:render(xoff, yoff)
         term.write(string.rep(" ", width))
     end
 
-    local extendstatus = 0
     local has_sep = self:hasHorizontalSeparator()
     local dostatus = self:hasLocalStatusline()
     if frame and FrameTree.IsLeftChild(frame) then
@@ -1361,7 +1361,6 @@ function Window:render(xoff, yoff)
             term.write(fc)
         end
         width = width - 1
-        extendstatus = extendstatus + 1
     end
 
     -- Statusline prechecks
@@ -1440,7 +1439,12 @@ function Window:render(xoff, yoff)
         else
             local cap = gutter_w - (needs_right and 0 or 1)
 
-            if (self.style ~= "minimal") and iscursor and options.get("number", self) and options.get("relativenumber", self) then
+            if
+                (self.style ~= "minimal")
+                and iscursor
+                and options.get("number", self)
+                and options.get("relativenumber", self)
+            then
                 if len > cap then
                     s = string.rep("+", gutter_w)
                 else
@@ -1519,11 +1523,9 @@ function Window:render(xoff, yoff)
 
         if ext_numhl and ext_numhl_prio > numhl_prio then
             numhl = ext_numhl
-            numhl_prio = ext_numhl_prio
         end
         if ext_linehl and ext_linehl_prio > linehl_prio then
             linehl = ext_linehl
-            linehl_prio = ext_linehl_prio
         end
 
         table.sort(line_signs, function(a, b)
@@ -1557,7 +1559,15 @@ function Window:render(xoff, yoff)
 
         local text_effects = _extmark_text_effects_for_line(self.buffer, i, line_str)
         if text_effects then
-            rendered, blitLines = _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, text_effects, line_str, text_w)
+            rendered, blitLines = _apply_extmark_text_effects(
+                rendered,
+                blitLines,
+                ranges,
+                gsrc,
+                text_effects,
+                line_str,
+                text_w
+            )
         end
 
         local have_blit = blitLines and blitLines.fg and blitLines.bg
@@ -1684,7 +1694,14 @@ function Window:render(xoff, yoff)
             end
 
             -- Draw cursor using Cursor highlight
-            if show_cursor and (not cursor_virtual) and iscursor_line and cursorPos and (cursorPos.line == j) and text_w > 0 then
+            if
+                show_cursor
+                and (not cursor_virtual)
+                and iscursor_line
+                and cursorPos
+                and (cursorPos.line == j)
+                and text_w > 0
+            then
                 local cx_abs = cursorPos.column       -- 1-based in wrapped piece
                 local cx_vis = cx_abs - (hscroll - 1) -- 1-based in visible slice
 
@@ -1735,7 +1752,7 @@ function Window:render(xoff, yoff)
             local cx_abs = pending_cursor.col or 1
             local cx_vis = cx_abs - (hscroll - 1)
             if cx_vis >= 1 and cx_vis <= math.max(1, text_w) then
-                local ch = " "
+                local ch
                 if row_offset >= buffer_rows_total then
                     ch = " "
                 else
@@ -2238,9 +2255,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
 
         for i = 1, #indentkeys do
             local it = indentkeys[i]
-            if it.kind == "open" then
-                -- Insert-mode newline is handled separately.
-            elseif it.kind == "key" and it.key == ch then
+            if it.kind == "key" and it.key == ch then
                 if it.start_only then
                     local before_part = buf:str_sub(pre_line, 1, pre_col - 1)
                     if before_part:match("^%s*$") then
@@ -2660,7 +2675,7 @@ function Window:wincmd(command, count)
 
         tabp:close(win, false, true)
     
-        tabp:WinSplit(-1, win, true)    
+        tabp:WinSplit(-1, win, true)
     else
         return Error(474)
     end

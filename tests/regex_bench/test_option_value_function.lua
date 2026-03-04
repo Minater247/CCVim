@@ -119,7 +119,7 @@ local function run_compiled(script, opts)
     return true, rv
 end
 
-local ok_a, err_a = run_compiled([[
+local ok_a = run_compiled([[
 function s:LocalScope()
   return 11
 endfunction
@@ -132,7 +132,7 @@ assert_match("script A canonical name", op_a, "^<SNR>%d+_LocalScope$")
 assert_eq("script A call through canonical name", Fn._call(op_a), 11)
 assert_eq("script A function('s:') canonicalization", Options.get("tagfunc", win, buf), op_a)
 
-local ok_b, err_b = run_compiled([[
+local ok_b = run_compiled([[
 function s:LocalScope()
   return 22
 endfunction

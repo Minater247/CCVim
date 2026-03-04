@@ -1,20 +1,17 @@
 local Syntax = {}
 
 local function load_engine()
-    if _V and _V._syntax_engine_api then
-        return _V._syntax_engine_api
+    if Syntax._syntax_engine_api then
+        return Syntax._syntax_engine_api
     end
 
-    local env = _V or _ENV
-    local chunk, err = loadfile(ccvim_path .. "/lib/syntax_engine/api.lua", "t", env)
+    local chunk, err = loadfile(ccvim_path .. "/lib/syntax_engine/api.lua", "t", _ENV)
     if not chunk then
         error("Failed to load syntax engine API: " .. tostring(err))
     end
 
     local mod = chunk()
-    if _V then
-        _V._syntax_engine_api = mod
-    end
+    Syntax._syntax_engine_api = mod
     return mod
 end
 

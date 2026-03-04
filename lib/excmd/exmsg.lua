@@ -90,8 +90,8 @@ local function silence_effect()
     -- Return one of: nil (no silent), {kind='silent', skip_errors=?, on_error=?}, or {kind='unsilent'}
     for i = #silence_stack, 1, -1 do
         local f = silence_stack[i]
-    if f.kind == 'unsilent' then return f end
-    if f.kind == 'silent' and not f.lifted then return f end
+        if f.kind == 'unsilent' then return f end
+        if f.kind == 'silent' and not f.lifted then return f end
     end
     return nil
 end
@@ -210,7 +210,9 @@ function ExMsg.EndCapture(cap)
     -- Locate (allow out-of-order end for robustness, though typical usage is LIFO)
     local idx
     for i = #capture_stack, 1, -1 do
-        if capture_stack[i] == cap then idx = i; break end
+        if capture_stack[i] == cap then
+            idx = i; break
+        end
     end
     if not idx then
         return "", nil -- unknown handle; fail softly
@@ -219,8 +221,6 @@ function ExMsg.EndCapture(cap)
     table.remove(capture_stack, idx)
     return table.concat(cap.out), cap.last_err
 end
-
-
 
 -- Renders the display lines to the blit cache.
 local function renderdisplay()
@@ -490,7 +490,7 @@ local function draw_messages_and_prompt()
     -- Escalate to MoreMessage if we would consume the bottom status line.
     if #screenlines > (screen.height - 1) then
         in_press_enter = false
-        start_more()  -- pops hit-enter if needed; installs pager
+        start_more() -- pops hit-enter if needed; installs pager
         return
     end
 
@@ -505,16 +505,16 @@ local function draw_messages_and_prompt()
             table.insert(Command.emitter_names, "ExMsg.readEnter")
         end
 
-    -- Pure draw into the current target (front or back buffer)
-    draw_press_enter()
+        -- Pure draw into the current target (front or back buffer)
+        draw_press_enter()
     else
-    -- No Press ENTER required; draw these messages as part of the next
-    -- tabpage render (to the back buffer) then clear. Avoid drawing here,
-    -- as the double-buffer swap would wipe front-buffer output.
-    in_press_enter = false
-    pending_one_shot = true
-    what_redraw["commandline"] = true
-    need_redraw = true
+        -- No Press ENTER required; draw these messages as part of the next
+        -- tabpage render (to the back buffer) then clear. Avoid drawing here,
+        -- as the double-buffer swap would wipe front-buffer output.
+        in_press_enter = false
+        pending_one_shot = true
+        what_redraw["commandline"] = true
+        need_redraw = true
     end
 end
 
@@ -546,7 +546,6 @@ end
 function ExMsg.IsOverlayActive()
     return in_more or in_press_enter
 end
-
 
 local function emit(str, hlgroup, nonewline, flush, savetomsg)
     if flush then
@@ -605,11 +604,9 @@ local function emit(str, hlgroup, nonewline, flush, savetomsg)
             end
             return
         end
-    -- else: fall through to normal UI handling for non-skipped errors,
-    -- and lift the silent so subsequent messages are not silent.
-    lift_current_silent()
-    elseif eff and eff.kind == 'unsilent' then
-        -- Explicitly unsilent: proceed with normal behavior below
+        -- else: fall through to normal UI handling for non-skipped errors,
+        -- and lift the silent so subsequent messages are not silent.
+        lift_current_silent()
     end
 
     if nonewline then

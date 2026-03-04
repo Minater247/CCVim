@@ -1,12 +1,6 @@
 local MockEnv = require("vim.tests.test_mocks")
 local mock = MockEnv.setup()
 
-local function assert_true(label, cond)
-    if not cond then
-        error(("FAIL %s"):format(label))
-    end
-end
-
 local function assert_eq(label, got, want)
     if got ~= want then
         error(("FAIL %s: expected %s, got %s"):format(label, tostring(want), tostring(got)))

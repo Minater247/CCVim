@@ -90,9 +90,9 @@ end
 -- chunks[i] = { kind="text"|"group"|"truncmark"|"hl", s=<string>, hl=<control> }
 local function parse_segment(fmt, window)
     -- Move the locals in here since they're common
-    local byte, sub, rep, upper = string.byte, string.sub, string.rep, string.upper
+    local byte, sub, upper = string.byte, string.sub, string.upper
     local concat                = table.concat
-    local floor, max, min       = math.floor, math.max, math.min
+    local floor                 = math.floor
     local tonumber, tostring    = tonumber, tostring
 
     -- Cache window fields (avoid hash lookups in inner loops)
@@ -244,7 +244,12 @@ local function parse_segment(fmt, window)
 
                 local ok_compile, code = pcall(function() return Compiler.compile_expr(inner, { state = rt.state }) end)
                 if ok_compile and type(code) == "string" and code ~= "" then
-                    local chunk, lerr = load("return " .. code, "statusline_excmd", "t", setmetatable({ runtime = rt, _G = _G }, { __index = _G }))
+                    local chunk = load(
+                        "return " .. code,
+                        "statusline_excmd",
+                        "t",
+                        setmetatable({ runtime = rt, _G = _G }, { __index = _G })
+                    )
                     if chunk then
                         local ok_run, rv = pcall(chunk)
                         if ok_run then out_s = tostring(rv or "") end
@@ -281,7 +286,8 @@ local function parse_segment(fmt, window)
                 i = k
             else
                 -- %-item (single-letter or single control)
-                local is_num, out = false, nil
+                local out
+                local is_num = false
 
                 -- Paths / names
                 if nxtb == 102 then -- 'f'

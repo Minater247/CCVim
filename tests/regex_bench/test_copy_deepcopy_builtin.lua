@@ -75,8 +75,11 @@ assert_true("deepcopy default handles cycle", cycle_copy ~= cycle and cycle_copy
 local ok_cycle, err_cycle = pcall(function()
     Fn.fn.deepcopy(cycle, 1)
 end)
-assert_true("deepcopy noref cycle fails with E724", ok_cycle == false and tostring(err_cycle):find("E724", 1, true) ~= nil,
-    err_cycle)
+assert_true(
+    "deepcopy noref cycle fails with E724",
+    ok_cycle == false and tostring(err_cycle):find("E724", 1, true) ~= nil,
+    err_cycle
+)
 
 local nested = {}
 local cursor = nested
@@ -88,8 +91,11 @@ end
 local ok_depth, err_depth = pcall(function()
     Fn.fn.deepcopy(nested)
 end)
-assert_true("deepcopy deep nesting fails with E698", ok_depth == false and tostring(err_depth):find("E698", 1, true) ~= nil,
-    err_depth)
+assert_true(
+    "deepcopy deep nesting fails with E698",
+    ok_depth == false and tostring(err_depth):find("E698", 1, true) ~= nil,
+    err_depth
+)
 
 local method_src = { { 1 } }
 local method_deep = VimExpr.evaluate("x->deepcopy()", {
@@ -102,13 +108,19 @@ assert_true("method deepcopy allocates nested", method_deep[1] ~= nil and method
 local ok_copy_arity, err_copy_arity = pcall(function()
     Fn.fn.copy({}, 1)
 end)
-assert_true("copy arity errors with E118", ok_copy_arity == false and tostring(err_copy_arity):find("E118", 1, true) ~= nil,
-    err_copy_arity)
+assert_true(
+    "copy arity errors with E118",
+    ok_copy_arity == false and tostring(err_copy_arity):find("E118", 1, true) ~= nil,
+    err_copy_arity
+)
 
 local ok_deepcopy_arity, err_deepcopy_arity = pcall(function()
     Fn.fn.deepcopy({}, 0, 0)
 end)
-assert_true("deepcopy arity errors with E118", ok_deepcopy_arity == false and tostring(err_deepcopy_arity):find("E118", 1, true) ~= nil,
-    err_deepcopy_arity)
+assert_true(
+    "deepcopy arity errors with E118",
+    ok_deepcopy_arity == false and tostring(err_deepcopy_arity):find("E118", 1, true) ~= nil,
+    err_deepcopy_arity
+)
 
 print("copy/deepcopy builtin tests: OK")

@@ -106,7 +106,7 @@ local mock = MockEnv.setup({
     module_stubs = modules,
 })
 
-_G._log_caller = function(...) end
+_G._log_caller = function() end
 
 local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
 local api = ApiBuild.Build()

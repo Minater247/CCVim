@@ -3,11 +3,8 @@
 local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
 local Event = loadModule("lib.event")
-local Window = loadModule("layout.window")
-local Error = loadModule("lib.error")
 local WordNav = loadModule("lib.wordnav")
 local Syntax = loadModule("lib.syntax")
-local Tabpage = loadModule("layout.tabpage")
 local CmdRead = loadModule("lib.excmd.cmdread")
 local ExMsg = loadModule("lib.excmd.exmsg")
 
@@ -473,7 +470,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local buf = win.buffer
 
-        for i = 1, count do
+        for _ = 1, count do
             local toinsert = buf:get_line(win.cursory, true)
             if toinsert then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + 1)
@@ -496,7 +493,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local buf = win.buffer
 
-        for i = 1, count do
+        for _ = 1, count do
             local toinsert = buf:get_line(win.cursory + 1, true)
             if toinsert then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + 1)
@@ -845,7 +842,7 @@ Command.nmap_builtin_callback(
 
 Command.nmap_builtin_operator_with_motions(
     {K(keys.d)},
-    function(total, motion_name, op_count, mot_count)
+    function(total, motion_name)
         local win = windows[curwin]
         local buf = win.buffer
 
@@ -917,7 +914,11 @@ Command.nmap_builtin_operator_with_motions(
 
                 local removed = _line_sub(buf, line, del_start, del_end)
                 table.insert(collected, removed)
-                buf:set_line(win.cursory, _line_sub(buf, line, 1, del_start - 1) .. _line_sub(buf, line, del_end + 1), true)
+                buf:set_line(
+                    win.cursory,
+                    _line_sub(buf, line, 1, del_start - 1) .. _line_sub(buf, line, del_end + 1),
+                    true
+                )
                 Syntax.ParseLinetypes(buf, win.cursory)
                 -- Keep cursor at del_start (or clamp to line length)
                 local new_line = buf:get_line(win.cursory, true)

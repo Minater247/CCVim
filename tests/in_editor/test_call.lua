@@ -57,7 +57,11 @@ do
   vim.g.caps = nil
   local ok3, em3 = run_cmd([[1,3call TestCaptureLines()]])
   local caps = vim.g.caps or {}
-  ok('range per-line', ok3 and em3 == '' and #caps == 3 and caps[1] == 'one' and caps[2] == 'two' and caps[3] == 'three', em3)
+  ok(
+    'range per-line',
+    ok3 and em3 == '' and #caps == 3 and caps[1] == 'one' and caps[2] == 'two' and caps[3] == 'three',
+    em3
+  )
 end
 
 -- 4) v:lua.require sugar
@@ -233,7 +237,16 @@ do
 
   vim.env.CCVIM_TEST_ENV = nil
   local ex2 = vim.fn.exists('$CCVIM_TEST_ENV')
-  ok('exists/env backend bridge', ok22 and ex2 == 0, vim.inspect({ ex1 = ex1, ex2 = ex2, em22a = em22a, val = vim.g.env_from_expr }))
+  ok(
+    'exists/env backend bridge',
+    ok22 and ex2 == 0,
+    vim.inspect({
+      ex1 = ex1,
+      ex2 = ex2,
+      em22a = em22a,
+      val = vim.g.env_from_expr
+    })
+  )
 end
 
 -- 23) vim.fs.normalize() path rules

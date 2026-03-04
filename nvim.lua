@@ -43,7 +43,7 @@ local function log(level, format, ...)
     handle.close()
 end
 
-_V = {
+local _V = {
     vimversion_maj = 0,
     vimversion_min = 11,
     vimversion_pat = 3,
@@ -91,7 +91,7 @@ local function loadModule(module)
     local module_path = ccvim_path .. "/" .. module:gsub("%.", "/") .. ".lua"
 
     setmetatable(_V, {
-        __index = function(tbl, key)
+        __index = function(_tbl, key)
             if _G[key] then
                 return _G[key]
             else
@@ -160,7 +160,11 @@ local startuptime_buf = {}
 function _V.writestartup(message, exttime)
     local mytime = os.epoch("utc")
     local formatted_elapsedtime = string.format("%06.3f", mytime - startupstart)
-    startuptime_buf[#startuptime_buf+1] = formatted_elapsedtime .. (exttime and ("  " .. string.format("%06.3f", os.epoch("utc") - exttime)) or "") .. ": " .. message
+    startuptime_buf[#startuptime_buf+1] = ("%s%s: %s"):format(
+        formatted_elapsedtime,
+        (exttime and ("  " .. string.format("%06.3f", os.epoch("utc") - exttime)) or ""),
+        message
+    )
 end
 
 _V.writestartup("--- NVIM STARTING ---")

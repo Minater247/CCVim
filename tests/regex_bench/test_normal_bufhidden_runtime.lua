@@ -161,7 +161,11 @@ normal! gg|let g:normal_bar_split = 1
     assert_eq("range normal command text 2", normal_calls[4].text, "z")
 
     assert_eq("normal no-bar-split keeps full tail", normal_calls[5].text, "gg|let g:normal_bar_split = 1")
-    assert_true("normal no-bar-split does not execute following let", out.state.g.normal_bar_split == nil, tostring(out.state.g.normal_bar_split))
+    assert_true(
+        "normal no-bar-split does not execute following let",
+        out.state.g.normal_bar_split == nil,
+        tostring(out.state.g.normal_bar_split)
+    )
 end
 
 do
@@ -173,7 +177,11 @@ do
     Options.set("bufhidden", "delete", true, win, bufdel)
     local rv_del = bufdel:leave(false, nil, nil)
     assert_true("bufhidden=delete leave succeeds", rv_del == true, tostring(rv_del))
-    assert_true("bufhidden=delete removes buffer when hidden", buffers[bufdel.bufnr] == nil, tostring(buffers[bufdel.bufnr]))
+    assert_true(
+        "bufhidden=delete removes buffer when hidden",
+        buffers[bufdel.bufnr] == nil,
+        tostring(buffers[bufdel.bufnr])
+    )
 
     local bufhide = Buffer(true, false)
     bufhide.name = "/tmp/bufhidden_hide.txt"

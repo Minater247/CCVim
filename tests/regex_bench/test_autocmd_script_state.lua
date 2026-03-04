@@ -97,7 +97,7 @@ do
     shell.dir = prev_dir
 end
 
-local ok_setup, err_setup = run_compiled([[
+local ok_setup = run_compiled([[
 let s:val = 1
 autocmd User ScriptStateTest let s:val = s:val + 1 | let g:autocmd_seen = s:val
 let s:val = 2

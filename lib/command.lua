@@ -14,7 +14,7 @@ Command.POLICY_NOREMAP = POLICY_NOREMAP
 -- =========================
 -- Called when a key must be emitted "raw" (i.e., no mapping matched).
 -- Receives an array { key, ... }.
-Command.emit_raw                  = function(seq) end
+Command.emit_raw                  = function(_) end
 
 -- In which modes counts are enabled (default: only normal mode).
 Command.count_modes               = { normal = true }
@@ -320,7 +320,13 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
     node.callback  = callback
     node.rhs_seq   = nil
     node.recursive = nil
-    Command.Log("map-callback  mode=%s seq=%s cb=%s%s", mode_full, seq_tostring(seq_nums), tostring(callback), opts and " [buf-local]" or "")
+    Command.Log(
+        "map-callback  mode=%s seq=%s cb=%s%s",
+        mode_full,
+        seq_tostring(seq_nums),
+        tostring(callback),
+        opts and " [buf-local]" or ""
+    )
 end
 
 local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
@@ -355,7 +361,14 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
     node.rhs_seq   = normalize_seq(rhs_seq)
     node.recursive = recursive ~= false
 
-    Command.Log("map-keys      mode=%s lhs=%s rhs=%s recursive=%s%s", mode_full, seq_tostring(seq_nums), seq_tostring(node.rhs_seq), tostring(node.recursive), opts and " [buf-local]" or "")
+    Command.Log(
+        "map-keys      mode=%s lhs=%s rhs=%s recursive=%s%s",
+        mode_full,
+        seq_tostring(seq_nums),
+        seq_tostring(node.rhs_seq),
+        tostring(node.recursive),
+        opts and " [buf-local]" or ""
+    )
 end
 
 
@@ -746,7 +759,13 @@ end
 
 local function execute_node(node)
     local cnt = (state.count_committed and state.count_value)
-    Command.Log("execute cb=%s rhs_len=%d recursive=%s count=%d", tostring(node.callback), node.rhs_seq and #node.rhs_seq or 0, tostring(node.recursive), cnt)
+    Command.Log(
+        "execute cb=%s rhs_len=%d recursive=%s count=%d",
+        tostring(node.callback),
+        node.rhs_seq and #node.rhs_seq or 0,
+        tostring(node.recursive),
+        cnt
+    )
 
     if node.callback then
         local rv = _with_undo_block(function()
@@ -1088,10 +1107,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                         end
                     else
                         -- No digit-leading mapping path from here; this digit participates in the count.
-                        if d == 0 and not state.count_tentative then
-                            -- Leading 0 with no tentative/committed count: treat as real key
-                            -- fall through to trie
-                        else
+                        if d ~= 0 or state.count_tentative then
                             if not state.count_tentative then clear_count() end
                             state.count_committed = true
                             push_digit(d)
@@ -1099,9 +1115,6 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                         end
                     end
                 end
-            else
-                -- Not at sequence start: any digits are mapping keys, not count
-                -- fall through to trie
             end
 
             -- If we are in a tentative-count state, only extend it here when we haven't already
@@ -1121,8 +1134,14 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     if not next_node then
         cancel_ambiguous_timer()
 
-        Command.Log("no-edge: children=%s trying=%s root-keys=%s count_tentative=%d count_value=%d",
-            node_keys_tostring(state.node), code:printable(), node_keys_tostring(root), state.count_tentative, state.count_value)
+        Command.Log(
+            "no-edge: children=%s trying=%s root-keys=%s count_tentative=%d count_value=%d",
+            node_keys_tostring(state.node),
+            code:printable(),
+            node_keys_tostring(root),
+            state.count_tentative,
+            state.count_value
+        )
 
         -- Special case: digit-only leaf was pending with a count context and a new digit arrived.
         do
@@ -1310,8 +1329,14 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     local has_more            = node_has_children(next_node)
 
     if at_leaf then
-        Command.Log("leaf-found cb=%s rhs_len=%d operator=%s has_mode=%s policy=%d",
-            tostring(next_node.callback), next_node.rhs_seq and #next_node.rhs_seq or 0, tostring(next_node.operator_cb ~= nil), tostring(has_mode), policy)
+        Command.Log(
+            "leaf-found cb=%s rhs_len=%d operator=%s has_mode=%s policy=%d",
+            tostring(next_node.callback),
+            next_node.rhs_seq and #next_node.rhs_seq or 0,
+            tostring(next_node.operator_cb ~= nil),
+            tostring(has_mode),
+            policy
+        )
 
         state.best_node = next_node
 

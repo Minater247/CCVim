@@ -9,17 +9,6 @@ local function starts_with(s, prefix)
     return s:sub(1, #prefix) == prefix
 end
 
-local function split_csv(raw)
-    local out = {}
-    for part in tostring(raw or ""):gmatch("[^,]+") do
-        local v = trim(part)
-        if v ~= "" then
-            out[#out + 1] = v
-        end
-    end
-    return out
-end
-
 local function script_dir()
     local src = debug.getinfo(1, "S").source
     if starts_with(src, "@") then
@@ -33,13 +22,11 @@ local function normalize_path(path)
     local abs = starts_with(p, "/")
     local out = {}
     for part in p:gmatch("[^/]+") do
-        if part == "." then
-            -- no-op
-        elseif part == ".." then
+        if part == ".." then
             if #out > 0 then
                 out[#out] = nil
             end
-        else
+        elseif part ~= "." then
             out[#out + 1] = part
         end
     end
@@ -368,9 +355,9 @@ local function init_lua_engine_runtime()
         setTextColor = function(_) end,
         setBackgroundColor = function(_) end,
     }
-    _G.LOG_ERROR = function(...) end
-    _G.LOG_DEBUG = function(...) end
-    _G.LOG_INTERNAL = function(...) end
+    _G.LOG_ERROR = function() end
+    _G.LOG_DEBUG = function() end
+    _G.LOG_INTERNAL = function() end
 
     local cache = {}
     function _G.loadModule(name)
@@ -657,7 +644,10 @@ local function load_syntax_commands(ft, opts)
                         end
                     end
                 elseif parsed.kind ~= "unknown" then
-                    if force_contained and (parsed.kind == "keyword" or parsed.kind == "match" or parsed.kind == "region") then
+                    if
+                        force_contained
+                        and (parsed.kind == "keyword" or parsed.kind == "match" or parsed.kind == "region")
+                    then
                         parsed.options.flags.contained = true
                     end
 
@@ -699,17 +689,6 @@ local function load_syntax_commands(ft, opts)
     end
 
     return commands, syntax_file
-end
-
-local function group_name_from_id(ir, group_id)
-    if type(group_id) == "number" then
-        local g = ir.groups and ir.groups[group_id]
-        return (g and g.name) or ("#" .. tostring(group_id))
-    end
-    if type(group_id) == "string" and group_id ~= "" then
-        return group_id
-    end
-    return "Normal"
 end
 
 local function now_seconds()
@@ -813,9 +792,27 @@ local function print_engine_runs(name, runs)
     end
 
     local s = summarize_runs(runs)
-    io.write(("  avg: setup=%.2f ms  highlight=%.2f ms  total=%.2f ms\n"):format(s.setup_avg, s.highlight_avg, s.total_avg))
-    io.write(("  min: setup=%.2f ms  highlight=%.2f ms  total=%.2f ms\n"):format(s.setup_min, s.highlight_min, s.total_min))
-    io.write(("  max: setup=%.2f ms  highlight=%.2f ms  total=%.2f ms\n"):format(s.setup_max, s.highlight_max, s.total_max))
+    io.write(
+        ("  avg: setup=%.2f ms  highlight=%.2f ms  total=%.2f ms\n"):format(
+            s.setup_avg,
+            s.highlight_avg,
+            s.total_avg
+        )
+    )
+    io.write(
+        ("  min: setup=%.2f ms  highlight=%.2f ms  total=%.2f ms\n"):format(
+            s.setup_min,
+            s.highlight_min,
+            s.total_min
+        )
+    )
+    io.write(
+        ("  max: setup=%.2f ms  highlight=%.2f ms  total=%.2f ms\n"):format(
+            s.setup_max,
+            s.highlight_max,
+            s.total_max
+        )
+    )
 end
 
 local function main(argv)
@@ -827,7 +824,7 @@ local function main(argv)
 
     local nvim_runs = {}
     local detected_ft = trim(opts.ft or "")
-    for i = 1, opts.runs do
+    for _ = 1, opts.runs do
         local run = collect_nvim_timing(target, opts.ft)
         nvim_runs[#nvim_runs + 1] = {
             setup_ms = (run.setup_ns or 0) / 1000000,
@@ -845,7 +842,7 @@ local function main(argv)
 
     local lua_runs = {}
     local syntax_file = nil
-    for i = 1, opts.runs do
+    for _ = 1, opts.runs do
         local run, lerr = collect_lua_timing(target, detected_ft, opts)
         if not run then
             error("Lua engine benchmark failed: " .. tostring(lerr))

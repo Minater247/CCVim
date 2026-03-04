@@ -6,7 +6,6 @@ local scopes                = loadModule("lib.luaapi.scopes")
 local Error                 = loadModule("lib.error")
 local ExMsg                 = loadModule("lib.excmd.exmsg")
 local Runtime
-local ScriptSource
 
 ---@class Autocommand
 ---@field pattern table<string, boolean>  -- set of patterns
@@ -403,15 +402,6 @@ function Autocmd.RemoveAutocommands(group, events, patterns)
             local np = normalize_pattern(p)
             pset[np] = true
         end
-    end
-
-    do
-        local evs = {}
-        if anyevent then evs[#evs + 1] = "*" end
-        if evset then for k, _ in pairs(evset) do evs[#evs + 1] = k end end
-        local pats = {}
-        if anypat then pats[#pats + 1] = "*" end
-        if pset then for k, _ in pairs(pset) do pats[#pats + 1] = k end end
     end
 
     local removed = 0

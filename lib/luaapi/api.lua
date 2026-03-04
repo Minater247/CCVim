@@ -431,7 +431,7 @@ end
 -- Namespace Management
 -- ========================
 -- Namespace 0 is the global namespace (highlights/etc.). Additional namespaces start at 1.
-local ns_name_to_id, ns_id_to_name = {}, {}
+local ns_name_to_id = {}
 local next_ns_id = 1
 
 ---Creates or retrieves a namespace id.
@@ -447,7 +447,6 @@ function api.nvim_create_namespace(name)
     next_ns_id = next_ns_id + 1
     if name ~= "" then
         ns_name_to_id[name] = id
-        ns_id_to_name[id] = name
     end
     return id
 end
@@ -485,7 +484,7 @@ function api.nvim_tabpage_list_wins(tp)
     if tp == 0 then tp = curtp end
 
     local rv = {}
-    for k, v in pairs(tabpages[tp].windows) do
+    for _, v in pairs(tabpages[tp].windows) do
         rv[#rv + 1] = v.winnr
     end
 
@@ -1258,10 +1257,11 @@ function api.nvim_exec(src, output)
 end
 
 -- nvim_exec2(src, {output?:boolean}) -> { output?: string }
+-- TODO: Handle errors properly!
 function api.nvim_exec2(src, opts)
     opts = opts or {}
     local ok, out, err = exec_script(src, { output = not not opts.output })
-    return opts.output and { output = out } or { output = nil }
+    return opts.output and { output = out } or {}
 end
 
 local function as_list(x)
@@ -1811,7 +1811,7 @@ function api.nvim_buf_delete(buffer, opts)
 end
 
 -- TODO: set up proper RPC handling for send_buffer
-function api.nvim_buf_attach(buffer, send_buffer, opts)
+function api.nvim_buf_attach(buffer, _send_buffer, opts)
     local bufnr = tonumber(buffer)
     if not bufnr then
         return false
@@ -1956,14 +1956,14 @@ local function _extmark_in_range(mark, start_line, start_col, end_line, end_col)
     return true
 end
 
-function api.nvim_buf_get_extmarks(buffer, ns_id, start, _end, opts)
+function api.nvim_buf_get_extmarks(buffer, ns_id, start, end_, opts)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
     opts = opts or {}
     buf._extmarks = buf._extmarks or {}
 
     local start_line, start_col = _extmark_pos_from_arg(start)
-    local end_line, end_col = _extmark_pos_from_arg(_end)
+    local end_line, end_col = _extmark_pos_from_arg(end_)
     if end_line < start_line or (end_line == start_line and end_col >= 0 and end_col < start_col) then
         start_line, end_line = end_line, start_line
         start_col, end_col = end_col, start_col
@@ -2104,7 +2104,8 @@ function api.nvim_strwidth(text)
     return Utf8.len(text)
 end
 
-function api.nvim_echo(chunks, history, opts)
+-- TODO: Handle history, opts arguments
+function api.nvim_echo(chunks, _history, _opts)
     local parts = {}
     if type(chunks) == "table" then
         for i = 1, #chunks do
@@ -2156,11 +2157,13 @@ function api.nvim_win_set_config(window, config)
     if config.height ~= nil then win.floatpos.h = config.height end
 end
 
-function api.nvim_replace_termcodes(str, from_part, do_lt, special)
+-- TODO: Handle from_part argument
+function api.nvim_replace_termcodes(str, _from_part, do_lt, special)
     return Key.replace_termcodes(str, do_lt, special)
 end
 
-function api.nvim_feedkeys(keys, mode, escape_ks)
+-- TODO: Handle escape_ks argument
+function api.nvim_feedkeys(keys, mode, _escape_ks)
     local ops = _parse_feedkeys_ops(tostring(keys or ""))
     mode = tostring(mode or "")
     local remap = true
@@ -2191,7 +2194,8 @@ function api.nvim_feedkeys(keys, mode, escape_ks)
     end
 end
 
-function api.nvim_select_popupmenu_item(item, insert, finish, opts)
+-- TODO: Handle opts argument
+function api.nvim_select_popupmenu_item(item, insert, finish, _opts)
     PopupMenu.select(item, insert, finish)
 end
 
@@ -2308,7 +2312,7 @@ function api.nvim_buf_line_count(bufnr)
     return buf:line_count(false)
 end
 
-function api.nvim_buf_get_lines(bufnr, start, _end, strict_indexing)
+function api.nvim_buf_get_lines(bufnr, start, l_end, strict_indexing)
     local buf = buf_for_bufnr(bufnr)
     assert(buf)
 
@@ -2316,7 +2320,7 @@ function api.nvim_buf_get_lines(bufnr, start, _end, strict_indexing)
 
     -- Normalize negatives relative to end+1 (0-based)
     local s = start >= 0 and start or (line_count + 1 + start)
-    local e = _end >= 0 and _end or (line_count + 1 + _end)
+    local e = l_end >= 0 and l_end or (line_count + 1 + l_end)
 
     if strict_indexing then
         if s < 0 or s > line_count or e < 0 or e > line_count then

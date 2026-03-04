@@ -33,13 +33,11 @@ local function normalize_path(path)
     local abs = starts_with(p, "/")
     local out = {}
     for part in p:gmatch("[^/]+") do
-        if part == "." then
-            -- no-op
-        elseif part == ".." then
+        if part == ".." then
             if #out > 0 then
                 out[#out] = nil
             end
-        else
+        elseif part ~= "." then
             out[#out + 1] = part
         end
     end
@@ -375,9 +373,9 @@ local function init_lua_engine_runtime()
         setTextColor = function(_) end,
         setBackgroundColor = function(_) end,
     }
-    _G.LOG_ERROR = function(...) end
-    _G.LOG_DEBUG = function(...) end
-    _G.LOG_INTERNAL = function(...) end
+    _G.LOG_ERROR = function() end
+    _G.LOG_DEBUG = function() end
+    _G.LOG_INTERNAL = function() end
 
     local cache = {}
     function _G.loadModule(name)
@@ -559,7 +557,7 @@ local function load_syntax_commands(ft, opts)
             end,
         })
 
-        local chunk, lerr = load("return (" .. lua_expr .. ")", "cond", "t", env)
+        local chunk = load("return (" .. lua_expr .. ")", "cond", "t", env)
         if not chunk then
             return false
         end
@@ -664,7 +662,10 @@ local function load_syntax_commands(ft, opts)
                         end
                     end
                 elseif parsed.kind ~= "unknown" then
-                    if force_contained and (parsed.kind == "keyword" or parsed.kind == "match" or parsed.kind == "region") then
+                    if
+                        force_contained
+                        and (parsed.kind == "keyword" or parsed.kind == "match" or parsed.kind == "region")
+                    then
                         parsed.options.flags.contained = true
                     end
 

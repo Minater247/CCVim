@@ -59,14 +59,20 @@ _G.tabpages = { { tabnr = 1, windows = { win }, opts = {} } }
 
 local Runtime = mock.loadModule("lib.excmd.runtime")
 
-local ok1, err1 = Runtime.run([[source $VIMRUNTIME/colors/vim.lua " Nvim: revert to Vim default color scheme]], { script_ctx = "/tmp/test_source_comment.vim" })
+local ok1, err1 = Runtime.run(
+    [[source $VIMRUNTIME/colors/vim.lua " Nvim: revert to Vim default color scheme]],
+    { script_ctx = "/tmp/test_source_comment.vim" }
+)
 assert_eq("source with spaced comment succeeds", ok1, true)
 if ok1 ~= true then
     error(tostring(err1))
 end
 assert_eq("source with spaced comment strips trailing comment", sourced[1], "$VIMRUNTIME/colors/vim.lua")
 
-local ok2, err2 = Runtime.run([[source $VIMRUNTIME/colors/vim.lua"comment]], { script_ctx = "/tmp/test_source_comment.vim" })
+local ok2, err2 = Runtime.run(
+    [[source $VIMRUNTIME/colors/vim.lua"comment]],
+    { script_ctx = "/tmp/test_source_comment.vim" }
+)
 assert_eq("source with adjacent comment succeeds", ok2, true)
 if ok2 ~= true then
     error(tostring(err2))

@@ -231,19 +231,31 @@ local ok_mouse_upper, err_mouse_upper = pcall(function()
     Options.exset_token("mouse=N", "both", win, buf)
 end)
 assert_eq("mouse uppercase flag rejects", ok_mouse_upper, false)
-assert_match("mouse uppercase error uses E539", Error.IsError(err_mouse_upper) and err_mouse_upper:toString(), "E539: Illegal character <N>: mouse=N")
+assert_match(
+    "mouse uppercase error uses E539",
+    Error.IsError(err_mouse_upper) and err_mouse_upper:toString(),
+    "E539: Illegal character <N>: mouse=N"
+)
 
 local ok_mouse_plus_upper, err_mouse_plus_upper = pcall(function()
     Options.exset_token("mouse+=N", "both", win, buf)
 end)
 assert_eq("mouse += uppercase flag rejects", ok_mouse_plus_upper, false)
-assert_match("mouse += error keeps operator in rhs", Error.IsError(err_mouse_plus_upper) and err_mouse_plus_upper:toString(), "E539: Illegal character <N>: mouse%+=N")
+assert_match(
+    "mouse += error keeps operator in rhs",
+    Error.IsError(err_mouse_plus_upper) and err_mouse_plus_upper:toString(),
+    "E539: Illegal character <N>: mouse%+=N"
+)
 
 local ok_mouse_caret_upper, err_mouse_caret_upper = pcall(function()
     Options.exset_token("mouse^=N", "both", win, buf)
 end)
 assert_eq("mouse ^= uppercase flag rejects", ok_mouse_caret_upper, false)
-assert_match("mouse ^= error keeps operator in rhs", Error.IsError(err_mouse_caret_upper) and err_mouse_caret_upper:toString(), "E539: Illegal character <N>: mouse%^=N")
+assert_match(
+    "mouse ^= error keeps operator in rhs",
+    Error.IsError(err_mouse_caret_upper) and err_mouse_caret_upper:toString(),
+    "E539: Illegal character <N>: mouse%^=N"
+)
 
 vimapi.wo[0][0].number = false
 assert_eq("wo double index set/get", vimapi.wo[0][0].number, false)
@@ -265,11 +277,19 @@ local ok_mouse_multi, err_mouse_multi = pcall(function()
     rt:set_options("number mouse=nv!", "global")
 end)
 assert_eq("set with invalid mouse in multi-token command fails", ok_mouse_multi, false)
-assert_match("set with invalid mouse reports single option token", Error.IsError(err_mouse_multi) and err_mouse_multi:toString(), "E539: Illegal character <!>: mouse=nv!")
+assert_match(
+    "set with invalid mouse reports single option token",
+    Error.IsError(err_mouse_multi) and err_mouse_multi:toString(),
+    "E539: Illegal character <!>: mouse=nv!"
+)
 
 local msg_count_before_setlocal_comment = #ExMsg.messages
 rt:set_options('path-=. " remove cwd from path', "local")
-assert_eq("setlocal path-=. with comment applies change", Options.get("path", win, buf, true), ",/project/lua,/project/inc")
+assert_eq(
+    "setlocal path-=. with comment applies change",
+    Options.get("path", win, buf, true),
+    ",/project/lua,/project/inc"
+)
 assert_eq("setlocal path-=. with comment does not echo path", #ExMsg.messages, msg_count_before_setlocal_comment)
 
 Options.set("commentstring", "-- %s", true, win, buf)

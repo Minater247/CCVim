@@ -115,14 +115,26 @@ let g:count_after_second = len(g:netrw_posn[bufnr('%')])
 
     assert_true("netrw saveposn script runs", ok == true, tostring(out))
     local g = out.state.g
-    assert_true("exists() before first set is false", type(g.arg_exists_history) == "table" and g.arg_exists_history[1] == 0,
-        tostring(g.arg_exists_history and g.arg_exists_history[1]))
-    assert_true("exists() after first set is true", type(g.arg_exists_history) == "table" and g.arg_exists_history[2] == 1,
-        tostring(g.arg_exists_history and g.arg_exists_history[2]))
-    assert_true("exists() before second set is true", type(g.arg_exists_history) == "table" and g.arg_exists_history[3] == 1,
-        tostring(g.arg_exists_history and g.arg_exists_history[3]))
-    assert_true("exists() after second set is true", type(g.arg_exists_history) == "table" and g.arg_exists_history[4] == 1,
-        tostring(g.arg_exists_history and g.arg_exists_history[4]))
+    assert_true(
+        "exists() before first set is false",
+        type(g.arg_exists_history) == "table" and g.arg_exists_history[1] == 0,
+        tostring(g.arg_exists_history and g.arg_exists_history[1])
+    )
+    assert_true(
+        "exists() after first set is true",
+        type(g.arg_exists_history) == "table" and g.arg_exists_history[2] == 1,
+        tostring(g.arg_exists_history and g.arg_exists_history[2])
+    )
+    assert_true(
+        "exists() before second set is true",
+        type(g.arg_exists_history) == "table" and g.arg_exists_history[3] == 1,
+        tostring(g.arg_exists_history and g.arg_exists_history[3])
+    )
+    assert_true(
+        "exists() after second set is true",
+        type(g.arg_exists_history) == "table" and g.arg_exists_history[4] == 1,
+        tostring(g.arg_exists_history and g.arg_exists_history[4])
+    )
     assert_true("first save adds one entry", g.count_after_first == 1, tostring(g.count_after_first))
     assert_true("second save appends to same list", g.count_after_second == 2, tostring(g.count_after_second))
 end

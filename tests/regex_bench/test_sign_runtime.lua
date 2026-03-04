@@ -66,7 +66,11 @@ assert_eq("placed signs count", #placed_all[1].signs, 2)
 assert_eq("first placed lnum ordering", placed_all[1].signs[1].lnum, 2)
 assert_eq("second placed lnum ordering", placed_all[1].signs[2].lnum, 3)
 
-assert_eq("move existing id by placing same id", Sign.place(id_global, "", "WarnSign", buf.bufnr, { lnum = 3 }), id_global)
+assert_eq(
+    "move existing id by placing same id",
+    Sign.place(id_global, "", "WarnSign",buf.bufnr, { lnum = 3 }),
+    id_global
+)
 local moved = Sign.getplaced(buf.bufnr, { group = "", id = id_global })
 assert_eq("moved sign now on line 3", moved[1].signs[1].lnum, 3)
 

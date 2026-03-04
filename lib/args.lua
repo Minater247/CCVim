@@ -173,7 +173,7 @@ function Args.parse(argv)
     if state.mktabs == 0 then
         state.mktabs = #state.files
     end
-    for i = 2, state.mktabs do
+    for _ = 2, state.mktabs do
         Tabpage()
     end
 

@@ -87,9 +87,9 @@ function MockEnv.setup(config)
     config = config or {}
     
     -- Logging
-    _G.LOG_DEBUG = function(...) end
-    _G.LOG_ERROR = function(...) end
-    _G.LOG_INTERNAL = function(...) end
+    _G.LOG_DEBUG = function() end
+    _G.LOG_ERROR = function() end
+    _G.LOG_INTERNAL = function() end
     
     -- Editor state
     _G.need_redraw = false

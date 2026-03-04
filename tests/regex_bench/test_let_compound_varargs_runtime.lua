@@ -98,9 +98,21 @@ let g:collect = s:Collect()
 ]], "/tmp/let_plus_eq.vim")
     assert_true("compound let script runs", ok == true, tostring(out))
     local g = out.state.g
-    assert_true("compiled code keeps real lhs for +=", out.code:find('runtime:assign("r +",', 1, true) == nil, out.code)
-    assert_true("list += appends first item", type(g.collect) == "table" and g.collect[1] == "a", tostring(g.collect and g.collect[1]))
-    assert_true("list += appends second item", type(g.collect) == "table" and g.collect[2] == "b", tostring(g.collect and g.collect[2]))
+    assert_true(
+        "compiled code keeps real lhs for +=",
+        out.code:find('runtime:assign("r +",', 1, true) == nil,
+        out.code
+    )
+    assert_true(
+        "list += appends first item",
+        type(g.collect) == "table" and g.collect[1] == "a",
+        tostring(g.collect and g.collect[1])
+    )
+    assert_true(
+        "list += appends second item",
+        type(g.collect) == "table" and g.collect[2] == "b",
+        tostring(g.collect and g.collect[2])
+    )
 end
 
 do
@@ -114,11 +126,31 @@ let g:witharg = s:Pick(42, 99)
 ]], "/tmp/vararg_ternary.vim")
     assert_true("vararg script runs", ok == true, tostring(out))
     local g = out.state.g
-    assert_true("a:0 on noarg call is zero", type(g.noarg) == "table" and g.noarg[1] == 0, tostring(g.noarg and g.noarg[1]))
-    assert_true("ternary fallback uses zero", type(g.noarg) == "table" and g.noarg[3] == 0, tostring(g.noarg and g.noarg[3]))
-    assert_true("a:0 on vararg call counts extras", type(g.witharg) == "table" and g.witharg[1] == 2, tostring(g.witharg and g.witharg[1]))
-    assert_true("a:000 captures extras", type(g.witharg[2]) == "table" and g.witharg[2][1] == 42 and g.witharg[2][2] == 99, tostring(g.witharg and g.witharg[2]))
-    assert_true("ternary picks first extra", type(g.witharg) == "table" and g.witharg[3] == 42, tostring(g.witharg and g.witharg[3]))
+    assert_true(
+        "a:0 on noarg call is zero",
+        type(g.noarg) == "table" and g.noarg[1] == 0,
+        tostring(g.noarg and g.noarg[1])
+    )
+    assert_true(
+        "ternary fallback uses zero",
+        type(g.noarg) == "table" and g.noarg[3] == 0,
+        tostring(g.noarg and g.noarg[3])
+    )
+    assert_true(
+        "a:0 on vararg call counts extras",
+        type(g.witharg) == "table" and g.witharg[1] == 2,
+        tostring(g.witharg and g.witharg[1])
+    )
+    assert_true(
+        "a:000 captures extras",
+        type(g.witharg[2]) == "table" and g.witharg[2][1] == 42 and g.witharg[2][2] == 99,
+        tostring(g.witharg and g.witharg[2])
+    )
+    assert_true(
+        "ternary picks first extra",
+        type(g.witharg) == "table" and g.witharg[3] == 42,
+        tostring(g.witharg and g.witharg[3])
+    )
 end
 
 print("let compound + varargs runtime tests: OK")

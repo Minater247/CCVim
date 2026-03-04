@@ -30,7 +30,6 @@ local bench_script = 'vim/tests/jit_bench.lua'
 local files = collect_vim_files(runtime_dir)
 
 local speedups = {}
-local results = {}
 
 for _, file in ipairs(files) do
     local cmd = string.format('lua "%s" "%s" --iters 100 --warmup 10 2>&1', bench_script, file)
@@ -40,7 +39,6 @@ for _, file in ipairs(files) do
     local speed = parse_speedup(out)
     if speed then
         speedups[#speedups+1] = speed
-        results[#results+1] = {file=file, speedup=speed}
         print(string.format('%-40s speedup=x%.2f', file, speed))
     else
         print(string.format('%-40s (no speedup found)', file))

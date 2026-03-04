@@ -4,7 +4,7 @@ local mock = MockEnv.setup()
 
 -- Set up test environment
 local buf1 = mock.create_buffer(1, "/tmp/a", { "" })
-local buf2 = mock.create_buffer(2, "/tmp/b", { "" })
+local _ = mock.create_buffer(2, "/tmp/b", { "" })
 local win1 = mock.create_window(1, buf1)
 mock.create_tabpage(1, { win1 })
 

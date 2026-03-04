@@ -1,6 +1,5 @@
 local MockEnv = require("vim.tests.test_mocks")
 
-local current_hl = "Normal"
 local cursor_x, cursor_y = 1, 1
 local grid = {}
 
@@ -32,8 +31,7 @@ local mock = MockEnv.setup({
             end,
         }),
         ["lib.highlight"] = {
-            SetFor = function(group)
-                current_hl = group
+            SetFor = function(_group)
             end,
             For = function(_group)
                 return { colors.white, colors.black }

@@ -115,7 +115,10 @@ local function split_commands(script)
                     local start_string = false
                     if not prev then
                         start_string = true
-                    elseif prev:match("[=,:%(%[%{%+%-%*/%%<>~%^&|?#%.]") or _expr_head_only_before_quote(table.concat(buf)) then
+                    elseif
+                        prev:match("[=,:%(%[%{%+%-%*/%%<>~%^&|?#%.]")
+                        or _expr_head_only_before_quote(table.concat(buf))
+                    then
                         start_string = true
                     end
                     if not start_string then
@@ -711,8 +714,8 @@ local function _compile_condition(expr, ctx)
     return "runtime:truthy(" .. c.code .. ")"
 end
 
-function Compiler.compile_expr(expr, _ctx)
-    return _compile_expr_typed(expr, _ctx).code
+function Compiler.compile_expr(expr, ctx)
+    return _compile_expr_typed(expr, ctx).code
 end
 
 function Compiler.compile_command(node, ctx)
@@ -814,10 +817,16 @@ function Compiler.compile_script(script, opts)
             local node = seq[i]
             local c = node.cmd or ""
             if c == "if" then
-                lua_lines[#lua_lines + 1] = indent .. "if " .. _compile_condition(node.rest or "", { state = opts.state }) .. " then"
+                lua_lines[#lua_lines + 1] = ("%sif %s then"):format(
+                    indent,
+                    _compile_condition(node.rest or "", { state = opts.state })
+                )
                 i = i + 1
             elseif c == "elseif" then
-                lua_lines[#lua_lines + 1] = indent .. "elseif " .. _compile_condition(node.rest or "", { state = opts.state }) .. " then"
+                lua_lines[#lua_lines + 1] = ("%selseif %s then"):format(
+                    indent,
+                    _compile_condition(node.rest or "", { state = opts.state })
+                )
                 i = i + 1
             elseif c == "else" then
                 lua_lines[#lua_lines + 1] = indent .. "else"
@@ -829,7 +838,10 @@ function Compiler.compile_script(script, opts)
                 local lbl = string.format("__cont_%d", node.line or #lua_lines)
                 loop_stack[#loop_stack + 1] = lbl
                 lua_lines[#lua_lines + 1] = indent .. "while true do"
-                lua_lines[#lua_lines + 1] = indent .. "  if not " .. _compile_condition(node.rest or "", { state = opts.state }) .. " then break end"
+                lua_lines[#lua_lines + 1] = ("%s  if not %s then break end"):format(
+                    indent,
+                    _compile_condition(node.rest or "", { state = opts.state })
+                )
                 lua_lines[#lua_lines + 1] = indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()"
                 i = i + 1
             elseif c == "endwhile" then
@@ -980,7 +992,11 @@ function Compiler.compile_script(script, opts)
                         lua_lines[#lua_lines + 1] = indent .. "  local __fn = function(runtime)"
                         emit_block(body_ir, indent .. "    ")
                         lua_lines[#lua_lines + 1] = indent .. "  end"
-                        lua_lines[#lua_lines + 1] = indent .. "  runtime:register_function(" .. lua_string(fname) .. ", { " .. table.concat(plist, ", ") .. " }, __fn)"
+                        lua_lines[#lua_lines + 1] = ("%s  runtime:register_function(%s, {%s}, __fn)"):format(
+                            indent,
+                            lua_string(fname),
+                            table.concat(plist, ", ")
+                        )
                         lua_lines[#lua_lines + 1] = indent .. "end"
                     i = end_idx + 1
                 end
@@ -999,7 +1015,10 @@ function Compiler.compile_script(script, opts)
                     .. ", "
                     .. lua_string(node.rest or "")
                     .. ")"
-                lua_lines[#lua_lines + 1] = indent .. Compiler.compile_command(node, { state = opts.state, loop_continue = loop_stack[#loop_stack] })
+                lua_lines[#lua_lines + 1] = ("%s%s"):format(
+                    indent,
+                    Compiler.compile_command(node, { state = opts.state, loop_continue = loop_stack[#loop_stack] })
+                )
                 i = i + 1
             end
         end

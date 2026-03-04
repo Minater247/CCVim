@@ -208,14 +208,18 @@ function Tabpage:CanWinSplit(target_winnr, new_win, vertical)
         end
 
         local frame_bottom = yoff + node.height - 1
-        local status_rows = statusline_rows_for_frame(laststatus, post_split_window_count, frame_bottom, root_after.height)
+        local status_rows = statusline_rows_for_frame(
+            laststatus,
+            post_split_window_count,
+            frame_bottom,
+            root_after.height
+        )
         local text_rows = node.height - status_rows
         if text_rows < 1 then
             return false
         end
 
-        local min_text_rows = 1
-        min_text_rows = tonumber(node.window:minheight()) or 1
+        local min_text_rows = tonumber(node.window:minheight()) or 1
         if text_rows < min_text_rows then
             return false
         end

@@ -34,7 +34,9 @@ local errStrings = {
     [414] = "group has settings, highlight link ignored",
     [416] = function(params) return "Missing equal sign: " .. params[1] end,
     [461] = function(params) return "Illegal variable name: " .. params[1] end,
-    [464] = function(params) return "Ambiguous use of user-defined command: " .. params[1] .. " (matches: " .. params[2] .. ")" end,
+    [464] = function(params)
+        return "Ambiguous use of user-defined command: " .. params[1] .. " (matches: " .. params[2] .. ")"
+    end,
     [471] = "Argument required",
     [474] = function(params) return "Invalid argument" .. (params[1] and (": " .. params[1]) or "") end,
     [475] = function(params) return "Invalid argument: " .. params[1] end,

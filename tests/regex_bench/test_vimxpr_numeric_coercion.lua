@@ -45,7 +45,8 @@ do
     local rv = eval("'abc' + []")
     assert_true("string plus list returns error", Error.IsError(rv), tostring(rv))
     assert_eq("string plus list code", rv.code, 745)
-    assert_true("string plus list message", rv:toString():find("Using a List as a Number", 1, true) ~= nil, rv:toString())
+    assert_true("string plus list message",
+        rv:toString():find("Using a List as a Number", 1, true) ~= nil, rv:toString())
 end
 
 do

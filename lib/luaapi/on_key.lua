@@ -17,7 +17,7 @@ local function validate(name, value, expected, optional)
     if value == nil and optional then
         return
     end
-    local ok = false
+    local ok
     if expected == "callable" then
         ok = is_callable(value)
     else

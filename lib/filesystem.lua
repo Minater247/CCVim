@@ -255,7 +255,7 @@ function Filesystem.ExpandWildcards(path)
     return out
 end
 
-function Filesystem.Expand(str, nosuf)
+function Filesystem.Expand(str)
     local expansions = {}
 
     if str:sub(1, 1) == "%" then

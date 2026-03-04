@@ -139,7 +139,8 @@ do
         end
     end
     assert_true("WinResized payload present", type(winresized) == "table", "missing WinResized ctx")
-    assert_true("WinResized windows list populated", #(winresized.data.windows or {}) >= 1, "expected changed window ids")
+    assert_true("WinResized windows list populated",
+        #(winresized.data.windows or {}) >= 1, "expected changed window ids")
 end
 
 do

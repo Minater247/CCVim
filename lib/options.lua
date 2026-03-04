@@ -925,12 +925,6 @@ local function first3(a, b, c)
     end
 end
 
-local tolocal = {
-    gow = "ltw",
-    got = "ltt",
-    gob = "ltb"
-}
-
 local getters = {
     ggg = function(n)
         return first2(global_opts[n], opt_defaults[n])
@@ -986,10 +980,10 @@ local global_getters = {
     got = function(n)
         return first2(global_opts[n], opt_defaults[n])
     end,
-    gow = function(n, win)
+    gow = function(n)
         return first2(global_opts[n], opt_defaults[n])
     end,
-    gob = function(n, _, buf)
+    gob = function(n)
         return first2(global_opts[n], opt_defaults[n])
     end
 }
@@ -1030,7 +1024,12 @@ function Options.get(opt_name, window, buffer, getlocal, getglobal)
         f = getters[kind]
     end
     if not f then
-        error("Unhandled option type: " .. tostring(kind) .. (getlocal and " local" or "") .. (getglobal and " global" or ""))
+        error(
+            "Unhandled option type: "
+            .. tostring(kind)
+            .. (getlocal and " local" or "")
+            .. (getglobal and " global" or "")
+        )
     end
     return f(opt_name, window, buffer)
 end
@@ -1182,8 +1181,8 @@ function Options.FormatCommentString(text, window, buffer)
 end
 
 local option_updatees = {
-    statusline = function(value, win, buffer, _local, global)
-        if _local then
+    statusline = function(_value, win, _buffer, local_, _global)
+        if local_ then
             win.need_redraw = true
         else
             what_redraw["windows"] = true
@@ -1303,7 +1302,9 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
 
     value = _normalize_option_value(name, value, name .. "=" .. tostring(value))
     if not _is_valid_option_type(name, value) then
-        error("Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value))
+        error(
+            "Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value)
+        )
     end
     local expr_state = _capture_expr_option_state(name)
 
@@ -1409,7 +1410,9 @@ local function _apply_value(name, value, mode, window, buffer, source_expr)
     -- type-check
     value = _normalize_option_value(name, value, source_expr)
     if not _is_valid_option_type(name, value) then
-        error("Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value))
+        error(
+            "Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value)
+        )
     end
     local expr_state = _capture_expr_option_state(name)
 
@@ -1508,7 +1511,7 @@ function Options.exset_token(token, mode, window, buffer)
 
     -- Suffixes: ?, &, <, !
     local disp, to_def, to_glob, toggle_tail = false, false, false, false
-    local def_kind = nil -- "vim" (default) or "vi"
+    local def_kind -- "vim" (default) or "vi"
     local neg_prefix, inv_prefix = false, false
     local name, op, rhs = parse_assignment(token)
     if not name then

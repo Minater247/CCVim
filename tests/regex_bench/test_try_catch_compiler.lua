@@ -125,7 +125,7 @@ endtry
 end
 
 do
-    local ok, rv = run_compiled([[
+    local ok = run_compiled([[
 try
     nosuchcommand
 catch /E118/

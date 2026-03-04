@@ -11,10 +11,6 @@ local function S(n)
     return bit32.bor(n, 8192)
 end
 
-local function CS(n)
-    return bit32.bor(n, 12288)
-end
-
 local printables = {
     [keys.tab] = "Tab",
     [keys.backspace] = "BS",
@@ -347,8 +343,11 @@ local emittables = {
 }
 
 function Key:new(keynr, ctrld, shifted, alted)
+    local ctrlval = ctrld and 4096 or 0
+    local shiftval = shifted and 8192 or 0
+    local altval = alted and 16384 or 0
     local obj = setmetatable({
-        numeric = bit32.bor(keynr, bit32.bor(ctrld and 4096 or 0, bit32.bor(shifted and 8192 or 0, alted and 16384 or 0)))
+        numeric = bit32.bor(keynr, bit32.bor(ctrlval, bit32.bor(shiftval, altval)))
     }, Key)
 
     return obj
@@ -470,7 +469,6 @@ local TERM_PREFIX_2 = 254
 local TERM_PREFIX = string.char(TERM_PREFIX_1, TERM_PREFIX_2)
 local NVIM_K_SPECIAL = 128
 local NVIM_KS_MODIFIER = 252
-local NVIM_KS_COMMAND = 253
 
 local function bytes3(a, b, c)
     return string.char(a, b, c)
@@ -781,7 +779,8 @@ local function parse_angle_content(content)
         error(("Malformed angle key notation: <%s>"):format(content))
     end
 
-    local keynr, inherent_shift = nil, false
+    local keynr
+    local inherent_shift = false
     if #base_token == 1 then
         if click_count then
             error(("Unknown key name <%s>"):format(content))
@@ -860,7 +859,7 @@ local function decode_modifier_payload_byte_to_numeric(mod, payload)
     local has_ctrl = bit32.band(mod, 4) ~= 0
     local has_alt = bit32.band(mod, 8) ~= 0
 
-    local base_num = nil
+    local base_num
     local inherent_shift = false
 
     if has_ctrl and payload >= string.byte("A") and payload <= string.byte("Z") then
@@ -1257,7 +1256,7 @@ local function keytrans_modifier_at(text, i)
     end
     local j = i + 3
 
-    local base_atom = nil
+    local base_atom
     local special_notation, nsi = decode_nvim_special_at(text, j)
     if special_notation then
         base_atom = special_notation:sub(2, -2)

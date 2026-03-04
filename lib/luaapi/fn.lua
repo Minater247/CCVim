@@ -569,7 +569,7 @@ local function vim_string(v)
     return tostring(v)
 end
 
--- ---------------- Builtins (Lua implementations) ----------------
+-- ---------------- Builtins ----------------
 
 -- win_gettype([{nr}]): return window kind string per Vim help
 -- Implements a subset relevant to this runtime:
@@ -721,7 +721,8 @@ function Builtins.expand(str, nosuf, list)
     return expansions
 end
 
-function Builtins.systemlist(cmd, input, keepempty)
+-- TODO: Handle input, keepempty arguments
+function Builtins.systemlist(cmd, _input, _keepempty)
     -- TODO: implement properly. ComputerCraft doesn't provide utilities for this so we'll have to write our own
     if type(cmd) == "string" and cmd:sub(1, 3) == "ls " then
         return fs.list(VimFs.abspath(cmd:sub(4)))
@@ -793,7 +794,8 @@ function Builtins.jobstop(id)
     return 1
 end
 
-function Builtins.jobwait(jobs, timeout)
+-- TODO: Handle timeout argument
+function Builtins.jobwait(jobs, _timeout)
     if type(jobs) ~= "table" then
         return { -3 }
     end
@@ -826,7 +828,7 @@ local function _head(p)
     -- Remove single trailing slash (Vim: on a dir name, :h removes only the trailing slash)
     if #p > 1 and p:sub(-1) == "/" then p = p:sub(1, -2) end
     if p == "/" then return "/" end
-    local s, e = p:find("/[^/]*$") -- last component including slash
+    local s = p:find("/[^/]*$") -- last component including slash
     if not s then
         -- relative single component -> empty; absolute single component -> "/"
         return (p:sub(1, 1) == "/") and "/" or ""
@@ -891,8 +893,8 @@ local function _shell_escape_cc(s)
     return s
 end
 
--- Optional: very light regex substitute using your VimRegex module (R).
--- NOTE: This handles *no* backreferences yet. It does delimiter parsing identical to help.
+-- TODO: "This handles *no* backreferences yet. It does delimiter parsing identical to help"
+--       Figure out if that still is an issue!
 local function _sub_once(text, pat, sub, R)
     if R and R.find then
         local s, e = R.find(text, pat, true) -- case-sensitive by default here
@@ -946,7 +948,7 @@ function Builtins.fnamemodify(fname, mods, R)
         elseif c == "8" then
             error("8.3 short format not supported on ComputerCraft")
         elseif c == "~" then
-            -- no HOME on CC by default; leave unchanged (or wire your own)
+            -- TODO: Pull this from the environment variable
         elseif c == "." then
             out = _rel_to(Builtins.getcwd(), VimFs.abspath(out))
         elseif c == "h" then
@@ -1149,7 +1151,8 @@ function Builtins.synIDtrans(id, ...)
     return Highlight.IdByName(resolved)
 end
 
-function Builtins.synIDattr(syn_id, what, mode, ...)
+-- TODO: Handle mode argument
+function Builtins.synIDattr(syn_id, what, _mode, ...)
     if select("#", ...) > 0 then
         error(Error(118, "synIDattr"):toString())
     end
@@ -1877,8 +1880,8 @@ local function _glob_return(matches, want_list)
 end
 
 -- glob({expr} [, {nosuf} [, {list} [, {allinks}]]])
--- We ignore {nosuf} and {allinks} in this runtime; return list when requested, else newline-joined string.
-function Builtins.glob(expr, nosuf, list, alllinks)
+-- TODO: Handle nosuf, alllinks arguments
+function Builtins.glob(expr, _nosuf, list, _alllinks)
     local pat = tostring(expr or "")
     local want_list = list and list ~= 0 and list ~= false
     local matches = _glob_collect(pat)
@@ -1888,7 +1891,8 @@ end
 
 -- globpath({path}, {expr} [, {nosuf} [, {list} [, {allinks}]]])
 -- {path} is comma-separated list of base dirs. Returns first-match order across paths.
-function Builtins.globpath(path, expr, nosuf, list, alllinks)
+-- TODO: Handle nosuf, alllinks arguments
+function Builtins.globpath(path, expr, _nosuf, list, _alllinks)
     local paths = {}
     for p in tostring(path or ""):gmatch("([^,]+)") do
         local trimmed = p:gsub("^%s+", ""):gsub("%s+$", "")
@@ -2365,7 +2369,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
                 _search_set_cursor(win, save_line, save_col)
                 return nil, eval_rv
             end
-            ok, rv = true, eval_rv
+            rv = eval_rv
         end
 
         _search_set_cursor(win, save_line, save_col)
@@ -2450,11 +2454,9 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
                 return 0
             end
             local m = matches[i]
-            if m.s >= upper then
-                -- continue
-            elseif m.s < lower then
+            if m.s < lower then
                 break
-            else
+            elseif m.s < upper then
                 local ok, err = pick_candidate(i)
                 if err ~= nil then
                     return -1
@@ -2837,9 +2839,9 @@ function Builtins.match(expr, pat, start, count)
             -- Fast path: just find first match honoring special start semantics
             -- When nth not given: if start>0 treat substring from start as beginning so ^ matches there.
             local search_text = (abs_start > 0) and str:sub(abs_start + 1) or str
-            local s, e
+            local s
             -- VimRegex.find_compiled returns 1-based indices in search_text
-            s, e = VimRegex.find_compiled(search_text, compiled, case_sensitive)
+            s = VimRegex.find_compiled(search_text, compiled, case_sensitive)
             if not s then return -1 end
             return abs_start + (s - 1)
         end
@@ -2896,7 +2898,7 @@ function Builtins.match(expr, pat, start, count)
         for i = start + 1, len do
             local item = list[i]
             local as_str = tostring(item)
-            local s, e = VimRegex.find_compiled(as_str, compiled, case_sensitive)
+            local s = VimRegex.find_compiled(as_str, compiled, case_sensitive)
             if s then
                 return i - 1 -- zero-based index of item
             end
@@ -2906,7 +2908,7 @@ function Builtins.match(expr, pat, start, count)
         local found = 0
         for i = start + 1, len do
             local as_str = tostring(list[i])
-            local s, e = VimRegex.find_compiled(as_str, compiled, case_sensitive)
+            local s = VimRegex.find_compiled(as_str, compiled, case_sensitive)
             if s then
                 found = found + 1
                 if found == want_count then
@@ -3174,7 +3176,7 @@ function Builtins.sign_getdefined(name)
 end
 
 -- TODO: properly handle utf-8/utf-16
-function Builtins.byteidx(expr, nr, utf16)
+function Builtins.byteidx(_expr, nr, _utf16)
     return nr
 end
 
@@ -3337,7 +3339,7 @@ local function _buffer_is_loaded(buf)
 end
 
 -- TODO: handle create
-function Builtins.bufnr(expr, create)
+function Builtins.bufnr(expr, _create)
     if expr == nil or expr == "" or expr == "%" then
         return windows[curwin].buffer.bufnr
     elseif expr == "$" then
@@ -3665,9 +3667,6 @@ local function _normalize_register_value(value, mode)
         return { "linewise", lines }
     end
 
-    if mode == "blockwise" then
-        mode = "charwise" -- width tracking not implemented yet
-    end
     return { "charwise", tostring(value or "") }
 end
 
@@ -4105,11 +4104,9 @@ local function _extend_dict(dst, src, action)
     end
     for k, v in pairs(src) do
         local exists = dst[k] ~= nil
-        if exists and act == "keep" then
-            -- keep existing
-        elseif exists and act == "error" then
+        if exists and act == "error" then
             error("extend(): Duplicate key " .. tostring(k))
-        else
+        elseif not exists or act == "force" then
             dst[k] = v
         end
     end
@@ -4563,7 +4560,8 @@ function Builtins.execute(command, silent, ...)
     return output
 end
 
-function Builtins.glob(expr, nosuf, list, alllinks)
+-- TODO: Handle nosuf, alllinks arguments
+function Builtins.glob(expr, _nosuf, list, _alllinks)
     local e = tostring(expr or "")
     local want_list = list and list ~= 0 and list ~= false
     if e == "" then
@@ -4600,15 +4598,13 @@ function Builtins.simplify(path)
     local keep_double_slash = p:sub(1, 2) == "//" and p:sub(1, 3) ~= "///"
     local parts = {}
     for seg in p:gmatch("[^/]+") do
-        if seg == "." or seg == "" then
-            -- skip
-        elseif seg == ".." then
+        if seg == ".." then
             if #parts > 0 and parts[#parts] ~= ".." then
                 table.remove(parts, #parts)
             elseif not is_abs then
                 parts[#parts + 1] = ".."
             end
-        else
+        elseif seg ~= "." and seg ~= "" then
             parts[#parts + 1] = seg
         end
     end

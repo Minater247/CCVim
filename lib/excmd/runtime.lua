@@ -159,7 +159,7 @@ local function canonical_function_name(name, opts)
 end
 
 local function fresh_v(extra)
-    local v = { ["true"] = true, ["false"] = false, null = nil, errmsg = "", exception = nil, throwpoint = nil }
+    local v = { ["true"] = true, ["false"] = false, errmsg = "" }
     if type(extra) == "table" then
         for k, val in pairs(extra) do v[k] = val end
     end
@@ -512,7 +512,7 @@ local function assign_lhs(lhs, value, state)
     state.g[s] = value; return true
 end
 
-local function unlet(names, bang, state)
+local function unlet(names, _, state)
     local top = state.frames[#state.frames]
     for tok in names:gmatch("%S+") do
         local name = tok:gsub(",%$", "")
@@ -2296,7 +2296,7 @@ function Runtime.new(state, opts)
         local pattern
         local replacement
         local flags = spec.flags or ""
-        local count = nil
+        local count
         if spec.repeat_last then
             pattern = Runtime._LAST_SUBSTITUTE_PATTERN
             replacement = Runtime._LAST_SUBSTITUTE_REPL
@@ -2495,11 +2495,8 @@ function Runtime.new(state, opts)
                 numeric = true
             elseif ch == "r" then
                 reverse = true
-            elseif ch:match("%s") then
-                -- ignore
             else
-                -- unimplemented sort modifiers (pattern/format/radix/etc)
-                -- are ignored for now to keep netrw's common sort flow working.
+                error(("Unknown ch in sort! CH=%s INPUT=%s"):format(ch, raw))
             end
         end
 
@@ -3295,7 +3292,7 @@ function Runtime.new(state, opts)
                 return true
             end
 
-            local run = rhs
+            local run
             local low = rhs:lower()
             if low:sub(1, 5) == "<cmd>" then
                 run = rhs:sub(6)
@@ -5128,7 +5125,16 @@ function Runtime.new(state, opts)
 
         local def = self.state.commands[lname]
         if def then
-            local script = expand_user_command_template(def.body, qargs, ensure_args(), bang, count, line1, line2, range)
+            local script = expand_user_command_template(
+                def.body,
+                qargs,
+                ensure_args(),
+                bang,
+                count,
+                line1,
+                line2,
+                range
+            )
             return self:exec_script(script)
         end
 
@@ -5155,7 +5161,16 @@ function Runtime.new(state, opts)
             error(Error(492, name))
         end
         if type(global.body) == "string" then
-            local script = expand_user_command_template(global.body, qargs, ensure_args(), bang, count, line1, line2, range)
+            local script = expand_user_command_template(
+                global.body,
+                qargs,
+                ensure_args(),
+                bang,
+                count,
+                line1,
+                line2,
+                range
+            )
             return self:exec_script(script)
         end
         if type(global.handler) == "function" then
@@ -5168,7 +5183,16 @@ function Runtime.new(state, opts)
             })
         end
         if type(global.command) == "string" then
-            local script = expand_user_command_template(global.command, qargs, ensure_args(), bang, count, line1, line2, range)
+            local script = expand_user_command_template(
+                global.command,
+                qargs,
+                ensure_args(),
+                bang,
+                count,
+                line1,
+                line2,
+                range
+            )
             return self:exec_script(script)
         end
         return true

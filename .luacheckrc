@@ -1,8 +1,7 @@
 std = "lua51"
 
 exclude_files = {
-    "^runtime/",
-    "^./runtime/",
+    "runtime/**",
 }
 
 globals = {
@@ -13,6 +12,7 @@ globals = {
     "LOG_DEBUG",
     "LOG_ERROR",
     "LOG_INTERNAL",
+    "apply_terminal_resize",
     "bit",
     "bit32",
     "buffers",

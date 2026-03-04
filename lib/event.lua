@@ -351,7 +351,7 @@ end
 
 local function handle_mouse_up(button, x, y)
     mouse_down[button] = false
-    local win = nil
+    local win
     local t = target_window_at(x, y)
     if t then
         win = t
@@ -446,7 +446,7 @@ function Event.ProcessEvent(ev)
         end
     elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
         local w, h = term.getSize()
-        local ok, err = _V.apply_terminal_resize(w, h, ev[1])
+        local ok, err = apply_terminal_resize(w, h, ev[1])
         if not ok and err then
             local msg
             if Error.IsError(err) then

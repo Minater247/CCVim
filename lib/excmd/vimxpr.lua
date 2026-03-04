@@ -1,12 +1,12 @@
 -- Supports environment variables: $VAR and ${VAR} -> strings via vim.lib.envvars.
 
-local M = {}
+local M             = {}
 
-local Error = loadModule("lib.error")
-local VimRegex = loadModule("lib.excmd.vim_regex")
-local EnvVars = loadModule("lib.envvars")
-local Scopes  = loadModule("lib.luaapi.scopes")
-local Key = loadModule("lib.key")
+local Error         = loadModule("lib.error")
+local VimRegex      = loadModule("lib.excmd.vim_regex")
+local EnvVars       = loadModule("lib.envvars")
+local Scopes        = loadModule("lib.luaapi.scopes")
+local Key           = loadModule("lib.key")
 local VimFnBuiltins = loadModule("lib.luaapi.fn") or {}
 local ApiBuild
 -- =========================================================
@@ -76,7 +76,7 @@ local function numeric_coercion_error(v)
         end
         return Error(728)
     end
-    return Error(0, "Invalid numeric coercion! Type="..type(v))
+    return Error(0, "Invalid numeric coercion! Type=" .. type(v))
 end
 local function num_coerce(v)
     if type(v) == "number" then return v end
@@ -343,7 +343,7 @@ local function tokenize(input)
         end
         if c == "$" then
             adv(1)
-            local name = nil
+            local name
             if peek() == "{" then
                 adv(1) -- skip '{'
                 local j = i
@@ -394,8 +394,28 @@ local function tokenize(input)
         end
 
         -- multi-char operators (longest first)
-        local multi = { "==#", "==?", "!=#", "!=?", ">=", "<=", "=~#", "=~?", "!~#", "!~?", "==", "!=", "=~", "!~", "&&",
-            "||", "<<", ">>", "->", ".." }
+        local multi = {
+            "==#",
+            "==?",
+            "!=#",
+            "!=?",
+            ">=",
+            "<=",
+            "=~#",
+            "=~?",
+            "!~#",
+            "!~?",
+            "==",
+            "!=",
+            "=~",
+            "!~",
+            "&&",
+            "||",
+            "<<",
+            ">>",
+            "->",
+            ".."
+        }
         local matched = false
         for _, op in ipairs(multi) do
             if input:sub(i, i + #op - 1) == op then
@@ -555,6 +575,7 @@ local function parse(tokens)
         end
         return node
     end
+
     function unary()
         local t = peek()
         if t.typ == "OP" and (t.val == "+" or t.val == "-" or t.val == "!") then
@@ -762,7 +783,14 @@ local function parse(tokens)
                         end
                     end
                     expect("RPAREN")
-                    return apply_postfix({ kind = "call", name = name, scope = scope, lua_path = table.concat(segs, "."), args = args, pos = t.pos })
+                    return apply_postfix({
+                        kind = "call",
+                        name = name,
+                        scope = scope,
+                        lua_path = table.concat(segs, "."),
+                        args = args,
+                        pos = t.pos
+                    })
                 else
                     i = dot_i
                 end
@@ -851,7 +879,7 @@ local function parse(tokens)
 end
 
 -- -------- evaluator --------
-local function decide_case(op, env)
+local function decide_case(op)
     if op:sub(-1) == "#" then return true end
     if op:sub(-1) == "?" then return false end
     local ic = options.get("ignorecase")
@@ -892,7 +920,13 @@ local function cmp_norm(a, b, case_sensitive, vim9)
         end
     end
 
-    LOG_DEBUG("ERROR: Unimplemented/unknown comparison: a=%s (%s) b=%s (%s)", tostring(a), type(a), tostring(b), type(b))
+    LOG_DEBUG(
+        "ERROR: Unimplemented/unknown comparison: a=%s (%s) b=%s (%s)",
+        tostring(a),
+        type(a),
+        tostring(b),
+        type(b)
+    )
     return 0
 end
 
@@ -1024,7 +1058,7 @@ local function eval_node(node, vim9, env)
         end
     end
     if k == "call" then
-        local f
+        local f = nil
         if node.scope == "v" and node.name == "lua" then
             if not node.lua_path then
                 return Error(117, "v:lua")
@@ -1162,7 +1196,7 @@ local function eval_node(node, vim9, env)
 
         return nil
     end
-    
+
     if k == "opt" then
         local win = windows[curwin]
         local buf = win.buffer
@@ -1185,7 +1219,7 @@ local function eval_node(node, vim9, env)
         return tostring(v)
     end
     if k == "reg" then
-        local regs = registers or (_V and _V.registers) or {}
+        local regs = registers
         local key = node.name
         if key == "@" then key = "unnamed" end
         local regval = regs[key]
@@ -1268,8 +1302,10 @@ local function eval_node(node, vim9, env)
 
             local a, b = L, R
             if vim9 then
-                if type(a) ~= "number" or type(b) ~= "number" then return Error(0,
-                        "Type error: arithmetic on non-numbers") end
+                if type(a) ~= "number" or type(b) ~= "number" then
+                    return Error(0,
+                        "Type error: arithmetic on non-numbers")
+                end
             else
                 local aerr, berr
                 a, aerr = num_coerce_or_error(a)
@@ -1282,7 +1318,11 @@ local function eval_node(node, vim9, env)
             if op == "*" then return a * b end
             if op == "/" then return a / b end
             if op == "%" then
-                if type(a) == "number" and type(b) == "number" and (math.type and (math.type(a) == "float" or math.type(b) == "float")) then
+                if
+                    type(a) == "number"
+                    and type(b) == "number"
+                    and (math.type and (math.type(a) == "float" or math.type(b) == "float"))
+                then
                     return Error(0, "Float modulo")
                 end
                 return a % b
@@ -1317,7 +1357,7 @@ local function eval_node(node, vim9, env)
             [">=?"] = true,
         }
         if cmp_ops[op] then
-            local case = decide_case(op, env); if is_error(case) then return case end
+            local case = decide_case(op); if is_error(case) then return case end
             local base = op:gsub("[#?]$", "")
             local c = cmp_norm(L, R, case, vim9)
             if is_error(c) then
@@ -1343,7 +1383,7 @@ local function eval_node(node, vim9, env)
         end
 
         if op:match("^=~[#?]?$") or op:match("^!~[#?]?$") then
-            local case = decide_case(op, env); if is_error(case) then return case end
+            local case = decide_case(op); if is_error(case) then return case end
             local ok = VimRegex.match(to_string_simple(L), to_string_simple(R), case)
             local res = op:sub(1, 1) == "!" and (not ok) or ok
             return vim9 and res or (res and 1 or 0)

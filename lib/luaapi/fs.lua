@@ -11,15 +11,13 @@ local function _resolve_dot(path)
     local out = {}
 
     for component in path:gmatch("[^/]+") do
-        if component == "." then
-            -- Ignore.
-        elseif component == ".." then
+        if component == ".." then
             if #out > 0 and out[#out] ~= ".." then
                 table.remove(out)
             elseif not is_abs then
                 out[#out + 1] = component
             end
-        else
+        elseif component ~= "." then
             out[#out + 1] = component
         end
     end
