@@ -1086,6 +1086,24 @@ function Window:cursorSetY(y, force_reset_held_x)
     self:cursorMove(0, y - self.cursory, force_reset_held_x)
 end
 
+function Window:mark_redraw()
+    self.need_redraw = true
+    need_redraw = true
+end
+
+function Window:cursorToFirstNonBlank()
+    local line = self.buffer:get_line(self.cursory, true)
+    if line then
+        self:cursorSetX(line:find("%S") or 1)
+    end
+end
+
+function Window:cursorApplyStartofline()
+    if options.get("startofline") then
+        self:cursorToFirstNonBlank()
+    end
+end
+
 function Window:scroll(deltax, deltay)
     self.buffer:ensure_loaded(true)
     if deltay ~= 0 then
@@ -1145,8 +1163,7 @@ function Window:scroll(deltax, deltay)
         self.scrollx = 0
     end
 
-    need_redraw = true
-    self.need_redraw = true
+    self:mark_redraw()
 end
 
 function Window:hasLocalStatusline()
@@ -1895,12 +1912,12 @@ function Window:matchPairs()
     if is_start[cur] then
         local stopc = start2stop[cur]
         local j = find_match_forward(x, cur, stopc)
-        if j then self:cursorMove(j - self.cursorx, y - self.cursory) end
+        if j then self:cursorSet(j, y) end
         return
     elseif is_stop[cur] then
         local startc = stop2start[cur]
         local j = find_match_backward(x, startc, cur)
-        if j then self:cursorMove(j - self.cursorx, y - self.cursory) end
+        if j then self:cursorSet(j, y) end
         return
     end
 
@@ -1915,13 +1932,13 @@ function Window:matchPairs()
         -- Found a start first -> jump to its matching end (if any).
         local stopc = start2stop[c]
         local j = find_match_forward(i, c, stopc)
-        if j then self:cursorMove(j - self.cursorx, y - self.cursory) end
+        if j then self:cursorSet(j, y) end
         return
     else
         -- Found an end before any start -> search backward for that end's start.
         local startc = stop2start[c]
         local j = find_match_backward(i, startc, c)
-        if j then self:cursorMove(j - self.cursorx, y - self.cursory) end
+        if j then self:cursorSet(j, y) end
         return
     end
 end
@@ -2433,10 +2450,8 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         end
     end
 
-    self:cursorMove(col1 - self.cursorx, ln - self.cursory)
+    self:cursorSet(col1, ln)
     self:markUpdate((first_dirty ~= math.huge) and first_dirty or line)
-    self.need_redraw = true
-    need_redraw = true
 end
 
 function Window:pasteRegister(reg_name, line, offset, isBefore)

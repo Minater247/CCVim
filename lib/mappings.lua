@@ -13,6 +13,14 @@ local function _line_len(buf, s) return buf:str_len(s or "") end
 local function _line_sub(buf, s, i, j) return buf:str_sub(s or "", i, j) end
 local function _line_ch(buf, s, i) return buf:str_char_at(s or "", i) end
 
+local function push_register(regtype, value)
+    registers["unnamed"] = {regtype, value}
+    for i = 8, 2, -1 do
+        registers[i] = registers[i - 1]
+    end
+    registers[1] = {regtype, value}
+end
+
 Command.nimap_builtin_callback(
     { K(keys.down) },
     function(count)
@@ -84,9 +92,8 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(count or 1)
-        local line = win.buffer:get_line(win.cursory, true)
-        if options.get("startofline") and line then
-            win:cursorSetX(line:find("%S"))
+        if options.get("startofline") then
+            win:cursorToFirstNonBlank()
         else
             win:cursorSetX(0)
         end
@@ -111,12 +118,8 @@ Command.nmap_builtin_callback(
     {K(keys.g, false, true)},
     function(count)
         local win = windows[curwin]
-	    local buf = win.buffer
-        win:cursorSetY(count or buf:line_count(true))
-	    local line = buf:get_line(win.cursory, true)
-        if options.get("startofline") and line then
-            win:cursorSetX(line:find("%S"))
-        end
+        win:cursorSetY(count or win.buffer:line_count(true))
+        win:cursorApplyStartofline()
     end
 )
 
@@ -206,7 +209,7 @@ Command.nmap_builtin_callback(
         if x > new_len + 1 then x = new_len + 1 end
         win:cursorSetX(x)
         win:cursorSetY(y)
-        win.need_redraw = true; need_redraw = true
+        win:mark_redraw()
     end
 )
 
@@ -231,10 +234,7 @@ Command.nmap_builtin_callback(
         if count then
             local win = windows[curwin]
             win:cursorSetY(math.floor((count * win.buffer:line_count(true) + 99) / 100))
-            local line = win.buffer:get_line(win.cursory, true)
-            if options.get("startofline") and line then
-                win:cursorSetX(line:find("%S"))
-            end
+            win:cursorApplyStartofline()
         else
             windows[curwin]:matchPairs()
         end
@@ -322,8 +322,7 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         win.buffer:undo(win, count or 1)
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
     end
 )
 
@@ -332,8 +331,7 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         win.buffer:redo(win, count or 1)
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
     end
 )
 
@@ -342,8 +340,7 @@ Command.nmap_builtin_callback(
     function()
         local win = windows[curwin]
         win.buffer:undo_line(win)
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
     end
 )
 
@@ -450,11 +447,7 @@ Command.nmap_builtin_callback(
             lines[1] = ""
         end
 
-        registers["unnamed"] = {"linewise", lines}
-        for i = 8, 2, -1 do
-            registers[i] = registers[i - 1]
-        end
-        registers[1] = {"linewise", lines}
+        push_register("linewise", lines)
 
         Syntax.ParseLinetypes(buf, win.cursory)
 
@@ -480,8 +473,7 @@ Command.nmap_builtin_callback(
 
         Syntax.ParseLinetypes(buf, win.cursory)
 
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
     end
 )
 
@@ -503,8 +495,7 @@ Command.nmap_builtin_callback(
 
         Syntax.ParseLinetypes(buf, win.cursory)
 
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
     end
 )
 
@@ -573,7 +564,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posNext(win, false, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -584,7 +575,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posNext(win, false, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -595,7 +586,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posNext(win, true, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -606,7 +597,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posNext(win, true, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -617,7 +608,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posNext(win, false, true, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -628,7 +619,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posNext(win, true, true, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -639,7 +630,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posPrev(win, false, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -650,7 +641,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posPrev(win, false, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -661,7 +652,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posPrev(win, true, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -672,7 +663,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posPrev(win, true, false, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -683,7 +674,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posPrev(win, false, true, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -694,7 +685,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line, col = WordNav.posPrev(win, true, true, count or 1)
         if line and col then
-            win:cursorMove(col - win.cursorx, line - win.cursory)
+            win:cursorSet(col, line)
         end
     end
 )
@@ -718,10 +709,7 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(win.cursory - (count or 1))
-        local line = win.buffer:get_line(win.cursory, true)
-        if line then
-            win:cursorSetX(line:find("%S"))
-        end
+        win:cursorToFirstNonBlank()
     end
 )
 
@@ -730,10 +718,7 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(win.cursory + (count or 1))
-        local line = win.buffer:get_line(win.cursory, true)
-        if line then
-            win:cursorSetX(line:find("%S"))
-        end
+        win:cursorToFirstNonBlank()
     end
 )
 
@@ -742,10 +727,7 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         win:cursorSetY(win.cursory + (count or 1) - 1)
-        local line = win.buffer:get_line(win.cursory, true)
-        if line then
-            win:cursorSetX(line:find("%S"))
-        end
+        win:cursorToFirstNonBlank()
     end
 )
 
@@ -793,11 +775,7 @@ Command.nmap_builtin_callback(
             table.insert(lines, buflines[win.cursory + i - 1])
         end
 
-        registers["unnamed"] = {"linewise", lines}
-        for i = 8, 2, -1 do
-            registers[i] = registers[i - 1]
-        end
-        registers[1] = {"linewise", lines}
+        push_register("linewise", lines)
     end
 )
 
@@ -862,14 +840,9 @@ Command.nmap_builtin_operator_with_motions(
 
             Syntax.ParseLinetypes(buf, win.cursory)
 
-            registers["unnamed"] = {"inline", lines}
-            for i = 8, 2, -1 do
-                registers[i] = registers[i - 1]
-            end
-            registers[1] = {"inline", lines}
+            push_register("inline", lines)
 
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
         elseif motion_name == "w" then
             local collected = {}
             local remaining = total
@@ -934,16 +907,11 @@ Command.nmap_builtin_operator_with_motions(
             end
 
             if #collected > 0 then
-                registers["unnamed"] = {"inline", collected}
-                for i = 8, 2, -1 do
-                    registers[i] = registers[i - 1]
-                end
-                registers[1] = {"inline", collected}
+                push_register("inline", collected)
             end
 
             Syntax.ParseLinetypes(buf, win.cursory)
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
         end
 
         win:cursorMove(0, 0)
@@ -975,16 +943,11 @@ Command.nmap_builtin_operator_with_motions(
 
             Syntax.ParseLinetypes(buf, win.cursory)
 
-            registers["unnamed"] = {"inline", lines}
-            for i = 8, 2, -1 do
-                registers[i] = registers[i - 1]
-            end
-            registers[1] = {"inline", lines}
+            push_register("inline", lines)
 
             setMode("insert")
 
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
         end
     end,
     {

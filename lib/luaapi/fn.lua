@@ -695,8 +695,7 @@ function Builtins.winrestview(dict, ...)
         win:_wrap_clamp_scroll(params)
     end
 
-    win.need_redraw = true
-    need_redraw = true
+    win:mark_redraw()
     return 0
 end
 
@@ -1664,8 +1663,7 @@ function Builtins.setline(lnum, text, ...)
     local start0 = target - 1
     local stop0 = math.min(line_count, start0 + #replacement)
     buf:set_lines(start0, stop0, false, replacement)
-    win.need_redraw = true
-    need_redraw = true
+    win:mark_redraw()
     return 0
 end
 
@@ -2510,8 +2508,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
             dest_lnum, dest_col = abs_to_line_col(end_abs)
         end
         _search_set_cursor(win, dest_lnum, dest_col)
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
     end
 
     return rv

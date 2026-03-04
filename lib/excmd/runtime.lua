@@ -1642,8 +1642,7 @@ function Runtime.new(state, opts)
         end
 
         win:cursorSet(1, 1)
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
         return true
     end
 
@@ -2282,8 +2281,7 @@ function Runtime.new(state, opts)
             win.cursorx = 1
             win.cursory = target_line
         end
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
         return true
     end
 
@@ -2394,8 +2392,7 @@ function Runtime.new(state, opts)
 
         if (not count_only) and changed then
             buf:set_lines(line1 - 1, line2, false, new_lines)
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
         end
         return true
     end
@@ -2567,8 +2564,7 @@ function Runtime.new(state, opts)
             win.cursorx = 1
             win.cursory = line1
         end
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
         return true
     end
 
@@ -4207,8 +4203,7 @@ function Runtime.new(state, opts)
                     error(Error(474, argstr))
                 end
             end
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             runtime_undo_batch_resume()
             return true
         elseif cmd == "redo" then
@@ -4225,8 +4220,7 @@ function Runtime.new(state, opts)
             end
             if count > 0 then
                 win.buffer:redo(win, count)
-                win.need_redraw = true
-                need_redraw = true
+                win:mark_redraw()
             end
             runtime_undo_batch_resume()
             return true
@@ -4435,8 +4429,7 @@ function Runtime.new(state, opts)
             _switch_current_buffer(win, target_buf)
             target_buf.refcount = target_buf.refcount + 1
             win:cursorSet(1, 1)
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "edit" then
             local win = windows[curwin]
@@ -4463,8 +4456,7 @@ function Runtime.new(state, opts)
                 win.buffer.name = target
             end
             _exmsg().echo(_file_status_message(win, bang))
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "delete" then
             local win = windows[curwin]
@@ -4505,8 +4497,7 @@ function Runtime.new(state, opts)
             elseif post_mode == "list" then
                 _exmsg().echo(_delete_list_text(buf:get_line(target_line, true) or ""))
             end
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "mark" then
             local char = strip(argstr)
@@ -4557,8 +4548,7 @@ function Runtime.new(state, opts)
                 win.cursorx = 1
                 win.cursory = target_line
             end
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "move" then
             local win = windows[curwin]
@@ -4604,8 +4594,7 @@ function Runtime.new(state, opts)
                 win.cursorx = 1
                 win.cursory = target_line
             end
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "enew" then
             if strip(argstr) ~= "" then
@@ -4633,8 +4622,7 @@ function Runtime.new(state, opts)
             newbuf:Load(true)
             Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
             win:cursorSet(1, 1)
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "find" then
             local found, err = _resolve_find_name(argstr)
