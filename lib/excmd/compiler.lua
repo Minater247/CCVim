@@ -493,10 +493,10 @@ local function build_ir(script)
                 local v = tostring(cmds[k] or ""):gsub("'", "''")
                 items[#items + 1] = "'" .. v .. "'"
             end
-            local rhs = "[" .. table.concat(items, ", ") .. "]"
+            local heredoc_value = "[" .. table.concat(items, ", ") .. "]"
             ir[#ir + 1] = {
                 cmd = "let",
-                rest = lhs .. " = " .. rhs,
+                rest = lhs .. " = " .. heredoc_value,
                 bang = false,
                 raw = "let",
                 verbose_count = nil,
@@ -847,14 +847,19 @@ function Compiler.compile_script(script, opts)
             elseif c == "endwhile" then
                 local lbl = loop_stack[#loop_stack]
                 loop_stack[#loop_stack] = nil
+                local lbl_while = lbl or "__cont"
                 lua_lines[#lua_lines + 1] = indent .. "  end)"
                 lua_lines[#lua_lines + 1] = indent .. "  if not __loop_ok then"
-                lua_lines[#lua_lines + 1] = indent .. "    if type(__loop_err) == 'table' and __loop_err.__continue then goto " .. (lbl or "__cont") .. " end"
-                lua_lines[#lua_lines + 1] = indent .. "    if type(__loop_err) == 'table' and __loop_err.__break then break end"
-                lua_lines[#lua_lines + 1] = indent .. "    if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "    if type(__loop_err) == 'table' and __loop_err.__continue then goto " ..
+                    lbl_while .. " end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "    if type(__loop_err) == 'table' and __loop_err.__break then break end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "    if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
                 lua_lines[#lua_lines + 1] = indent .. "    error(__loop_err)"
                 lua_lines[#lua_lines + 1] = indent .. "  end"
-                lua_lines[#lua_lines + 1] = indent .. "  ::" .. (lbl or "__cont") .. "::"
+                lua_lines[#lua_lines + 1] = indent .. "  ::" .. lbl_while .. "::"
                 lua_lines[#lua_lines + 1] = indent .. "end"
                 i = i + 1
             elseif c == "for" then
@@ -865,7 +870,9 @@ function Compiler.compile_script(script, opts)
                     local lbl = string.format("__cont_%d", node.line or #lua_lines)
                     loop_stack[#loop_stack + 1] = lbl
                     lua_lines[#lua_lines + 1] = indent .. "do"
-                    lua_lines[#lua_lines + 1] = indent .. "  for _, __v in ipairs(runtime:iter(" .. Compiler.compile_expr(rhs or "", { state = opts.state }) .. ")) do"
+                    local iter_expr = Compiler.compile_expr(rhs or "", { state = opts.state })
+                    lua_lines[#lua_lines + 1] = indent ..
+                        "  for _, __v in ipairs(runtime:iter(" .. iter_expr .. ")) do"
                     lua_lines[#lua_lines + 1] = indent .. "    runtime:assign(" .. lua_string(lhs) .. ", __v)"
                     lua_lines[#lua_lines + 1] = indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()"
                 end
@@ -873,14 +880,19 @@ function Compiler.compile_script(script, opts)
             elseif c == "endfor" then
                 local lbl = loop_stack[#loop_stack]
                 loop_stack[#loop_stack] = nil
+                local lbl_for = lbl or "__cont"
                 lua_lines[#lua_lines + 1] = indent .. "    end)"
                 lua_lines[#lua_lines + 1] = indent .. "    if not __loop_ok then"
-                lua_lines[#lua_lines + 1] = indent .. "      if type(__loop_err) == 'table' and __loop_err.__continue then goto " .. (lbl or "__cont") .. " end"
-                lua_lines[#lua_lines + 1] = indent .. "      if type(__loop_err) == 'table' and __loop_err.__break then break end"
-                lua_lines[#lua_lines + 1] = indent .. "      if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "      if type(__loop_err) == 'table' and __loop_err.__continue then goto " ..
+                    lbl_for .. " end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "      if type(__loop_err) == 'table' and __loop_err.__break then break end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "      if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
                 lua_lines[#lua_lines + 1] = indent .. "      error(__loop_err)"
                 lua_lines[#lua_lines + 1] = indent .. "    end"
-                lua_lines[#lua_lines + 1] = indent .. "    ::" .. (lbl or "__cont") .. "::"
+                lua_lines[#lua_lines + 1] = indent .. "    ::" .. lbl_for .. "::"
                 lua_lines[#lua_lines + 1] = indent .. "  end"
                 lua_lines[#lua_lines + 1] = indent .. "end"
                 i = i + 1
@@ -943,12 +955,17 @@ function Compiler.compile_script(script, opts)
                     emit_block(try_body_ir, indent .. "    ", loop_stack)
                     lua_lines[#lua_lines + 1] = indent .. "  end)"
                     lua_lines[#lua_lines + 1] = indent .. "  if not __try_ok then"
-                    lua_lines[#lua_lines + 1] = indent .. "    if type(__try_err) == 'table' and (__try_err.__ret or __try_err.__break or __try_err.__continue) then error(__try_err) end"
+                    lua_lines[#lua_lines + 1] = indent ..
+                        "    if type(__try_err) == 'table' and " ..
+                        "(__try_err.__ret or __try_err.__break or __try_err.__continue)" ..
+                        " then error(__try_err) end"
                     if #catches > 0 then
                         for ci = 1, #catches do
                             local cat = catches[ci]
                             local kw = (ci == 1) and "if" or "elseif"
-                            lua_lines[#lua_lines + 1] = indent .. "    " .. kw .. " runtime:catch_matches(__try_err, " .. lua_string(cat.rest or "") .. ") then"
+                            lua_lines[#lua_lines + 1] = indent .. "    " ..
+                                kw .. " runtime:catch_matches(__try_err, " ..
+                                lua_string(cat.rest or "") .. ") then"
                             emit_block(cat.body or {}, indent .. "      ", loop_stack)
                         end
                         lua_lines[#lua_lines + 1] = indent .. "    else"
