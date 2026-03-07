@@ -1060,6 +1060,77 @@ function api.nvim_get_option_value(name, opts)
     return options.get(name, win, buf, opts.scope == "local", opts.scope == "global")
 end
 
+function api.nvim_get_option_info2(name, opts)
+    opts = opts or {}
+    if opts.scope and opts.scope ~= "local" and opts.scope ~= "global" then
+        error("invalid scope: " .. tostring(opts.scope), 2)
+    end
+
+    local win, buf
+    if opts.win ~= nil then
+        win = win_for_id(opts.win)
+    else
+        win = windows[curwin]
+    end
+    if opts.buf ~= nil then
+        buf = buf_for_bufnr(opts.buf)
+    else
+        buf = win.buffer
+    end
+
+    local info = options.get_info(name)
+    if not info then
+        error("invalid option name: " .. tostring(name), 2)
+    end
+
+    local last_set_scope = "global"
+    if opts.scope == "local" then
+        if info.scope == "buf" then
+            last_set_scope = "buf"
+        elseif info.scope == "win" then
+            last_set_scope = "win"
+        end
+    elseif opts.scope ~= "global" then
+        if info.scope == "buf" and options.has_local_value(info.name, win, buf) then
+            last_set_scope = "buf"
+        elseif info.scope == "win" and options.has_local_value(info.name, win, buf) then
+            last_set_scope = "win"
+        end
+    end
+
+    local last_set = options.get_last_set_info(info.name, last_set_scope, win, buf)
+
+    return {
+        name = info.name,
+        shortname = info.shortname,
+        type = info.type,
+        default = info.default,
+        was_set = last_set.was_set,
+        last_set_sid = last_set.last_set_sid,
+        last_set_linenr = last_set.last_set_linenr,
+        last_set_chan = last_set.last_set_chan,
+        scope = info.scope,
+        global_local = info.global_local,
+        commalist = info.commalist,
+        flaglist = info.flaglist,
+        allows_duplicates = info.allows_duplicates,
+    }
+end
+
+function api.nvim_get_option_info(name)
+    return api.nvim_get_option_info2(name, {})
+end
+
+function api.nvim_get_all_options_info()
+    local out = {}
+    local names = options.list_all_info_names()
+    for i = 1, #names do
+        local name = names[i]
+        out[name] = api.nvim_get_option_info2(name, {})
+    end
+    return out
+end
+
 -- TODO: Craft the full strings if the option is passed
 function api.nvim_get_mode()
     if vimmode == "normal" then

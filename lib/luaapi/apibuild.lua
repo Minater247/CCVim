@@ -19,6 +19,49 @@ local envvars = loadModule("lib.envvars")
 local lpeg = loadModule("lib.luaapi.lpeg")
 local treesitter = loadModule("lib.luaapi.treesitter")
 
+local bit = rawget(_G, "bit")
+if not bit then
+    local bit32lib = rawget(_G, "bit32")
+    if bit32lib then
+        local function tobit(x)
+            x = tonumber(x) or 0
+            x = x % 0x100000000
+            if x >= 0x80000000 then
+                return x - 0x100000000
+            end
+            return x
+        end
+
+        local function tohex(x, n)
+            local width = math.abs(tonumber(n) or 8)
+            if width < 1 then
+                width = 1
+            end
+            local modulus = 16 ^ width
+            local value = (tonumber(x) or 0) % modulus
+            local s = string.format("%0" .. tostring(width) .. "x", value)
+            if (tonumber(n) or 8) < 0 then
+                s = string.upper(s)
+            end
+            return s
+        end
+
+        bit = {
+            band = bit32lib.band,
+            bor = bit32lib.bor,
+            bxor = bit32lib.bxor,
+            bnot = bit32lib.bnot,
+            lshift = bit32lib.lshift,
+            rshift = bit32lib.rshift,
+            arshift = bit32lib.arshift or bit32lib.rshift,
+            rol = bit32lib.lrotate,
+            ror = bit32lib.rrotate,
+            tobit = tobit,
+            tohex = tohex,
+        }
+    end
+end
+
 local mainapi
 local VIM_NIL = setmetatable({}, {
     __tostring = function()
@@ -296,6 +339,59 @@ function ApiBuild.Build()
         maxn = table_maxn,
     }, { __index = table })
 
+    local function get_scoped_var(scope, handle, key)
+        local h = handle or 0
+        if h == 0 then
+            h = (scope == "b" and windows[curwin].buffer.bufnr)
+                or (scope == "w" and curwin)
+                or (scope == "t" and curtp)
+                or 0
+        end
+
+        if scope == "g" then
+            return scopes._g[key]
+        elseif scope == "v" then
+            return scopes._v[key]
+        elseif scope == "b" then
+            return scopes.b[h][key]
+        elseif scope == "w" then
+            return scopes.w[h][key]
+        elseif scope == "t" then
+            return scopes.t[h][key]
+        end
+    end
+
+    local function set_scoped_var(scope, handle, key, value)
+        if value == VIM_NIL then
+            value = nil
+        end
+
+        local h = handle or 0
+        if h == 0 then
+            h = (scope == "b" and windows[curwin].buffer.bufnr)
+                or (scope == "w" and curwin)
+                or (scope == "t" and curtp)
+                or 0
+        end
+
+        if scope == "g" then
+            scopes._g[key] = value
+            return
+        elseif scope == "v" then
+            scopes._v[key] = value
+            return
+        elseif scope == "b" then
+            scopes.b[h][key] = value
+            return
+        elseif scope == "w" then
+            scopes.w[h][key] = value
+            return
+        elseif scope == "t" then
+            scopes.t[h][key] = value
+            return
+        end
+    end
+
     local os_compat = setmetatable({
         getenv = envvars.get,
     }, { __index = os })
@@ -325,6 +421,8 @@ function ApiBuild.Build()
             call = vim_call,
             on_key = on_key.on_key,
             _on_key = on_key.dispatch,
+            _getvar = get_scoped_var,
+            _setvar = set_scoped_var,
         },
         jit = jit,
         require = require,

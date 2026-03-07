@@ -809,6 +809,55 @@ local opt_aliases = {
     vbs = "verbose",
 }
 
+local option_set_info = {
+    global = {},
+    win = {},
+    buf = {},
+    tab = {},
+}
+
+local function record_option_set(name, scope_name, key)
+    local scope_tbl = option_set_info[scope_name]
+    if not scope_tbl then
+        return
+    end
+
+    scope_tbl[key] = scope_tbl[key] or {}
+    scope_tbl[key][name] = {
+        was_set = true,
+        last_set_sid = 0,
+        last_set_linenr = 0,
+        last_set_chan = 0,
+    }
+end
+
+local function map_loc_to_scope(loc)
+    if loc == "ltw" or loc == "gow" then
+        return "win"
+    end
+    if loc == "ltb" or loc == "gob" then
+        return "buf"
+    end
+    return "global"
+end
+
+local function option_is_global_local(loc)
+    return loc == "gob" or loc == "gow" or loc == "got"
+end
+
+local function has_local_value(name, loc, window, buffer)
+    if loc == "ltw" or loc == "gow" then
+        return window.opts[name] ~= nil
+    end
+    if loc == "ltb" or loc == "gob" then
+        return buffer.opts[name] ~= nil
+    end
+    if loc == "ltt" or loc == "got" then
+        return tabpages[curtp].opts[name] ~= nil
+    end
+    return false
+end
+
 local legacy_options = {}
 
 -- Removed options: return defaults on get, but setting is not supported.
@@ -907,6 +956,97 @@ function Options.resolve_abbrev(name)
     if opt_locs[name] or legacy_options[name] or removed_options[name] ~= nil then return name end
     if opt_aliases[name] then return opt_aliases[name] end
     return nil
+end
+
+function Options.get_info(name)
+    local canon = Options.resolve_abbrev(name)
+    if not canon or not opt_locs[canon] then
+        return nil
+    end
+
+    local loc = opt_locs[canon]
+    local typ = opt_types[canon] or "string"
+    if typ == "stringfunc" then
+        typ = "string"
+    end
+
+    local append_kind = append_type_special[canon]
+
+    -- Find shortest alias for shortname field
+    local shortname = canon
+    for alias, target in pairs(opt_aliases) do
+        if target == canon and (#alias < #shortname or (#alias == #shortname and alias < shortname)) then
+            shortname = alias
+        end
+    end
+
+    return {
+        name = canon,
+        shortname = shortname,
+        scope = map_loc_to_scope(loc),
+        global_local = option_is_global_local(loc),
+        commalist = append_kind == "csl",
+        flaglist = append_kind == "flags",
+        type = typ,
+        default = opt_defaults[canon],
+        allows_duplicates = append_kind ~= "flags",
+        _loc = loc,
+    }
+end
+
+function Options.list_all_info_names()
+    local out = {}
+    for name, _ in pairs(opt_locs) do
+        out[#out + 1] = name
+    end
+    table.sort(out)
+    return out
+end
+
+function Options.has_local_value(name, window, buffer)
+    local canon = Options.resolve_abbrev(name)
+    if not canon then
+        return false
+    end
+    local loc = opt_locs[canon]
+    if not loc then
+        return false
+    end
+    return has_local_value(canon, loc, window, buffer)
+end
+
+local default_set_info = {
+    was_set = false,
+    last_set_sid = 0,
+    last_set_linenr = 0,
+    last_set_chan = 0,
+}
+
+function Options.get_last_set_info(name, scope, window, buffer)
+    local canon = Options.resolve_abbrev(name)
+    if not canon then
+        return default_set_info
+    end
+
+    local slot
+    if scope == "buf" then
+        local key = buffer and buffer.bufnr or 0
+        slot = option_set_info.buf[key]
+    elseif scope == "win" then
+        local key = window and window.winnr or 0
+        slot = option_set_info.win[key]
+    elseif scope == "tab" then
+        slot = option_set_info.tab[curtp]
+    else
+        slot = option_set_info.global[0]
+    end
+
+    local info = slot and slot[canon]
+    if not info then
+        return default_set_info
+    end
+
+    return info
 end
 
 local global_opts = {}
@@ -1315,59 +1455,84 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
 
     if loc == "ggg" then
         global_opts[name] = value
+        record_option_set(name, "global", 0)
     elseif loc == "gob" then
         if setlocal then
             buffer.opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             buffer.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "gow" then
         if setlocal then
             window.opts[name] = value
+            record_option_set(name, "win", window.winnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             window.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "win", window.winnr)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "got" then
         if setlocal then
             tabpages[curtp].opts[name] = value
+            record_option_set(name, "tab", curtp)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             tabpages[curtp].opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "tab", curtp)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "ltt" then
         if setlocal then
             tabpages[curtp].opts[name] = value
+            record_option_set(name, "tab", curtp)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             tabpages[curtp].opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "tab", curtp)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "ltw" then
         if setlocal then
             window.opts[name] = value
+            record_option_set(name, "win", window.winnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             window.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "win", window.winnr)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "ltb" then
         if setlocal then
             buffer.opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             buffer.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
+            record_option_set(name, "global", 0)
         end
     end
 
@@ -1419,53 +1584,74 @@ local function _apply_value(name, value, mode, window, buffer, source_expr)
     local loc = opt_locs[name]
     if loc == "ggg" then
         global_opts[name] = value
+        record_option_set(name, "global", 0)
     elseif loc == "gob" or loc == "gow" or loc == "got" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "local" then
             if loc == "gob" then
                 buffer.opts[name] = value
+                record_option_set(name, "buf", buffer.bufnr)
             elseif loc == "gow" then
                 window.opts[name] = value
+                record_option_set(name, "win", window.winnr)
             else
                 tabpages[curtp].opts[name] = value
+                record_option_set(name, "tab", curtp)
             end
         else -- "both": set global and current local
             global_opts[name] = value
+            record_option_set(name, "global", 0)
             if loc == "gob" then
                 buffer.opts[name] = value
+                record_option_set(name, "buf", buffer.bufnr)
             elseif loc == "gow" then
                 window.opts[name] = value
+                record_option_set(name, "win", window.winnr)
             else
                 tabpages[curtp].opts[name] = value
+                record_option_set(name, "tab", curtp)
             end
         end
     elseif loc == "ltb" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "both" then
             buffer.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
+            record_option_set(name, "global", 0)
         else
             buffer.opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
         end
     elseif loc == "ltw" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "both" then
             window.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "win", window.winnr)
+            record_option_set(name, "global", 0)
         else
             window.opts[name] = value
+            record_option_set(name, "win", window.winnr)
         end
     elseif loc == "ltt" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "both" then
             tabpages[curtp].opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "tab", curtp)
+            record_option_set(name, "global", 0)
         else
             tabpages[curtp].opts[name] = value
+            record_option_set(name, "tab", curtp)
         end
     else
         error("Unhandled option location: " .. tostring(loc))
