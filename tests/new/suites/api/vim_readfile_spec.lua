@@ -24,19 +24,7 @@ return {
             local path = unique_path("vim-readfile-spec", ".txt")
             local missing = path .. ".missing"
 
-            local function write_lines(file_path, lines)
-                if fs and fs.open then
-                    local h = assert(fs.open(file_path, "w"))
-                    for i = 1, #lines do
-                        h.writeLine(lines[i])
-                    end
-                    h.close()
-                    return
-                end
-                vim.fn.writefile(lines, file_path)
-            end
-
-            write_lines(path, { "alpha", "beta", "mu", "nu" })
+            vim.fn.writefile({ "alpha", "beta", "mu", "nu" }, path)
 
             local plain = vim.fn.readfile(path)
             local max2 = vim.fn.readfile(path, "", 2)

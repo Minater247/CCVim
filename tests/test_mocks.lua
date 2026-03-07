@@ -1497,6 +1497,8 @@ function MockEnv.setup(opts)
     globals.need_redraw = false
     globals.vimmode = "normal"
     globals.vimlog = {}
+    globals.registers = {}
+    globals.global_marks = {}
 
     globals.LOG_DEBUG = function() end
     globals.LOG_ERROR = function() end

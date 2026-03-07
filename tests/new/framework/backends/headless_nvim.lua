@@ -416,10 +416,45 @@ end
         return json_decode(json_result)
     end
 
-    function backend:eval_vimscript(vimscript_expr)
+    function backend:eval_vimscript(vimscript_expr, opts)
         if type(vimscript_expr) ~= "string" then
             return nil, "eval_vimscript expects a string expression"
         end
+
+        opts = opts or {}
+        local setup = opts.setup
+        local script_ctx = opts.script_ctx
+
+        if setup ~= nil or script_ctx ~= nil then
+            if setup ~= nil and type(setup) ~= "string" then
+                return nil, "eval_vimscript setup must be a string"
+            end
+
+            local path = tostring(script_ctx or string.format("/tmp/nvim-test-eval-%d.vim", os.time()))
+            local result_var = "__ccvim_test_eval_result"
+            local f, open_err = io.open(path, "w")
+            if not f then
+                return nil, open_err
+            end
+            if setup and setup ~= "" then
+                f:write(setup)
+                if setup:sub(-1) ~= "\n" then
+                    f:write("\n")
+                end
+            end
+            f:write("let g:" .. result_var .. " = " .. vimscript_expr .. "\n")
+            f:close()
+
+            local lua_code = string.format([[
+                vim.cmd("source " .. vim.fn.fnameescape(%q))
+                local result = vim.g[%q]
+                vim.g[%q] = nil
+                os.remove(%q)
+                return result
+            ]], path, result_var, result_var, path)
+            return self:eval_block(lua_code)
+        end
+
         return self:eval_lua(string.format("vim.fn.eval(%q)", vimscript_expr))
     end
 

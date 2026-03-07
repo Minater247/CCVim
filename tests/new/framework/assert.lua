@@ -68,14 +68,14 @@ function Assert.expect_error_block(backend, label, code, error_pattern)
     Assert.table_eq(label, result, {false, true})
 end
 
-function Assert.eval_vim(backend, label, expr)
-    local result, err = backend:eval_vimscript(expr)
+function Assert.eval_vim(backend, label, expr, opts)
+    local result, err = backend:eval_vimscript(expr, opts)
     Assert.truthy(label, result ~= nil, err)
     return result
 end
 
-function Assert.eval_vim_eq(backend, label, expr, expected)
-    local result = Assert.eval_vim(backend, "eval_vimscript " .. label, expr)
+function Assert.eval_vim_eq(backend, label, expr, expected, opts)
+    local result = Assert.eval_vim(backend, "eval_vimscript " .. label, expr, opts)
     Assert.eq(label, result, expected)
 end
 

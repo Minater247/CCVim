@@ -43,13 +43,7 @@ return {
             local has_sibling = vim.fn.isdirectory(base .. "/a/c")
 
             local file_path = base .. "/existing-file"
-            if fs and fs.open then
-                local h = assert(fs.open(file_path, "w"))
-                h.writeLine("x")
-                h.close()
-            else
-                vim.fn.writefile({ "x" }, file_path)
-            end
+            vim.fn.writefile({ "x" }, file_path)
             local r6 = call(vim.fn.mkdir, file_path, "p")
             local r7 = call(vim.fn.mkdir, "")
 
