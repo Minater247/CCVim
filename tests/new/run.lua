@@ -32,14 +32,4 @@ end
 
 local Runner = require("vim.tests.new.framework.runner")
 
-Runner.run({
-    "vim/tests/new/suites/api/vim_list_slice_spec.lua",
-    "vim/tests/new/suites/api/vim_islist_spec.lua",
-    "vim/tests/new/suites/api/vim_str_index_spec.lua",
-    "vim/tests/new/suites/api/vimscript_eval_spec.lua",
-    "vim/tests/new/suites/api/vim_iter_spec.lua",
-    "vim/tests/new/suites/api/vim_fs_joinpath_spec.lua",
-    "vim/tests/new/suites/api/table_type_helpers_spec.lua",
-    "vim/tests/new/suites/runtime/nvim_redraw_api_spec.lua",
-    "vim/tests/new/suites/runtime/vimxpr_slice_spec.lua",
-})
+Runner.run(Runner.discover("vim/tests/new/suites"))

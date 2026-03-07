@@ -21,7 +21,7 @@ local function run(cmd)
     return false, out
 end
 
-local function json_decode(json_str)
+local function json_decode_raw(json_str)
     if type(json_str) ~= "string" then
         return nil, "json_decode expects a string"
     end
@@ -208,6 +208,109 @@ local function json_decode(json_str)
     return result, nil
 end
 
+-- Decode JSON with support for reference preservation
+local function json_decode(json_str)
+    local decoded, err = json_decode_raw(json_str)
+    if err then
+        return nil, err
+    end
+
+    -- Check if this is a reference-encoded structure
+    if type(decoded) ~= "table" or not decoded.refs or not decoded.root then
+        -- Not reference-encoded, just restore empty dicts
+        local function simple_restore(val)
+            if type(val) ~= "table" then
+                return val
+            end
+            local count = 0
+            for _ in pairs(val) do
+                count = count + 1
+            end
+            if count == 0 then
+                return setmetatable({}, EMPTY_DICT_MT)
+            end
+            local tbl = {}
+            for k, v in pairs(val) do
+                tbl[k] = simple_restore(v)
+            end
+            return tbl
+        end
+        return simple_restore(decoded)
+    end
+
+    -- Restore table references
+    local ref_data = decoded.refs
+    local materialized = {}  -- Map from ref ID to actual table
+
+    local function restore_refs(val)
+        if type(val) ~= "table" then
+            return val
+        end
+
+        -- Check for reference marker
+        local ref_id = val.__ref
+        if ref_id then
+            -- Check if already materialized
+            if materialized[ref_id] then
+                return materialized[ref_id]
+            end
+            
+            -- Get the ref data (refs is an array with 1-based indexing)
+            local data = ref_data[ref_id]
+            if not data then
+                return nil, "invalid reference ID: " .. tostring(ref_id)
+            end
+            
+            -- Check for special markers or empty tables
+            local is_empty_dict_marker = data.__vim_empty_dict
+            
+            -- Create the table first
+            local tbl
+            if is_empty_dict_marker then
+                -- Explicitly marked as empty dict
+                tbl = setmetatable({}, EMPTY_DICT_MT)
+            else
+                local count = 0
+                for _ in pairs(data) do
+                    count = count + 1
+                end
+                
+                if count == 0 then
+                    -- Empty table - check if it's an empty dict (has EMPTY_DICT_MT)
+                    -- or empty array (no metatable from JSON [])
+                    if getmetatable(data) == EMPTY_DICT_MT then
+                        tbl = setmetatable({}, EMPTY_DICT_MT)
+                    else
+                        -- Empty array from JSON []
+                        tbl = {}
+                    end
+                else
+                    tbl = {}
+                end
+            end
+            materialized[ref_id] = tbl
+            
+            -- Now populate it
+            for k, v in pairs(data) do
+                if k ~= "__vim_empty_dict" then
+                    tbl[k] = restore_refs(v)
+                end
+            end
+            
+            return tbl
+        end
+
+        -- Regular non-ref table, restore recursively
+        local tbl = {}
+        for k, v in pairs(val) do
+            tbl[k] = restore_refs(v)
+        end
+        return tbl
+    end
+
+    return restore_refs(decoded.root)
+end
+
 function HeadlessNvimBackend.new()
     local backend = {
         name = "headless_nvim",
@@ -217,13 +320,86 @@ function HeadlessNvimBackend.new()
     function backend:eval_lua(lua_expr)
         local tmp = string.format("/tmp/nvim-test-eval-%d.lua", os.time())
         local f = assert(io.open(tmp, "w"))
+        -- Write the encoder function
+        f:write([[
+local function serialize_with_refs(value)
+  local refs = {}      -- Map from table to ref ID
+  local ref_data = {}  -- Map from ref ID to encoded data
+  local next_id = 1
+  
+  -- Capture vim.empty_dict()'s metatable for detection
+  local empty_dict_mt = getmetatable(vim.empty_dict())
+  
+  -- First pass: assign IDs to all tables and track references
+  local function assign_ids(val)
+    if type(val) == "table" then
+      if not refs[val] then
+        local id = next_id
+        next_id = next_id + 1
+        refs[val] = id
+        
+        -- Recurse into table contents
+        for k, v in pairs(val) do
+          assign_ids(k)
+          assign_ids(v)
+        end
+      end
+    end
+  end
+  
+  assign_ids(value)
+  
+  -- Second pass: encode each unique table
+  local function encode(val)
+    local t = type(val)
+    if t == "table" then
+      local id = refs[val]
+      if ref_data[id] then
+        -- Already encoded, return reference
+        return {__ref = id}
+      end
+      
+      -- Check if this is an empty_dict
+      local is_empty_dict = (getmetatable(val) == empty_dict_mt)
+      
+      -- Encode this table
+      local is_list = vim.islist and vim.islist(val) or vim.tbl_islist(val)
+      local encoded
+      
+      if is_list then
+        encoded = {}
+        for i, v in ipairs(val) do
+          encoded[i] = encode(v)
+        end
+      elseif is_empty_dict then
+        -- Mark as empty dict with special flag
+        encoded = {__vim_empty_dict = true}
+      else
+        encoded = {}
+        for k, v in pairs(val) do
+          encoded[k] = encode(v)
+        end
+      end
+      
+      ref_data[id] = encoded
+      return {__ref = id}
+    else
+      return val
+    end
+  end
+  
+  local root = encode(value)
+  return {refs = ref_data, root = root}
+end
+
+]])
         f:write("local ok, rv = pcall(function() return ", lua_expr, " end)\n")
         f:write("if not ok then\n")
         f:write("  io.stderr:write('E:' .. tostring(rv) .. '\\n')\n")
         f:write("  vim.cmd('cq')\n")
         f:write("  return\n")
         f:write("end\n")
-        f:write("print('@@RESULT@@' .. vim.json.encode(rv))\n")
+        f:write("print('@@RESULT@@' .. vim.json.encode(serialize_with_refs(rv)))\n")
         f:write("vim.cmd('qa!')\n")
         f:close()
 

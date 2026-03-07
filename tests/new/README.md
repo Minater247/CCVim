@@ -12,6 +12,12 @@ The mock environment intentionally avoids no-op stubs. If a test calls an API in
 - `lua_editor` (default): Loads the full CCVim codebase through the mock harness. Tests actual editor behavior.
 - `headless_nvim`: Runs equivalent tests against `nvim --headless` for API parity verification. Only works for tests that don't depend on CCVim-specific internals.
 
+## Test Philosophy
+
+**Neovim is the reference implementation.** All tests should pass against `headless_nvim` backend when available. If a test fails on `headless_nvim`, the text expectations are flawed in some way, and the behavior of CCVim should be updated to match. If you believe there is an exception to this, that likely constitutes a bug report on the official Neovim repository.
+
+When tests fail on `lua_editor` but pass on `headless_nvim`, this indicates a divergence in CCVim that should be fixed to match Neovim's behavior. The test suite serves as both validation and a specification of correct API behavior.
+
 ## Directory Structure
 
 ```

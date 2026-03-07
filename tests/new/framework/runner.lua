@@ -4,6 +4,25 @@ local HeadlessNvimBackend = require("vim.tests.new.framework.backends.headless_n
 
 local Runner = {}
 
+-- Recursively discover test files (files ending in _spec.lua)
+local function discover_test_files(dir_path)
+    local files = {}
+    
+    local handle = io.popen("find " .. dir_path .. " -type f -name '*_spec.lua' 2>/dev/null | sort")
+    if not handle then
+        return files
+    end
+    
+    for line in handle:lines() do
+        files[#files + 1] = line
+    end
+    handle:close()
+    
+    return files
+end
+
+Runner.discover = discover_test_files
+
 local function read_suite_paths(default_paths)
     local out = {}
     if #arg > 0 then
