@@ -1,4 +1,5 @@
 std = "lua51"
+self = false
 
 exclude_files = {
     "runtime/**",

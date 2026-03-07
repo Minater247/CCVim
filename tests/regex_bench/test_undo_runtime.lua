@@ -21,11 +21,6 @@ local mock = MockEnv.setup({
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["lib.sign"] = {
-            on_lines_changed = function() end,
-            define = function() end,
-            getdefined = function() return {} end,
-        },
         ["lib.syntax"] = {
             ParseLinetypes = function() end,
             OwnSyntax = function() end,
@@ -81,28 +76,7 @@ local Buffer = mock.loadModule("layout.buffer")
 mock.loadModule("lib.command")
 mock.loadModule("lib.mappings")
 
-local win = {
-    winnr = 1,
-    opts = {},
-    cursorx = 1,
-    cursory = 1,
-    cursorSet = function(self, x, y)
-        self.cursorx = x
-        self.cursory = y
-    end,
-    cursorSetX = function(self, x)
-        self.cursorx = x
-    end,
-    cursorSetY = function(self, y)
-        self.cursory = y
-    end,
-    cursorMove = function(self, dx, dy)
-        self.cursorx = self.cursorx + dx
-        self.cursory = self.cursory + dy
-    end,
-}
-
-windows[1] = win
+local win = mock.create_window(1, mock.create_buffer(0, "/tmp/dummy.txt", {""}), {})
 tabpages[1].windows = { win }
 curtp = 1
 curwin = 1

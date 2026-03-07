@@ -15,8 +15,6 @@ local mock = MockEnv.setup({
             PopSilent = function() end,
             _writeWithHL = function() end,
         },
-        ["layout.buffer"] = {},
-        ["layout.window"] = {},
         ["lib.sign"] = {
             define = function() end,
             getdefined = function() return {} end,

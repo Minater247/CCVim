@@ -48,9 +48,9 @@ local tab_ctor = setmetatable({ _next = 1 }, {
             window.tabpagenr = id
             tab.windows[1] = window
         end
-        function tab:WinSplit(_, new_win)
-            new_win.tabpagenr = self.tabnr
-            self.windows[#self.windows + 1] = new_win
+        function tab.WinSplit(t, _, new_win)
+            new_win.tabpagenr = t.tabnr
+            t.windows[#t.windows + 1] = new_win
             return true
         end
         tabpages[id] = tab

@@ -15,8 +15,6 @@ local mock = MockEnv.setup({
             PopSilent = function() end,
             _writeWithHL = function() end,
         },
-        ["layout.buffer"] = {},
-        ["layout.window"] = {},
         ["lib.tags"] = { SearchFile = function() return nil end },
         ["lib.command"] = {
             clear_mappings = function() end,
@@ -24,7 +22,6 @@ local mock = MockEnv.setup({
             remap_keys = function() end,
             noremap_keys = function() end,
         },
-        ["lib.key"] = { strtoseq = function() return {} end },
         ["lib.pack"] = { add = function() return true end, load_start = function() return true end },
         ["lib.sign"] = { define = function() end, getdefined = function() return {} end },
     },

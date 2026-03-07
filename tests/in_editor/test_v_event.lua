@@ -38,6 +38,5 @@ ok('v.event.scope', captured[1] and captured[1].scope == 'window', captured[1] a
 ok('v.event.cwd choose new_cwd', captured[1] and captured[1].cwd == '/new', captured[1] and captured[1].cwd)
 
 -- After event should be cleared/restored (empty table expected)
-local post_empty = true
-for _ in pairs(vim.v.event) do post_empty = false break end
+local post_empty = next(vim.v.event) == nil
 ok('v.event cleared after run', post_empty)

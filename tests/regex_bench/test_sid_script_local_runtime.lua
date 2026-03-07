@@ -19,8 +19,6 @@ local mock = MockEnv.setup({
     module_stubs = {
         ["lib.exmsg"] = function() return exmsg_stub end,
         ["lib.excmd.exmsg"] = exmsg_stub,
-        ["layout.buffer"] = {},
-        ["layout.window"] = {},
         ["lib.tags"] = {
             SearchFile = function() return nil end,
         },
@@ -31,6 +29,7 @@ local mock = MockEnv.setup({
             noremap_keys = function() end,
         },
         ["lib.key"] = {
+            new = function(_, k) return k end,
             strtoseq = function(s)
                 key_inputs[#key_inputs + 1] = tostring(s or "")
                 return {}

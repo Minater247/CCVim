@@ -66,7 +66,6 @@ local mock = MockEnv.setup({
         end,
     },
     module_stubs = {
-        ["layout.buffer"] = {},
         ["lib.highlight"] = {
             For = function() return { colors.white, colors.black } end,
         },

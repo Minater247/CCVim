@@ -6,11 +6,6 @@ local cmdline_active = false
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["layout.buffer"] = setmetatable({}, {
-            __call = function()
-                error("unexpected buffer construction")
-            end,
-        }),
         ["lib.highlight"] = {
             SetFor = function(group)
                 current_hl = group

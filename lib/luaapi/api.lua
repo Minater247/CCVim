@@ -930,8 +930,8 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
 
     local sline = lines[sidx] or ""
     local eline = lines[eidx] or ""
-    local prefix = buf:str_sub(sline, 1, scol)
-    local suffix = buf:str_sub(eline, ecol + 1)
+    local prefix = Utf8.sub(sline, 1, scol)
+    local suffix = Utf8.sub(eline, ecol + 1)
 
     local repl = {}
     if type(replacement) == "table" then
@@ -1158,13 +1158,10 @@ function api.nvim__redraw(opts)
     lazyredraw_force = true
 
     if flush and not Decoration.is_redraw_active() then
-        local tab = tabpages[curtp]
-        if tab and type(tab.render) == "function" then
-            need_redraw = false
-            tab:render()
-            what_redraw = {}
-            lazyredraw_force = false
-        end
+        need_redraw = false
+        tabpages[curtp]:render()
+        what_redraw = {}
+        lazyredraw_force = false
     end
 end
 
@@ -1260,7 +1257,7 @@ end
 -- TODO: Handle errors properly!
 function api.nvim_exec2(src, opts)
     opts = opts or {}
-    local ok, out, err = exec_script(src, { output = not not opts.output })
+    local _, out = exec_script(src, { output = not not opts.output })
     return opts.output and { output = out } or {}
 end
 

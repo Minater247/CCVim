@@ -81,8 +81,6 @@ mock = MockEnv.setup({
             PopSilent = function() end,
             _writeWithHL = function() end,
         },
-        ["layout.buffer"] = {},
-        ["layout.window"] = {},
         ["lib.scriptsource"] = scriptsource_stub,
     },
 })

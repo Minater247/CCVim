@@ -27,10 +27,6 @@ local mock = MockEnv.setup({
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["lib.sign"] = {
-            define = function() end,
-            getdefined = function() return {} end,
-        },
         ["lib.syntax"] = {
             ParseLinetypes = function() end,
             OwnSyntax = function() end,
@@ -84,18 +80,7 @@ local Runtime = mock.loadModule("lib.excmd.runtime")
 local Scopes = mock.loadModule("lib.luaapi.scopes")
 local Buffer = mock.loadModule("layout.buffer")
 
-local win = {
-    winnr = 1,
-    opts = {},
-    cursorx = 1,
-    cursory = 1,
-    cursorSet = function(self, x, y)
-        self.cursorx = x
-        self.cursory = y
-    end,
-}
-
-windows[1] = win
+local win = mock.create_window(1, mock.create_buffer(0, "/tmp/dummy.txt", {""}), {})
 tabpages[1].windows = { win }
 curtp = 1
 curwin = 1

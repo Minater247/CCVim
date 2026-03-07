@@ -79,8 +79,8 @@ function AliasTable:new()
         return rawget(store, resolve(k))
     end
 
-    function mt.__pairs(self)
-        local iter = methods.iter(self)
+    function mt.__pairs(tbl)
+        local iter = methods.iter(tbl)
         return iter, nil, nil
     end
 

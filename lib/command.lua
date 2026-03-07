@@ -56,8 +56,7 @@ end
 
 local function node_has_children(node)
     if not node or not node.children then return false end
-    for _ in pairs(node.children) do return true end
-    return false
+    return next(node.children) ~= nil
 end
 
 -- Mode expansion: accept full names, alias string like "ni", or list/table
@@ -1122,7 +1121,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
             if state.count_tentative and at_sequence_start() and not handled_count_digit then
                 if d ~= 0 then
                     push_digit(d)
-                    handled_count_digit = true
+                    handled_count_digit = true -- luacheck: ignore 311
                 end
                 -- fall through to trie
             end

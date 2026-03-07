@@ -5,7 +5,6 @@ local MockEnv = require("vim.tests.test_mocks")
 local mock = MockEnv.setup({
     module_stubs = {
         ["lib.exmsg"] = function() return mock.loadModule("lib.excmd.exmsg") end,
-        ["layout.buffer"] = {},
         ["lib.highlight"] = {
             GroupExists = function() return false end,
             For = function() return { colors.white, colors.black } end,

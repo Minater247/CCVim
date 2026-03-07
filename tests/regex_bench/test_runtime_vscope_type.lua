@@ -45,11 +45,6 @@ local mock = MockEnv.setup({
             add = function() return true end,
             load_start = function() return true end,
         },
-        ["lib.key"] = {
-            strtoseq = function() return {} end,
-        },
-        ["layout.buffer"] = {},
-        ["layout.window"] = {},
     },
 })
 

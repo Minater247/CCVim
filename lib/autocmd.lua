@@ -604,10 +604,8 @@ local function _restore_current_window(old_curwin)
         curwin = old_curwin
         return
     end
-    for winid, _ in pairs(windows) do
-        curwin = winid
-        return
-    end
+    local winid = next(windows)
+    if winid then curwin = winid end
 end
 
 -- Execute callback/command in the target autocmd buffer context.

@@ -585,7 +585,7 @@ FrameTree.VerticalSplit = function(node, new_win, place_right)
     local parent    = node.parent
     local total_w   = node.width
     local new_node  = { parent = parent, width = total_w, height = node.height, split_type = "v" }
-    local new_frame = { parent = new_node, window = new_win }
+    local new_frm = { parent = new_node, window = new_win }
 
     if node.height < subtree_min_height(node) or node.height < new_win:minheight() then
         return false
@@ -640,17 +640,17 @@ FrameTree.VerticalSplit = function(node, new_win, place_right)
 
     -- Wire up wrapper
     node.parent = new_node
-    new_frame.height = new_node.height
+    new_frm.height = new_node.height
     if place_right then
-        new_frame.width = new_node.width - node.width
-        new_node.children = { node, new_frame }
-        new_win.frame = new_frame
+        new_frm.width = new_node.width - node.width
+        new_node.children = { node, new_frm }
+        new_win.frame = new_frm
     else
-        new_frame.width = total_w - node.width
-        new_node.children = { new_frame, node }
-        new_frame.parent = new_node
+        new_frm.width = total_w - node.width
+        new_node.children = { new_frm, node }
+        new_frm.parent = new_node
         node.parent = new_node
-        new_win.frame = new_frame
+        new_win.frame = new_frm
     end
 
     if parent then
@@ -670,7 +670,7 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
     local parent     = node.parent
     local total_h    = node.height
     local new_node   = { parent = parent, width = node.width, height = total_h, split_type = "h" }
-    local new_frame  = { parent = new_node, window = new_win }
+    local new_frm  = { parent = new_node, window = new_win }
 
     if node.width < subtree_min_width(node) or node.width < new_win:minwidth() then
         return false
@@ -722,17 +722,17 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
 
     -- Wire up wrapper
     node.parent = new_node
-    new_frame.width = new_node.width
+    new_frm.width = new_node.width
     if place_bottom then
-        new_frame.height = new_node.height - node.height
-        new_node.children = { node, new_frame }
-        new_win.frame = new_frame
+        new_frm.height = new_node.height - node.height
+        new_node.children = { node, new_frm }
+        new_win.frame = new_frm
     else
-        new_frame.height = total_h - node.height
-        new_node.children = { new_frame, node }
-        new_frame.parent = new_node
+        new_frm.height = total_h - node.height
+        new_node.children = { new_frm, node }
+        new_frm.parent = new_node
         node.parent = new_node
-        new_win.frame = new_frame
+        new_win.frame = new_frm
     end
 
     if parent then
@@ -751,13 +751,13 @@ function FrameTree.Equalize(node)
         return true
     end
 
-    local function columns(node)
+    local function columns(nd)
         -- How many width "lanes" (columns) this subtree contributes
-        if not node or not node.split_type then
+        if not nd or not nd.split_type then
             return 1
         end
-        local a, b = node.children[1], node.children[2]
-        if node.split_type == "v" then
+        local a, b = nd.children[1], nd.children[2]
+        if nd.split_type == "v" then
             return columns(a) + columns(b)
         else -- "h"
             local ca, cb = columns(a), columns(b)
@@ -765,13 +765,13 @@ function FrameTree.Equalize(node)
         end
     end
 
-    local function rows(node)
+    local function rows(nd)
         -- How many height "lanes" (rows) this subtree contributes
-        if not node or not node.split_type then
+        if not nd or not nd.split_type then
             return 1
         end
-        local a, b = node.children[1], node.children[2]
-        if node.split_type == "h" then
+        local a, b = nd.children[1], nd.children[2]
+        if nd.split_type == "h" then
             return rows(a) + rows(b)
         else -- "v"
             local ra, rb = rows(a), rows(b)

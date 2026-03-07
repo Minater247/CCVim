@@ -63,7 +63,7 @@ end
 
 clear_all_user_maps()
 
-local last = nil
+local last
 local raw_count = 0
 Command.emit_raw = function()
     raw_count = raw_count + 1
@@ -133,17 +133,13 @@ end, {
     word = seq("w"),
 })
 
-Command.nmap_callback(seq("q"), function()
-    last = "user-q"
-end)
+Command.nmap_callback(seq("q"), function() end)
 Command.unmap_keys("normal", seq("q"))
 press("dw")
 assert_eq("builtin operator survives unrelated unmap", op_calls, 1)
 assert_eq("builtin operator motion name after unmap", op_motion, "word")
 
-Command.nmap_callback(seq("r"), function()
-    last = "user-r"
-end)
+Command.nmap_callback(seq("r"), function() end)
 Command.clear_mappings("normal")
 press("dw")
 assert_eq("builtin operator survives mapclear", op_calls, 2)

@@ -102,19 +102,8 @@ local Runtime = mock.loadModule("lib.excmd.runtime")
 local Scopes = mock.loadModule("lib.luaapi.scopes")
 local Buffer = mock.loadModule("layout.buffer")
 
-local win = {
-    winnr = 1,
-    opts = {},
-    cursorx = 1,
-    cursory = 1,
-    cursorSet = function(self, x, y)
-        self.cursorx = x
-        self.cursory = y
-    end,
-}
-
-windows[1] = win
-tabpages[1].windows = { win }
+local win = mock.create_window(1, Buffer(true, false), {})
+mock.create_tabpage(1, { win }, {})
 curtp = 1
 curwin = 1
 

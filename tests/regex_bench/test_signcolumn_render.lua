@@ -25,11 +25,6 @@ end
 
 local mock = MockEnv.setup({
     module_stubs = {
-        ["layout.buffer"] = setmetatable({}, {
-            __call = function()
-                error("unexpected buffer construction")
-            end,
-        }),
         ["lib.highlight"] = {
             SetFor = function(_group)
             end,

@@ -290,6 +290,7 @@ function MockEnv.setup(config)
         sign_stub.on_lines_changed = sign_stub.on_lines_changed or function() end
         sign_stub.getplaced = sign_stub.getplaced or function() return {} end
         sign_stub.jump = sign_stub.jump or function() return -1 end
+        sign_stub.max_signs_per_line = sign_stub.max_signs_per_line or function() return 0 end
     end
 
     local module_roots = {}
@@ -346,7 +347,7 @@ function MockEnv.setup(config)
     end
 
     _G.options = config.options or _G.options or _G.loadModule("lib.options")
-    
+
     -- Return helper object with metatable interfaces
     local mock = {
         MODULE_CACHE = MODULE_CACHE,
@@ -384,122 +385,59 @@ function MockEnv.setup(config)
     
     -- Helper to create a buffer
     function mock.create_buffer(bufnr, name, lines, opts)
-        local Utf8 = loadModule("lib.utf8")
-        local loaded = true
-        if opts and opts.loaded ~= nil then
-            loaded = not not opts.loaded
-        end
-        local buf = {
-            bufnr = bufnr,
-            name = name or ("/tmp/buffer" .. bufnr),
-            lines = lines or { "" },
-            opts = opts or {},
-            loaded = loaded,
-        }
-        buf.is_loaded = function(self)
-            return self.loaded == true
-        end
-        buf.ensure_loaded = function(self, read_contents)
-            if self.loaded == true then
-                return true
+        local Buffer = loadModule("layout.buffer")
+        local buf = Buffer(true, false)
+        buf.name = name or ("/tmp/buffer" .. tostring(bufnr))
+        buf.lines = lines or { "" }
+        if opts then
+            for k, v in pairs(opts) do
+                buf.opts[k] = v
             end
-            if type(self.Load) == "function" then
-                self:Load(read_contents ~= false)
-            end
-            self.loaded = true
-            if type(self.lines) ~= "table" then
-                self.lines = { "" }
-            elseif #self.lines == 0 then
-                self.lines = { "" }
-            end
-            return true
         end
-        buf.line_count = function(self, load_if_unloaded)
-            if load_if_unloaded then
-                self:ensure_loaded(true)
-            end
-            if self.loaded ~= true then
-                return 0
-            end
-            return #(self.lines or {})
+        if bufnr ~= nil then
+            _G.buffers[bufnr] = buf
         end
-        buf.lines_ref = function(self, load_if_unloaded)
-            if load_if_unloaded then
-                self:ensure_loaded(true)
-            end
-            self.lines = self.lines or {}
-            return self.lines
-        end
-        buf.get_line = function(self, line_nr, load_if_unloaded)
-            local lns = self:lines_ref(load_if_unloaded)
-            return lns[line_nr]
-        end
-        buf.str_len = function(self, s)
-            return Utf8.len(s or "")
-        end
-        buf.str_sub = function(self, s, start_col1, end_col1)
-            return Utf8.sub(s or "", start_col1, end_col1)
-        end
-        buf.str_char_at = function(self, s, col1)
-            return Utf8.char_at(s or "", col1)
-        end
-        buf.str_codepoint_at = function(self, s, col1)
-            return Utf8.codepoint_at(s or "", col1)
-        end
-        buf.str_byte_index = function(self, s, col1, allow_eol)
-            return Utf8.byte_index(s or "", col1, allow_eol)
-        end
-        buf.str_col_from_byte = function(self, s, byte_idx, allow_eol)
-            return Utf8.col_from_byte(s or "", byte_idx, allow_eol)
-        end
-        buf.str_each_codepoint = function(self, s, visitor)
-            return Utf8.each_codepoint(s or "", visitor)
-        end
-        buf.undo_begin = function() end
-        buf.undo_end = function() end
-        buf.line_len = function(self, line_nr, load_if_unloaded)
-            local line = self:get_line(line_nr, load_if_unloaded) or ""
-            return Utf8.len(line)
-        end
-        buf.line_sub = function(self, line_nr, start_col1, end_col1, load_if_unloaded)
-            local line = self:get_line(line_nr, load_if_unloaded) or ""
-            return Utf8.sub(line, start_col1, end_col1)
-        end
-        buf.line_char_at = function(self, line_nr, col1, load_if_unloaded)
-            local line = self:get_line(line_nr, load_if_unloaded) or ""
-            return Utf8.char_at(line, col1)
-        end
-        buf.line_codepoint_at = function(self, line_nr, col1, load_if_unloaded)
-            local line = self:get_line(line_nr, load_if_unloaded) or ""
-            return Utf8.codepoint_at(line, col1)
-        end
-        buf.line_byte_index = function(self, line_nr, col1, load_if_unloaded, allow_eol)
-            local line = self:get_line(line_nr, load_if_unloaded) or ""
-            return Utf8.byte_index(line, col1, allow_eol)
-        end
-        _G.buffers[bufnr] = buf
         return buf
     end
     
     -- Helper to create a window
     function mock.create_window(winnr, buffer, opts)
-        local win = {
-            winnr = winnr,
-            buffer = buffer,
-            opts = opts or {},
-        }
-        _G.windows[winnr] = win
+        local Window = loadModule("layout.window")
+        local win = Window:new(buffer)
+        -- Remap to the requested slot
+        if win.winnr ~= winnr then
+            _G.windows[win.winnr] = nil
+            win.winnr = winnr
+            _G.windows[winnr] = win
+        end
+        -- Provide geometry fallback for tests that do not set up a FrameTree
+        win.floatpos = { h = screen.height or 24, w = screen.width or 80, row = 1, col = 1 }
+        if opts then
+            for k, v in pairs(opts) do win.opts[k] = v end
+        end
         return win
     end
     
     -- Helper to create a tabpage
-    function mock.create_tabpage(tabnr, windows, opts)
-        local tab = {
-            tabnr = tabnr,
-            windows = windows or {},
-            opts = opts or {},
-        }
-        _G.tabpages[tabnr] = tab
+    function mock.create_tabpage(tabnr, windows_list, opts)
+        local Tabpage = loadModule("layout.tabpage")
+        local tab = Tabpage:new(windows_list and windows_list[1])
+        -- Remap to the requested slot
+        if tab.tabnr ~= tabnr then
+            _G.tabpages[tab.tabnr] = nil
+            tab.tabnr = tabnr
+            _G.tabpages[tabnr] = tab
+        end
+        -- Add additional windows beyond the first
+        if windows_list then
+            for i = 2, #windows_list do
+                table.insert(tab.windows, windows_list[i])
+                windows_list[i].tabpagenr = tabnr
+            end
+        end
+        if opts then
+            for k, v in pairs(opts) do tab.opts[k] = v end
+        end
         return tab
     end
     

@@ -93,6 +93,10 @@ local win = {
         self.cursorx = x
         self.cursory = y
     end,
+    mark_redraw = function(self)
+        self.need_redraw = true
+        need_redraw = true
+    end,
 }
 
 windows[1] = win

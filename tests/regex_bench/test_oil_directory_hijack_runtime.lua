@@ -118,20 +118,7 @@ buf.name = "/tmp/start"
 buf.lines = { "start" }
 buf.refcount = 1
 
-local win = {
-    winnr = 1,
-    buffer = buf,
-    opts = {},
-    cursorx = 1,
-    cursory = 1,
-    scrolly = { 1, 0 },
-    scrollx = 0,
-    need_redraw = false,
-    cursorSet = function(self, x, y)
-        self.cursorx = x
-        self.cursory = y
-    end,
-}
+local win = mock.create_window(1, buf, {})
 windows[1] = win
 tabpages[1].windows = { win }
 curtp = 1

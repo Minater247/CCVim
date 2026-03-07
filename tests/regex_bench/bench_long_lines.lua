@@ -1,3 +1,4 @@
+-- luacheck: ignore 631
 local function script_dir()
     local src = debug.getinfo(1, "S").source
     if src:sub(1, 1) == "@" then

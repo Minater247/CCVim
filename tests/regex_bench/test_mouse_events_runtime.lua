@@ -81,6 +81,7 @@ local mock = MockEnv.setup({
         },
         ["lib.luaapi.scopes"] = {
             _v = {},
+            _b_by_buf = {},
         },
     },
 })
