@@ -1,31 +1,18 @@
 local MockEnv = {}
 
 -- Capture real OS functions before mocking
-local real_os_execute = os.execute
 local real_os_clock = os.clock
 local real_os_getenv = os.getenv
 local real_os_time = os.time
 local real_os_date = os.date
 local real_os_exit = os.exit
+local has_lfs, lfs = pcall(require, "lfs")
+if not has_lfs then
+    error("test_mocks.lua requires LuaFileSystem (lfs)")
+end
 
 local function now_ms()
     return math.floor(real_os_clock() * 1000)
-end
-
-local function shell_quote(s)
-    s = tostring(s)
-    return "'" .. s:gsub("'", "'\\''") .. "'"
-end
-
-local function run_shell(cmd)
-    local ok, _, code = real_os_execute(cmd)
-    if type(ok) == "number" then
-        return ok == 0, ok
-    end
-    if ok == true then
-        return true, 0
-    end
-    return false, code or 1
 end
 
 local function default_pid()
@@ -33,13 +20,130 @@ local function default_pid()
     if env_pid and env_pid ~= "" then
         return tonumber(env_pid) or 0
     end
-    local p = io.popen("sh -c 'echo $$'", "r")
-    if p then
-        local out = p:read("*l")
-        p:close()
-        return tonumber(out) or 0
-    end
     return 0
+end
+
+local function lfs_attr(path)
+    return lfs.attributes(path)
+end
+
+local function mkdir_p(path)
+    local attr = lfs_attr(path)
+    if attr then
+        if attr.mode ~= "directory" then
+            error("path exists and is not a directory")
+        end
+        return true
+    end
+
+    local parent = path:match("^(.*)/[^/]+$")
+    if parent and parent ~= "" and parent ~= path and not lfs_attr(parent) then
+        mkdir_p(parent)
+    end
+
+    local ok, err = lfs.mkdir(path)
+    if not ok and not lfs_attr(path) then
+        error(err or "cannot create directory")
+    end
+    return true
+end
+
+local function remove_tree(path)
+    local attr = lfs_attr(path)
+    if not attr then
+        return true
+    end
+
+    if attr.mode == "directory" then
+        for name in lfs.dir(path) do
+            if name ~= "." and name ~= ".." then
+                local ok, err = remove_tree(path .. "/" .. name)
+                if not ok then
+                    return false, err
+                end
+            end
+        end
+        local ok, err = lfs.rmdir(path)
+        return ok ~= nil, err
+    end
+
+    local ok, err = os.remove(path)
+    return ok ~= nil, err
+end
+
+local function copy_file(src, dst)
+    local in_f, in_err = io.open(src, "rb")
+    if not in_f then
+        return false, in_err
+    end
+
+    local out_f, out_err = io.open(dst, "wb")
+    if not out_f then
+        in_f:close()
+        return false, out_err
+    end
+
+    while true do
+        local chunk = in_f:read(64 * 1024)
+        if not chunk then
+            break
+        end
+        local ok, write_err = out_f:write(chunk)
+        if not ok then
+            in_f:close()
+            out_f:close()
+            return false, write_err
+        end
+    end
+
+    in_f:close()
+    out_f:close()
+    return true
+end
+
+local function copy_tree(src, dst)
+    local attr = lfs_attr(src)
+    if not attr then
+        return false, "source does not exist"
+    end
+
+    if attr.mode == "directory" then
+        local ok, err = mkdir_p(dst)
+        if not ok then
+            return false, err
+        end
+        for name in lfs.dir(src) do
+            if name ~= "." and name ~= ".." then
+                local child_src = src .. "/" .. name
+                local child_dst = dst .. "/" .. name
+                local child_ok, child_err = copy_tree(child_src, child_dst)
+                if not child_ok then
+                    return false, child_err
+                end
+            end
+        end
+        return true
+    end
+
+    return copy_file(src, dst)
+end
+
+local function move_path(src, dst)
+    local ok, err = os.rename(src, dst)
+    if ok then
+        return true
+    end
+
+    local copy_ok, copy_err = copy_tree(src, dst)
+    if not copy_ok then
+        return false, copy_err or err
+    end
+
+    local rm_ok, rm_err = remove_tree(src)
+    if not rm_ok then
+        return false, rm_err
+    end
+    return true
 end
 
 local function normalize_path(path)
@@ -73,19 +177,6 @@ local function normalize_path(path)
         return absolute and "/" or "."
     end
     return result
-end
-
-local function read_cmd_lines(cmd)
-    local p = io.popen(cmd, "r")
-    if not p then
-        return {}
-    end
-    local out = {}
-    for line in p:lines() do
-        out[#out + 1] = line
-    end
-    p:close()
-    return out
 end
 
 local function create_colors_api()
@@ -664,6 +755,10 @@ local function create_fs_api(state)
         return state.fs_root .. rel(path)
     end
 
+    local function path_attr(path)
+        return lfs_attr(path)
+    end
+
     function fs.abs_path(path)
         return abs(path)
     end
@@ -701,31 +796,28 @@ local function create_fs_api(state)
     end
 
     function fs.exists(path)
-        -- First check real filesystem for relative paths (for vim runtime files)
         path = tostring(path or "")
         if path ~= "" and path:sub(1, 1) ~= "/" and not path:match("^%.%.") then
-            local ok = run_shell("[ -e " .. shell_quote(path) .. " ]")
-            if ok then
+            if path_attr(path) ~= nil then
                 return true
             end
         end
-        -- Then check in mock temp directory
-        local ok = run_shell("[ -e " .. shell_quote(abs(path)) .. " ]")
-        return ok
+        return path_attr(abs(path)) ~= nil
     end
 
     function fs.isDir(path)
-        -- First check real filesystem for relative paths (for vim runtime files)
         path = tostring(path or "")
         if path ~= "" and path:sub(1, 1) ~= "/" and not path:match("^%.%.") then
-            local ok = run_shell("[ -d " .. shell_quote(path) .. " ]")
-            if ok then
+            local attr = path_attr(path)
+            if attr and attr.mode == "directory" then
                 return true
             end
         end
-        -- Then check in mock temp directory
-        local ok = run_shell("[ -d " .. shell_quote(abs(path)) .. " ]")
-        return ok
+        local attr = path_attr(abs(path))
+        if attr and attr.mode == "directory" then
+            return true
+        end
+        return false
     end
 
     function fs.isReadOnly(_)
@@ -733,17 +825,17 @@ local function create_fs_api(state)
     end
 
     function fs.makeDir(path)
-        local ok, code = run_shell("mkdir -p " .. shell_quote(abs(path)))
+        local ok, err = pcall(mkdir_p, abs(path))
         if not ok then
-            error("cannot create directory (code " .. tostring(code) .. ")", 2)
+            error("cannot create directory: " .. tostring(err), 2)
         end
         return true
     end
 
     local function delete_abs(abs_path)
-        local ok, code = run_shell("rm -rf " .. shell_quote(abs_path))
+        local ok, err = remove_tree(abs_path)
         if not ok then
-            error("cannot delete path (code " .. tostring(code) .. ")", 2)
+            error("cannot delete path: " .. tostring(err), 2)
         end
     end
 
@@ -764,20 +856,20 @@ local function create_fs_api(state)
         if not fs.isDir(orig_path) then
             error("not a directory", 2)
         end
-        -- Check if this is a real filesystem path vs mock temp path
-        local cmd
+        local target = abs(path)
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" and not orig_path:match("^%.%.") then
-            -- Try real filesystem first
-            local ok = run_shell("[ -d " .. shell_quote(orig_path) .. " ]")
-            if ok then
-                cmd = "ls -1A " .. shell_quote(orig_path)
-            else
-                cmd = "ls -1A " .. shell_quote(abs(path))
+            local attr = path_attr(orig_path)
+            if attr and attr.mode == "directory" then
+                target = orig_path
             end
-        else
-            cmd = "ls -1A " .. shell_quote(abs(path))
         end
-        local lines = read_cmd_lines(cmd)
+
+        local lines = {}
+        for name in lfs.dir(target) do
+            if name ~= "." and name ~= ".." then
+                lines[#lines + 1] = name
+            end
+        end
         table.sort(lines)
         return lines
     end
@@ -788,9 +880,9 @@ local function create_fs_api(state)
         end
         local parent = fs.getDir(to)
         fs.makeDir(parent)
-        local ok, code = run_shell("mv " .. shell_quote(abs(from)) .. " " .. shell_quote(abs(to)))
+        local ok, err = move_path(abs(from), abs(to))
         if not ok then
-            error("move failed (code " .. tostring(code) .. ")", 2)
+            error("move failed: " .. tostring(err), 2)
         end
         return true
     end
@@ -801,9 +893,9 @@ local function create_fs_api(state)
         end
         local parent = fs.getDir(to)
         fs.makeDir(parent)
-        local ok, code = run_shell("cp -R " .. shell_quote(abs(from)) .. " " .. shell_quote(abs(to)))
+        local ok, err = copy_tree(abs(from), abs(to))
         if not ok then
-            error("copy failed (code " .. tostring(code) .. ")", 2)
+            error("copy failed: " .. tostring(err), 2)
         end
         return true
     end
@@ -849,14 +941,14 @@ local function create_fs_api(state)
         -- Check if this is a real filesystem path (for vim runtime files)
         local use_real_path = false
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" and not orig_path:match("^%.%.") then
-            local ok = run_shell("[ -f " .. shell_quote(orig_path) .. " ]")
-            if ok then
+            local attr = path_attr(orig_path)
+            if attr and attr.mode == "file" then
                 use_real_path = true
             end
         end
 
         local abs_path = use_real_path and orig_path or abs(path)
-        
+
         local parent = fs.getDir(use_real_path and orig_path or path)
         if mode == "w" or mode == "a" or mode == "wb" or mode == "ab" then
             if not use_real_path then
@@ -1331,8 +1423,8 @@ function MockEnv.setup(opts)
 
     local pid = default_pid()
     local fs_root = string.format("/tmp/nvim-test-%d-%d", real_os_time(), pid)
-    run_shell("rm -rf " .. shell_quote(fs_root))
-    local ok, code = run_shell("mkdir -p " .. shell_quote(fs_root))
+    remove_tree(fs_root)
+    local ok, code = pcall(mkdir_p, fs_root)
     if not ok then
         error("failed to create fs root " .. fs_root .. " (code " .. tostring(code) .. ")")
     end
@@ -1471,7 +1563,7 @@ function MockEnv.setup(opts)
         state.done = true
         state.timers = {}
         state.events = { { "terminate" } }
-        run_shell("rm -rf " .. shell_quote(fs_root))
+        remove_tree(fs_root)
     end
 
     function mock.finish()

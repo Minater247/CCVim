@@ -6,7 +6,7 @@ Integration tests for the CCVim editor.
 
 **Test Harness:** Each suite runs in an isolated mock CraftOS environment (`tests/test_mocks.lua`) that provides CraftOS primitives (`term`, `fs`, `os`, `keys`, etc.).
 
-The mock environment intentionally avoids no-op stubs. If a test calls an API in a way which causes issues, it must fail immediately rather than silently passing with broken behavior. A stub creates a gap in the testing harness where 
+The mock environment intentionally avoids no-op stubs. If a test calls an API in a way which causes issues, it must fail immediately rather than silently passing with broken behavior. A stub creates a gap in the testing harness where such a failure may slip through.
 
 **Backends:**
 - `lua_editor` (default): Loads the full CCVim codebase through the mock harness. Tests actual editor behavior.
@@ -17,10 +17,10 @@ The mock environment intentionally avoids no-op stubs. If a test calls an API in
 ```
 tests/new/
 ├── run.lua                  # Test runner entrypoint
-├── runall.sh                # Wrapper script (../../runall.sh redirects here)
+├── runall.sh                # Wrapper script
 ├── README.md
 ├── framework/
-│   ├── assert.lua           # Test assertions (eq, truthy, table_eq, etc.)
+│   ├── assert.lua           # Test assertions
 │   ├── runner.lua           # Suite discovery and execution
 │   └── backends/
 │       ├── lua_editor.lua   # CCVim mock backend
