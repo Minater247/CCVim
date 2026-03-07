@@ -62,10 +62,20 @@ function LuaEditorBackend.new(opts)
         if type(code) ~= "string" then
             return nil, "eval_block expects a string containing Lua code"
         end
-        
-        -- Wrap in IIFE and evaluate
-        local wrapped = "(function()\n" .. code .. "\nend)()"
-        return self:eval_lua(wrapped)
+
+        local vimapi = self:api_build().vim
+        local env = setmetatable({ vim = vimapi }, { __index = _G })
+        local chunk, err = load(code, "lua_editor_eval_block", "t", env)
+        if not chunk then
+            return nil, err
+        end
+
+        local ok, rv = pcall(chunk)
+        if not ok then
+            return nil, rv
+        end
+
+        return rv, nil
     end
 
     function backend:is_empty_dict(tbl)

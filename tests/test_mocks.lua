@@ -6,6 +6,7 @@ local real_os_getenv = os.getenv
 local real_os_time = os.time
 local real_os_date = os.date
 local real_os_exit = os.exit
+local real_os_remove = os.remove
 local has_lfs, lfs = pcall(require, "lfs")
 if not has_lfs then
     error("test_mocks.lua requires LuaFileSystem (lfs)")
@@ -67,7 +68,7 @@ local function remove_tree(path)
         return ok ~= nil, err
     end
 
-    local ok, err = os.remove(path)
+    local ok, err = real_os_remove(path)
     return ok ~= nil, err
 end
 
@@ -797,7 +798,7 @@ local function create_fs_api(state)
 
     function fs.exists(path)
         path = tostring(path or "")
-        if path ~= "" and path:sub(1, 1) ~= "/" and not path:match("^%.%.") then
+        if path ~= "" and path:sub(1, 1) ~= "/" then
             if path_attr(path) ~= nil then
                 return true
             end
@@ -807,7 +808,7 @@ local function create_fs_api(state)
 
     function fs.isDir(path)
         path = tostring(path or "")
-        if path ~= "" and path:sub(1, 1) ~= "/" and not path:match("^%.%.") then
+        if path ~= "" and path:sub(1, 1) ~= "/" then
             local attr = path_attr(path)
             if attr and attr.mode == "directory" then
                 return true
@@ -857,7 +858,7 @@ local function create_fs_api(state)
             error("not a directory", 2)
         end
         local target = abs(path)
-        if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" and not orig_path:match("^%.%.") then
+        if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
             if attr and attr.mode == "directory" then
                 target = orig_path
@@ -940,7 +941,7 @@ local function create_fs_api(state)
 
         -- Check if this is a real filesystem path (for vim runtime files)
         local use_real_path = false
-        if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" and not orig_path:match("^%.%.") then
+        if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
             if attr and attr.mode == "file" then
                 use_real_path = true

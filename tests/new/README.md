@@ -21,52 +21,53 @@ When tests fail on `lua_editor` but pass on `headless_nvim`, this indicates a di
 ## Directory Structure
 
 ```
-tests/new/
-├── run.lua                  # Test runner entrypoint
+tests/
 ├── runall.sh                # Wrapper script
-├── README.md
-├── framework/
-│   ├── assert.lua           # Test assertions
-│   ├── runner.lua           # Suite discovery and execution
-│   └── backends/
-│       ├── lua_editor.lua   # CCVim mock backend
-│       └── headless_nvim.lua # Real Neovim backend (WIP)
-└── suites/
-    ├── api/                 # vim.api.* function tests
-    │   ├── vim_list_slice_spec.lua
-    │   ├── vim_islist_spec.lua
-    │   └── ...
-    └── runtime/             # Editor behavior and integration tests
-        ├── nvim_redraw_api_spec.lua
-        └── ...
+└── new/
+    ├── run.lua              # Test runner entrypoint
+    ├── README.md
+    ├── framework/
+    │   ├── assert.lua       # Test assertions
+    │   ├── runner.lua       # Suite discovery and execution
+    │   └── backends/
+    │       ├── lua_editor.lua    # CCVim mock backend
+    │       └── headless_nvim.lua # Real Neovim backend (WIP)
+    └── suites/
+        ├── api/             # vim.api.* function tests
+        │   ├── vim_list_slice_spec.lua
+        │   ├── vim_islist_spec.lua
+        │   └── ...
+        └── runtime/         # Editor behavior and integration tests
+            ├── nvim_redraw_api_spec.lua
+            └── ...
 ```
 
 The `suites/` directory may be expanded as test coverage increases.
 
 ## Running
 
-From the workspace root:
+From the repository root (`vim/`):
 
 ```sh
-./vim/tests/runall.sh
+./tests/runall.sh
 ```
 
-Or directly with Lua from the workspace root:
+Or directly with Lua from the repository root:
 
 ```sh
-lua vim/tests/new/run.lua
+lua tests/new/run.lua
 ```
 
 Run specific suites:
 
 ```sh
-lua vim/tests/new/run.lua vim/tests/new/suites/api/vim_list_slice_spec.lua
+lua tests/new/run.lua tests/new/suites/api/vim_list_slice_spec.lua
 ```
 
 Use the Neovim parity backend (for supported tests):
 
 ```sh
-lua vim/tests/new/run.lua --backend=headless_nvim
+lua tests/new/run.lua --backend=headless_nvim
 ```
 
 ## Writing Tests
@@ -98,6 +99,7 @@ return {
 **Backend interface:**
 - `backend:eval_lua(lua_expr)` - backend-independent translation layer; evaluates a Lua expression and returns the result as a Lua value (decoded from JSON) and error
 - `backend:eval_vimscript(vimscript_expr)` - backend-independent Vimscript expression evaluator; returns the result as a Lua value and error
+- `backend:eval_block(lua_code)` - executes a Lua code block and returns the block's explicit `return` value (or `nil`) and error
 - `backend.EMPTY_DICT_MT` - metatable marker used to distinguish empty dictionaries `{}` from empty arrays `[]`; empty dicts have this metatable, empty arrays don't
 - `backend:is_list(tbl)` - returns true if the table is an array (sequential integer keys starting from 1)
 - `backend:is_dict(tbl)` - returns true if the table is a dictionary (has string keys, or is marked as empty dict)
@@ -133,4 +135,3 @@ Key differences from real runtime:
 ## Notes
 
 - Each test runs with a fresh mock environment to prevent context leakage between tests.
-

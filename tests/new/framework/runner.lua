@@ -4,11 +4,25 @@ local HeadlessNvimBackend = require("vim.tests.new.framework.backends.headless_n
 
 local Runner = {}
 
+local function shell_quote(s)
+    s = tostring(s or "")
+    return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
+local function detect_ccvim_path()
+    local explicit = rawget(_G, "__CCVIM_TEST_ROOT")
+    if type(explicit) == "string" and explicit ~= "" then
+        return explicit
+    end
+    return "."
+end
+
 -- Recursively discover test files (files ending in _spec.lua)
 local function discover_test_files(dir_path)
     local files = {}
     
-    local handle = io.popen("find " .. dir_path .. " -type f -name '*_spec.lua' 2>/dev/null | sort")
+    local cmd = "find " .. shell_quote(dir_path) .. " -type f -name '*_spec.lua' 2>/dev/null | sort"
+    local handle = io.popen(cmd)
     if not handle then
         return files
     end
@@ -24,11 +38,12 @@ end
 Runner.discover = discover_test_files
 
 local function read_suite_paths(default_paths)
+    local cli_args = arg or {}
     local out = {}
-    if #arg > 0 then
-        for i = 1, #arg do
-            if arg[i] ~= "--backend=lua_editor" and arg[i] ~= "--backend=headless_nvim" then
-                out[#out + 1] = arg[i]
+    if #cli_args > 0 then
+        for i = 1, #cli_args do
+            if cli_args[i] ~= "--backend=lua_editor" and cli_args[i] ~= "--backend=headless_nvim" then
+                out[#out + 1] = cli_args[i]
             end
         end
     end
@@ -41,8 +56,9 @@ local function read_suite_paths(default_paths)
 end
 
 local function read_backend()
-    for i = 1, #arg do
-        if arg[i] == "--backend=headless_nvim" then
+    local cli_args = arg or {}
+    for i = 1, #cli_args do
+        if cli_args[i] == "--backend=headless_nvim" then
             return "headless_nvim"
         end
     end
@@ -53,7 +69,7 @@ local function new_backend(name)
     if name == "headless_nvim" then
         return HeadlessNvimBackend.new()
     end
-    return LuaEditorBackend.new({ ccvim_path = "vim" })
+    return LuaEditorBackend.new({ ccvim_path = detect_ccvim_path() })
 end
 
 function Runner.run(default_paths)

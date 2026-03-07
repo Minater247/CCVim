@@ -19,9 +19,11 @@ return {
             .. "vim.tbl_islist({1,2})}")
         Assert.table_eq("isarray cases", result, {true, false, true})
 
-        result = Assert.eval(backend, "eval empty_dict_mt",
-            "(function() vim._empty_dict_mt = {}; local t = setmetatable({}, vim._empty_dict_mt); "
-            .. "return {vim.islist(t), vim.isarray(t)} end)()")
+        result = Assert.eval_block(backend, "eval empty_dict_mt", [[
+            vim._empty_dict_mt = {}
+            local t = setmetatable({}, vim._empty_dict_mt)
+            return {vim.islist(t), vim.isarray(t)}
+        ]])
         Assert.table_eq("empty_dict_mt handling", result, {false, false})
     end,
 }

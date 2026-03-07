@@ -503,9 +503,17 @@ local function serialize_with_refs(value)
 end
 
 ]])
-        -- Write the user's code directly
+        f:write("local ok, rv = pcall(function()\n")
         f:write(code)
-        f:write("\n")
+        f:write("\nend)\n")
+        f:write("if not ok then\n")
+        f:write("  io.stderr:write('E:' .. tostring(rv) .. '\\n')\n")
+        f:write("  vim.cmd('cq')\n")
+        f:write("  return\n")
+        f:write("end\n")
+        f:write("if rv ~= nil then\n")
+        f:write("  print('@@RESULT@@' .. vim.json.encode(serialize_with_refs(rv)))\n")
+        f:write("end\n")
         f:write("vim.cmd('qa!')\n")
         f:close()
 
@@ -515,8 +523,11 @@ end
         if not ok then
             return nil, out
         end
-        -- eval_block doesn't return a value, it just runs code
-        return nil, nil
+        local json_result = out:match("@@RESULT@@([^\n\r]+)")
+        if not json_result then
+            return nil, nil
+        end
+        return json_decode(json_result)
     end
 
     function backend:is_empty_dict(tbl)

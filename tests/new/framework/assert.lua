@@ -44,12 +44,27 @@ function Assert.eval_eq(backend, label, expr, expected)
     Assert.eq(label, result, expected)
 end
 
+function Assert.eval_block(backend, label, code)
+    local result, err = backend:eval_block(code)
+    Assert.eq(label .. " error", err, nil)
+    return result
+end
+
 function Assert.expect_error(backend, label, expr, error_pattern)
     local code = string.format(
         "(function() local ok, err = pcall(function() return %s end); "
         .. "return {ok, err and tostring(err):find('%s') ~= nil or false} end)()",
         expr, error_pattern)
     local result = Assert.eval(backend, "eval " .. label, code)
+    Assert.table_eq(label, result, {false, true})
+end
+
+function Assert.expect_error_block(backend, label, code, error_pattern)
+    local wrapped = string.format(
+        "local ok, err = pcall(function()\n%s\nend)\n"
+        .. "return {ok, err and tostring(err):find(%q, 1, true) ~= nil or false}",
+        code, error_pattern)
+    local result = Assert.eval_block(backend, "eval " .. label, wrapped)
     Assert.table_eq(label, result, {false, true})
 end
 
