@@ -75,9 +75,9 @@ return {
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert
-        
-        -- Test code here
-        local result = backend:api_build().vim.fn.abs(-5)
+
+        local result, err = backend:eval_lua("vim.fn.abs(-5)")
+        Assert.truthy("abs(-5) eval", result ~= nil, err)
         Assert.eq("abs(-5)", result, 5)
     end,
 }
@@ -90,11 +90,25 @@ return {
 - `Assert.contains_pair(label, rows, key, value)` - check for key-value pair in list
 
 **Backend interface:**
-- `backend.mock.loadModule(name)` - load a CCVim module
-- `backend.mock.create_buffer(...)` - create mock buffer
-- `backend.mock.create_window(...)` - create mock window
-- `backend:api_build()` - get the full `vim` API table
-- `backend:cleanup()` - teardown (called automatically)
+- `backend:eval_lua(lua_expr)` - backend-independent translation layer; evaluates a Lua expression and returns the result as a Lua value (decoded from JSON) and error
+- `backend:eval_vimscript(vimscript_expr)` - backend-independent Vimscript expression evaluator; returns the result as a Lua value and error
+- `backend.EMPTY_DICT_MT` - metatable marker used to distinguish empty dictionaries `{}` from empty arrays `[]`; empty dicts have this metatable, empty arrays don't
+- `backend:is_list(tbl)` - returns true if the table is an array (sequential integer keys starting from 1)
+- `backend:is_dict(tbl)` - returns true if the table is a dictionary (has string keys, or is marked as empty dict)
+- `backend:is_empty_dict(tbl)` - returns true if the table has the `EMPTY_DICT_MT` metatable (distinguishes `{}` from `[]`)
+
+Example:
+
+```lua
+local result, err = backend:eval_vimscript("abs(-5)")
+Assert.truthy("abs(-5) eval", result ~= nil, err)
+Assert.eq("abs(-5)", result, 5)
+```
+
+Lua-editor-specific helpers exist for deep integration tests that need direct mock access:
+- `backend.mock.loadModule(name)`
+- `backend.mock.create_buffer(...)`
+- `backend.mock.create_window(...)`
 
 ## Mock Environment
 

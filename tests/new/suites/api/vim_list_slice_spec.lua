@@ -6,18 +6,24 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        if backend.name == "lua_editor" then
-            local api = backend:api_build().vim
-            Assert.truthy("vim.list_slice exists", type(api.list_slice) == "function", type(api.list_slice))
-            Assert.table_eq("slice 2..3", api.list_slice({ 1, 2, 3, 4 }, 2, 3), { 2, 3 })
-            Assert.table_eq("slice start only", api.list_slice({ 1, 2, 3 }, 2), { 2, 3 })
-            Assert.table_eq("slice finish only", api.list_slice({ 1, 2, 3 }, nil, 2), { 1, 2 })
-            Assert.table_eq("slice out of range", api.list_slice({ 1, 2, 3 }, 4, 9), {})
-            return
-        end
+        local result, err = backend:eval_lua("type(vim.list_slice)")
+        Assert.truthy("eval type(list_slice)", result ~= nil, err)
+        Assert.eq("vim.list_slice exists", result, "function")
 
-        local result, err = backend:eval_lua("vim.list_slice({1,2,3,4}, 2, 3)")
-        Assert.truthy("headless eval ok", result ~= nil, err)
-        Assert.eq("headless list_slice result", result, "[2,3]")
+        result, err = backend:eval_lua("vim.list_slice({1,2,3,4}, 2, 3)")
+        Assert.truthy("eval slice 2..3", result ~= nil, err)
+        Assert.table_eq("slice 2..3", result, {2, 3})
+
+        result, err = backend:eval_lua("vim.list_slice({1,2,3}, 2)")
+        Assert.truthy("eval slice start only", result ~= nil, err)
+        Assert.table_eq("slice start only", result, {2, 3})
+
+        result, err = backend:eval_lua("vim.list_slice({1,2,3}, nil, 2)")
+        Assert.truthy("eval slice finish only", result ~= nil, err)
+        Assert.table_eq("slice finish only", result, {1, 2})
+
+        result, err = backend:eval_lua("vim.list_slice({1,2,3}, 4, 9)")
+        Assert.truthy("eval slice out of range", result ~= nil, err)
+        Assert.table_eq("slice out of range", result, {})
     end,
 }

@@ -6,31 +6,26 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        if backend.name == "lua_editor" then
-            local api = backend:api_build().vim
-            Assert.truthy("vim.islist exists", type(api.islist) == "function", type(api.islist))
-            Assert.truthy("vim.isarray exists", type(api.isarray) == "function", type(api.isarray))
-            Assert.truthy("vim.tbl_islist exists", type(api.tbl_islist) == "function", type(api.tbl_islist))
+        local result, err = backend:eval_lua("{type(vim.islist), type(vim.isarray), type(vim.tbl_islist)}")
+        Assert.truthy("eval function existence", result ~= nil, err)
+        Assert.table_eq("function tuple", result, {"function", "function", "function"})
 
-            Assert.eq("islist empty table", api.islist({}), true)
-            Assert.eq("islist contiguous", api.islist({ "a", "b", "c" }), true)
-            Assert.eq("islist gap", api.islist({ [1] = "a", [3] = "c" }), false)
-            Assert.eq("islist dict key", api.islist({ a = 1 }), false)
-            Assert.eq("islist non-table", api.islist("x"), false)
+        result, err = backend:eval_lua(
+            "{vim.islist({}), vim.islist({'a','b','c'}), "
+            .. "vim.islist({[1]='a',[3]='c'}), vim.islist({a=1}), vim.islist('x')}")
+        Assert.truthy("eval islist cases", result ~= nil, err)
+        Assert.table_eq("islist cases", result, {true, true, false, false, false})
 
-            Assert.eq("isarray non-contiguous integers", api.isarray({ [2] = true, [5] = true }), true)
-            Assert.eq("isarray non-integer key", api.isarray({ [1] = true, a = true }), false)
-            Assert.eq("tbl_islist alias", api.tbl_islist({ 1, 2 }), true)
+        result, err = backend:eval_lua(
+            "{vim.isarray({[2]=true,[5]=true}), vim.isarray({[1]=true,a=true}), "
+            .. "vim.tbl_islist({1,2})}")
+        Assert.truthy("eval isarray cases", result ~= nil, err)
+        Assert.table_eq("isarray cases", result, {true, false, true})
 
-            api._empty_dict_mt = {}
-            local empty_dict = setmetatable({}, api._empty_dict_mt)
-            Assert.eq("islist empty_dict mt", api.islist(empty_dict), false)
-            Assert.eq("isarray empty_dict mt", api.isarray(empty_dict), false)
-            return
-        end
-
-        local result, err = backend:eval_lua("{vim.islist({}), vim.islist({a=1}), vim.isarray({[2]=true,[5]=true})}")
-        Assert.truthy("headless eval ok", result ~= nil, err)
-        Assert.eq("headless tuple", result, "[true,false,true]")
+        result, err = backend:eval_lua(
+            "(function() vim._empty_dict_mt = {}; local t = setmetatable({}, vim._empty_dict_mt); "
+            .. "return {vim.islist(t), vim.isarray(t)} end)()")
+        Assert.truthy("eval empty_dict_mt", result ~= nil, err)
+        Assert.table_eq("empty_dict_mt handling", result, {false, false})
     end,
 }

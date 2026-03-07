@@ -6,25 +6,38 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        if backend.name == "lua_editor" then
-            local vimapi = backend:api_build().vim
-            Assert.eq("docs example", vimapi.fs.joinpath("foo/", "/bar"), "foo/bar")
-            if vimapi.fn.has("win32") == 1 then
-                Assert.eq("windows normalize backslashes", vimapi.fs.joinpath("a\\foo\\", "\\bar"), "a/foo/bar")
-            else
-                local expected = (table.concat({ "a\\foo\\", "\\bar" }, "/"):gsub("//+", "/"))
-                Assert.eq("non-windows backslash behavior", vimapi.fs.joinpath("a\\foo\\", "\\bar"), expected)
-            end
-            Assert.eq("absolute first", vimapi.fs.joinpath("/foo//", "///bar", "baz"), "/foo/bar/baz")
-            Assert.eq("root first", vimapi.fs.joinpath("/", "bar"), "/bar")
-            Assert.eq("empty first", vimapi.fs.joinpath("", "bar"), "/bar")
-            Assert.eq("no args", vimapi.fs.joinpath(), "")
-            Assert.eq("numeric coercion", vimapi.fs.joinpath("foo", 12), "foo/12")
-            return
+        local result, err = backend:eval_lua("vim.fs.joinpath('foo/', '/bar')")
+        Assert.truthy("eval docs example", result ~= nil, err)
+        Assert.eq("docs example", result, "foo/bar")
+
+        local is_win, win_err = backend:eval_lua("vim.fn.has('win32') == 1")
+        Assert.truthy("eval win32 flag", is_win ~= nil, win_err)
+        result, err = backend:eval_lua("vim.fs.joinpath('a\\\\foo\\\\', '\\\\bar')")
+        Assert.truthy("eval backslash case", result ~= nil, err)
+        if is_win == true then
+            Assert.eq("windows normalize backslashes", result, "a/foo/bar")
+        else
+            Assert.eq("non-windows backslash behavior", result, "a\\foo\\/\\bar")
         end
 
-        local result, err = backend:eval_lua("vim.fs.joinpath('/foo//', '///bar', 'baz')")
-        Assert.truthy("headless eval ok", result ~= nil, err)
-        Assert.eq("headless joinpath", result, '"/foo/bar/baz"')
+        result, err = backend:eval_lua("vim.fs.joinpath('/foo//', '///bar', 'baz')")
+        Assert.truthy("eval absolute first", result ~= nil, err)
+        Assert.eq("absolute first", result, "/foo/bar/baz")
+
+        result, err = backend:eval_lua("vim.fs.joinpath('/', 'bar')")
+        Assert.truthy("eval root first", result ~= nil, err)
+        Assert.eq("root first", result, "/bar")
+
+        result, err = backend:eval_lua("vim.fs.joinpath('', 'bar')")
+        Assert.truthy("eval empty first", result ~= nil, err)
+        Assert.eq("empty first", result, "/bar")
+
+        result, err = backend:eval_lua("vim.fs.joinpath()")
+        Assert.truthy("eval no args", result ~= nil, err)
+        Assert.eq("no args", result, "")
+
+        result, err = backend:eval_lua("vim.fs.joinpath('foo', 12)")
+        Assert.truthy("eval numeric coercion", result ~= nil, err)
+        Assert.eq("numeric coercion", result, "foo/12")
     end,
 }
