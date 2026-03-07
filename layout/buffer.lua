@@ -395,34 +395,6 @@ function Buffer:get_line(line_nr, load_if_unloaded)
     return lines[line_nr]
 end
 
-function Buffer:str_len(s)
-    return Utf8.len(s or "")
-end
-
-function Buffer:str_sub(s, start_col1, end_col1)
-    return Utf8.sub(s or "", start_col1, end_col1)
-end
-
-function Buffer:str_char_at(s, col1)
-    return Utf8.char_at(s or "", col1)
-end
-
-function Buffer:str_codepoint_at(s, col1)
-    return Utf8.codepoint_at(s or "", col1)
-end
-
-function Buffer:str_byte_index(s, col1, allow_eol)
-    return Utf8.byte_index(s or "", col1, allow_eol)
-end
-
-function Buffer:str_col_from_byte(s, byte_idx, allow_eol)
-    return Utf8.col_from_byte(s or "", byte_idx, allow_eol)
-end
-
-function Buffer:str_each_codepoint(s, visitor)
-    return Utf8.each_codepoint(s or "", visitor)
-end
-
 function Buffer:_ensure_undo_state()
     self._undo = self._undo or {
         entries = {},
@@ -634,14 +606,9 @@ function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
     local target_win = win or _buffer_window(self)
     if target_win and cursor then
         local new_y = math.max(1, math.min(cursor[2], #self.lines))
-        local max_x = self:str_len(self.lines[new_y] or "") + 1
+        local max_x = Utf8.len(self.lines[new_y] or "") + 1
         local new_x = math.max(1, math.min(cursor[1], max_x))
-        if type(target_win.cursorSet) == "function" then
-            target_win:cursorSet(new_x, new_y)
-        else
-            target_win.cursorx = new_x
-            target_win.cursory = new_y
-        end
+        target_win:cursorSet(new_x, new_y)
     end
 
     for _, candidate in pairs(windows) do
@@ -774,12 +741,7 @@ function Buffer:undo_line(win, noauto)
         self.opts.modified = true
 
         if target_win then
-            if type(target_win.cursorSet) == "function" then
-                target_win:cursorSet(1, target_line)
-            else
-                target_win.cursorx = 1
-                target_win.cursory = target_line
-            end
+            target_win:cursorSet(1, target_line)
         end
 
         _notify_buf_lines(self, {
@@ -833,12 +795,7 @@ function Buffer:undo_line(win, noauto)
     self:undo_mark_changed()
     self.opts.modified = true
     if target_win then
-        if type(target_win.cursorSet) == "function" then
-            target_win:cursorSet(1, target_line)
-        else
-            target_win.cursorx = 1
-            target_win.cursory = target_line
-        end
+        target_win:cursorSet(1, target_line)
     end
     self:undo_end(target_win)
 
@@ -846,33 +803,27 @@ function Buffer:undo_line(win, noauto)
 end
 
 function Buffer:line_len(line_nr, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.len(line)
+    return Utf8.len(self:get_line(line_nr, load_if_unloaded))
 end
 
 function Buffer:line_sub(line_nr, start_col1, end_col1, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.sub(line, start_col1, end_col1)
+    return Utf8.sub(self:get_line(line_nr, load_if_unloaded), start_col1, end_col1)
 end
 
 function Buffer:line_char_at(line_nr, col1, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.char_at(line, col1)
+    return Utf8.char_at(self:get_line(line_nr, load_if_unloaded), col1)
 end
 
 function Buffer:line_codepoint_at(line_nr, col1, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.codepoint_at(line, col1)
+    return Utf8.codepoint_at(self:get_line(line_nr, load_if_unloaded), col1)
 end
 
 function Buffer:line_byte_index(line_nr, col1, load_if_unloaded, allow_eol)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.byte_index(line, col1, allow_eol)
+    return Utf8.byte_index(self:get_line(line_nr, load_if_unloaded), col1, allow_eol)
 end
 
 function Buffer:line_col_from_byte(line_nr, byte_idx, load_if_unloaded, allow_eol)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.col_from_byte(line, byte_idx, allow_eol)
+    return Utf8.col_from_byte(self:get_line(line_nr, load_if_unloaded), byte_idx, allow_eol)
 end
 
 function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)

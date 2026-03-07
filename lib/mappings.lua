@@ -7,11 +7,9 @@ local WordNav = loadModule("lib.wordnav")
 local Syntax = loadModule("lib.syntax")
 local CmdRead = loadModule("lib.excmd.cmdread")
 local ExMsg = loadModule("lib.excmd.exmsg")
+local Utf8 = loadModule("lib.utf8")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
-local function _line_len(buf, s) return buf:str_len(s or "") end
-local function _line_sub(buf, s, i, j) return buf:str_sub(s or "", i, j) end
-local function _line_ch(buf, s, i) return buf:str_char_at(s or "", i) end
 
 local function push_register(regtype, value)
     registers["unnamed"] = {regtype, value}
@@ -179,13 +177,13 @@ Command.nmap_builtin_callback(
         while n > 0 do
             local line = lines[y]
             if not line then break end
-            local len = _line_len(buf, line)
+            local len = Utf8.len(line)
 
             if x <= len then
                 -- Delete min(n, remaining chars in this line from x)
                 local take = math.min(n, len - x + 1)
-                out[#out+1] = _line_sub(buf, line, x, x + take - 1)
-                splice_line(y, _line_sub(buf, line, 1, x - 1), _line_sub(buf, line, x + take))
+                out[#out+1] = Utf8.sub(line, x, x + take - 1)
+                splice_line(y, Utf8.sub(line, 1, x - 1), Utf8.sub(line, x + take))
                 n = n - take
             else
                 -- Cursor is at virtual EOL: need to consume a newline (if exists)
@@ -205,7 +203,7 @@ Command.nmap_builtin_callback(
             registers["-"] = {"inline", out}
         end
 
-        local new_len = _line_len(buf, lines[y] or "")
+        local new_len = Utf8.len(lines[y])
         if x > new_len + 1 then x = new_len + 1 end
         win:cursorSetX(x)
         win:cursorSetY(y)
@@ -220,8 +218,8 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local buf = win.buffer
         local lines = buf:lines_ref(true)
-        local line = lines[win.cursory] or ""
-        buf:set_line(win.cursory, _line_sub(buf, line, 1, win.cursorx - 1) .. _line_sub(buf, line, win.cursorx + 1))
+        local line = lines[win.cursory]
+        buf:set_line(win.cursory, Utf8.sub(line, 1, win.cursorx - 1) .. Utf8.sub(line, win.cursorx + 1))
         Syntax.ParseLinetypes(buf, win.cursory)
         win:cursorMove(0, 0)
     end
@@ -505,7 +503,7 @@ Command.nmap_builtin_callback(
         local win = windows[curwin]
         local line = win.buffer:get_line(win.cursory, true)
         if line then
-            win:cursorMove(win.buffer:str_len(line), math.max(0, count and (count - 1) or 0))
+            win:cursorMove(Utf8.len(line), math.max(0, count and (count - 1) or 0))
         end
 
         -- TODO: this should be set to the max virtual column, but that's not implemented yet
@@ -521,7 +519,7 @@ Command.nmap_builtin_callback(
         if line then
             local idx = line:find("%S")
             if idx then
-                local col = win.buffer:str_col_from_byte(line, idx)
+                local col = Utf8.col_from_byte(line, idx)
                 win:cursorMove(col - win.cursorx, 0)
             end
         end
@@ -535,7 +533,7 @@ Command.nmap_builtin_callback(
         local line = win.buffer:get_line(win.cursory, true) or ""
         local idx_byte = line:match("()%S%s*$")
         if idx_byte then
-            local idx = win.buffer:str_col_from_byte(line, idx_byte)
+            local idx = Utf8.col_from_byte(line, idx_byte)
             win:cursorMove(idx - win.cursorx, math.max(0, count and (count - 1) or 0))
         end
     end
@@ -828,8 +826,8 @@ Command.nmap_builtin_operator_with_motions(
 
         if motion_name == "$" then
             local lines = {}
-            lines[1] = _line_sub(buf, buf:get_line(win.cursory, true) or "", win.cursorx)
-            buf:set_line(win.cursory, _line_sub(buf, buf:get_line(win.cursory, true) or "", 1, win.cursorx - 1))
+            lines[1] = Utf8.sub(buf:get_line(win.cursory, true), win.cursorx)
+            buf:set_line(win.cursory, Utf8.sub(buf:get_line(win.cursory, true), 1, win.cursorx - 1))
 
             if total > 1 then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + total - 1)
@@ -848,7 +846,7 @@ Command.nmap_builtin_operator_with_motions(
             local remaining = total
             while remaining > 0 do
                 local line = buf:get_line(win.cursory, true)
-                if not line or win.cursorx > _line_len(buf, line) then break end
+                if not line or win.cursorx > Utf8.len(line) then break end
 
                 local ly, sx, ex = WordNav.wordUnder(win, false, win.cursory, win.cursorx)
                 if not ly then
@@ -876,8 +874,8 @@ Command.nmap_builtin_operator_with_motions(
                 local del_end = ex
                 -- Look for following whitespace run
                 local i = ex + 1
-                local len = _line_len(buf, line)
-                while i <= len and (_line_ch(buf, line, i) == ' ' or _line_ch(buf, line, i) == '\t') do
+                local len = Utf8.len(line)
+                while i <= len and (Utf8.char_at(line, i) == ' ' or Utf8.char_at(line, i) == '\t') do
                     i = i + 1
                 end
                 if i > ex + 1 then
@@ -885,17 +883,17 @@ Command.nmap_builtin_operator_with_motions(
                     del_end = i - 1
                 end
 
-                local removed = _line_sub(buf, line, del_start, del_end)
+                local removed = Utf8.sub(line, del_start, del_end)
                 table.insert(collected, removed)
                 buf:set_line(
                     win.cursory,
-                    _line_sub(buf, line, 1, del_start - 1) .. _line_sub(buf, line, del_end + 1),
+                    Utf8.sub(line, 1, del_start - 1) .. Utf8.sub(line, del_end + 1),
                     true
                 )
                 Syntax.ParseLinetypes(buf, win.cursory)
                 -- Keep cursor at del_start (or clamp to line length)
                 local new_line = buf:get_line(win.cursory, true)
-                local new_len = _line_len(buf, new_line)
+                local new_len = Utf8.len(new_line)
                 if del_start > new_len then
                     win:cursorSetX(new_len + 1) -- allow position after end
                 else
@@ -931,8 +929,8 @@ Command.nmap_builtin_operator_with_motions(
 
         if motion_name == "$" then
             local lines = {}
-            lines[1] = _line_sub(buf, buf:get_line(win.cursory, true) or "", win.cursorx)
-            buf:set_line(win.cursory, _line_sub(buf, buf:get_line(win.cursory, true) or "", 1, win.cursorx - 1))
+            lines[1] = Utf8.sub(buf:get_line(win.cursory, true), win.cursorx)
+            buf:set_line(win.cursory, Utf8.sun(buf:get_line(win.cursory, true), 1, win.cursorx - 1))
 
             if total > 1 then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + total - 1)

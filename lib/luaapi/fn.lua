@@ -409,7 +409,7 @@ local function _extract_cfile_text(win)
     if line == "" then return "" end
 
     local cx = win.cursorx
-    local line_len = buf:str_len(line)
+    local line_len = Utf8.len(line)
     if cx < 1 then cx = 1 end
     if cx > line_len and line_len > 0 then
         cx = line_len
@@ -422,8 +422,8 @@ local function _extract_cfile_text(win)
     if cx < 1 or cx > line_len then
         return ""
     end
-    if not is_cfile_char(buf:str_char_at(line, cx)) then
-        if cx > 1 and is_cfile_char(buf:str_char_at(line, cx - 1)) then
+    if not is_cfile_char(Utf8.char_at(line, cx)) then
+        if cx > 1 and is_cfile_char(Utf8.char_at(line, cx - 1)) then
             cx = cx - 1
         else
             return ""
@@ -431,9 +431,9 @@ local function _extract_cfile_text(win)
     end
 
     local s, e = cx, cx
-    while s > 1 and is_cfile_char(buf:str_char_at(line, s - 1)) do s = s - 1 end
-    while e < line_len and is_cfile_char(buf:str_char_at(line, e + 1)) do e = e + 1 end
-    return buf:str_sub(line, s, e)
+    while s > 1 and is_cfile_char(Utf8.char_at(line, s - 1)) do s = s - 1 end
+    while e < line_len and is_cfile_char(Utf8.char_at(line, e + 1)) do e = e + 1 end
+    return Utf8.sub(line, s, e)
 end
 
 local function _expand_cfile(buf)
@@ -491,30 +491,6 @@ local function _prepare_match_pattern(pat, use_ignorecase_opt)
         return nil, nil, c_err
     end
     return compiled, case_sensitive, nil
-end
-
-local function _search_set_cursor(win, lnum, col1)
-    if type(win._set_cursor_raw) == "function" then
-        win:_set_cursor_raw(lnum, col1)
-        return
-    end
-
-    local buf = win.buffer
-    local lines = buf:lines_ref(true)
-    local line_count = #lines
-    if line_count < 1 then
-        line_count = 1
-    end
-    if lnum < 1 then lnum = 1 end
-    if lnum > line_count then lnum = line_count end
-
-    local line = lines[lnum] or ""
-    local max_col = buf:str_len(line) + 1
-    if col1 < 1 then col1 = 1 end
-    if col1 > max_col then col1 = max_col end
-
-    win.cursory = lnum
-    win.cursorx = col1
 end
 
 local function _search_truthy(v)
@@ -946,7 +922,7 @@ function Builtins.fnamemodify(fname, mods, R)
             out = _ensure_dir_trailing(VimFs.abspath(out))
         elseif c == "8" then
             error("8.3 short format not supported on ComputerCraft")
-        elseif c == "~" then
+        elseif c == "~" then -- luacheck: ignore 542
             -- TODO: Pull this from the environment variable
         elseif c == "." then
             out = _rel_to(Builtins.getcwd(), VimFs.abspath(out))
@@ -1711,7 +1687,7 @@ function Builtins.cursor(lnum, col, ...)
     y = math.max(1, math.min(max_y, math.floor(y)))
 
     local line = win.buffer:get_line(y, true) or ""
-    local max_x = win.buffer:str_len(line) + 1
+    local max_x = Utf8.len(line) + 1
     x = math.max(1, math.min(max_x, math.floor(x)))
 
     win.cursory = y
@@ -2257,7 +2233,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
         elseif byte_col1 > byte_max_col then
             byte_col1 = byte_max_col
         end
-        local col1 = buf:str_col_from_byte(line_text, byte_col1, true)
+        local col1 = Utf8.col_from_byte(line_text, byte_col1, true)
         return found, col1
     end
 
@@ -2342,13 +2318,13 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
 
         local save_line = win.cursory
         local save_col = win.cursorx
-        _search_set_cursor(win, candidate_line, candidate_col)
+        win:_set_cursor_raw(candidate_line, candidate_col)
 
         local ok, rv
         if skip_kind == "function" then
             ok, rv = pcall(skip)
             if not ok then
-                _search_set_cursor(win, save_line, save_col)
+                win:_set_cursor_raw(save_line, save_col)
                 return nil, rv
             end
         else
@@ -2360,17 +2336,17 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
                 })
             end)
             if not rt_ok then
-                _search_set_cursor(win, save_line, save_col)
+                win:_set_cursor_raw(save_line, save_col)
                 return nil, eval_ok
             end
             if not eval_ok then
-                _search_set_cursor(win, save_line, save_col)
+                win:_set_cursor_raw(save_line, save_col)
                 return nil, eval_rv
             end
             rv = eval_rv
         end
 
-        _search_set_cursor(win, save_line, save_col)
+        win:_set_cursor_raw(save_line, save_col)
         return _search_truthy(rv), nil
     end
 
@@ -2507,7 +2483,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
             end
             dest_lnum, dest_col = abs_to_line_col(end_abs)
         end
-        _search_set_cursor(win, dest_lnum, dest_col)
+        win:_set_cursor_raw(dest_lnum, dest_col)
         win:mark_redraw()
     end
 

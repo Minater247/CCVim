@@ -11,6 +11,8 @@
 
 local WordNav = {}
 
+local Utf8 = loadModule("lib.utf8")
+
 local function _build_iskeyword_set(buf)
 	buf._ikw_cache = buf._ikw_cache or { spec = nil, set = nil }
 	local spec = options.get("iskeyword", nil, buf)
@@ -57,7 +59,7 @@ function WordNav.invalidateCache(buf)
 end
 
 -- ---------- low-level helpers ----------
-local function _line_len(buf, lines, y) return buf:str_len(lines[y] or "") end
+local function _line_len(_, lines, y) return Utf8.len(lines[y] or "") end
 
 local function _fwd(buf, lines, y, x)
 	local n = _line_len(buf, lines, y)
@@ -76,12 +78,12 @@ local function _back(buf, lines, y, x)
 	return y, n
 end
 
-local function _is_blank(buf, lines, y, x)
+local function _is_blank(_, lines, y, x)
 	if y < 1 or y > #lines then return true end
 	local s = lines[y] or ""
-	local n = buf:str_len(s)
+	local n = Utf8.len(s)
 	if x < 1 or x > n then return true end
-	local ch = buf:str_char_at(s, x)
+	local ch = Utf8.char_at(s, x)
 	return ch == " " or ch == "\t"
 end
 
@@ -89,7 +91,7 @@ end
 local function _class_of(buf, lines, y, x, isWORD, kwset)
 	if _is_blank(buf, lines, y, x) then return 0 end
 	if isWORD then return 1 end
-	local cp = buf:str_codepoint_at(lines[y], x)
+	local cp = Utf8.codepoint_at(lines[y], x)
 	return kwset[cp] and 1 or 2
 end
 
@@ -268,7 +270,7 @@ function WordNav.wordUnder(win, isWORD, y, x)
 	if #lines == 0 then return nil end
 	if y < 1 or y > #lines then return nil end
 	local line = lines[y] or ""
-	local linelen = buf:str_len(line)
+	local linelen = Utf8.len(line)
 	if linelen == 0 then return nil end
 	if x < 1 then x = 1 end
 	if x > linelen then x = linelen end

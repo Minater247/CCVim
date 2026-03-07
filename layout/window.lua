@@ -580,7 +580,7 @@ end
 -- Map a desired visual column to a character column.
 function Window:_col1_for_visual_col(line, want_vx, insert_mode)
     local tcfg = Tab.get_tab_config(self.buffer)
-    local n = self.buffer:str_len(line)
+    local n = Utf8.len(line)
 
     if want_vx <= 1 then
         return 1
@@ -657,7 +657,7 @@ end
 function Window:_wrap_layout(line_idx, params, bytepos)
     self.buffer:ensure_loaded(true)
     local line = self.buffer:get_line(line_idx, true) or ""
-    local byte_col = bytepos and self.buffer:str_byte_index(line, bytepos, true)
+    local byte_col = bytepos and Utf8.byte_index(line, bytepos, true)
     local lines, ranges, gsrc, pos = TexRen.layout(line, params, byte_col)
     if #lines < 1 then lines[1] = "" end
     return lines, ranges, gsrc, pos
@@ -846,7 +846,7 @@ end
 
 function Window:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lines, ranges, gsrc, allow_eol)
     local line_str = self.buffer:get_line(line_idx, true) or ""
-    local line_len = self.buffer:str_len(line_str)
+    local line_len = Utf8.len(line_str)
     local line_count = #lines
     if row_in_line > line_count then
         return allow_eol and (line_len + 1) or math.max(1, line_len)
@@ -869,7 +869,7 @@ function Window:_wrap_bytecol_from_layout(line_idx, row_in_line, screen_col, lin
     local gidx = range and (range.i + screen_col - 1) or screen_col
     local bytecol = gsrc and gsrc[gidx] or screen_col
     if not bytecol or bytecol < 1 then bytecol = 1 end
-    return self.buffer:str_col_from_byte(line_str, bytecol, allow_eol)
+    return Utf8.col_from_byte(line_str, bytecol, allow_eol)
 end
 
 function Window:_set_cursor_raw(line_idx, col1)
@@ -878,7 +878,7 @@ function Window:_set_cursor_raw(line_idx, col1)
     if line_idx > linecnt then line_idx = linecnt end
 
     local line = self.buffer:get_line(line_idx, true) or ""
-    local ll = self.buffer:str_len(line)
+    local ll = Utf8.len(line)
 
     local newx = col1 or self.cursorx
     if newx < 1 then
@@ -1027,7 +1027,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
 
     self.cursory = newy
     self.cursorx = newx
-    if newy ~= oldy and type(self.buffer.undo_break_line_chain) == "function" then
+    if newy ~= oldy then
         self.buffer:undo_break_line_chain()
     end
 
@@ -1560,7 +1560,7 @@ function Window:render(xoff, yoff)
         end)
 
         local line_str = lines[i] or ""
-        local cursor_byte = (self.cursory == i) and self.buffer:str_byte_index(line_str, self.cursorx, true)
+        local cursor_byte = (self.cursory == i) and Utf8.byte_index(line_str, self.cursorx, true)
         local rendered, blitLines, cursorPos, ranges, gsrc = TexRen.parse(
             line_str,
             {
@@ -1594,7 +1594,7 @@ function Window:render(xoff, yoff)
             if cursorPos.line == (#rendered + 1) then
                 cursor_virtual = true
             elseif self.opts.wrap and (vimmode == "insert") then
-                if self.cursorx == (self.buffer:str_len(line_str) + 1) then
+                if self.cursorx == (Utf8.len(line_str) + 1) then
                     local last = rendered[#rendered] or ""
                     if (text_w > 0) and (#last == text_w) then
                         cursor_virtual = true
@@ -1775,8 +1775,8 @@ function Window:render(xoff, yoff)
                 else
                     local _, wrap_params = self:_wrap_params()
                     wrap_params.listcfg = listcfg
-                    local _, row_in_line, lines = self:_wrap_pos_from_row_offset(row_offset, wrap_params, false)
-                    local row_str = (lines and lines[row_in_line]) or ""
+                    local _, row_in_line, wrap_lines = self:_wrap_pos_from_row_offset(row_offset, wrap_params)
+                    local row_str = (wrap_lines and wrap_lines[row_in_line]) or ""
                     local x1 = hscroll
                     local x2 = hscroll + math.max(0, text_w) - 1
                     if x2 < x1 then x2 = x1 - 1 end
@@ -1841,7 +1841,7 @@ function Window:matchPairs()
     local x     = win.cursorx
 
     local line  = lines[y] or ""
-    local line_len = buf:str_len(line)
+    local line_len = Utf8.len(line)
     if line_len == 0 or x < 1 or x > line_len then
         return
     end
@@ -1858,7 +1858,7 @@ function Window:matchPairs()
     end
 
     local function ch_at(i)
-        return buf:str_char_at(line, i)
+        return Utf8.char_at(line, i)
     end
 
     -- Forward scan for the matching 'stop' of a given 'start' at position i0
@@ -2051,7 +2051,7 @@ function Window:_eval_indentexpr(lnum)
     local target_line = self.buffer:get_line(target_y, true) or ""
 
     self.cursory = target_y
-    local target_len = self.buffer:str_len(target_line)
+    local target_len = Utf8.len(target_line)
     if self.cursorx > target_len + 1 then
         self.cursorx = target_len + 1
     elseif self.cursorx < 1 then
@@ -2111,10 +2111,10 @@ function Window:reindentLine(lnum, want_vcol, cursor_col1)
 
     local fnb = _first_non_blank_col1(line)
     local old_prefix_len = fnb - 1
-    local tail = buf:str_sub(line, fnb)
+    local tail = Utf8.sub(line, fnb)
 
     local prefix = self:_build_indent_prefix(want_vcol)
-    if prefix == buf:str_sub(line, 1, old_prefix_len) then
+    if prefix == Utf8.sub(line, 1, old_prefix_len) then
         return cursor_col1 or self.cursorx
     end
 
@@ -2123,10 +2123,10 @@ function Window:reindentLine(lnum, want_vcol, cursor_col1)
     Syntax.ParseLinetypes(buf, math.max(1, ln - 1))
 
     local col = cursor_col1 or self.cursorx
-    local delta = buf:str_len(prefix) - old_prefix_len
+    local delta = Utf8.len(prefix) - old_prefix_len
     col = col + delta
     if col < 1 then col = 1 end
-    local max_col = buf:str_len(lines[ln] or "") + 1
+    local max_col = Utf8.len(lines[ln] or "") + 1
     if col > max_col then col = max_col end
     return col
 end
@@ -2199,7 +2199,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         local i = at_col1 - 2
         if i < 0 then return at_col1 - 1, at_col1 - 1 end
         while i >= 0 do
-            local ch = buf:str_char_at(s, i + 1)
+            local ch = Utf8.char_at(s, i + 1)
             if ch ~= " " and ch ~= "\t" then break end
             i = i - 1
         end
@@ -2211,7 +2211,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
     if ln > buf:line_count(true) then ln = buf:line_count(true) end
     local cur = lines[ln] or ""
     if col1 < 1 then col1 = 1 end
-    if col1 > buf:str_len(cur) + 1 then col1 = buf:str_len(cur) + 1 end
+    if col1 > Utf8.len(cur) + 1 then col1 = Utf8.len(cur) + 1 end
 
     local first_dirty = math.huge
     local function mark_dirty(i)
@@ -2224,8 +2224,8 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
     end
 
     local function do_split_line()
-        local left  = buf:str_sub(cur, 1, col1 - 1)
-        local right = buf:str_sub(cur, col1)
+        local left  = Utf8.sub(cur, 1, col1 - 1)
+        local right = Utf8.sub(cur, col1)
         set_line(ln, left)
         ln = ln + 1
         table.insert(lines, ln, right)
@@ -2241,7 +2241,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         buf:remove_lines(ln, ln)
         ln = ln - 1
         cur = lines[ln]
-        col1 = buf:str_len(prev) + 1
+        col1 = Utf8.len(prev) + 1
     end
 
     local function vcol_at(c1)
@@ -2274,7 +2274,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
             local it = indentkeys[i]
             if it.kind == "key" and it.key == ch then
                 if it.start_only then
-                    local before_part = buf:str_sub(pre_line, 1, pre_col - 1)
+                    local before_part = Utf8.sub(pre_line, 1, pre_col - 1)
                     if before_part:match("^%s*$") then
                         return true
                     end
@@ -2283,17 +2283,17 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                 end
             elseif it.kind == "else" and ch == "e" then
                 local fnb = _first_non_blank_col1(post_line)
-                local head = buf:str_sub(post_line, fnb, fnb + 3):lower()
+                local head = Utf8.sub(post_line, fnb, fnb + 3):lower()
                 if head == "else" then
                     return true
                 end
             elseif it.kind == "word" then
                 local w = tostring(it.word or "")
-                local wlen = buf:str_len(w)
+                local wlen = Utf8.len(w)
                 if w ~= "" and post_col > 1 and post_col - 1 >= wlen then
-                    local lhs = buf:str_sub(post_line, 1, post_col - 1)
-                    local lhs_len = buf:str_len(lhs)
-                    local tail = buf:str_sub(lhs, lhs_len - wlen + 1)
+                    local lhs = Utf8.sub(post_line, 1, post_col - 1)
+                    local lhs_len = Utf8.len(lhs)
+                    local tail = Utf8.sub(lhs, lhs_len - wlen + 1)
                     local ok_word
                     if it.ignorecase then
                         ok_word = tail:lower() == w:lower()
@@ -2302,7 +2302,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                     end
                     if ok_word then
                         if it.start_only then
-                            local pre_word = buf:str_sub(lhs, 1, lhs_len - wlen)
+                            local pre_word = Utf8.sub(lhs, 1, lhs_len - wlen)
                             if pre_word:match("^%s*$") then
                                 return true
                             end
@@ -2333,7 +2333,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         return "?"
     end
 
-    buf:str_each_codepoint(text, function(cp)
+    Utf8.each_codepoint(text, function(cp)
         if cp == 10 then
             if _indentkey_pre_newline() then
                 _reindent_current_line()
@@ -2348,10 +2348,10 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
             local v   = vcol_at(col1)
             local lw  = is_in_leading_ws(cur, col1)
             local ins = Tab.compute_tab_insertion(v, lw, buf)
-            cur       = buf:str_sub(cur, 1, col1 - 1) .. ins .. buf:str_sub(cur, col1)
+            cur       = Utf8.sub(cur, 1, col1 - 1) .. ins .. Utf8.sub(cur, col1)
             set_line(ln, cur)
-            col1 = col1 + buf:str_len(ins)
-            last_action_inserted = (buf:str_len(ins) > 0)
+            col1 = col1 + Utf8.len(ins)
+            last_action_inserted = (Utf8.len(ins) > 0)
             last_inserted_newline = false
         elseif cp == 8 then
             local ins_start_line = self.insert_curs_start[1]
@@ -2363,7 +2363,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
 
             if col1 == 1 then
                 if bs_flags.eol and ln > 1 then
-                    local new_line, new_col1 = ln - 1, buf:str_len(lines[ln - 1] or "") + 1
+                    local new_line, new_col1 = ln - 1, Utf8.len(lines[ln - 1] or "") + 1
                     if (not bs_flags.start) and before(new_line, new_col1, ins_start_line, ins_start_col1) then
                         return
                     end
@@ -2403,9 +2403,9 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                 if want > 0 then
                     local new_cols = run_cols - want
                     local new_ws = string.rep(" ", new_cols)
-                    cur = buf:str_sub(cur, 1, i0) .. new_ws .. buf:str_sub(cur, i1 + 2)
+                    cur = Utf8.sub(cur, 1, i0) .. new_ws .. Utf8.sub(cur, i1 + 2)
                     set_line(ln, cur)
-                    col1 = i0 + buf:str_len(new_ws) + 1
+                    col1 = i0 + Utf8.len(new_ws) + 1
                     last_action_inserted = false
                     last_inserted_newline = false
                     return
@@ -2418,7 +2418,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
                 last_inserted_newline = false
                 return
             end
-            cur = buf:str_sub(cur, 1, col1 - 2) .. buf:str_sub(cur, col1)
+            cur = Utf8.sub(cur, 1, col1 - 2) .. Utf8.sub(cur, col1)
             set_line(ln, cur)
             col1 = new_col1
             last_action_inserted = false
@@ -2427,7 +2427,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
             local c = codepoint_to_char(cp)
             local pre_line = cur
             local pre_col = col1
-            cur = buf:str_sub(cur, 1, col1 - 1) .. c .. buf:str_sub(cur, col1)
+            cur = Utf8.sub(cur, 1, col1 - 1) .. c .. Utf8.sub(cur, col1)
             set_line(ln, cur)
             col1 = col1 + 1
             if _indentkey_match_typed(c, pre_line, pre_col, cur, col1) then
@@ -2443,7 +2443,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         if last_inserted_newline then
             if ln > 1 then
                 ln = ln - 1
-                col1 = math.max(1, buf:str_len(lines[ln] or "")) -- ON last char of previous line
+                col1 = math.max(1, Utf8.len(lines[ln] or "")) -- ON last char of previous line
             end
         else
             if col1 > 1 then col1 = col1 - 1 end -- ON last inserted char
@@ -2488,13 +2488,13 @@ function Window:pasteRegister(reg_name, line, offset, isBefore)
             local buflines = buf:lines_ref(true)
 
             local cur = buflines[line]
-            local cur_len = buf:str_len(cur)
+            local cur_len = Utf8.len(cur)
 
             local cx = math.max(1, math.min(offset, math.max(1, cur_len)))
             local prefix_len = isBefore and (cx - 1) or cx
 
-            local prefix = (prefix_len > 0) and buf:str_sub(cur, 1, prefix_len) or ""
-            local trail = buf:str_sub(cur, prefix_len + 1)
+            local prefix = (prefix_len > 0) and Utf8.sub(cur, 1, prefix_len) or ""
+            local trail = Utf8.sub(cur, prefix_len + 1)
 
             if #to_paste == 1 then
                 buf:set_line(line, prefix .. to_paste[1] .. trail)

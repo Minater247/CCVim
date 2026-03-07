@@ -401,7 +401,7 @@ local function parse_segment(fmt, window)
                     local ln = window.cursory or 1
                     local col = window.cursorx or 1
                     local line = lines[ln] or ""
-                    local ch = buf:str_codepoint_at(line, col) or 0
+                    local ch = Utf8.codepoint_at(line, col) or 0
 
                     if nxtb == 98 then     -- 'b'
                         out, is_num = tostring(ch), true
