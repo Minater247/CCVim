@@ -7,29 +7,25 @@ return {
         local Assert = ctx.assert
 
         -- Test is_list with array
-        local result, err = backend:eval_lua("{1, 2, 3}")
-        Assert.truthy("eval array", result ~= nil, err)
+        local result = Assert.eval(backend, "eval array", "{1, 2, 3}")
         Assert.eq("is_list for array", backend:is_list(result), true)
         Assert.eq("is_dict for array", backend:is_dict(result), false)
         Assert.eq("is_empty_dict for array", backend:is_empty_dict(result), false)
 
         -- Test is_dict with dictionary
-        result, err = backend:eval_lua("{a = 1, b = 2}")
-        Assert.truthy("eval dict", result ~= nil, err)
+        result = Assert.eval(backend, "eval dict", "{a = 1, b = 2}")
         Assert.eq("is_list for dict", backend:is_list(result), false)
         Assert.eq("is_dict for dict", backend:is_dict(result), true)
         Assert.eq("is_empty_dict for dict", backend:is_empty_dict(result), false)
 
         -- Test is_empty_dict with empty dict (from vim.empty_dict())
-        result, err = backend:eval_lua("vim.empty_dict()")
-        Assert.truthy("eval empty_dict", result ~= nil, err)
+        result = Assert.eval(backend, "eval empty_dict", "vim.empty_dict()")
         Assert.eq("is_list for empty_dict", backend:is_list(result), false)
         Assert.eq("is_dict for empty_dict", backend:is_dict(result), true)
         Assert.eq("is_empty_dict for empty_dict", backend:is_empty_dict(result), true)
 
         -- Test with empty array
-        result, err = backend:eval_lua("{}")
-        Assert.truthy("eval empty array", result ~= nil, err)
+        result = Assert.eval(backend, "eval empty array", "{}")
         Assert.eq("is_list for empty array", backend:is_list(result), true)
         Assert.eq("is_dict for empty array", backend:is_dict(result), false)
         Assert.eq("is_empty_dict for empty array", backend:is_empty_dict(result), false)

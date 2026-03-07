@@ -6,21 +6,18 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        local result, err = backend:eval_lua("vim.iter({1,2,3,4}):filter(function(v) return v % 2 == 0 end):totable()")
-        Assert.truthy("eval list filter", result ~= nil, err)
+        local result = Assert.eval(backend, "eval list filter", "vim.iter({1,2,3,4}):filter(function(v) return v % 2 == 0 end):totable()")
         Assert.table_eq("list filter", result, {2, 4})
 
-        result, err = backend:eval_lua(
+        result = Assert.eval(backend, "eval extmark filter",
             "(function() local out = vim.iter({{1,0,0,{invalid=true}},{2,0,0,{invalid=false}},{3,0,0,{}}})"
             .. ":filter(function(extmark) return not extmark[4].invalid end):totable(); "
             .. "return {#out,out[1][1],out[2][1]} end)()")
-        Assert.truthy("eval extmark filter", result ~= nil, err)
         Assert.table_eq("extmark filter", result, {2, 2, 3})
 
-        result, err = backend:eval_lua(
+        result = Assert.eval(backend, "eval dict iteration",
             "(function() local t = vim.iter({a=1,b=2}):totable(); local m = {}; "
             .. "for i=1,#t do m[t[i][1]] = t[i][2] end; return {#t,m.a,m.b} end)()")
-        Assert.truthy("eval dict iteration", result ~= nil, err)
         Assert.table_eq("dict iteration", result, {2, 1, 2})
     end,
 }

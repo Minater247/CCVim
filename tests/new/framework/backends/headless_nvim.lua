@@ -423,6 +423,102 @@ end
         return self:eval_lua(string.format("vim.fn.eval(%q)", vimscript_expr))
     end
 
+    function backend:eval_block(code)
+        if type(code) ~= "string" then
+            return nil, "eval_block expects a string containing Lua code"
+        end
+        
+        local tmp = string.format("/tmp/nvim-test-eval-%d.lua", os.time())
+        local f = assert(io.open(tmp, "w"))
+        -- Write the encoder function
+        f:write([[
+local function serialize_with_refs(value)
+  local refs = {}      -- Map from table to ref ID
+  local ref_data = {}  -- Map from ref ID to encoded data
+  local next_id = 1
+  
+  -- Capture vim.empty_dict()'s metatable for detection
+  local empty_dict_mt = getmetatable(vim.empty_dict())
+  
+  -- First pass: assign IDs to all tables and track references
+  local function assign_ids(val)
+    if type(val) == "table" then
+      if not refs[val] then
+        local id = next_id
+        next_id = next_id + 1
+        refs[val] = id
+        
+        -- Recurse into table contents
+        for k, v in pairs(val) do
+          assign_ids(k)
+          assign_ids(v)
+        end
+      end
+    end
+  end
+  
+  assign_ids(value)
+  
+  -- Second pass: encode each unique table
+  local function encode(val)
+    local t = type(val)
+    if t == "table" then
+      local id = refs[val]
+      if ref_data[id] then
+        -- Already encoded, return reference
+        return {__ref = id}
+      end
+      
+      -- Check if this is an empty_dict
+      local is_empty_dict = (getmetatable(val) == empty_dict_mt)
+      
+      -- Encode this table
+      local is_list = vim.islist and vim.islist(val) or vim.tbl_islist(val)
+      local encoded
+      
+      if is_list then
+        encoded = {}
+        for i, v in ipairs(val) do
+          encoded[i] = encode(v)
+        end
+      elseif is_empty_dict then
+        -- Mark as empty dict with special flag
+        encoded = {__vim_empty_dict = true}
+      else
+        encoded = {}
+        for k, v in pairs(val) do
+          encoded[k] = encode(v)
+        end
+      end
+      
+      ref_data[id] = encoded
+      return {__ref = id}
+    else
+      return val
+    end
+  end
+  
+  local root = encode(value)
+  return {refs = ref_data, root = root}
+end
+
+]])
+        -- Write the user's code directly
+        f:write(code)
+        f:write("\n")
+        f:write("vim.cmd('qa!')\n")
+        f:close()
+
+        local cmd = "nvim --headless -u NONE -n -l " .. shell_quote(tmp)
+        local ok, out = run(cmd)
+        os.remove(tmp)
+        if not ok then
+            return nil, out
+        end
+        -- eval_block doesn't return a value, it just runs code
+        return nil, nil
+    end
+
     function backend:is_empty_dict(tbl)
         if type(tbl) ~= "table" then
             return false

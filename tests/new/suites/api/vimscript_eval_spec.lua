@@ -6,16 +6,11 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        local result, err = backend:eval_vimscript("strlen('hello')")
-        Assert.truthy("eval_vimscript strlen", result ~= nil, err)
-        Assert.eq("strlen result", result, 5)
+        Assert.eval_vim_eq(backend, "strlen result", "strlen('hello')", 5)
 
-        result, err = backend:eval_vimscript("has('nvim')")
-        Assert.truthy("eval_vimscript has", result ~= nil, err)
+        local result = Assert.eval_vim(backend, "eval_vimscript has", "has('nvim')")
         Assert.eq("has('nvim')", type(result), "number")
 
-        result, err = backend:eval_vimscript("type(42)")
-        Assert.truthy("eval_vimscript type", result ~= nil, err)
-        Assert.eq("type(42)", result, 0)  -- 0 = number type in Vimscript
+        Assert.eval_vim_eq(backend, "type(42)", "type(42)", 0)  -- 0 = number type in Vimscript
     end,
 }

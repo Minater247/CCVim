@@ -58,6 +58,16 @@ function LuaEditorBackend.new(opts)
         return result, nil
     end
 
+    function backend:eval_block(code)
+        if type(code) ~= "string" then
+            return nil, "eval_block expects a string containing Lua code"
+        end
+        
+        -- Wrap in IIFE and evaluate
+        local wrapped = "(function()\n" .. code .. "\nend)()"
+        return self:eval_lua(wrapped)
+    end
+
     function backend:is_empty_dict(tbl)
         if type(tbl) ~= "table" then
             return false

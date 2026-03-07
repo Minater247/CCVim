@@ -33,4 +33,35 @@ function Assert.contains_pair(label, rows, key, value)
     fail(string.format("%s: missing pair (%s,%s)", label, tostring(key), tostring(value)))
 end
 
+function Assert.eval(backend, label, expr)
+    local result, err = backend:eval_lua(expr)
+    Assert.truthy(label, result ~= nil, err)
+    return result
+end
+
+function Assert.eval_eq(backend, label, expr, expected)
+    local result = Assert.eval(backend, "eval " .. label, expr)
+    Assert.eq(label, result, expected)
+end
+
+function Assert.expect_error(backend, label, expr, error_pattern)
+    local code = string.format(
+        "(function() local ok, err = pcall(function() return %s end); "
+        .. "return {ok, err and tostring(err):find('%s') ~= nil or false} end)()",
+        expr, error_pattern)
+    local result = Assert.eval(backend, "eval " .. label, code)
+    Assert.table_eq(label, result, {false, true})
+end
+
+function Assert.eval_vim(backend, label, expr)
+    local result, err = backend:eval_vimscript(expr)
+    Assert.truthy(label, result ~= nil, err)
+    return result
+end
+
+function Assert.eval_vim_eq(backend, label, expr, expected)
+    local result = Assert.eval_vim(backend, "eval_vimscript " .. label, expr)
+    Assert.eq(label, result, expected)
+end
+
 return Assert

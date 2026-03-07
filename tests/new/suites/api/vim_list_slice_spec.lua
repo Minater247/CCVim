@@ -6,24 +6,18 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        local result, err = backend:eval_lua("type(vim.list_slice)")
-        Assert.truthy("eval type(list_slice)", result ~= nil, err)
-        Assert.eq("vim.list_slice exists", result, "function")
+        Assert.eval_eq(backend, "vim.list_slice exists", "type(vim.list_slice)", "function")
 
-        result, err = backend:eval_lua("vim.list_slice({1,2,3,4}, 2, 3)")
-        Assert.truthy("eval slice 2..3", result ~= nil, err)
+        local result = Assert.eval(backend, "eval slice 2..3", "vim.list_slice({1,2,3,4}, 2, 3)")
         Assert.table_eq("slice 2..3", result, {2, 3})
 
-        result, err = backend:eval_lua("vim.list_slice({1,2,3}, 2)")
-        Assert.truthy("eval slice start only", result ~= nil, err)
+        result = Assert.eval(backend, "eval slice start only", "vim.list_slice({1,2,3}, 2)")
         Assert.table_eq("slice start only", result, {2, 3})
 
-        result, err = backend:eval_lua("vim.list_slice({1,2,3}, nil, 2)")
-        Assert.truthy("eval slice finish only", result ~= nil, err)
+        result = Assert.eval(backend, "eval slice finish only", "vim.list_slice({1,2,3}, nil, 2)")
         Assert.table_eq("slice finish only", result, {1, 2})
 
-        result, err = backend:eval_lua("vim.list_slice({1,2,3}, 4, 9)")
-        Assert.truthy("eval slice out of range", result ~= nil, err)
+        result = Assert.eval(backend, "eval slice out of range", "vim.list_slice({1,2,3}, 4, 9)")
         Assert.table_eq("slice out of range", result, {})
     end,
 }

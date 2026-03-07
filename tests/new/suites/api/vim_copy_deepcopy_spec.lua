@@ -7,7 +7,7 @@ return {
         local Assert = ctx.assert
 
         -- Test vim.copy() shallow semantics
-        local result, err = backend:eval_lua(
+        local result = Assert.eval(backend, "eval copy shallow",
             "(function() "
             .. "local child = {value=1}; "
             .. "local list = {child, 2}; "
@@ -15,22 +15,20 @@ return {
             .. "copy[2] = 99; "
             .. "return {copy ~= list, copy[1].value, list[2], copy[2]} "
             .. "end)()")
-        Assert.truthy("eval copy shallow", result ~= nil, err)
         Assert.table_eq("copy shallow", result, {true, 1, 2, 99})
 
         -- Test vim.deepcopy() with shared references
-        result, err = backend:eval_lua(
+        result = Assert.eval(backend, "eval deepcopy shared refs",
             "(function() "
             .. "local shared = {n=1}; "
             .. "local src = {shared, shared}; "
             .. "local deep = vim.fn.deepcopy(src); "
             .. "return {deep ~= src, deep[1] ~= shared, deep[1] == deep[2]} "
             .. "end)()")
-        Assert.truthy("eval deepcopy shared refs", result ~= nil, err)
         Assert.table_eq("deepcopy duplicates shared refs", result, {true, true, false})
 
         -- Test vim.deepcopy() isolation and duplication
-        result, err = backend:eval_lua(
+        result = Assert.eval(backend, "eval deepcopy isolation",
             "(function() "
             .. "local shared = {n=1}; "
             .. "local src = {shared, shared}; "
@@ -38,40 +36,30 @@ return {
             .. "deep[1].n = 9; "
             .. "return {src[1].n, deep[2].n} "
             .. "end)()")
-        Assert.truthy("eval deepcopy isolation", result ~= nil, err)
         Assert.table_eq("deepcopy isolates and duplicates", result, {1, 1})
 
         -- Test vim.deepcopy() noref (duplicate shared references)
-        result, err = backend:eval_lua(
+        result = Assert.eval(backend, "eval deepcopy noref",
             "(function() "
             .. "local shared = {n=1}; "
             .. "local src = {shared, shared}; "
             .. "local deep = vim.fn.deepcopy(src, 1); "
             .. "return deep[1] ~= deep[2] "
             .. "end)()")
-        Assert.truthy("eval deepcopy noref", result ~= nil, err)
         Assert.eq("deepcopy noref duplicates", result, true)
 
         -- Test vim.deepcopy() handles cycles
-        result, err = backend:eval_lua(
+        result = Assert.eval(backend, "eval deepcopy cycle",
             "(function() "
             .. "local cycle = {}; "
             .. "cycle[1] = cycle; "
             .. "local copy = vim.fn.deepcopy(cycle); "
             .. "return copy ~= cycle and copy[1] == copy "
             .. "end)()")
-        Assert.truthy("eval deepcopy cycle", result ~= nil, err)
         Assert.eq("deepcopy handles cycle", result, true)
 
         -- Test vim.deepcopy() noref fails on cycle (E698)
-        result, err = backend:eval_lua(
-            "(function() "
-            .. "local cycle = {}; "
-            .. "cycle[1] = cycle; "
-            .. "local ok, err = pcall(function() vim.fn.deepcopy(cycle, 1) end); "
-            .. "return {ok, err and tostring(err):find('E698') ~= nil or false} "
-            .. "end)()")
-        Assert.truthy("eval deepcopy noref cycle", result ~= nil, err)
-        Assert.table_eq("deepcopy noref cycle error", result, {false, true})
+        Assert.expect_error(backend, "deepcopy noref cycle error",
+            "(function() local cycle = {}; cycle[1] = cycle; vim.fn.deepcopy(cycle, 1) end)()", "E698")
     end,
 }

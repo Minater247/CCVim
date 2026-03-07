@@ -7,8 +7,7 @@ return {
         local Assert = ctx.assert
 
         -- Test keys() on dictionary
-        local result, err = backend:eval_lua("vim.fn.keys({a=1, b=2})")
-        Assert.truthy("eval keys dict", result ~= nil, err)
+        local result = Assert.eval(backend, "eval keys dict", "vim.fn.keys({a=1, b=2})")
         Assert.eq("keys dict is list", backend:is_list(result), true)
         Assert.eq("keys dict count", #result, 2)
         
@@ -25,26 +24,15 @@ return {
         Assert.eq("keys contains b", contains(result, "b"), true)
 
         -- Test keys() on empty dict
-        result, err = backend:eval_lua("vim.fn.keys(vim.empty_dict())")
-        Assert.truthy("eval keys empty dict", result ~= nil, err)
+        result = Assert.eval(backend, "eval keys empty dict", "vim.fn.keys(vim.empty_dict())")
         Assert.eq("keys empty dict count", #result, 0)
 
         -- Test keys() on list errors with E1206
-        result, err = backend:eval_lua(
-            "(function() "
-            .. "local ok, err = pcall(function() return vim.fn.keys({1, 2}) end); "
-            .. "return {ok, err and tostring(err):find('E1206') ~= nil or false} "
-            .. "end)()")
-        Assert.truthy("eval keys list error", result ~= nil, err)
-        Assert.table_eq("keys list emits E1206", result, {false, true})
+        Assert.expect_error(backend, "keys list emits E1206",
+            "vim.fn.keys({1, 2})", "E1206")
 
         -- Test keys() on number errors with E1206
-        result, err = backend:eval_lua(
-            "(function() "
-            .. "local ok, err = pcall(function() return vim.fn.keys(1) end); "
-            .. "return {ok, err and tostring(err):find('E1206') ~= nil or false} "
-            .. "end)()")
-        Assert.truthy("eval keys number error", result ~= nil, err)
-        Assert.table_eq("keys number emits E1206", result, {false, true})
+        Assert.expect_error(backend, "keys number emits E1206",
+            "vim.fn.keys(1)", "E1206")
     end,
 }
