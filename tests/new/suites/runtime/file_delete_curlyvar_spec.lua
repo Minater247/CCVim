@@ -146,7 +146,5 @@ let g:curly_var_probe = exists("s:netrwmarkfilemtch_{bufnr('%')}") && s:netrwmar
 
         Assert.eq("curly-var expression resolves script-local name", result[11], 1)
         Assert.eq("drop + fnameescape preserves full target", result[12], drop_target)
-
-        Assert.remove_path(backend, curly_script)
     end,
 }

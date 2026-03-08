@@ -34,8 +34,5 @@ return {
                 setup = string.format([[source %s"comment]], editor_adjacent),
             }
         )
-
-        Assert.remove_path(backend, editor_spaced)
-        Assert.remove_path(backend, editor_adjacent)
     end,
 }

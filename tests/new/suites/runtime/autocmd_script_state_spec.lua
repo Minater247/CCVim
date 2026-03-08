@@ -98,8 +98,5 @@ let g:bare_scope_after_unlet = exists('bare_scope_probe')
         Assert.eq("callee keeps defining script-local context", result[11], "A")
         Assert.eq("underscore arg type is string", result[12], 1)
         Assert.eq("underscore arg value is preserved", result[13], "abc")
-
-        Assert.remove_path(backend, script_a)
-        Assert.remove_path(backend, script_b)
     end,
 }

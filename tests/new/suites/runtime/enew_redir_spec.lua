@@ -93,7 +93,5 @@ redir END
         Assert.table_eq("redir! overwrites file", result[11], { "", "fresh" })
         Assert.eq("redir register text appends", result[12], "\nx\ny")
         Assert.table_eq("redir register list appends", result[13], { "", "x", "y" })
-
-        Assert.remove_path(backend, redir_file)
     end,
 }

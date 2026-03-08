@@ -38,10 +38,5 @@ return {
         )
         Assert.eq("help buftype set", result[2], "help")
         Assert.eq("cursor moved to tag line", result[3], "*copy()*")
-
-        Assert.remove_path(backend, tags_path)
-        Assert.remove_path(backend, help_path)
-        Assert.remove_path(backend, doc_dir)
-        Assert.remove_path(backend, root)
     end,
 }

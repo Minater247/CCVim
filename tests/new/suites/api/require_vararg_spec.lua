@@ -22,9 +22,5 @@ return {
         ]], editor_root))
 
         Assert.table_eq("require passes module name via vararg", result, { true, "varargmod" })
-
-        Assert.remove_path(backend, editor_modpath)
-        Assert.remove_path(backend, editor_lua_dir)
-        Assert.remove_path(backend, editor_root)
     end,
 }

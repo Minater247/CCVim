@@ -56,11 +56,5 @@ return {
             ]=], root),
             "E117"
         )
-
-        Assert.remove_path(backend, demo_vim)
-        Assert.remove_path(backend, proxy_vim)
-        Assert.remove_path(backend, expr_vim)
-        Assert.remove_path(backend, autoload_dir)
-        Assert.remove_path(backend, root)
     end,
 }
