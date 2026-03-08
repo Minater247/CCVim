@@ -9,4 +9,4 @@ if ! command -v lua >/dev/null 2>&1; then
   exit 127
 fi
 
-exec lua "$SCRIPT_DIR/new/run.lua" "$@"
+exec lua "$SCRIPT_DIR/run.lua" "$@"
