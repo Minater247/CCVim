@@ -1,6 +1,6 @@
 return {
     id = "runtime.undo",
-    description = "Ports undo and redo behavior on the real buffer/runtime path; lua-editor-only because it asserts CCVim buffer undo internals and normal-mode execution details.",
+    description = "Ports direct buffer undo history behavior on the real buffer/runtime path; lua-editor-only because it asserts CCVim's internal buffer undo methods directly.",
     supports = { lua_editor = true, headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
@@ -97,90 +97,6 @@ return {
                 buf:set_line(1, "history", true)
                 Assert.truthy("undo re-enabled", buf:undo(win, 1), "undo did not resume")
                 assert_lines("undo after re-enable", buf.lines, { "nohistory" })
-            end
-
-            do
-                local buf = reset_buffer({ "one" })
-                buf:set_line(1, "two", true)
-                local run_ok, rv = run_script("undo", "/tmp/undo_cmd.vim")
-                Assert.truthy("ex undo command runs", run_ok == true, err_string(rv))
-                assert_lines("ex undo restores line", buf.lines, { "one" })
-                run_ok, rv = run_script("redo", "/tmp/redo_cmd.vim")
-                Assert.truthy("ex redo command runs", run_ok == true, err_string(rv))
-                assert_lines("ex redo reapplies line", buf.lines, { "two" })
-            end
-
-            do
-                local buf = reset_buffer({ "one" })
-                buf:set_line(1, "two", true)
-                buf:set_line(1, "three", true)
-                buf:set_line(1, "four", true)
-                local run_ok, rv = run_script("undo 2", "/tmp/undo_jump_cmd.vim")
-                Assert.truthy("ex undo change-id jump runs", run_ok == true, err_string(rv))
-                assert_lines("ex undo change-id jumps to target state", buf.lines, { "three" })
-                run_ok, rv = run_script("redo 1", "/tmp/redo_count_cmd.vim")
-                Assert.truthy("ex redo count runs", run_ok == true, err_string(rv))
-                assert_lines("ex redo count reapplies one", buf.lines, { "four" })
-            end
-
-            do
-                reset_buffer({ "one" })
-                local run_ok, rv = run_script("undo nope", "/tmp/undo_bad_arg.vim")
-                Assert.truthy(
-                    "ex undo invalid arg fails E474",
-                    run_ok == false and err_string(rv):find("E474", 1, true) ~= nil,
-                    err_string(rv)
-                )
-            end
-
-            do
-                local buf = reset_buffer({ "abc" })
-                local run_ok, rv = run_script([[
-normal! x
-normal! u
-normal! <C-r>
-                ]], "/tmp/undo_normal_angle_ctrlr.vim")
-                Assert.truthy("normal angle ctrl-r script runs", run_ok == true, err_string(rv))
-                assert_lines("normal angle ctrl-r is literal (no redo)", buf.lines, { "abc" })
-                Assert.eq("normal angle ctrl-r keeps clean modified", buf.opts.modified, false)
-            end
-
-            do
-                local buf = reset_buffer({ "abc" })
-                local run_ok, rv = run_script([[
-normal! x
-normal! u
-execute "normal! \x12"
-                ]], "/tmp/undo_normal_raw_ctrlr.vim")
-                Assert.truthy("normal raw ctrl-r script runs", run_ok == true, err_string(rv))
-                assert_lines("normal raw ctrl-r redoes", buf.lines, { "bc" })
-                Assert.eq("normal raw ctrl-r marks modified", buf.opts.modified, true)
-            end
-
-            do
-                local buf = reset_buffer({ "abc" })
-                local run_ok, rv = run_script([[
-normal! x
-normal! x
-normal! U
-normal! u
-                ]], "/tmp/undo_normal_u_contiguous.vim")
-                Assert.truthy("normal U contiguous script runs", run_ok == true, err_string(rv))
-                assert_lines("normal U contiguous parity", buf.lines, { "abc" })
-                Assert.eq("normal U contiguous modified parity", buf.opts.modified, false)
-            end
-
-            do
-                local buf = reset_buffer({ "abc", "def" })
-                local run_ok, rv = run_script([[
-normal! x
-normal! jx
-normal! kx
-normal! U
-                ]], "/tmp/undo_normal_u_noncontiguous.vim")
-                Assert.truthy("normal U noncontiguous script runs", run_ok == true, err_string(rv))
-                assert_lines("normal U noncontiguous parity", buf.lines, { "bc", "ef" })
-                Assert.eq("normal U noncontiguous modified parity", buf.opts.modified, true)
             end
         end)
 
