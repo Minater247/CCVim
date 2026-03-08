@@ -587,6 +587,58 @@ function Builtins.winwidth(nr)
     end
 end
 
+local function winlayout_from_frame(node)
+    if type(node) ~= "table" then
+        return {}
+    end
+
+    if not node.split_type then
+        local winid = node.window and node.window.winnr or 0
+        return { "leaf", winid }
+    end
+
+    local layout_kind = (node.split_type == "h") and "col" or "row"
+    local frame_split = node.split_type
+    local items = {}
+
+    local function append_layout(child)
+        if type(child) == "table" and child.split_type == frame_split then
+            append_layout(child.children and child.children[1])
+            append_layout(child.children and child.children[2])
+            return
+        end
+        items[#items + 1] = winlayout_from_frame(child)
+    end
+
+    append_layout(node.children and node.children[1])
+    append_layout(node.children and node.children[2])
+
+    return { layout_kind, items }
+end
+
+function Builtins.winlayout(tabnr, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "winlayout"):toString())
+    end
+
+    local tp
+    if tabnr == nil then
+        tp = tabpages[curtp]
+    else
+        local nr = tonumber(tabnr)
+        if nr == nil then
+            return {}
+        end
+        tp = tabpages[nr]
+    end
+
+    if not tp or not tp.tree then
+        return {}
+    end
+
+    return winlayout_from_frame(tp.tree)
+end
+
 function Builtins.winsaveview(...)
     if select("#", ...) > 0 then
         error(Error(118, "winsaveview"):toString())
@@ -2164,7 +2216,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     end
 
     local line_count = #lines
-    local stop = tonumber(stopline or 0) or 0
+    local stop = tonumber(stopline) or 0
     stop = math.floor(stop)
     if stop < 0 then
         stop = 0
@@ -2176,7 +2228,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
         want_wrap = false
     end
 
-    local timeout_ms = tonumber(timeout or 0) or 0
+    local timeout_ms = tonumber(timeout) or 0
     timeout_ms = math.floor(timeout_ms)
     if timeout_ms < 0 then
         timeout_ms = 0
@@ -2798,8 +2850,8 @@ function Builtins.match(expr, pat, start, count)
 
     local is_list = _is_vim_list_expr(expr)
 
-    start = tonumber(start or 0) or 0
-    local want_count = tonumber(count or 0) or 0
+    start = tonumber(start) or 0
+    local want_count = tonumber(count) or 0
     if want_count < 0 then want_count = 0 end
 
     -- Helper to iterate matches inside a single string starting from absolute start index
@@ -2935,8 +2987,8 @@ function Builtins.matchstrpos(expr, pat, start, count, ...)
     end
 
     local is_list = _is_vim_list_expr(expr)
-    start = tonumber(start or 0) or 0
-    local want_count = tonumber(count or 0) or 0
+    start = tonumber(start) or 0
+    local want_count = tonumber(count) or 0
     if want_count < 0 then want_count = 0 end
 
     if not is_list then
@@ -3249,6 +3301,30 @@ function Builtins.winnr(arg)
     else
         error("unhandled winnr(): " .. arg)
     end
+end
+
+function Builtins.win_getid(winnr, tabnr)
+    if winnr == nil or winnr == 0 then
+        return curwin
+    end
+
+    local target_tab = tonumber(tabnr) or 0
+    if target_tab == 0 then
+        target_tab = curtp
+    end
+
+    local tp = tabpages[target_tab]
+    if not tp then
+        return 0
+    end
+
+    local idx = tonumber(winnr)
+    if not idx then
+        return 0
+    end
+
+    local win = tp.windows[idx]
+    return win and win.winnr or 0
 end
 
 function Builtins.empty(arg)
@@ -4031,7 +4107,7 @@ end
 
 function Builtins.index(lst, item, start, ic)
     if type(lst) ~= "table" then return -1 end
-    local s = tonumber(start or 0) or 0
+    local s = tonumber(start) or 0
     if s < 0 then s = 0 end
     local idx = 0
     for i = 1, #lst do
@@ -4344,7 +4420,7 @@ end
 
 function Builtins.strpart(str, start, len)
     local s = tostring(str or "")
-    local st = tonumber(start or 0) or 0
+    local st = tonumber(start) or 0
     local ln = len and (tonumber(len) or 0)
     if st < 0 then st = 0 end
     -- Vim's strpart is 0-based; Lua's string.sub is 1-based.
@@ -4368,7 +4444,7 @@ function Builtins.strcharpart(str, start, len, ...)
         error(Error(118, "strcharpart"):toString())
     end
     local s = tostring(str or "")
-    local st = tonumber(start or 0) or 0
+    local st = tonumber(start) or 0
     if st < 0 then st = 0 end
     local from = st + 1
     if len == nil then

@@ -278,7 +278,6 @@ function ApiBuild.Build()
         })
         if not ok then
             local msg = rv:toString()
-            scopes._v.errmsg = msg
             error(msg)
         end
         return rv

@@ -1320,7 +1320,29 @@ function Options.FormatCommentString(text, window, buffer)
     return cms:sub(1, s - 1) .. body .. cms:sub(e + 1)
 end
 
+local function sync_screen_geometry_from_options()
+    local width = Options.get("columns")
+    local height = Options.get("lines")
+    if screen.width == width and screen.height == height then
+        return
+    end
+
+    screen.width = width
+    screen.height = height
+    for _, tabp in pairs(tabpages) do
+        tabp:updateFrameview()
+    end
+    what_redraw["all"] = true
+    need_redraw = true
+end
+
 local option_updatees = {
+    columns = function(_value)
+        sync_screen_geometry_from_options()
+    end,
+    lines = function(_value)
+        sync_screen_geometry_from_options()
+    end,
     statusline = function(_value, win, _buffer, local_, _global)
         if local_ then
             win.need_redraw = true

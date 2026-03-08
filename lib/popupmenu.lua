@@ -131,8 +131,8 @@ end
 local function _compute_geometry()
     local win = windows[state.winid or curwin]
     local size = #state.items
-    local ph = tonumber(options.get("pumheight") or 0) or 0
-    local minw = tonumber(options.get("pumwidth") or 0) or 0
+    local ph = tonumber(options.get("pumheight")) or 0
+    local minw = tonumber(options.get("pumwidth")) or 0
 
     local h = (ph > 0) and math.min(size, ph) or size
     if h < 1 then h = 1 end
@@ -364,7 +364,7 @@ function PopupMenu.step(delta, insert)
         return false
     end
 
-    local d = tonumber(delta or 0) or 0
+    local d = tonumber(delta) or 0
     if d == 0 then
         return false
     end

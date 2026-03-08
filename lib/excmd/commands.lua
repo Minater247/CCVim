@@ -46,11 +46,11 @@ local COMMAND_SPECS = {
     { name = "set", min = 2 },
     { name = "packadd", min = 2, dispatch = true },
     { name = "verbose", min = 4 },
-    { name = "echo", min = 2, dispatch = true },
-    { name = "echoerr", min = 5, dispatch = true },
-    { name = "echohl", min = 5, dispatch = true },
-    { name = "echomsg", min = 5, dispatch = true },
-    { name = "echon", min = 5, dispatch = true },
+    { name = "echo", min = 2, dispatch = true, addr = "none" },
+    { name = "echoerr", min = 5, dispatch = true, addr = "none" },
+    { name = "echohl", min = 5, dispatch = true, addr = "none" },
+    { name = "echomsg", min = 5, dispatch = true, addr = "none" },
+    { name = "echon", min = 5, dispatch = true, addr = "none" },
     { name = "nnoremap", min = 2, dispatch = true,
         map = { action = "map", recursive = false, modes = "n", min_abbrev = 2 } },
     { name = "xnoremap", min = 2, dispatch = true,
@@ -73,19 +73,20 @@ local COMMAND_SPECS = {
     { name = "defer", min = 4 },
     { name = "noautocmd", min = 3 },
     { name = "windo", min = 4, dispatch = true, no_bar_split = true },
-    { name = "quit", min = 1, dispatch = true },
-    { name = "wincmd", min = 4, dispatch = true },
+    { name = "quit", min = 1, dispatch = true, addr = "none" },
+    { name = "close", min = 3, dispatch = true, addr = "count" },
+    { name = "wincmd", min = 4, dispatch = true, addr = "count" },
     { name = "setfiletype", min = 4, dispatch = true },
     { name = "setlocal", min = 4, dispatch = true },
     { name = "put", min = 2, dispatch = true },
-    { name = "sort", min = 3, dispatch = true },
-    { name = "global", min = 1, dispatch = true, no_bar_split = true },
-    { name = "v", min = 1, dispatch = true, no_bar_split = true },
-    { name = "vglobal", min = 2, dispatch = true, no_bar_split = true },
-    { name = "substitute", min = 1, dispatch = true },
+    { name = "sort", min = 3, dispatch = true, addr = "line" },
+    { name = "global", min = 1, dispatch = true, no_bar_split = true, addr = "line" },
+    { name = "v", min = 1, dispatch = true, no_bar_split = true, addr = "line" },
+    { name = "vglobal", min = 2, dispatch = true, no_bar_split = true, addr = "line" },
+    { name = "substitute", min = 1, dispatch = true, addr = "line" },
     { name = "edit", min = 1, dispatch = true },
     { name = "file", min = 1, dispatch = true },
-    { name = "delete", min = 1, dispatch = true },
+    { name = "delete", min = 1, dispatch = true, addr = "line" },
     { name = "mark", min = 2, dispatch = true },
     { name = "undo", min = 1, dispatch = true },
     { name = "redo", min = 3, dispatch = true },
@@ -189,7 +190,7 @@ local COMMAND_SPECS = {
     { name = "messages", min = 3, dispatch = true },
     { name = "redir", min = 4, dispatch = true },
     { name = "setglobal", min = 4, dispatch = true },
-    { name = "normal", min = 4, dispatch = true, no_bar_split = true },
+    { name = "normal", min = 4, dispatch = true, no_bar_split = true, addr = "line" },
     { name = "mode", min = 3, dispatch = true },
     { name = "redraw", min = 4, dispatch = true },
     { name = "redrawstatus", min = 7, dispatch = true },
@@ -202,9 +203,9 @@ local COMMAND_SPECS = {
     { name = "ownsyntax", min = 3, dispatch = true },
     { name = "match", min = 3, dispatch = true, no_bar_split = true },
     { name = "pwd", min = 2, dispatch = true },
-    { name = "copy", min = 2, dispatch = true},
-    { name = "t", min = 1, dispatch = true },
-    { name = "move", min = 1, dispatch = true },
+    { name = "copy", min = 2, dispatch = true, addr = "line" },
+    { name = "t", min = 1, dispatch = true, addr = "line" },
+    { name = "move", min = 1, dispatch = true, addr = "line" },
 }
 
 local SPEC_BY_NAME = {}
@@ -294,5 +295,12 @@ end
 Commands.DISPATCH_MIN_ABBREV = DISPATCH_MIN_ABBREV
 Commands.MAP_COMMAND_SPECS = MAP_COMMAND_SPECS
 Commands.MENU_COMMAND_SPECS = MENU_COMMAND_SPECS
+
+function Commands.get_spec(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    return SPEC_BY_NAME[name:lower()]
+end
 
 return Commands

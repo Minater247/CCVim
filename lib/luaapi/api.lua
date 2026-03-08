@@ -904,8 +904,8 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
     assert(buf)
     buf:ensure_loaded(true)
 
-    local srow = tonumber(start_row or 0) or 0
-    local scol = tonumber(start_col or 0) or 0
+    local srow = tonumber(start_row) or 0
+    local scol = tonumber(start_col) or 0
     local erow = tonumber(end_row or srow) or srow
     local ecol = tonumber(end_col or scol) or scol
 
@@ -1996,8 +1996,8 @@ end
 
 local function _extmark_pos_from_arg(arg)
     if type(arg) == "table" then
-        local line = tonumber(arg[1] or 0) or 0
-        local col = tonumber(arg[2] or 0) or 0
+        local line = tonumber(arg[1]) or 0
+        local col = tonumber(arg[2]) or 0
         return line, col
     end
     if type(arg) == "number" then
@@ -2361,10 +2361,71 @@ function api.nvim_cmd(cmd, opts)
         end
     end
 
-    local script = (argstr ~= "") and (head .. " " .. argstr) or head
-    local rv = api.nvim_exec2(script, { output = not not opts.output })
+    local prefix = ""
+    if cmd and cmd.range ~= nil then
+        local range = cmd.range
+        if type(range) == "table" and #range == 2 then
+            prefix = tostring(range[1]) .. "," .. tostring(range[2])
+        elseif type(range) == "table" and #range == 1 then
+            prefix = tostring(range[1])
+        else
+            prefix = tostring(range)
+        end
+    elseif cmd and cmd.line1 ~= nil then
+        prefix = tostring(cmd.line1)
+        if cmd.line2 ~= nil and cmd.line2 ~= cmd.line1 then
+            prefix = prefix .. "," .. tostring(cmd.line2)
+        end
+    elseif cmd and cmd.count ~= nil then
+        prefix = tostring(cmd.count)
+    end
+
+    local cursor_text = (argstr ~= "") and (head .. " " .. argstr) or head
+    local script = prefix .. cursor_text
+
     if opts.output then
+        local rv = api.nvim_exec2(script, { output = true })
         return rv.output or ""
+    end
+
+    local ws_args = nil
+    if cmd and type(cmd.args) == "table" then
+        ws_args = {}
+        for i = 1, #cmd.args do
+            ws_args[i] = tostring(cmd.args[i])
+        end
+    end
+
+    local spec = {
+        name = name,
+        lname = name:lower(),
+        qargs = argstr,
+        bang = not not cmd.bang,
+        ws_args = ws_args,
+        count = cmd.count,
+        range = cmd.range,
+        line1 = cmd.line1,
+        line2 = cmd.line2,
+    }
+
+    local state = {
+        g = scopes._g,
+        s = {},
+        v = scopes._v,
+        funcs = Runtime._FUNCS,
+        frames = {},
+        commands = {},
+    }
+    local rt = Runtime.new(state)
+    rt:set_exec_cursor(1, cursor_text, spec.lname, spec.qargs)
+
+    local ok, rv = pcall(function()
+        return rt:invoke_compiled_command(spec)
+    end)
+    if not ok then
+        local msg = Error.IsError(rv) and rv:toString() or tostring(rv)
+        scopes._v.errmsg = msg
+        error(msg)
     end
     return ""
 end

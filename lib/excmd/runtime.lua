@@ -897,6 +897,7 @@ end
 local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
 local MENU_COMMAND_SPECS = Commands.MENU_COMMAND_SPECS
 local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
+local get_command_spec = Commands.get_spec
 local resolve_dispatch_name = Commands.resolve_dispatch_name
 
 function Runtime.new(init_state, init_opts)
@@ -1666,15 +1667,15 @@ function Runtime.new(init_state, init_opts)
             local c = text:sub(i, i)
             if c == "%" then
                 i = i + 1
-                return 1, line_count, true
+                return 1, line_count, true, "%"
             end
             if c == "." then
                 i = i + 1
-                return current_line, current_line, true
+                return current_line, current_line, true, "."
             end
             if c == "$" then
                 i = i + 1
-                return line_count, line_count, true
+                return line_count, line_count, true, "$"
             end
             if c:match("%d") then
                 local j = i
@@ -1682,14 +1683,14 @@ function Runtime.new(init_state, init_opts)
                     i = i + 1
                 end
                 local num = tonumber(text:sub(j, i - 1))
-                return num, num, true
+                return num, num, true, "number"
             end
-            return nil, nil, false
+            return nil, nil, false, nil
         end
 
-        local l1, l2, ok = parse_addr()
+        local l1, l2, ok, kind1 = parse_addr()
         if not ok then
-            return nil, nil, false, i
+            return nil, nil, false, i, nil, false
         end
         skip_ws()
         local sep = text:sub(i, i)
@@ -1697,10 +1698,10 @@ function Runtime.new(init_state, init_opts)
             i = i + 1
             local r1, r2, ok2 = parse_addr()
             if ok2 then
-                return l1, r2 or r1, true, i
+                return l1, r2 or r1, true, i, kind1, true
             end
         end
-        return l1, l2, true, i
+        return l1, l2, true, i, kind1, false
     end
 
     local function _cursor_parse_head(cursor, win)
@@ -1712,7 +1713,7 @@ function Runtime.new(init_state, init_opts)
         while text:sub(1, 1) == ":" do
             text = lstrip(text:sub(2))
         end
-        local l1, l2, has_range, pos = _scan_range_prefix(text, line_count, win.cursory)
+        local l1, l2, has_range, pos, first_kind, has_sep = _scan_range_prefix(text, line_count, win.cursory)
         if has_range then
             text = text:sub(pos)
         end
@@ -1721,16 +1722,112 @@ function Runtime.new(init_state, init_opts)
             text = lstrip(text:sub(2))
         end
         local raw = text:match("^([%a][%w]*)")
-        return raw and raw:lower(), l1, l2, has_range
+        return raw and raw:lower(), l1, l2, has_range, first_kind, has_sep
     end
 
-    local function _build_cmd_context(cursor, win)
-        local raw_cmd, l1, l2, has_range = _cursor_parse_head(cursor, win)
-        return {
+    local function _structured_range_from_spec(spec)
+        if type(spec) ~= "table" then
+            return nil, nil, false, nil
+        end
+
+        if spec.line1 ~= nil or spec.line2 ~= nil then
+            local line1 = tonumber(spec.line1)
+            local line2 = tonumber(spec.line2 or spec.line1)
+            if not line1 or not line2 then
+                return nil, nil, false, "Invalid 'range'"
+            end
+            return line1, line2, true, nil
+        end
+
+        local range = spec.range
+        if range == nil then
+            return nil, nil, false, nil
+        end
+
+        if type(range) == "number" then
+            return range, range, true, nil
+        end
+
+        if type(range) == "table" then
+            if #range == 1 then
+                local line = tonumber(range[1])
+                if line then
+                    return line, line, true, nil
+                end
+            elseif #range == 2 then
+                local line1 = tonumber(range[1])
+                local line2 = tonumber(range[2])
+                if line1 and line2 then
+                    return line1, line2, true, nil
+                end
+            end
+        end
+
+        return nil, nil, false, "Invalid 'range'"
+    end
+
+    local function _build_cmd_context(cursor, win, spec)
+        local raw_cmd, raw_l1, raw_l2, has_raw_range, first_kind, has_sep = _cursor_parse_head(cursor, win)
+        local name = tostring((spec and (spec.dispatch or spec.lname or spec.name)) or raw_cmd or ""):lower()
+        local cmd_spec = get_command_spec(name)
+        local addr_mode = cmd_spec and cmd_spec.addr
+        local ctx = {
             raw_cmd = raw_cmd,
-            line1 = has_range and l1,
-            line2 = has_range and l2,
+            line1 = nil,
+            line2 = nil,
+            range = 0,
+            count = nil,
         }
+
+        if has_raw_range then
+            if name == "" then
+                ctx.line1 = raw_l1
+                ctx.line2 = raw_l2
+                ctx.range = (raw_l1 == raw_l2) and 1 or 2
+            elseif addr_mode == "none" then
+                error(Error(481, tostring((cursor and cursor.text) or "")))
+            elseif addr_mode == "count" then
+                ctx.count = raw_l2
+            else
+                ctx.line1 = raw_l1
+                ctx.line2 = raw_l2
+                ctx.range = (raw_l1 == raw_l2) and 1 or 2
+            end
+        end
+
+        if type(spec) == "table" then
+            if spec.count ~= nil then
+                local count = tonumber(spec.count)
+                if not count then
+                    error("Invalid 'count'")
+                end
+                if addr_mode == "count" then
+                    ctx.count = count
+                else
+                    error("Command cannot accept count: " .. name)
+                end
+            end
+
+            local line1, line2, has_structured_range, range_err = _structured_range_from_spec(spec)
+            if range_err then
+                error(range_err)
+            end
+            if has_structured_range then
+                if addr_mode == "line" then
+                    ctx.line1 = line1
+                    ctx.line2 = line2
+                    ctx.range = (line1 == line2) and 1 or 2
+                elseif addr_mode == "count" then
+                    ctx.count = line2
+                elseif addr_mode == "none" or addr_mode == nil then
+                    error("Command cannot accept range: " .. name)
+                else
+                    error("Invalid 'range'")
+                end
+            end
+        end
+
+        return ctx
     end
 
     local function _parse_copy_move_target(raw, win)
@@ -3304,7 +3401,7 @@ function Runtime.new(init_state, init_opts)
 
         if spec.action == "define" then
             local operation
-            local token = args[idx] and args[idx]:lower() or nil
+            local token = args[idx] and args[idx]:lower()
             if token == "enable" or token == "disable" then
                 operation = token
                 idx = idx + 1
@@ -3317,7 +3414,7 @@ function Runtime.new(init_state, init_opts)
             end
 
             if not operation then
-                token = args[idx] and args[idx]:lower() or nil
+                token = args[idx] and args[idx]:lower()
                 if token == "enable" or token == "disable" then
                     operation = token
                     idx = idx + 1
@@ -3863,7 +3960,29 @@ function Runtime.new(init_state, init_opts)
         elseif cmd == "finish" then
             error(self:return_exc(nil))
         elseif cmd == "quit" then
+            Autocmd.Run("QuitPre", _buf_ctx_from(windows[curwin].buffer))
             local q = tabpages[curtp]:close(windows[curwin], bang, nil, "autowriteall")
+            if q ~= true then error(q) end
+            return true
+        elseif cmd == "close" then
+            local target = windows[curwin]
+            if cmdctx.count ~= nil then
+                local count = tonumber(cmdctx.count)
+                if count < 1 then
+                    error(Error(16))
+                end
+                local target_win = tabpages[curtp].windows[count]
+                if not target_win then
+                    error(Error(16))
+                end
+                target = target_win
+            end
+
+            if #tabpages[curtp].windows == 1 then
+                error(Error(444))
+            end
+
+            local q = tabpages[curtp]:close(target, bang, nil, "autowriteall")
             if q ~= true then error(q) end
             return true
         elseif cmd == "source" then
@@ -4697,26 +4816,7 @@ function Runtime.new(init_state, init_opts)
         elseif cmd == "wincmd" then
             local args = split_ws(argstr)
             local key = args[1]
-            local count
-
-            local cursor = self:get_exec_cursor()
-            if cursor and cursor.cmd == "wincmd" then
-                local line = lstrip(tostring(cursor.text or ""))
-                while line:sub(1, 1) == ":" do
-                    line = lstrip(line:sub(2))
-                end
-                local prefix, rest = line:match("^(%d+)(.*)$")
-                if prefix then
-                    rest = lstrip(rest or "")
-                    local raw_cmd = rest:match("^([%a][%w]*)")
-                    if raw_cmd then
-                        local resolved = resolve_dispatch_name(raw_cmd:lower())
-                        if resolved == "wincmd" then
-                            count = tonumber(prefix)
-                        end
-                    end
-                end
-            end
+            local count = cmdctx.count
 
             if key and key:match("^%d+$") then
                 if count == nil then
@@ -5047,7 +5147,7 @@ function Runtime.new(init_state, init_opts)
         local qargs = tostring(spec.qargs or "")
         local bang = not not spec.bang
         local win = windows[curwin]
-        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win)
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec)
 
         if name == "" then
             if cmdctx.raw_cmd == nil and cmdctx.line2 ~= nil then
@@ -5076,11 +5176,8 @@ function Runtime.new(init_state, init_opts)
 
         local line1 = cmdctx.line1 or win.cursory
         local line2 = cmdctx.line2 or line1
-        local range = 0
-        if cmdctx.line1 ~= nil then
-            range = (line1 == line2) and 1 or 2
-        end
-        local count = cmdctx.line2 or 0
+        local range = cmdctx.range or 0
+        local count = cmdctx.count or cmdctx.line2 or 0
 
         local def = self.state.commands[lname]
         if def then
@@ -5139,6 +5236,10 @@ function Runtime.new(init_state, init_opts)
                 fargs = ensure_args(),
                 _ccvim = { raw_args = qargs },
                 bang = bang,
+                count = count,
+                line1 = line1,
+                line2 = line2,
+                range = range,
             })
         end
         if type(global.command) == "string" then

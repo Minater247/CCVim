@@ -14,7 +14,7 @@ local HL_SETN    = "\4" -- set numbered highlight group
 local currfill -- character to use for fill from fillchars
 
 local function user_group_name(n)
-    n = tonumber(n or 0) or 0
+    n = tonumber(n) or 0
     return (n >= 1 and n <= 9) and ("User" .. n) or "StatusLine"
 end
 

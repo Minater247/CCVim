@@ -1040,7 +1040,7 @@ function Autocmd.List(opts)
                                     if type(ac.callback) == "function" then
                                         local info = debug.getinfo(ac.callback, "S")
                                         local src  = info and (info.source or info.short_src) or "?"
-                                        local ln   = info and (info.linedefined or 0) or 0
+                                        local ln   = info and (info.linedefined) or 0
                                         -- mimic Neovim style: <Lua N: path:line>
                                         text       = ("<Lua %d: %s:%d>"):format(ln, src, ln)
                                     else -- string Ex command payload

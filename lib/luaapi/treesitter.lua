@@ -1059,7 +1059,7 @@ end
 
 local function spans_in_range(doc, start_row, stop_row)
     local out = {}
-    local sr = tonumber(start_row or 0) or 0
+    local sr = tonumber(start_row) or 0
     local er = tonumber(stop_row or (sr + 1)) or (sr + 1)
 
     for row = sr, er - 1 do
@@ -1538,7 +1538,7 @@ function M.get_captures_at_pos(bufnr, row, col)
         return {}
     end
 
-    return active:captures_at_pos(tonumber(row or 0) or 0, tonumber(col or 0) or 0)
+    return active:captures_at_pos(tonumber(row) or 0, tonumber(col) or 0)
 end
 
 function M.get_captures_at_cursor(winnr)
