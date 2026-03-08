@@ -6,7 +6,11 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        local result = Assert.eval(backend, "eval function existence", "{type(vim.islist), type(vim.isarray), type(vim.tbl_islist)}")
+        local result = Assert.eval(
+            backend,
+            "eval function existence",
+            "{type(vim.islist), type(vim.isarray), type(vim.tbl_islist)}"
+        )
         Assert.table_eq("function tuple", result, {"function", "function", "function"})
 
         result = Assert.eval(backend, "eval islist cases",

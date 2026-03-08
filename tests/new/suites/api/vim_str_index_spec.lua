@@ -6,7 +6,11 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        local result = Assert.eval(backend, "eval baseline tuple", "{vim.str_utfindex('abc', 2), vim.str_byteindex('abc', 2, false)}")
+        local result = Assert.eval(
+            backend,
+            "eval baseline tuple",
+            "{vim.str_utfindex('abc', 2), vim.str_byteindex('abc', 2, false)}"
+        )
         Assert.table_eq("baseline tuple", result, {2, 2})
 
         result = Assert.eval(backend, "eval utf-8 tuple",

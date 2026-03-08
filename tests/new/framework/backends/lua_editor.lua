@@ -45,14 +45,14 @@ function LuaEditorBackend.new(opts)
         return rv, nil
     end
 
-    function backend:eval_vimscript(vimscript_expr, opts)
+    function backend:eval_vimscript(vimscript_expr, options)
         if type(vimscript_expr) ~= "string" then
             return nil, "eval_vimscript expects a string expression"
         end
 
-        opts = opts or {}
-        local setup = opts.setup
-        local script_ctx = opts.script_ctx
+        options = options or {}
+        local setup = options.setup
+        local script_ctx = options.script_ctx
 
         if setup ~= nil or script_ctx ~= nil then
             local Runtime = self.mock.loadModule("lib.excmd.runtime")

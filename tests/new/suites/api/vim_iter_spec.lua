@@ -6,7 +6,11 @@ return {
         local backend = ctx.backend
         local Assert = ctx.assert
 
-        local result = Assert.eval(backend, "eval list filter", "vim.iter({1,2,3,4}):filter(function(v) return v % 2 == 0 end):totable()")
+        local result = Assert.eval(
+            backend,
+            "eval list filter",
+            "vim.iter({1,2,3,4}):filter(function(v) return v % 2 == 0 end):totable()"
+        )
         Assert.table_eq("list filter", result, {2, 4})
 
         result = Assert.eval_block(backend, "eval extmark filter", [[
