@@ -1,6 +1,6 @@
 return {
     id = "runtime.split_failure_preflight",
-    description = "Ports split/vsplit preflight so impossible splits fail with E36 before changing layout or firing window/buffer autocmds.",
+    description = "Ports split/vsplit preflight with actual commands so feasible layouts commit and infeasible layouts fail with E36 before changing layout or firing window/buffer autocmds.",
     supports = { lua_editor = true, headless_nvim = true },
     run = function(ctx)
         local backend = ctx.backend
@@ -41,17 +41,17 @@ return {
                 })
 
                 local before = {
-                    #vim.api.nvim_tabpage_list_wins(0),
-                    vim.api.nvim_get_current_win(),
-                    vim.fn.string(vim.fn.winlayout()),
+                    wincount = #vim.api.nvim_tabpage_list_wins(0),
+                    current = vim.api.nvim_get_current_win(),
+                    layout = vim.fn.string(vim.fn.winlayout()),
                 }
 
                 local ok, err = pcall(vim.cmd, command)
 
                 local after = {
-                    #vim.api.nvim_tabpage_list_wins(0),
-                    vim.api.nvim_get_current_win(),
-                    vim.fn.string(vim.fn.winlayout()),
+                    wincount = #vim.api.nvim_tabpage_list_wins(0),
+                    current = vim.api.nvim_get_current_win(),
+                    layout = vim.fn.string(vim.fn.winlayout()),
                 }
 
                 vim.api.nvim_del_augroup_by_id(group)
@@ -67,6 +67,18 @@ return {
 
             return {
                 attempt("vsplit", {
+                    winwidth = 20,
+                    winheight = 1,
+                    winminwidth = 20,
+                    winminheight = 1,
+                }),
+                attempt("split", {
+                    winwidth = 1,
+                    winheight = 1,
+                    winminwidth = 1,
+                    winminheight = 1,
+                }),
+                attempt("vsplit", {
                     winwidth = 100,
                     winheight = 1,
                     winminwidth = 100,
@@ -81,14 +93,28 @@ return {
             }
         ]])
 
-        Assert.eq("vsplit preflight fails", result[1][1], false)
-        Assert.top_error_code("vsplit preflight reports E36", result[1][2], "E36")
-        Assert.table_eq("vsplit keeps window count/current/layout", result[1][4], result[1][3])
-        Assert.eq("vsplit preflight fires no autocmd", #result[1][5], 0)
+        Assert.eq("vsplit success returns ok", result[1][1], true)
+        Assert.eq("vsplit success leaves empty error", result[1][2], "")
+        Assert.eq("vsplit success starts from one window", result[1][3].wincount, 1)
+        Assert.eq("vsplit success ends with two windows", result[1][4].wincount, 2)
+        Assert.eq("vsplit success changes layout", result[1][4].layout == result[1][3].layout, false)
+        Assert.truthy("vsplit success fires autocmds", #result[1][5] > 0, #result[1][5])
 
-        Assert.eq("split preflight fails", result[2][1], false)
-        Assert.top_error_code("split preflight reports E36", result[2][2], "E36")
-        Assert.table_eq("split keeps window count/current/layout", result[2][4], result[2][3])
-        Assert.eq("split preflight fires no autocmd", #result[2][5], 0)
+        Assert.eq("split success returns ok", result[2][1], true)
+        Assert.eq("split success leaves empty error", result[2][2], "")
+        Assert.eq("split success starts from one window", result[2][3].wincount, 1)
+        Assert.eq("split success ends with two windows", result[2][4].wincount, 2)
+        Assert.eq("split success changes layout", result[2][4].layout == result[2][3].layout, false)
+        Assert.truthy("split success fires autocmds", #result[2][5] > 0, #result[2][5])
+
+        Assert.eq("vsplit preflight fails", result[3][1], false)
+        Assert.top_error_code("vsplit preflight reports E36", result[3][2], "E36")
+        Assert.table_eq("vsplit keeps window count/current/layout", result[3][4], result[3][3])
+        Assert.eq("vsplit preflight fires no autocmd", #result[3][5], 0)
+
+        Assert.eq("split preflight fails", result[4][1], false)
+        Assert.top_error_code("split preflight reports E36", result[4][2], "E36")
+        Assert.table_eq("split keeps window count/current/layout", result[4][4], result[4][3])
+        Assert.eq("split preflight fires no autocmd", #result[4][5], 0)
     end,
 }

@@ -1341,6 +1341,7 @@ local function default_globals(state, colors)
                     _y = y,
                     _w = w,
                     _h = h,
+                    _visible = true,
                 }
                 for k, v in pairs(parent) do
                     if type(v) == "function" then
@@ -1348,6 +1349,24 @@ local function default_globals(state, colors)
                             return v(...)
                         end
                     end
+                end
+                function win.reposition(nx, ny, nw, nh)
+                    win._x = math.floor(tonumber(nx) or win._x)
+                    win._y = math.floor(tonumber(ny) or win._y)
+                    win._w = math.floor(tonumber(nw) or win._w)
+                    win._h = math.floor(tonumber(nh) or win._h)
+                end
+                function win.getPosition()
+                    return win._x, win._y
+                end
+                function win.getSize()
+                    return win._w, win._h
+                end
+                function win.setVisible(v)
+                    win._visible = not not v
+                end
+                function win.isVisible()
+                    return win._visible
                 end
                 return win
             end,
