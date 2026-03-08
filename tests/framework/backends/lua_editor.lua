@@ -34,10 +34,14 @@ end
 
 function LuaEditorBackend.new(opts)
     opts = opts or {}
+    local ccvim_path = opts.ccvim_path
+    if ccvim_path == nil or ccvim_path == "" then
+        ccvim_path = rawget(_G, "__CCVIM_TEST_ROOT") or "."
+    end
 
     local MockEnv = require("vim.tests.test_mocks")
     local mock = MockEnv.setup({
-        ccvim_path = opts.ccvim_path or "vim",
+        ccvim_path = ccvim_path,
         module_stubs = opts.module_stubs,
         on_pull_event = opts.on_pull_event,
         bootstrap_default_editor = false,

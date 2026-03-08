@@ -1497,7 +1497,7 @@ function MockEnv.setup(opts)
 
     local ccvim_root = opts.ccvim_path
     if not ccvim_root or ccvim_root == "" then
-        ccvim_root = "."
+        ccvim_root = rawget(_G, "__CCVIM_TEST_ROOT") or "."
     end
 
     local globals = default_globals(state, colors)
