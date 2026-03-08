@@ -1,6 +1,6 @@
 return {
     id = "runtime.decoration_provider",
-    description = "Ports decoration provider callbacks and ephemeral extmark cleanup on CCVim's runtime decoration path.",
+    description = "Ports decoration provider callbacks and ephemeral extmark cleanup on CCVim's runtime decoration path; lua-editor-only because it drives the internal redraw cycle directly to inspect per-cycle provider state.",
     supports = { lua_editor = true, headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
