@@ -122,8 +122,11 @@ function LuaEditorBackend.new(opts)
     backend.EMPTY_DICT_MT = backend:get_empty_dict_mt()
 
     function backend:eval_lua(lua_expr)
-        local vimapi = self:api_build().vim
-        local env = setmetatable({ vim = vimapi }, { __index = _G })
+        local api = self:api_build()
+        local env = setmetatable({
+            vim = api.vim,
+            _G = api,
+        }, { __index = api })
 
         local chunk, err = load("return " .. lua_expr, "lua_editor_eval", "t", env)
         if not chunk then
@@ -193,8 +196,11 @@ function LuaEditorBackend.new(opts)
             return nil, "eval_block expects a string containing Lua code"
         end
 
-        local vimapi = self:api_build().vim
-        local env = setmetatable({ vim = vimapi }, { __index = _G })
+        local api = self:api_build()
+        local env = setmetatable({
+            vim = api.vim,
+            _G = api,
+        }, { __index = api })
         local chunk, err = load(code, "lua_editor_eval_block", "t", env)
         if not chunk then
             return nil, err

@@ -1442,7 +1442,7 @@ function MockEnv.setup(opts)
     opts = opts or {}
 
     local pid = default_pid()
-    local fs_root = string.format("/tmp/nvim-test-%d-%d", real_os_time(), pid)
+    local fs_root = string.format("/tmp/nvim-test-%d-%d-%d", real_os_time(), pid, math.random(1000, 9999))
     remove_tree(fs_root)
     local ok, code = pcall(mkdir_p, fs_root)
     if not ok then
