@@ -8,20 +8,19 @@ return {
 
         local api = backend.mock.loadModule("lib.luaapi.api")
         local Decoration = backend.mock.loadModule("lib.decoration")
+        local Tabpage = backend.mock.loadModule("layout.tabpage")
 
-        local buf1 = backend.mock.create_buffer(1, "/tmp/redraw-api-1.txt", { "one" }, { refcount = 1 })
+        local win1 = windows[curwin]
+        local buf1 = win1.buffer
+        buf1.name = "/tmp/redraw-api-1.txt"
+        buf1.lines = { "one" }
+        buf1.loaded = true
         local buf2 = backend.mock.create_buffer(2, "/tmp/redraw-api-2.txt", { "two" }, { refcount = 1 })
-
-        local win1 = { winnr = 1, buffer = buf1, need_redraw = false }
-        local win2 = { winnr = 2, buffer = buf2, need_redraw = false }
-        windows[1] = win1
-        windows[2] = win2
-        curtp = 1
-        curwin = 1
+        local win2 = backend.mock.create_window(2, buf2, {})
+        Assert.eq("split adds second real window", Tabpage.WinSplit(tabpages[curtp], win1.winnr, win2, true), true)
 
         local render_count = 0
-        tabpages[1].windows = { win1, win2 }
-        tabpages[1].render = function()
+        tabpages[curtp].render = function()
             render_count = render_count + 1
         end
 

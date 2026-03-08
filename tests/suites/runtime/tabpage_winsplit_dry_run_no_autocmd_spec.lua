@@ -22,38 +22,15 @@ return {
         })
 
         local ok, err = pcall(function()
-            local function make_win(id)
-                return {
-                    winnr = id,
-                    tabpagenr = 1,
-                    style = nil,
-                    floatpos = nil,
-                    need_redraw = false,
-                    opts = {},
-                    minwidth = function()
-                        return options.get("winminwidth")
-                    end,
-                    minheight = function()
-                        return options.get("winminheight")
-                    end,
-                    cursorMove = function() end,
-                    render = function() end,
-                }
-            end
-
             _G.__tabpage_autocmd_calls = {}
             screen.width = 20
             screen.height = 8
 
             local Options = mock.loadModule("lib.options")
             _G.options = Options
-            local Tabpage = mock.loadModule("layout.tabpage")
-
-            local win1 = make_win(1)
-            windows[1] = win1
-            local tab1 = Tabpage:new(win1)
-            curtp = tab1.tabnr
-            curwin = win1.winnr
+            local tab1 = tabpages[curtp]
+            local win1 = windows[curwin]
+            tab1:updateFrameview()
 
             Options.set("winminwidth", 1, false, nil, nil, true)
             Options.set("winminheight", 1, false, nil, nil, true)

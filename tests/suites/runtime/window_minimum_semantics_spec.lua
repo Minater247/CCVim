@@ -17,8 +17,6 @@ return {
             local win1 = mock.create_window(1, buf1, { style = nil })
             local win2 = mock.create_window(2, buf2, { style = nil })
 
-            windows[1] = win1
-            windows[2] = win2
             curwin = 1
 
             Options.set("winminwidth", 3, false, nil, nil, true)
