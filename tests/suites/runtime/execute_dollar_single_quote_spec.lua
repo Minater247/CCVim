@@ -1,7 +1,7 @@
 return {
     id = "runtime.execute_dollar_single_quote",
     description = "Ports execute $'...' interpolation coverage through the Vimscript runner.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

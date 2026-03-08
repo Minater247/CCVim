@@ -1,7 +1,7 @@
 return {
     id = "api.vim_lsp_proxy",
     description = "Ports vim._defer_require and lazy vim.lsp materialization through the public Lua API.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

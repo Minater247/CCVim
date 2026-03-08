@@ -1,7 +1,7 @@
 return {
     id = "runtime.stage4_syntax_engine",
     description = "Ports stage 4 syntax engine runtime coverage against the real parser and highlighting runtime; lua-editor-only because it exercises CCVim's internal syntax_engine parser/compiler/runtime modules directly.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")

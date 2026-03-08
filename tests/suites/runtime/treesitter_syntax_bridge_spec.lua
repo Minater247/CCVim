@@ -1,7 +1,7 @@
 return {
     id = "runtime.treesitter_syntax_bridge",
     description = "Ports treesitter-to-syntax highlight bridging on CCVim's runtime render path; lua-editor-only because it asserts internal blit output.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
 
             local Highlight = mock.loadModule("lib.highlight")
             local Treesitter = mock.loadModule("lib.luaapi.treesitter")

@@ -1,7 +1,7 @@
 return {
     id = "runtime.stage3_regex",
     description = "Ports stage 3 Vim regex engine coverage against the real compiled regex implementation.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local Assert = ctx.assert
 

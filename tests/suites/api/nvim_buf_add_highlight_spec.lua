@@ -1,7 +1,7 @@
 return {
     id = "api.nvim_buf_add_highlight",
     description = "Ports nvim_buf_add_highlight coverage through public namespace/extmark APIs.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

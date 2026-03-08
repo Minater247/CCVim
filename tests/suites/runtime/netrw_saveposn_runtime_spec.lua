@@ -1,7 +1,7 @@
 return {
     id = "runtime.netrw_saveposn",
     description = "Ports netrw SavePosn list reuse behavior through real Vimscript function execution.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.file_delete_curlyvar",
     description = "Ports file, delete, curly-var, and drop behavior through real Ex execution.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

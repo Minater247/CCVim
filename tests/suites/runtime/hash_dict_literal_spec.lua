@@ -1,7 +1,7 @@
 return {
     id = "runtime.hash_dict_literal",
     description = "Ports hash-dict literal runtime behavior through real Vimscript execution.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

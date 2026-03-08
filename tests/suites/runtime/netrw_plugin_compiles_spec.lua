@@ -1,7 +1,7 @@
 return {
     id = "runtime.netrw_plugin_compiles",
     description = "Loads the bundled netrw opt plugin through packadd and asserts its user commands are registered.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

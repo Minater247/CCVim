@@ -1,7 +1,7 @@
 return {
     id = "runtime.foldexpr_option",
     description = "Ports foldexpr script-local evaluation through sourced Vimscript and public option evaluation.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

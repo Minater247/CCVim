@@ -1,7 +1,7 @@
 return {
     id = "runtime.enew_redir",
     description = "Ports enew and redir behavior through real Ex execution and editor-visible files.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.wincmd",
     description = "Ports :wincmd count forms through real window selection behavior.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

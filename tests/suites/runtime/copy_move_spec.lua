@@ -1,7 +1,7 @@
 return {
     id = "runtime.copy_move",
     description = "Ports copy/move Ex command behavior for ranges, aliases, cursor updates, no-ops, and errors.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

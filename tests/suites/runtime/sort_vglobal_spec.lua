@@ -1,7 +1,7 @@
 return {
     id = "runtime.sort_vglobal",
     description = "Ports sort and vglobal command behavior through real Ex execution.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

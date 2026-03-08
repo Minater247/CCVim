@@ -1,7 +1,7 @@
 return {
     id = "api.vim_filesystem_wildcards",
     description = "Ports wildcard expansion behavior for brace and character-class patterns through real glob() calls.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

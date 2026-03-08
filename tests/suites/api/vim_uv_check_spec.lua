@@ -1,7 +1,7 @@
 return {
     id = "api.vim_uv_check",
     description = "Ports vim.uv.new_check() and vim.uv.now() behavior through real event-loop handles.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

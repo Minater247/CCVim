@@ -1,7 +1,7 @@
 return {
     id = "api.nvim_set_hl_roundtrip",
     description = "Ports backend-neutral nvim_set_hl/nvim_get_hl round-trip behavior for numeric, NONE, and RGB values.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

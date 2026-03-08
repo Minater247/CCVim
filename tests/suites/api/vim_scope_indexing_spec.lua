@@ -1,7 +1,7 @@
 return {
     id = "api.vim_scope_indexing",
     description = "Ports vim.b, vim.w, and vim.t indexing behavior for current and explicit ids.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

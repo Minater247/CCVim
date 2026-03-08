@@ -1,7 +1,7 @@
 return {
     id = "runtime.window_cursor_render_semantics",
     description = "Ports deferred-wrap cursor rendering semantics through the real Window render path; lua-editor-only because it asserts CCVim terminal grid output.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -13,8 +13,6 @@ return {
             local FrameTree = mock.loadModule("lib.frame")
             local Tabpage = mock.loadModule("layout.tabpage")
             local CmdRead = mock.loadModule("lib.excmd.cmdread")
-
-            _G.options = Options
 
             screen.width = 16
             screen.height = 6

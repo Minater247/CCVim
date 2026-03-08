@@ -1,7 +1,7 @@
 return {
     id = "runtime.autocmd_amatch_path",
     description = "Ports <amatch> path normalization for BufEnter and FileType without backend-specific stubs.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

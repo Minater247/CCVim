@@ -1,7 +1,7 @@
 return {
     id = "api.vim_uv_fs_async",
     description = "Ports vim.uv async filesystem callbacks for stat, realpath, directory iteration, file open/read/close, and missing-path errors.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.tabclose_bufleave_order",
     description = "Ports current-window close ordering so BufLeave sees a registered current buffer and the survivor becomes current.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

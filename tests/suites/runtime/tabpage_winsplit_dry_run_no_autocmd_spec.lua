@@ -1,7 +1,7 @@
 return {
     id = "runtime.tabpage_winsplit_dry_run_no_autocmd",
     description = "Ports internal Tabpage dry-run split behavior; lua-editor-only because it probes Tabpage internals directly.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -27,7 +27,6 @@ return {
             screen.height = 8
 
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
             local tab1 = tabpages[curtp]
             local win1 = windows[curwin]
             tab1:updateFrameview()

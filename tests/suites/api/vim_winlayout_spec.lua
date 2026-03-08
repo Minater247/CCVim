@@ -1,7 +1,7 @@
 return {
     id = "api.vim_winlayout",
     description = "Ports winlayout() through real tabpage frame trees for leaf, split, nested split, and invalid-tab cases.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "api.vim_bufadd",
     description = "Ports bufadd() coverage to real editor state.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

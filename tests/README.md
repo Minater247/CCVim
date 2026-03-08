@@ -71,7 +71,6 @@ Each test suite is a Lua file returning a table:
 return {
     id = "category.test_name",
     description = "What this test validates",
-    supports = { lua_editor = true, headless_nvim = true },
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

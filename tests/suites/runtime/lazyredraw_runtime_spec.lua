@@ -1,7 +1,7 @@
 return {
     id = "runtime.lazyredraw",
     description = "Ports lazyredraw event-loop behavior on the real runtime with controlled timer delivery; lua-editor-only because it inspects CCVim's internal redraw scheduler state during the ComputerCraft event loop.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -22,7 +22,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
             Options.set("lazyredraw", true)
 
             local render_count = 0

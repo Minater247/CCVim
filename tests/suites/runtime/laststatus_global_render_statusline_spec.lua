@@ -1,7 +1,7 @@
 return {
     id = "runtime.laststatus_global_render_statusline",
     description = "Ports global-statusline render smoke coverage on the real runtime render path; lua-editor-only because it asserts CCVim's tabpage rendering internals.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
 
             screen.width = 20
             screen.height = 8

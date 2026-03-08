@@ -1,7 +1,7 @@
 return {
     id = "api.nvim_buf_attach",
     description = "Ports buffer attach coverage through public on_lines/on_detach callbacks.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

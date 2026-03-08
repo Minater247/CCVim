@@ -1,7 +1,7 @@
 return {
     id = "runtime.autocmd_script_state",
     description = "Ports script-local autocmd state and related script parsing behavior through sourced Vimscript.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

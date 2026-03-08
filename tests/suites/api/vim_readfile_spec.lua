@@ -1,7 +1,7 @@
 return {
     id = "api.vim_readfile",
     description = "Ports readfile() builtin coverage from old tests without fs stubs.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.command_prefix_validation",
     description = "Validates central count/range handling for commands that allow count, allow line ranges, or allow neither.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

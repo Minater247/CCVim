@@ -1,7 +1,7 @@
 return {
     id = "runtime.vimxpr_angle_escapes",
     description = "Ports Vimscript angle-bracket escape decoding through expression evaluation.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

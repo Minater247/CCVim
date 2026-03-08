@@ -1,7 +1,7 @@
 return {
     id = "runtime.args_deferred_load_filetype",
     description = "Ports deferred startup file loading and BufRead-driven filetype assignment through CCVim's internal Args startup pipeline; lua-editor-only because Neovim parity would require the CCVim-specific startup path.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert
@@ -11,7 +11,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = backend.mock.loadModule("lib.options")
-            _G.options = Options
             local Autocmd = backend.mock.loadModule("lib.autocmd")
             local Args = backend.mock.loadModule("lib.args")
 

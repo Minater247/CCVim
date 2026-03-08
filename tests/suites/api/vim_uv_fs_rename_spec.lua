@@ -1,7 +1,7 @@
 return {
     id = "api.vim_uv_fs_rename",
     description = "Ports vim.uv.fs_rename() sync and async result tuples against real filesystem operations.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

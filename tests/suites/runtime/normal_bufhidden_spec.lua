@@ -1,7 +1,7 @@
 return {
     id = "runtime.normal_bufhidden",
     description = "Ports :normal remap/range/bar semantics and bufhidden delete/hide/unload behavior against Neovim-visible buffer state.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

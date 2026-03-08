@@ -1,7 +1,7 @@
 return {
     id = "runtime.mouse_events",
     description = "Ports default mouse event handling through CCVim's real event loop; lua-editor-only because it targets the internal ComputerCraft mouse bridge.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -23,8 +23,6 @@ return {
             local Autocmd = mock.loadModule("lib.autocmd")
             local Event = mock.loadModule("lib.event")
             local Scopes = mock.loadModule("lib.luaapi.scopes")
-
-            _G.options = Options
 
             local autocmd_calls = {}
             Autocmd.CreateAutocommand({ "MenuPopup" }, { "*" }, function(info)

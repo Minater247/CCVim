@@ -1,7 +1,7 @@
 return {
     id = "api.vim_call",
     description = "Ports vim.call coverage to the backend-independent harness.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

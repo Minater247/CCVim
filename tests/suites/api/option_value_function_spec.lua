@@ -1,7 +1,7 @@
 return {
     id = "api.option_value_function",
     description = "Ports function-valued option behavior for set/function()/funcref()/lambda and script-local calls.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

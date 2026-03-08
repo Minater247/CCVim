@@ -1,7 +1,7 @@
 return {
     id = "api.vimscript_eval",
     description = "Validates backend.eval_vimscript translation layer across backends.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

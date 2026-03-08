@@ -1,7 +1,7 @@
 return {
     id = "api.require_vararg",
     description = "Ports runtimepath Lua module loading where require passes the module name as a vararg.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

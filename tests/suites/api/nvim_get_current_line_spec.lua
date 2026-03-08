@@ -1,7 +1,7 @@
 return {
     id = "api.nvim_get_current_line",
     description = "Validates nvim_get_current_line for populated and empty buffers.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.sid_script_local",
     description = "Ports <SID> expression calls and mapping expansion through sourced Vimscript and maparg().",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

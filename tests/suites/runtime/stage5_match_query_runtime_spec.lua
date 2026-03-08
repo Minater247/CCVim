@@ -1,7 +1,7 @@
 return {
     id = "runtime.stage5_match_query",
     description = "Complements the public stage5 parity suite with CCVim-internal syntax render and reset behavior.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -15,8 +15,6 @@ return {
             local Compiler = mock.loadModule("lib.excmd.compiler")
             local Scopes = mock.loadModule("lib.luaapi.scopes")
             local Highlight = mock.loadModule("lib.highlight")
-
-            _G.options = Options
 
             local durable_by_ctx = {}
             local function run_compiled(script, script_ctx)

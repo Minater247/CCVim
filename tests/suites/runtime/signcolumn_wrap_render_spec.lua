@@ -1,7 +1,7 @@
 return {
     id = "runtime.signcolumn_wrap_render",
     description = "Ports wrapped signcolumn rendering through the real Window render path; lua-editor-only because it asserts CCVim terminal grid output.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
             local Sign = mock.loadModule("lib.sign")
             local FrameTree = mock.loadModule("lib.frame")
 

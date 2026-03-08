@@ -1,7 +1,7 @@
 return {
     id = "api.vim_cmd",
     description = "Ports vim.cmd invocation styles and related public table helpers.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

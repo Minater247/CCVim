@@ -1,7 +1,7 @@
 return {
     id = "api.vim_fs_joinpath",
     description = "Covers vim.fs.joinpath normalization and argument coercion behavior.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

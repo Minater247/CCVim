@@ -1,7 +1,7 @@
 return {
     id = "api.vim_setline",
     description = "Ports setline() builtin coverage from old tests without module stubs.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

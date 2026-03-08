@@ -1,7 +1,7 @@
 return {
     id = "api.stage5_match_query",
     description = "Ports public stage5 syntax query behavior against Neovim reference semantics.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

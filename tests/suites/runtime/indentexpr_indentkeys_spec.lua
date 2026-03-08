@@ -1,7 +1,7 @@
 return {
     id = "runtime.indentexpr_indentkeys",
     description = "Ports insert-mode indentexpr and indentkeys behavior against real editor input.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

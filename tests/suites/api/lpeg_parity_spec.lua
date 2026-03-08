@@ -1,7 +1,7 @@
 return {
     id = "api.lpeg_parity",
     description = "Ports LPeg compatibility checks by comparing CCVim's bundled implementation with the reference lpeg module.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local Assert = ctx.assert
 

@@ -1,7 +1,7 @@
 return {
     id = "runtime.netrw_glob_list_concat_regression",
     description = "Ports netrw glob list concatenation behavior against real backend files and Vimscript evaluation.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

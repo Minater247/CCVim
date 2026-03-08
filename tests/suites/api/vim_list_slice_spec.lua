@@ -1,7 +1,7 @@
 return {
     id = "api.vim_list_slice",
     description = "Validates vim.list_slice behavior in both backends.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

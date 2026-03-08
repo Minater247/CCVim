@@ -1,7 +1,7 @@
 return {
     id = "runtime.try_catch",
     description = "Ports try/catch/finally and loop control semantics through real Vimscript execution.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "api.table_type_helpers",
     description = "Validates backend table type helper methods (is_list, is_dict, is_empty_dict).",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.source_trailing_comment",
     description = "Ports :source path parsing with spaced and adjacent trailing comments.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

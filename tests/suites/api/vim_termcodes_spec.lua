@@ -1,7 +1,7 @@
 return {
     id = "api.vim_termcodes",
     description = "Ports replace_termcodes/keytrans coverage through public Neovim APIs.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

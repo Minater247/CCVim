@@ -1,7 +1,7 @@
 return {
     id = "api.vim_uv_timer",
     description = "Ports vim.uv.new_timer() method coverage through real timer handles.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

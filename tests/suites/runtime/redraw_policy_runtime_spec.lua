@@ -1,7 +1,7 @@
 return {
     id = "runtime.redraw_policy",
     description = "Ports redraw policy behavior on the real startup window and buffer; lua-editor-only because it asserts internal redraw flags.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
             local Api = mock.loadModule("lib.luaapi.api")
 
             local win = windows[curwin]

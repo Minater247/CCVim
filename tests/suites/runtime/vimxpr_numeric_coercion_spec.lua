@@ -1,7 +1,7 @@
 return {
     id = "runtime.vimxpr_numeric_coercion",
     description = "Ports Vimscript numeric coercion behavior through expression evaluation.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

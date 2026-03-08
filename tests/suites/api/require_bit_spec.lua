@@ -1,7 +1,7 @@
 return {
     id = "api.require_bit",
     description = "Ports require('bit') preload behavior through public Lua require/package state.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.put",
     description = "Ports put command behavior for registers, expressions, addresses, and errors.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

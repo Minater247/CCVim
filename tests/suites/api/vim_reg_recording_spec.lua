@@ -1,7 +1,7 @@
 return {
     id = "api.vim_reg_recording",
     description = "Ports reg_recording(), reg_executing(), and reg_recorded() through real macro recording.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.texren_utf8_ascii",
     description = "Ports UTF-8 fallback rendering through CCVim's text renderer; lua-editor-only because it asserts internal renderer output.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
 
             local Tab = mock.loadModule("lib.tab")
             local TexRen = mock.loadModule("lib.texren")

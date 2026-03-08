@@ -1,7 +1,7 @@
 return {
     id = "runtime.event_resize_dispatch",
     description = "Ports resize event dispatch through the real CCVim event loop; lua-editor-only because it targets the internal ComputerCraft event bridge.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")

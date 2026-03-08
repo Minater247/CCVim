@@ -1,7 +1,7 @@
 return {
     id = "api.vim_keys",
     description = "Validates vim.keys() dictionary key extraction behavior.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

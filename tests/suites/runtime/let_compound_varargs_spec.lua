@@ -1,7 +1,7 @@
 return {
     id = "runtime.let_compound_varargs",
     description = "Ports compound let += and function vararg semantics through real Vimscript execution.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

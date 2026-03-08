@@ -1,7 +1,7 @@
 return {
     id = "api.vim_on_key",
     description = "Ports public vim.on_key registration, dispatch, consume, removal, and recursion behavior.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

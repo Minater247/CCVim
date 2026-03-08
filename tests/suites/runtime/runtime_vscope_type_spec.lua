@@ -1,7 +1,7 @@
 return {
     id = "runtime.vscope_type",
     description = "Ports shared v: scope truthiness and type() behavior through runtime execution.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

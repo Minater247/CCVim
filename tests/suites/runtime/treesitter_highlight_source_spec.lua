@@ -1,7 +1,7 @@
 return {
     id = "runtime.treesitter_highlight_source",
     description = "Ports treesitter capture reporting and highlight-source changes on CCVim's runtime render path; lua-editor-only because it asserts internal render state.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -19,7 +19,6 @@ return {
             end
 
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
 
             local Highlight = mock.loadModule("lib.highlight")
             local Scopes = mock.loadModule("lib.luaapi.scopes")

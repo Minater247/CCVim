@@ -1,7 +1,7 @@
 return {
     id = "api.treesitter_language_version_getters",
     description = "Ports treesitter language version getter exposure through the public vim and vim.treesitter APIs.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.utf8_buffer_helpers",
     description = "Ports UTF-8 buffer helper behavior on the real CCVim buffer/window objects; lua-editor-only because it exercises internal buffer methods directly.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")

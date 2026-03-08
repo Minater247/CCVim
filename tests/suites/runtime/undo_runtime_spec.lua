@@ -1,7 +1,7 @@
 return {
     id = "runtime.undo",
     description = "Ports direct buffer undo history behavior on the real buffer/runtime path; lua-editor-only because it asserts CCVim's internal buffer undo methods directly.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
             local Runtime = mock.loadModule("lib.excmd.runtime")
             local Buffer = mock.loadModule("layout.buffer")
             mock.loadModule("lib.command")

@@ -1,7 +1,7 @@
 return {
     id = "runtime.close_command",
     description = "Ports :close differences from :quit: E444 on the last window, count-targeted close, and no QuitPre.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

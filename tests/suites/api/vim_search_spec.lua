@@ -1,7 +1,7 @@
 return {
     id = "api.vim_search",
     description = "Ports search() behavior for flags, wrapping, stopline, skip, and error cases.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

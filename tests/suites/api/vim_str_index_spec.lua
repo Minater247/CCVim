@@ -1,7 +1,7 @@
 return {
     id = "api.vim_str_index",
     description = "Validates vim.str_utfindex and vim.str_byteindex on ASCII and UTF-16 code unit mode.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

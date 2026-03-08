@@ -1,7 +1,7 @@
 return {
     id = "api.nvim_feedkeys_noremap",
     description = "Ports public nvim_feedkeys remap versus noremap behavior for user and builtin normal-mode mappings.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

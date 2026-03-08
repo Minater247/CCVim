@@ -1,7 +1,7 @@
 return {
     id = "runtime.autoload_function_resolution",
     description = "Ports Vimscript autoload resolution through runtimepath-backed function calls.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

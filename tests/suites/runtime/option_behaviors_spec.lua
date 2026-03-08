@@ -1,7 +1,7 @@
 return {
     id = "runtime.option_behaviors",
     description = "Ports option behavior coverage against real backend files and public option semantics.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

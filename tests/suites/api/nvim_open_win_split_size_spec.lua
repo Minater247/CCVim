@@ -1,7 +1,7 @@
 return {
     id = "api.nvim_open_win_split_size",
     description = "Checks that split windows created through nvim_open_win honor requested width and height.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

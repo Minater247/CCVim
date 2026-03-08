@@ -1,7 +1,7 @@
 return {
     id = "runtime.doautoall_filetype",
     description = "Ports doautoall FileType behavior using real buffers and filetype matches.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

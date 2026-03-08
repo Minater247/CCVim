@@ -1,7 +1,7 @@
 return {
     id = "runtime.help_command",
     description = "Ports :help tag resolution and help buffer setup through a generated runtimepath.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

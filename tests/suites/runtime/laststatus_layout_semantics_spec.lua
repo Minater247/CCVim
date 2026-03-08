@@ -1,7 +1,7 @@
 return {
     id = "runtime.laststatus_layout_semantics",
     description = "Ports laststatus layout sizing and dry-run split semantics on the real tabpage/window runtime objects; lua-editor-only because it probes internal Tabpage layout state and dry-run split probes that headless Neovim does not expose.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -27,7 +27,6 @@ return {
             screen.height = 6
 
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
 
             local tab1 = tabpages[curtp]
             local win1 = windows[curwin]

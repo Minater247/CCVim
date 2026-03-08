@@ -1,7 +1,7 @@
 return {
     id = "api.vim_key_notation",
     description = "Ports public key-notation parsing for Plug, Bar, Space, Ctrl-S, and literal non-key tokens.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

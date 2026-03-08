@@ -1,7 +1,7 @@
 return {
     id = "runtime.window_minimum_semantics",
     description = "Ports internal window minimum width/height calculations on the real CCVim window objects; lua-editor-only because it asserts Window:minwidth()/minheight() directly.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
 
             local buf1 = mock.create_buffer(1, "/tmp/window-minimum-a.txt", { "" }, { refcount = 1 })
             local buf2 = mock.create_buffer(2, "/tmp/window-minimum-b.txt", { "" }, { refcount = 1 })

@@ -1,7 +1,7 @@
 return {
     id = "runtime.ftplugin_vim_highlighting",
     description = "Ports ftplugin.vim highlighting regressions through the Vim syntax engine runtime; lua-editor-only because it asserts CCVim syntax_engine internals rather than editor-visible Vimscript parity.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")

@@ -2,7 +2,7 @@ return {
     id = "api.vim_wait",
     description = "Ports vim.wait() behavior for immediate success, timeout, "
         .. "timers, callback errors, and fast-event guard.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

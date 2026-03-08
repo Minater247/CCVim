@@ -1,7 +1,7 @@
 return {
     id = "api.vim_mapping_precedence",
     description = "Ports builtin mapping precedence through real mappings, unmap, mapclear, and operator behavior.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.oil_directory_hijack",
     description = "Ports directory-hijack autocmd behavior through public APIs and real backend filesystem state.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

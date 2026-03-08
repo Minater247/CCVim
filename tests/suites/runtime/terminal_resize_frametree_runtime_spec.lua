@@ -1,7 +1,7 @@
 return {
     id = "runtime.terminal_resize_frametree",
     description = "Ports terminal resize behavior on the real frametree and autocmd runtime; lua-editor-only because it asserts CCVim internal layout state.",
-    supports = { lua_editor = true, headless_nvim = false },
+    supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
         local MockEnv = require("vim.tests.test_mocks")
@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            _G.options = Options
             local FrameTree = mock.loadModule("lib.frame")
             local Tabpage = mock.loadModule("layout.tabpage")
             local Autocmd = mock.loadModule("lib.autocmd")

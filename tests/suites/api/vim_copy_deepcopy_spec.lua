@@ -1,7 +1,7 @@
 return {
     id = "api.vim_copy_deepcopy",
     description = "Validates vim.copy() and vim.deepcopy() behavior with shallow/deep semantics.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

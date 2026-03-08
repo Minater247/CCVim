@@ -1,7 +1,7 @@
 return {
     id = "api.vim_items",
     description = "Validates vim.items() dictionary key-value pair extraction.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

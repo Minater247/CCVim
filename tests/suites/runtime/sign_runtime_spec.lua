@@ -1,7 +1,7 @@
 return {
     id = "runtime.sign_runtime",
     description = "Ports sign placement, movement, and removal behavior through the public sign API.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

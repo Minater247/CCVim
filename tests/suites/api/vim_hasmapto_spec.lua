@@ -1,7 +1,7 @@
 return {
     id = "api.vim_hasmapto",
     description = "Ports hasmapto() builtin coverage through real mappings instead of command stubs.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

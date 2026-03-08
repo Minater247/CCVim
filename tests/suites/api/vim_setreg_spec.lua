@@ -1,7 +1,7 @@
 return {
     id = "api.vim_setreg",
     description = "Ports setreg() coverage through public register APIs and alternate-buffer state.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.ex_command_bar_finish_usercmd",
     description = "Ports sourced Vimscript behavior for quoted bars, finish, silent, syntax pipes, and user-command expansion.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

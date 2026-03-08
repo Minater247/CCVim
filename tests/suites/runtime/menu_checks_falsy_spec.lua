@@ -1,7 +1,7 @@
 return {
     id = "runtime.menu_checks_falsy",
     description = "Ports menu command falsy/error regressions through real ex commands on both backends.",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert

@@ -1,7 +1,7 @@
 return {
     id = "runtime.menu_commands_runtime",
     description = "Ports menu command runtime behavior through real menu commands and menu_info().",
-    supports = { lua_editor = true, headless_nvim = true },
+    
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert
