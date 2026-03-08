@@ -1537,6 +1537,62 @@ function MockEnv.setup(opts)
     globals.options = load_module("lib.options")
     _G.options = globals.options
 
+    globals.enterWindow = function(winnr)
+        if winnr == nil or globals.windows[winnr] == nil then
+            return
+        end
+        if globals.curwin == nil or globals.windows[globals.curwin] == nil then
+            globals.curwin = winnr
+            globals.curtp = globals.windows[winnr].tabpagenr or globals.curtp
+            return
+        end
+        if winnr == globals.curwin then
+            return
+        end
+
+        local AutoCmd = load_module("lib.autocmd")
+        local new_curtp
+        local new_curwin = winnr
+        local oldwin = globals.windows[globals.curwin]
+        local newwin = globals.windows[new_curwin]
+
+        if newwin.tabpagenr ~= globals.curtp then
+            new_curtp = newwin.tabpagenr
+        end
+
+        local oldbuf = oldwin.buffer
+        local newbuf = newwin.buffer
+        local buf_changed = oldbuf ~= newbuf
+
+        if buf_changed then
+            AutoCmd.Run("BufLeave", { bufnr = oldbuf.bufnr, bufname = oldbuf.name })
+        end
+
+        AutoCmd.Run("WinLeave")
+
+        if new_curtp then
+            AutoCmd.Run("TabLeave")
+        end
+
+        globals.curwin = new_curwin
+        if new_curtp then
+            globals.curtp = new_curtp
+        end
+
+        AutoCmd.Run("WinEnter")
+
+        if new_curtp then
+            AutoCmd.Run("TabEnter")
+        end
+
+        if buf_changed then
+            AutoCmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
+        end
+
+        load_module("lib.frame").RebalanceCurrentTab()
+    end
+    _G.enterWindow = globals.enterWindow
+
     -- Set COLORTERM to prevent runtime startup from emitting terminal capability probes.
     local EnvVars = load_module("lib.envvars")
     if EnvVars and EnvVars.get and EnvVars.set_default then

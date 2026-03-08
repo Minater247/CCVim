@@ -181,7 +181,6 @@ loadModule("lib.mappings")
 
 local AutoCmd = loadModule("lib.autocmd")
 local PopupMenu = loadModule("lib.popupmenu")
-_V.rebalance_current_window_soft = FrameTree.RebalanceCurrentTab
 _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
 function _V.setMode(newmode, newx, newy)
@@ -320,7 +319,7 @@ function _V.enterWindow(winnr)
         AutoCmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
     end
 
-    _V.rebalance_current_window_soft()
+    FrameTree.RebalanceCurrentTab()
 end
 
 -- Set up the emitter

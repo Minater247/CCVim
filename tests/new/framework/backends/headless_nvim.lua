@@ -57,6 +57,28 @@ local function json_decode_raw(json_str)
         end
     end
 
+    local function utf8_from_codepoint(codepoint)
+        if codepoint <= 0x7F then
+            return string.char(codepoint)
+        end
+        if codepoint <= 0x7FF then
+            local b1 = 0xC0 + math.floor(codepoint / 0x40)
+            local b2 = 0x80 + (codepoint % 0x40)
+            return string.char(b1, b2)
+        end
+        if codepoint <= 0xFFFF then
+            local b1 = 0xE0 + math.floor(codepoint / 0x1000)
+            local b2 = 0x80 + (math.floor(codepoint / 0x40) % 0x40)
+            local b3 = 0x80 + (codepoint % 0x40)
+            return string.char(b1, b2, b3)
+        end
+        local b1 = 0xF0 + math.floor(codepoint / 0x40000)
+        local b2 = 0x80 + (math.floor(codepoint / 0x1000) % 0x40)
+        local b3 = 0x80 + (math.floor(codepoint / 0x40) % 0x40)
+        local b4 = 0x80 + (codepoint % 0x40)
+        return string.char(b1, b2, b3, b4)
+    end
+
     local function decode_value()
         skip_whitespace()
         if pos > len then
@@ -92,6 +114,14 @@ local function json_decode_raw(json_str)
                         result[#result + 1] = '"'
                     elseif esc == '/' then
                         result[#result + 1] = '/'
+                    elseif esc == 'u' then
+                        local hex = json_str:sub(pos + 1, pos + 4)
+                        local codepoint = tonumber(hex, 16)
+                        if not codepoint or #hex ~= 4 then
+                            return nil, "invalid unicode escape"
+                        end
+                        pos = pos + 4
+                        result[#result + 1] = utf8_from_codepoint(codepoint)
                     else
                         result[#result + 1] = esc
                     end
