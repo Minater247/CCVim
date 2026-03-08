@@ -33,8 +33,8 @@ return {
         Assert.eq("vim.call getcwd returns string", result[5], "string")
         Assert.truthy("vim.call getcwd returns non-empty path", result[6] ~= "", result[6])
         Assert.eq("vim.call explicit nil fails", result[7], false)
-        Assert.truthy("vim.call explicit nil uses E474", result[8]:find("E474", 1, true) ~= nil, result[8])
+        Assert.top_error_code("vim.call explicit nil uses E474", result[8], "E474")
         Assert.eq("vim.call numeric name fails", result[9], false)
-        Assert.truthy("vim.call numeric name uses E117", result[10]:find("E117", 1, true) ~= nil, result[10])
+        Assert.top_error_code("vim.call numeric name uses E117", result[10], "E117")
     end,
 }

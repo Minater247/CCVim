@@ -58,17 +58,17 @@ return {
         Assert.eq("mkdir existing dir with -p returns 1", result[4].value, 1)
 
         Assert.eq("mkdir existing dir without -p fails", result[5].ok, false)
-        Assert.truthy("mkdir existing dir uses E739", result[5].err:find("E739", 1, true) ~= nil, result[5].err)
+        Assert.top_error_code("mkdir existing dir uses E739", result[5].err, "E739")
 
         Assert.eq("mkdir without -p parent missing fails", result[6].ok, false)
-        Assert.truthy("mkdir parent missing uses E739", result[6].err:find("E739", 1, true) ~= nil, result[6].err)
+        Assert.top_error_code("mkdir parent missing uses E739", result[6].err, "E739")
 
         Assert.eq("mkdir without -p with parent ok", result[7].ok, true)
         Assert.eq("mkdir without -p returns 1", result[7].value, 1)
         Assert.eq("mkdir without -p made child", result[8], 1)
 
         Assert.eq("mkdir file path fails", result[9].ok, false)
-        Assert.truthy("mkdir file path uses E739", result[9].err:find("E739", 1, true) ~= nil, result[9].err)
+        Assert.top_error_code("mkdir file path uses E739", result[9].err, "E739")
         Assert.eq("mkdir empty path call succeeds", result[10].ok, true)
         Assert.eq("mkdir empty path returns 0", result[10].value, 0)
     end,

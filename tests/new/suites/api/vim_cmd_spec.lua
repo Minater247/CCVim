@@ -104,7 +104,7 @@ return {
         Assert.eq("indexed table vim.cmd call returns empty string", result[20], "")
         Assert.eq("table-form vim.cmd call returns empty string", result[21], "")
         Assert.eq("vim.cmd bad command errors", result[22], false)
-        Assert.truthy("vim.cmd bad command reports E492", result[23]:find("E492", 1, true) ~= nil, result[23])
+        Assert.top_error_code("vim.cmd bad command reports E492", result[23], "E492")
         Assert.eq("vim.cmd bad command leaves v:errmsg empty", result[24], "")
     end,
 }

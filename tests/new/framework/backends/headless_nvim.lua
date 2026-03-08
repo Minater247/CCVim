@@ -21,6 +21,28 @@ local function run(cmd)
     return false, out
 end
 
+local function ensure_host_dir(path)
+    local lfs = require("lfs")
+    if path == nil or path == "" or path == "/" then
+        return true, nil
+    end
+    if lfs.attributes(path, "mode") == "directory" then
+        return true, nil
+    end
+    local parent = path:match("^(.*)/[^/]+$")
+    if parent and parent ~= path then
+        local ok_parent, parent_err = ensure_host_dir(parent)
+        if not ok_parent then
+            return false, parent_err
+        end
+    end
+    local ok, err = lfs.mkdir(path)
+    if ok or lfs.attributes(path, "mode") == "directory" then
+        return true, nil
+    end
+    return false, err
+end
+
 local function json_decode_raw(json_str)
     if type(json_str) ~= "string" then
         return nil, "json_decode expects a string"
@@ -316,6 +338,53 @@ function HeadlessNvimBackend.new()
         name = "headless_nvim",
         EMPTY_DICT_MT = EMPTY_DICT_MT,
     }
+
+    function backend:make_temp_path(prefix, suffix)
+        local name = table.concat({
+            tostring(prefix or "nvim-test"),
+            tostring(os.time()),
+            tostring(math.random(1000, 9999)),
+        }, "-")
+        return "/tmp/" .. name .. tostring(suffix or "")
+    end
+
+    function backend:ensure_dir(editor_path)
+        return ensure_host_dir(tostring(editor_path or ""))
+    end
+
+    function backend:write_file(editor_path, content)
+        local path = tostring(editor_path or "")
+        local parent = path:match("^(.*)/[^/]+$")
+        local ok_dir, dir_err = ensure_host_dir(parent)
+        if not ok_dir then
+            return false, dir_err
+        end
+        local f, err = io.open(path, "w")
+        if not f then
+            return false, err
+        end
+        f:write(tostring(content or ""))
+        f:close()
+        return true, nil
+    end
+
+    function backend:remove_path(editor_path)
+        local lfs = require("lfs")
+        local path = tostring(editor_path or "")
+        local attr = lfs.attributes(path, "mode")
+        if not attr then
+            return true, nil
+        end
+        if attr == "directory" then
+            local ok, err = lfs.rmdir(path)
+            return ok or false, ok and nil or err
+        end
+        local ok, err = os.remove(path)
+        if ok then
+            return true, nil
+        end
+        return false, err
+    end
 
     function backend:eval_lua(lua_expr)
         local tmp = string.format("/tmp/nvim-test-eval-%d.lua", os.time())

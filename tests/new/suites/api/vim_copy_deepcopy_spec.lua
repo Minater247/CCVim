@@ -54,7 +54,7 @@ return {
         Assert.eq("deepcopy handles cycle", result, true)
 
         -- Test vim.deepcopy() noref fails on cycle (E698)
-        Assert.expect_error_block(backend, "deepcopy noref cycle error", [[
+        Assert.expect_error_code_block(backend, "deepcopy noref cycle error", [[
             local cycle = {}
             cycle[1] = cycle
             vim.fn.deepcopy(cycle, 1)

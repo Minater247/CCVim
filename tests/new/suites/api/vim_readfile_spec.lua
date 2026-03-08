@@ -40,6 +40,6 @@ return {
         Assert.table_eq("readfile max negative", result[3], { "mu", "nu" })
         Assert.table_eq("readfile max zero", result[4], {})
         Assert.eq("readfile missing raises", result[5], false)
-        Assert.truthy("readfile missing uses E484", result[6]:find("E484", 1, true) ~= nil, result[6])
+        Assert.top_error_code("readfile missing uses E484", result[6], "E484")
     end,
 }

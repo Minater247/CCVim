@@ -58,7 +58,7 @@ return {
                 end)
                 fast_guard = {
                     ok,
-                    err and tostring(err):find("E5560", 1, true) ~= nil or false,
+                    tostring(err or ""),
                 }
                 guard_timer:stop()
                 guard_timer:close()
@@ -104,6 +104,7 @@ return {
         Assert.truthy("callback error message", result[14]:find("boom", 1, true) ~= nil, result[14])
         Assert.eq("fast-event guard callback ran", result[15], true)
         Assert.eq("fast-event guard callback reason", result[16], true)
-        Assert.table_eq("fast-event guard raised E5560", result[17], { false, true })
+        Assert.eq("fast-event guard raised", result[17][1], false)
+        Assert.top_error_code("fast-event guard raised E5560", result[17][2], "E5560")
     end,
 }

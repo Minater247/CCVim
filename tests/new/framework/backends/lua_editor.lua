@@ -1,5 +1,37 @@
 local LuaEditorBackend = {}
 
+local function stringify_error(err)
+    if type(err) == "table" and type(err.toString) == "function" then
+        local ok, msg = pcall(err.toString, err)
+        if ok and msg ~= nil then
+            return tostring(msg)
+        end
+    end
+    return tostring(err)
+end
+
+local function ensure_host_dir(path)
+    local lfs = require("lfs")
+    if path == nil or path == "" or path == "/" then
+        return true, nil
+    end
+    if lfs.attributes(path, "mode") == "directory" then
+        return true, nil
+    end
+    local parent = path:match("^(.*)/[^/]+$")
+    if parent and parent ~= path then
+        local ok_parent, parent_err = ensure_host_dir(parent)
+        if not ok_parent then
+            return false, parent_err
+        end
+    end
+    local ok, err = lfs.mkdir(path)
+    if ok or lfs.attributes(path, "mode") == "directory" then
+        return true, nil
+    end
+    return false, err
+end
+
 function LuaEditorBackend.new(opts)
     opts = opts or {}
 
@@ -20,6 +52,67 @@ function LuaEditorBackend.new(opts)
         local ApiBuild = self.mock.loadModule("lib.luaapi.apibuild")
         local result = ApiBuild.Build()
         return result
+    end
+
+    function backend:host_path_for_editor_path(editor_path)
+        editor_path = tostring(editor_path or "")
+        if editor_path == "" then
+            return self.mock.tmp_root()
+        end
+        if editor_path:sub(1, 1) ~= "/" then
+            return editor_path
+        end
+        return self.mock.tmp_root() .. editor_path
+    end
+
+    function backend:make_temp_path(prefix, suffix)
+        local name = table.concat({
+            tostring(prefix or "nvim-test"),
+            tostring(os.time()),
+            tostring(math.random(1000, 9999)),
+        }, "-")
+        return "/tmp/" .. name .. tostring(suffix or "")
+    end
+
+    function backend:ensure_dir(editor_path)
+        return ensure_host_dir(self:host_path_for_editor_path(editor_path))
+    end
+
+    function backend:write_file(editor_path, content)
+        local host_path = self:host_path_for_editor_path(editor_path)
+        local parent = host_path:match("^(.*)/[^/]+$")
+        local ok_dir, dir_err = ensure_host_dir(parent)
+        if not ok_dir then
+            return false, dir_err
+        end
+        local f, err = io.open(host_path, "w")
+        if not f then
+            return false, err
+        end
+        f:write(tostring(content or ""))
+        f:close()
+        return true, nil
+    end
+
+    function backend:remove_path(editor_path)
+        local lfs = require("lfs")
+        local host_path = self:host_path_for_editor_path(editor_path)
+        local attr = lfs.attributes(host_path, "mode")
+        if not attr then
+            return true, nil
+        end
+        if attr == "directory" then
+            local ok, err = lfs.rmdir(host_path)
+            return ok or false, ok and nil or err
+        end
+        if os and type(os.remove) == "function" then
+            local ok, err = os.remove(host_path)
+            if ok then
+                return true, nil
+            end
+            return false, err
+        end
+        return true, nil
     end
 
     function backend:get_empty_dict_mt()
@@ -73,7 +166,7 @@ function LuaEditorBackend.new(opts)
                     script_ctx = script_ctx,
                 })
                 if not ok_setup then
-                    return nil, setup_err
+                    return nil, stringify_error(setup_err)
                 end
             end
 
@@ -82,7 +175,7 @@ function LuaEditorBackend.new(opts)
                 script_ctx = script_ctx,
             })
             if not ok_eval then
-                return nil, result
+                return nil, stringify_error(result)
             end
             return result, nil
         end
@@ -90,7 +183,7 @@ function LuaEditorBackend.new(opts)
         local VimXpr = self.mock.loadModule("lib.excmd.vimxpr")
         local result = VimXpr.evaluate(vimscript_expr, { funcs = {} })
         if type(result) == "table" and result.IsError then
-            return nil, tostring(result)
+            return nil, stringify_error(result)
         end
         return result, nil
     end

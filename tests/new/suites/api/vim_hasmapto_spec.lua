@@ -43,7 +43,7 @@ return {
         Assert.eq("hasmapto buffer-local mapping is searched", result[11], 1)
         Assert.eq("hasmapto abbr mode returns no mapping", result[12], 0)
 
-        Assert.expect_error_block(backend, "hasmapto too many args emits E118", [[
+        Assert.expect_error_code_block(backend, "hasmapto too many args emits E118", [[
             vim.fn.hasmapto("x", "n", 0, 1)
         ]], "E118")
     end,

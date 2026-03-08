@@ -51,7 +51,7 @@ return {
         Assert.eq("mapcheck special key names", result[14], "shiftup")
         Assert.eq("mapcheck abbr unsupported returns empty", result[15], "")
 
-        Assert.expect_error_block(backend, "mapcheck too many args emits E118", [[
+        Assert.expect_error_code_block(backend, "mapcheck too many args emits E118", [[
             vim.fn.mapcheck("xx", "n", 0, 1)
         ]], "E118")
     end,

@@ -124,6 +124,6 @@ return {
         Assert.eq("skip callback error raises", result[18], false)
         Assert.truthy("skip callback error includes message", result[19]:find("boom", 1, true) ~= nil, result[19])
         Assert.eq("too many args throws", result[20], false)
-        Assert.truthy("too many args throws E118", result[21]:find("E118", 1, true) ~= nil, result[21])
+        Assert.top_error_code("too many args throws E118", result[21], "E118")
     end,
 }
