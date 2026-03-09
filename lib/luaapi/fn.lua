@@ -2437,7 +2437,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
                 end
                 local ok, err = pick_candidate(i)
                 if err ~= nil then
-                    return -1
+                    error(err)
                 end
                 if ok then
                     break
@@ -2456,7 +2456,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
                 end
                 local ok, err = pick_candidate(i)
                 if err ~= nil then
-                    return -1
+                    error(err)
                 end
                 if ok then
                     break
@@ -2485,7 +2485,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
             elseif m.s < upper then
                 local ok, err = pick_candidate(i)
                 if err ~= nil then
-                    return -1
+                    error(err)
                 end
                 if ok then
                     break
@@ -2505,7 +2505,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
                 end
                 local ok, err = pick_candidate(i)
                 if err ~= nil then
-                    return -1
+                    error(err)
                 end
                 if ok then
                     break
