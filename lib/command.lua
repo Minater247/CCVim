@@ -496,6 +496,7 @@ local function _clear_leaf(node)
     node.recursive = nil
     node.operator_cb = nil
     node.motion_root = nil
+    node.map_meta = nil
 end
 
 local function _node_is_empty(node)
@@ -592,6 +593,7 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
     node.callback  = nil
     node.rhs_seq   = normalize_seq(rhs_seq)
     node.recursive = recursive ~= false
+    node.map_meta  = opts and opts.map_meta or nil
 
     Command.Log(
         "map-keys      mode=%s lhs=%s rhs=%s recursive=%s%s",
@@ -601,6 +603,14 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
         tostring(node.recursive),
         opts and " [buf-local]" or ""
     )
+end
+
+local function _seq_to_map_text(seq)
+    local out = {}
+    for i = 1, #(seq or {}) do
+        out[#out + 1] = Key.to_termcode_string(seq[i], { force_keycode = false, from_expr = false })
+    end
+    return Key.keytrans(table.concat(out))
 end
 
 
@@ -813,6 +823,53 @@ function Command.has_mapping(modes, lhs_seq)
     end
 
     return false
+end
+
+function Command.maparg(modes, lhs_seq)
+    local buf = windows[curwin].buffer
+
+    for _, m in ipairs(expand_modes(modes)) do
+        local local_root = buf.local_mappings and buf.local_mappings[m]
+        local local_node = _lookup_node_in_root(local_root, lhs_seq)
+        if local_node and (local_node.callback ~= nil or local_node.rhs_seq ~= nil or local_node.operator_cb ~= nil) then
+            return local_node, true
+        end
+
+        local global_node = _lookup_node_in_root(user_global_mappings[m], lhs_seq)
+        if global_node and (global_node.callback ~= nil or global_node.rhs_seq ~= nil or global_node.operator_cb ~= nil) then
+            return global_node, false
+        end
+    end
+
+    return nil, false
+end
+
+function Command.mapping_to_string(node)
+    if not node or not node.rhs_seq then
+        return ""
+    end
+    local meta = node.map_meta or {}
+    return meta.expanded_rhs or _seq_to_map_text(node.rhs_seq)
+end
+
+function Command.mapping_to_dict(node, is_buffer_local, lhs_seq)
+    if not node or not node.rhs_seq then
+        return {}
+    end
+
+    local meta = node.map_meta or {}
+    local sid = tonumber(meta.sid)
+    if sid == nil then
+        sid = 0
+    end
+
+    return {
+        lhs = meta.expanded_lhs or _seq_to_map_text(lhs_seq),
+        rhs = meta.raw_rhs or _seq_to_map_text(node.rhs_seq),
+        sid = sid,
+        buffer = is_buffer_local and 1 or 0,
+        noremap = (node.recursive == false) and 1 or 0,
+    }
 end
 
 -- Convenience wrappers continue to work; add an optional opts:

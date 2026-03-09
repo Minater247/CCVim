@@ -55,7 +55,11 @@ local _V = {
     state = {},
 
     curtp = 1,
-    tabpages = { { opts = {} } },
+    tabpages = { {
+        -- Enough of a tabpage for options to function during initialization
+        opts = {},
+        updateFrameview = function() end
+    } },
     curwin = 1,
     windows = {}, -- keep track of all the windows by index for more efficient access
     buffers = {},

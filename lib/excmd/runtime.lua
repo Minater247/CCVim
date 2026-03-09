@@ -1398,7 +1398,8 @@ function Runtime.new(init_state, init_opts)
         local s = tostring(expr or "")
 
         local function expand_execute_dollar_single_quoted(input_expr)
-            local interpolated = tostring(input_expr or ""):match("^%$'(.*)'$")
+            local text = tostring(input_expr or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local interpolated = text:match("^%$'(.*)'$")
             if not interpolated then
                 return nil, false
             end
@@ -1591,6 +1592,26 @@ function Runtime.new(init_state, init_opts)
     local function _highlight()
         Highlight = Highlight or loadModule("lib.highlight")
         return Highlight
+    end
+
+    local function _emit_highlight_listing(names)
+        local msg = _exmsg()
+        local hl = _highlight()
+
+        msg.echo("")
+        for i = 1, #names do
+            local name = names[i]
+            msg.echon(string.format("%-14s ", name))
+            msg.echohl(name)
+            msg.echon("xxx")
+            msg.echohl("None")
+
+            local suffix = hl.ListingSuffix(name)
+            if suffix ~= "" then
+                msg.echon(suffix)
+            end
+            msg.flush()
+        end
     end
 
     local function _lualoader()
@@ -2958,11 +2979,13 @@ function Runtime.new(init_state, init_opts)
         special = true,
     }
 
-    local function _map_command_opts(opts)
+    local function _map_command_opts(opts, map_meta)
+        local out = map_meta and { map_meta = map_meta } or nil
         if opts and opts.buffer then
-            return { buffer_local = true }
+            out = out or {}
+            out.buffer_local = true
         end
-        return nil
+        return out
     end
 
     local function _consume_map_options(raw)
@@ -3144,7 +3167,13 @@ function Runtime.new(init_state, init_opts)
         local rhs_seq, rerr = _strtoseq_tolerant(rhs_expanded)
         if Error.IsError(rerr) then return rerr end
 
-        local map_opts = _map_command_opts(parsed.opts)
+        local map_opts = _map_command_opts(parsed.opts, {
+            raw_lhs = parsed.lhs,
+            raw_rhs = parsed.rhs,
+            expanded_lhs = lhs_expanded,
+            expanded_rhs = rhs_expanded,
+            sid = script_sid_for_state(rt.state),
+        })
         if spec.recursive then
             CommandMod.remap_keys(modes, lhs_seq, rhs_seq, map_opts)
         else
@@ -5200,13 +5229,19 @@ function Runtime.new(init_state, init_opts)
             local args = split_ws(argstr)
             local changed = false
             local hl = _highlight()
-            if #args == 0 then return true end
+            if #args == 0 then
+                _emit_highlight_listing(hl.ListNames())
+                return true
+            end
             if args[1] == "clear" then
                 hl.Clear(args[2])
                 changed = true
             elseif args[2] == "NONE" then
                 hl.Clear(args[1])
                 changed = true
+            elseif #args == 1 and hl.HasGroup(args[1]) then
+                _emit_highlight_listing({ args[1] })
+                return true
             else
                 local is_default = false
                 if args[1] == "default" or args[1] == "def" then

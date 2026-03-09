@@ -4041,6 +4041,20 @@ local function _strtoseq_tolerant(str)
     return seq
 end
 
+local function _expand_map_sid_name(name)
+    local raw = tostring(name or "")
+    if not raw:lower():find("<sid>", 1, true) then
+        return raw
+    end
+
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
+    local sid = Runtime.CurrentScriptSid()
+    if not sid then
+        return raw
+    end
+    return (raw:gsub("<[sS][iI][dD]>", "<SNR>" .. tostring(sid) .. "_"))
+end
+
 function Builtins.hasmapto(what, mode, abbr, ...)
     if select("#", ...) > 0 then
         error(Error(118, "hasmapto"):toString())
@@ -4072,12 +4086,54 @@ function Builtins.mapcheck(name, mode, abbr, ...)
         return ""
     end
 
-    local lhs_seq = _strtoseq_tolerant(tostring(name or ""))
+    local lhs_seq = _strtoseq_tolerant(_expand_map_sid_name(name))
     if not lhs_seq then
         return ""
     end
 
     return Command.mapcheck(modes, lhs_seq)
+end
+
+function Builtins.maparg(name, mode, abbr, dict, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "maparg"):toString())
+    end
+
+    if _vim_truthy(abbr) then
+        if _vim_truthy(dict) then
+            return {}
+        end
+        return ""
+    end
+
+    local modes = _hasmapto_modes(mode)
+    if #modes == 0 then
+        if _vim_truthy(dict) then
+            return {}
+        end
+        return ""
+    end
+
+    local lhs_seq = _strtoseq_tolerant(_expand_map_sid_name(name))
+    if not lhs_seq then
+        if _vim_truthy(dict) then
+            return {}
+        end
+        return ""
+    end
+
+    local node, is_buffer_local = Command.maparg(modes, lhs_seq)
+    if not node then
+        if _vim_truthy(dict) then
+            return {}
+        end
+        return ""
+    end
+
+    if _vim_truthy(dict) then
+        return Command.mapping_to_dict(node, is_buffer_local, lhs_seq)
+    end
+    return Command.mapping_to_string(node)
 end
 
 function Builtins.get(container, key, default)

@@ -657,7 +657,6 @@ function ExMsg.echo(message)
 end
 
 function ExMsg.echohl(group)
-    ExMsg.flush()
     if not group or group == "" or group:lower() == "none" then
         current_hl = "Normal"
     else
