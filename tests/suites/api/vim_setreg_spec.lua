@@ -36,6 +36,13 @@ return {
             local alt_reg = vim.fn.bufnr("#")
             local alt_name = vim.fn.getreg("#")
 
+            vim.api.nvim_buf_set_lines(0, 0, -1, false, { "abc" })
+            vim.api.nvim_win_set_cursor(0, { 1, 0 })
+            local macro = vim.api.nvim_replace_termcodes("iZ<Esc>", true, false, true)
+            local setreg_macro = vim.fn.setreg("q", macro, "c")
+            vim.cmd("normal! @q")
+            local macro_line = vim.api.nvim_get_current_line()
+
             return {
                 setreg_char,
                 reg_a_initial,
@@ -52,6 +59,8 @@ return {
                 alt,
                 alt_reg,
                 alt_name,
+                setreg_macro,
+                macro_line,
             }
         ]])
 
@@ -72,5 +81,8 @@ return {
         Assert.eq("setreg alt buffer ok", result[12], 0)
         Assert.eq("setreg alt buffer updates #", result[14], result[13])
         Assert.truthy("setreg alt buffer stores path", result[15]:find("/tmp/vim%-setreg%-alt%-", 1) ~= nil, result[15])
+
+        Assert.eq("setreg macro ok", result[16], 0)
+        Assert.eq("setreg macro executes via @register", result[17], "Zabc")
     end,
 }

@@ -1916,16 +1916,20 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _store_deleted_lines(reg, explicit_reg, lines)
+        local function rotate_numbered()
+            for i = 9, 2, -1 do
+                registers[i] = registers[i - 1]
+            end
+            registers[1] = { "linewise", lines }
+        end
+
         if reg == "_" then
             return
         end
         if reg == '"' then
             registers["unnamed"] = { "linewise", lines }
             if not explicit_reg then
-                for i = 9, 2, -1 do
-                    registers[i] = registers[i - 1]
-                end
-                registers[1] = { "linewise", lines }
+                rotate_numbered()
             end
             return
         end
@@ -1944,10 +1948,14 @@ function Runtime.new(init_state, init_opts)
             end
             registers[key] = { "linewise", lines }
             registers["unnamed"] = { "linewise", lines }
+            rotate_numbered()
             return
         end
         registers[reg] = { "linewise", lines }
         registers["unnamed"] = { "linewise", lines }
+        if explicit_reg and not reg:match("^%d$") and reg ~= "-" then
+            rotate_numbered()
+        end
     end
 
     local function _put_register_key(reg)
@@ -2313,7 +2321,7 @@ function Runtime.new(init_state, init_opts)
             elseif #raw == 1 then
                 reg = raw
             else
-                return Error(474, raw)
+                return Error(488, raw)
             end
         else
             local reg_default = '"'
@@ -2700,7 +2708,39 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _delete_list_text(line)
-        return tostring(line or ""):gsub("\t", "^I") .. "$"
+        local text = tostring(line or "")
+        local out = { ">" }
+        local col = 2
+        for i = 1, #text do
+            local ch = text:sub(i, i)
+            if ch == "\t" then
+                local spaces = 8 - ((col - 1) % 8)
+                out[#out + 1] = string.rep(" ", spaces)
+                col = col + spaces
+            else
+                out[#out + 1] = ch
+                col = col + 1
+            end
+        end
+        return table.concat(out)
+    end
+
+    local function _delete_print_text(line)
+        local text = tostring(line or "")
+        local out = {}
+        local col = 1
+        for i = 1, #text do
+            local ch = text:sub(i, i)
+            if ch == "\t" then
+                local spaces = 8 - ((col - 1) % 8)
+                out[#out + 1] = string.rep(" ", spaces)
+                col = col + spaces
+            else
+                out[#out + 1] = ch
+                col = col + 1
+            end
+        end
+        return table.concat(out)
     end
 
     local function _csv_first(value)
@@ -4598,9 +4638,9 @@ function Runtime.new(init_state, init_opts)
             end
             win:cursorSet(win.cursorx, target_line)
             if post_mode == "print" then
-                _exmsg().echo(buf:get_line(target_line, true) or "")
+                _exmsg().echo("\n" .. _delete_print_text(buf:get_line(target_line, true) or ""))
             elseif post_mode == "list" then
-                _exmsg().echo(_delete_list_text(buf:get_line(target_line, true) or ""))
+                _exmsg().echo("\n" .. _delete_list_text(buf:get_line(target_line, true) or ""))
             end
             win:mark_redraw()
             return true

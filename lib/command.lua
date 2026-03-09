@@ -3,11 +3,29 @@ local Command                     = {}
 local Event                       = loadModule("lib.event")
 local ExMsg                       = loadModule("lib.excmd.exmsg")
 local PopupMenu                   = loadModule("lib.popupmenu")
+local Key                         = loadModule("lib.key")
+local RegisterUtil                = loadModule("lib.registers")
 
 local POLICY_FULL, POLICY_CB_ONLY, POLICY_NOREMAP = 1, 2, 3
 Command.POLICY_FULL = POLICY_FULL
 Command.POLICY_CB_ONLY = POLICY_CB_ONLY
 Command.POLICY_NOREMAP = POLICY_NOREMAP
+
+local state
+local cancel_ambiguous_timer
+local reset_state
+local execute_node
+local clear_count
+
+local macro_state = {
+    recording_register = nil,
+    executing_register = nil,
+    last_recorded_register = nil,
+    pending_action = nil, -- "record" | "execute" | nil
+    recorded_keys = {},
+    replaying_internal = false,
+    defer_executing_clear = false,
+}
 
 -- =========================
 -- Host-settable hooks / options
@@ -69,6 +87,188 @@ local function normalize_seq(seq)
     local out = {}
     for i = 1, #seq do out[i] = seq[i] end
     return out
+end
+
+local function current_count_value()
+    return state and state.count_committed and state.count_value or nil
+end
+
+local function top_level_normal_input()
+    return vimmode == "normal"
+        and #Command.override_emitter == 0
+        and not state.pending_op
+        and ((not state.active) or (#state.seq == 0 and state.best_node == nil))
+end
+
+local function key_char(key)
+    local ch = key:emittable()
+    if ch ~= nil and #ch == 1 then
+        return ch
+    end
+    local printable = key:printable()
+    if printable ~= nil and #printable == 1 then
+        return printable
+    end
+    return nil
+end
+
+local function key_is_char(key, ch)
+    return key_char(key) == ch
+end
+
+local function macro_register_info(key)
+    local ch = key_char(key)
+    if ch == nil then
+        return nil
+    end
+    if ch:match("%a") then
+        local lower = string.lower(ch)
+        return lower, lower ~= ch
+    end
+    if ch:match("[%d\"%-#%*%+/:.=]") then
+        return ch, false
+    end
+    return nil
+end
+
+local function append_recorded_key(key)
+    if macro_state.recording_register == nil then
+        return
+    end
+    local seq = macro_state.recorded_keys
+    seq[#seq + 1] = key
+end
+
+local function start_macro_recording(reg, append)
+    macro_state.recording_register = reg
+    if append then
+        macro_state.recorded_keys = RegisterUtil.entry_to_sequence(RegisterUtil.get_entry(reg))
+    else
+        macro_state.recorded_keys = {}
+    end
+end
+
+local function stop_macro_recording()
+    local reg = macro_state.recording_register
+    if reg == nil then
+        return
+    end
+    RegisterUtil.set_entry(reg, RegisterUtil.sequence_to_entry(macro_state.recorded_keys, "charwise"))
+    macro_state.last_recorded_register = reg
+    macro_state.recording_register = nil
+    macro_state.recorded_keys = {}
+end
+
+local function finalize_pending_input()
+    if #Command.override_emitter > 0 then
+        reset_state()
+        return true
+    end
+
+    if state.active then
+        if state.best_node then
+            local node = state.best_node
+            cancel_ambiguous_timer()
+            execute_node(node)
+            reset_state()
+            return true
+        end
+        reset_state()
+    end
+    return false
+end
+
+local function execute_macro(reg, count)
+    local seq = RegisterUtil.entry_to_sequence(RegisterUtil.get_entry(reg))
+    if not seq or #seq == 0 then
+        return true
+    end
+
+    count = math.max(1, math.floor(tonumber(count) or 1))
+    local prev_pending = macro_state.pending_action
+    local prev_executing = macro_state.executing_register
+    local prev_replaying = macro_state.replaying_internal
+    local prev_defer = macro_state.defer_executing_clear
+    macro_state.pending_action = nil
+    macro_state.executing_register = reg
+    macro_state.replaying_internal = true
+    macro_state.defer_executing_clear = false
+
+    local ok, err = xpcall(function()
+        for _ = 1, count do
+            for i = 1, #seq do
+                Command.HandleKey(seq[i])
+            end
+            finalize_pending_input()
+        end
+    end, debug.traceback)
+
+    macro_state.replaying_internal = prev_replaying
+    macro_state.defer_executing_clear = true
+    if prev_replaying then
+        macro_state.executing_register = prev_executing
+        macro_state.defer_executing_clear = prev_defer
+    end
+    macro_state.pending_action = prev_pending
+    if not ok then
+        if not prev_replaying then
+            macro_state.executing_register = prev_executing
+            macro_state.defer_executing_clear = prev_defer
+        end
+        error(err)
+    end
+    return true
+end
+
+local function handle_macro_control_key(k)
+    if not top_level_normal_input() then
+        return false
+    end
+
+    if macro_state.pending_action == "record" then
+        local reg, append = macro_register_info(k)
+        macro_state.pending_action = nil
+        clear_count()
+        if reg ~= nil then
+            start_macro_recording(reg, append)
+        end
+        return true
+    end
+
+    if macro_state.pending_action == "execute" then
+        local reg = nil
+        if key_is_char(k, "@") then
+            reg = macro_state.last_recorded_register
+        else
+            reg = macro_register_info(k)
+        end
+        local count = current_count_value()
+        macro_state.pending_action = nil
+        clear_count()
+        if reg ~= nil then
+            return execute_macro(reg, count)
+        end
+        return true
+    end
+
+    if macro_state.recording_register ~= nil and key_is_char(k, "q") then
+        stop_macro_recording()
+        clear_count()
+        return true
+    end
+
+    if macro_state.recording_register == nil and key_is_char(k, "q") then
+        macro_state.pending_action = "record"
+        clear_count()
+        return true
+    end
+
+    if key_is_char(k, "@") then
+        macro_state.pending_action = "execute"
+        return true
+    end
+
+    return false
 end
 
 local function node_has_children(node)
@@ -703,7 +903,7 @@ end
 -- =========================
 -- State machine
 -- =========================
-local state = {
+state = {
     active          = false,
     mode            = "normal", -- always full name; kept in sync with vimmode below
     node            = nil,
@@ -730,7 +930,7 @@ local function _cancel_timer(id)
     Event.CancelTimer(id)
 end
 
-local function cancel_ambiguous_timer()
+cancel_ambiguous_timer = function()
     if state.timer_id ~= nil then
         _cancel_timer(state.timer_id)
         Command.Log("TIMER cancel")
@@ -748,7 +948,7 @@ local function reset_mapping_only()
     state.mode = vimmode -- vimmode should be "normal"/"insert"/"visual"
 end
 
-local function clear_count()
+clear_count = function()
     state.count_tentative = false
     state.count_committed = false
     state.count_value     = nil
@@ -760,7 +960,7 @@ local function _clear_op_pending()
     state.op_motion  = nil
 end
 
-local function reset_state()
+reset_state = function()
     reset_mapping_only()
     clear_count()
     _clear_op_pending()
@@ -789,7 +989,7 @@ local function _with_undo_block(fn)
     return rv
 end
 
-local function execute_node(node)
+execute_node = function(node)
     local cnt = (state.count_committed and state.count_value)
     Command.Log(
         "execute cb=%s rhs_len=%d recursive=%s count=%d",
@@ -920,6 +1120,13 @@ function Command._feed_seq_with_policy(seq, policy, capture_counts)
     for i = 1, #seq do
         local code = seq[i]
 
+        if handle_macro_control_key(code) then
+            consumed_any = true
+            goto continue
+        end
+
+        append_recorded_key(code)
+
         if #Command.override_emitter > 0 then
             Command.override_emitter[#Command.override_emitter](code)
             consumed_any = true
@@ -934,6 +1141,8 @@ function Command._feed_seq_with_policy(seq, policy, capture_counts)
             end
             consumed_any = consumed_any or consumed
         end
+
+        ::continue::
     end
 
     -- If override turned on during the loop, don't try to execute a pending leaf.
@@ -1424,11 +1633,22 @@ end
 
 -- Public: normal key from user input (full mapping semantics; counts allowed)
 function Command.HandleKey(k)
+    if macro_state.defer_executing_clear and not macro_state.replaying_internal then
+        macro_state.executing_register = nil
+        macro_state.defer_executing_clear = false
+    end
+
     if vimmode == "insert" then
         if PopupMenu.visible() then
             return PopupMenu.handle_key(k)
         end
     end
+
+    if handle_macro_control_key(k) then
+        return true
+    end
+
+    append_recorded_key(k)
 
     if #Command.override_emitter > 0 then
         Command.override_emitter[#Command.override_emitter](k)
@@ -1443,6 +1663,19 @@ end
 function Command.Reset()
     cancel_ambiguous_timer()
     reset_state()
+    macro_state.pending_action = nil
+end
+
+function Command.reg_recording()
+    return macro_state.recording_register or ""
+end
+
+function Command.reg_executing()
+    return macro_state.executing_register or ""
+end
+
+function Command.reg_recorded()
+    return macro_state.last_recorded_register or ""
 end
 
 function Command._debug_dump_mode(mode_full)

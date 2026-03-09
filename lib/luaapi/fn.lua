@@ -20,7 +20,9 @@ local Filesystem = loadModule("lib.filesystem")
 local TblUtils   = loadModule("lib.luaapi.tblutils")
 local VimFs      = loadModule("lib.luaapi.fs")
 local RuntimePath = loadModule("lib.runtimepath")
+local RegisterUtil = loadModule("lib.registers")
 local Utf8       = loadModule("lib.utf8")
+local Command = loadModule("lib.command")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -3590,145 +3592,6 @@ function Builtins.bufname(expr)
     return ""
 end
 
--- ===== Additional builtins for plugin compatibility (netrw, etc.) =====
-
-local function _is_list(t)
-    if type(t) ~= "table" then return false end
-    local maxk = 0
-    local count = 0
-    for k, _ in pairs(t) do
-        if type(k) ~= "number" or k < 1 or k % 1 ~= 0 then
-            return false
-        end
-        if k > maxk then maxk = k end
-        count = count + 1
-    end
-    return count == maxk
-end
-
-local function _register_storage_key(regname)
-    if regname == '"' then
-        return "unnamed"
-    end
-    if regname:match("^%a$") then
-        return regname:lower()
-    end
-    if regname:match("^%d$") then
-        return tonumber(regname)
-    end
-    return regname
-end
-
-local function _register_entry_to_text(entry)
-    if entry == nil then
-        return ""
-    end
-    if type(entry) ~= "table" then
-        return tostring(entry)
-    end
-    local payload = entry[2]
-    if type(payload) == "table" then
-        return table.concat(payload, "\n")
-    end
-    return tostring(payload or "")
-end
-
-local function _split_lines_for_register(text)
-    if text == "" then
-        return { "" }
-    end
-    local out = {}
-    local start = 1
-    while true do
-        local idx = text:find("\n", start, true)
-        if not idx then
-            out[#out + 1] = text:sub(start)
-            break
-        end
-        out[#out + 1] = text:sub(start, idx - 1)
-        start = idx + 1
-    end
-    return out
-end
-
-local function _register_entry_to_lines(entry)
-    if entry == nil then
-        return {}
-    end
-    if type(entry) ~= "table" then
-        return _split_lines_for_register(tostring(entry))
-    end
-    local payload = entry[2]
-    if type(payload) == "table" then
-        local out = {}
-        for i = 1, #payload do
-            out[#out + 1] = tostring(payload[i] or "")
-        end
-        return out
-    end
-    return _split_lines_for_register(tostring(payload or ""))
-end
-
-local function _register_mode_from_options(value, options)
-    options = tostring(options or "")
-    if options:find("[vc]") then
-        return "charwise"
-    end
-    if options:find("[lV]") then
-        return "linewise"
-    end
-    if options:find("b", 1, true) or options:find(string.char(22), 1, true) then
-        return "blockwise"
-    end
-
-    if type(value) == "table" and _is_list(value) then
-        return "linewise"
-    end
-    if type(value) == "string" and value:sub(-1) == "\n" then
-        return "linewise"
-    end
-    return "charwise"
-end
-
-local function _normalize_register_value(value, mode)
-    if type(value) == "table" and (not _is_list(value)) then
-        local info = value
-        if type(info.regcontents) == "table" then
-            value = info.regcontents
-        elseif type(info.regcontents) == "string" then
-            value = info.regcontents
-        end
-        if type(info.regtype) == "string" and info.regtype ~= "" then
-            local prefix = info.regtype:sub(1, 1)
-            if prefix == "V" or prefix == "l" then
-                mode = "linewise"
-            elseif prefix == "b" or prefix == string.char(22) then
-                mode = "blockwise"
-            else
-                mode = "charwise"
-            end
-        end
-    end
-
-    if mode == "linewise" then
-        local lines = {}
-        if type(value) == "table" and _is_list(value) then
-            for i = 1, #value do
-                lines[#lines + 1] = tostring(value[i] or "")
-            end
-        else
-            local text = tostring(value or "")
-            lines = _split_lines_for_register(text)
-            if text:sub(-1) == "\n" and #lines > 0 and lines[#lines] == "" then
-                table.remove(lines, #lines)
-            end
-        end
-        return { "linewise", lines }
-    end
-
-    return { "charwise", tostring(value or "") }
-end
-
 function Builtins.setreg(regname, value, options)
     local reg = tostring(regname or "")
     if reg == "" or reg == "@" then
@@ -3770,42 +3633,39 @@ function Builtins.setreg(regname, value, options)
         return 0
     end
 
-    local mode = _register_mode_from_options(value, opts)
-    local key = _register_storage_key(reg)
+    local mode = RegisterUtil.mode_from_options(value, opts)
+    local key = RegisterUtil.storage_key(reg)
     local entry
-    if type(value) == "table" and (not _is_list(value)) and type(value.points_to) == "string" then
+    if type(value) == "table" and (not RegisterUtil.is_list(value)) and type(value.points_to) == "string" then
         local target = value.points_to
         if target == "" or target == "@" then
             target = '"'
         end
         target = target:sub(1, 1)
-        entry = registers[_register_storage_key(target)] or { "charwise", "" }
+        entry = registers[RegisterUtil.storage_key(target)] or { "charwise", "" }
     else
-        entry = _normalize_register_value(value, mode)
+        entry = RegisterUtil.normalize_value(value, mode)
     end
 
     if append then
         local prev = registers[key]
         if entry[1] == "linewise" then
-            local merged = _register_entry_to_lines(prev)
+            local merged = RegisterUtil.entry_to_lines(prev)
             local add = entry[2]
             for i = 1, #add do
                 merged[#merged + 1] = add[i]
             end
             entry = { "linewise", merged }
         else
-            entry = { "charwise", _register_entry_to_text(prev) .. _register_entry_to_text(entry) }
+            entry = { "charwise", RegisterUtil.entry_to_text(prev) .. RegisterUtil.entry_to_text(entry) }
         end
     end
 
     registers[key] = entry
-    if reg == '"' then
-        registers.unnamed = entry
-    else
+    if opts:find("u", 1, true) or opts:find('"', 1, true) then
         registers.unnamed = entry
     end
-
-    if opts:find("u", 1, true) or opts:find('"', 1, true) then
+    if reg == '"' then
         registers.unnamed = entry
     end
 
@@ -3827,12 +3687,12 @@ function Builtins.getreg(regname, _arg2, list, ...)
         local alt = windows[curwin].altbuf
         local name = alt and alt.name or ""
         if list and list ~= 0 and list ~= false then
-            return _split_lines_for_register(name)
+            return RegisterUtil.split_lines(name)
         end
         return name
     end
 
-    local key = _register_storage_key(reg)
+    local key = RegisterUtil.storage_key(reg)
     local entry = registers[key]
     if entry == nil and reg == '"' then
         entry = registers.unnamed
@@ -3845,37 +3705,28 @@ function Builtins.getreg(regname, _arg2, list, ...)
     end
 
     if list and list ~= 0 and list ~= false then
-        return _register_entry_to_lines(entry)
+        return RegisterUtil.entry_to_lines(entry)
     end
-    return _register_entry_to_text(entry)
+    return RegisterUtil.entry_to_text(entry)
 end
 
-local function _macro_register_name(state_key)
-    local value = registers[state_key]
-    if value == nil then
-        return ""
-    end
-    return tostring(value)
-end
-
--- TODO: Implement these properly once macros are added
 function Builtins.reg_recording()
-    return _macro_register_name("__recording_register")
+    return Command.reg_recording()
 end
 
 function Builtins.reg_executing()
-    return _macro_register_name("__executing_register")
+    return Command.reg_executing()
 end
 
 function Builtins.reg_recorded()
-    return _macro_register_name("__last_recorded_register")
+    return Command.reg_recorded()
 end
 
 function Builtins.len(x)
     if type(x) == "string" then
         return #x
     elseif type(x) == "table" then
-        if _is_list(x) then
+        if RegisterUtil.is_list(x) then
             return #x
         end
         local n = 0
@@ -3952,7 +3803,7 @@ function Builtins.items(dict, ...)
     end
 
     local mt = getmetatable(dict)
-    local is_list = (mt and mt.__vimxpr_kind == "list") or _is_list(dict)
+    local is_list = (mt and mt.__vimxpr_kind == "list") or RegisterUtil.is_list(dict)
     if is_list then
         local out = {}
         for i = 1, #dict do
@@ -4094,7 +3945,6 @@ function Builtins.hasmapto(what, mode, abbr, ...)
         return 0
     end
 
-    local Command = loadModule("lib.command")
     local modes = _hasmapto_modes(mode)
     if #modes == 0 then
         return 0
@@ -4122,7 +3972,6 @@ function Builtins.mapcheck(name, mode, abbr, ...)
         return ""
     end
 
-    local Command = loadModule("lib.command")
     return Command.mapcheck(modes, lhs_seq)
 end
 
@@ -4130,7 +3979,7 @@ function Builtins.get(container, key, default)
     if type(container) ~= "table" then return default end
     if key == nil then return default end
     local k = key
-    if _is_list(container) and type(k) == "number" then
+    if RegisterUtil.is_list(container) and type(k) == "number" then
         -- Vim lists are 0-based; our Lua lists are 1-based.
         k = k + 1
     end
@@ -4198,7 +4047,7 @@ end
 
 -- extend({list1}, {list2}[, idx]) or extend({dict1}, {dict2}[, action])
 function Builtins.extend(dst, src, arg)
-    if _is_list(dst) and _is_list(src) then
+    if RegisterUtil.is_list(dst) and RegisterUtil.is_list(src) then
         return _extend_list(dst, src, arg)
     elseif type(dst) == "table" and type(src) == "table" then
         return _extend_dict(dst, src, arg)
@@ -4262,7 +4111,7 @@ local function _copy_table_kind(tbl)
     if mt and mt.__vimxpr_kind == "dict" then
         return "dict"
     end
-    return _is_list(tbl) and "list" or "dict"
+    return RegisterUtil.is_list(tbl) and "list" or "dict"
 end
 
 local function _copy_mark_kind(src, dst)
