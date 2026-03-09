@@ -217,7 +217,7 @@ local shiftables = {
 local emittables = {
     [keys.tab] = "\t",
     [keys.backspace] = "\b",
-    [keys.enter] = "\n",
+    [keys.enter] = "\r",
     [keys.space] = " ",
 
     [keys.one] = "1",
@@ -285,7 +285,7 @@ local emittables = {
     [keys.numPadAdd] = "+",
     [keys.numPadDecimal] = "",
     [keys.multiply or keys.numPadMultiply] = "*",
-    [keys.numPadEnter] = "\n",
+    [keys.numPadEnter] = "\r",
     [keys.numPadDivide] = "/",
 
     [S(keys.one)] = "!",
@@ -339,7 +339,7 @@ local emittables = {
     [S(keys.slash)] = "?",
 
     [S(keys.space)] = " ",
-    [S(keys.enter)] = "\n",
+    [S(keys.enter)] = "\r",
 }
 
 function Key:new(keynr, ctrld, shifted, alted)
@@ -682,8 +682,11 @@ end
 
 local function push_char(seq, ch)
     -- Map literal characters to base key + (optional) shift bit.
-    if ch == "\n" or ch == "\r" then
+    if ch == "\r" then
         table.insert(seq, Key:new(keys.enter, false, false, false))
+        return
+    elseif ch == "\n" then
+        table.insert(seq, key_from_numeric(C(keys.j)))
         return
     elseif ch == "\t" then
         table.insert(seq, Key:new(keys.tab, false, false, false))
@@ -1128,6 +1131,10 @@ local function key_to_termcode_string(key, opts)
     end
 
     return encode_numeric_termcode(num)
+end
+
+function Key.to_termcode_string(key, opts)
+    return key_to_termcode_string(key, opts)
 end
 
 function Key.replace_termcodes(str, do_lt, special)

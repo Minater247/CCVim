@@ -71,12 +71,7 @@ function on_key.on_key(fn, ns_id, opts)
     return ns_id
 end
 
---- Executes vim.on_key callbacks.
---- Returns true when a callback consumed the key by returning an empty string.
---- @param key string
---- @param typed string
---- @return boolean
-function on_key.dispatch(key, typed)
+local function dispatch_impl(key, typed, raise_errors)
     if dispatching then
         return false
     end
@@ -114,10 +109,32 @@ function on_key.dispatch(key, typed)
             local item = failed[i]
             errmsg = errmsg .. string.format("\nWith ns_id %d: %s", item[1], item[2])
         end
-        error(errmsg, 2)
+        if raise_errors ~= false then
+            error(errmsg, 3)
+        end
+        return discard, errmsg
     end
 
     return discard
+end
+
+--- Executes vim.on_key callbacks.
+--- Returns true when a callback consumed the key by returning an empty string.
+--- @param key string
+--- @param typed string
+--- @return boolean
+function on_key.dispatch(key, typed)
+    return dispatch_impl(key, typed, true)
+end
+
+--- Executes vim.on_key callbacks without raising callback failures.
+--- Still removes invalid/erroring callbacks and reports whether the key was consumed.
+--- @param key string
+--- @param typed string
+--- @return boolean
+--- @return string|nil
+function on_key.dispatch_safely(key, typed)
+    return dispatch_impl(key, typed, false)
 end
 
 return on_key

@@ -62,18 +62,6 @@ local function current_mod_flags()
     return ctrld, shifted, alted
 end
 
-local function key_to_on_key_string(key)
-    local ch = key:emittable()
-    if ch then
-        -- vim.on_key follows nvim keycode behavior where Enter is "\r".
-        if ch == "\n" then
-            return "\r"
-        end
-        return ch
-    end
-    return key:printable()
-end
-
 local function shift_is_held()
     return mods_down[keys.leftShift] or mods_down[keys.rightShift]
 end
@@ -417,7 +405,7 @@ function Event.ProcessEvent(ev)
         elseif not ignored_keys[k] then
             local c, s, a = current_mod_flags()
             local key = Key:new(k, c, s, a)
-            local keystr = key_to_on_key_string(key)
+            local keystr = Key.to_termcode_string(key)
             local discard = OnKey.dispatch(keystr, keystr)
             if not discard then
                 Command.HandleKey(key)

@@ -17,6 +17,16 @@ return {
             vim.api.nvim_feedkeys("a", "nx", true)
             pcall(vim.cmd, "redraw")
 
+            local cr_seen = nil
+            vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "nx", true)
+            pcall(vim.cmd, "redraw")
+            cr_seen = seen[#seen]
+
+            local nl_seen = nil
+            vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-j>", true, false, true), "nx", true)
+            pcall(vim.cmd, "redraw")
+            nl_seen = seen[#seen]
+
             local consume_hits = 0
             local consume_ns = vim.on_key(function()
                 consume_hits = consume_hits + 1
@@ -60,6 +70,8 @@ return {
                 count_after_register,
                 #seen,
                 seen[1],
+                cr_seen,
+                nl_seen,
                 consume_hits,
                 count_after_bad,
                 count_after_err,
@@ -74,11 +86,13 @@ return {
         Assert.eq("vim.on_key count after registration", result[3], 1)
         Assert.truthy("vim.on_key callback fired", result[4] >= 1, result[4])
         Assert.eq("vim.on_key first key", result[5][1], "a")
-        Assert.truthy("vim.on_key consume callback fired", result[6] >= 1, result[6])
-        Assert.eq("vim.on_key invalid return callback removed", result[7], 1)
-        Assert.eq("vim.on_key erroring callback removed", result[8], 1)
-        Assert.eq("vim.on_key recursive dispatch suppressed", result[9], 1)
-        Assert.eq("vim.on_key callback count before cleanup", result[10], 2)
-        Assert.eq("vim.on_key callbacks removed", result[11], 0)
+        Assert.eq("vim.on_key CR key", result[6][1], "\r")
+        Assert.eq("vim.on_key NL key", result[7][1], "\n")
+        Assert.truthy("vim.on_key consume callback fired", result[8] >= 1, result[8])
+        Assert.eq("vim.on_key invalid return callback removed", result[9], 1)
+        Assert.eq("vim.on_key erroring callback removed", result[10], 1)
+        Assert.eq("vim.on_key recursive dispatch suppressed", result[11], 1)
+        Assert.eq("vim.on_key callback count before cleanup", result[12], 2)
+        Assert.eq("vim.on_key callbacks removed", result[13], 0)
     end,
 }

@@ -18,6 +18,7 @@ local Utf8 = loadModule("lib.utf8")
 local PopupMenu = loadModule("lib.popupmenu")
 local Event = loadModule("lib.event")
 local BufAttach = loadModule("lib.bufattach")
+local OnKey = loadModule("lib.luaapi.on_key")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -394,10 +395,15 @@ local function flush_feedkeys_queue()
             local op = queue[i]
             if op.kind == "keys" then
                 for j = 1, #op.seq do
-                    if op.noremap then
-                        Command._handle_key_with_policy(op.seq[j], Command.POLICY_NOREMAP, true)
-                    else
-                        Command.HandleKey(op.seq[j])
+                    local key = op.seq[j]
+                    local keystr = Key.to_termcode_string(key)
+                    local discard = OnKey.dispatch_safely(keystr, keystr)
+                    if not discard then
+                        if op.noremap then
+                            Command._handle_key_with_policy(key, Command.POLICY_NOREMAP, true)
+                        else
+                            Command.HandleKey(key)
+                        end
                     end
                 end
             elseif op.kind == "cmd" then

@@ -14,7 +14,24 @@ Command.POLICY_NOREMAP = POLICY_NOREMAP
 -- =========================
 -- Called when a key must be emitted "raw" (i.e., no mapping matched).
 -- Receives an array { key, ... }.
-Command.emit_raw                  = function(_) end
+Command.emit_raw                  = function(keys_seq)
+    local win = windows[curwin]
+
+    for i = 1, #(keys_seq or {}) do
+        local key = keys_seq[i]
+        if vimmode == "insert" then
+            local printable = key:printable()
+            if printable == "<C-[>" then
+                setMode("normal")
+            else
+                local emitted = key:emittable()
+                if emitted ~= nil then
+                    win:insertText(emitted)
+                end
+            end
+        end
+    end
+end
 
 -- In which modes counts are enabled (default: only normal mode).
 Command.count_modes               = { normal = true }
@@ -195,6 +212,8 @@ local function _composite_node(buf_node, glob_node)
     local composite = { children = {} }
     local buf_has_leaf = (buf_node.callback ~= nil) or (buf_node.rhs_seq ~= nil)
         or (buf_node.operator_cb ~= nil) or (buf_node.motion_root ~= nil)
+    local glob_has_leaf = (glob_node.callback ~= nil) or (glob_node.rhs_seq ~= nil)
+        or (glob_node.operator_cb ~= nil) or (glob_node.motion_root ~= nil)
 
     if buf_has_leaf then
         composite.callback    = buf_node.callback
@@ -211,8 +230,22 @@ local function _composite_node(buf_node, glob_node)
     end
 
     local keys = {}
-    if buf_node.children then for k in pairs(buf_node.children) do keys[k] = true end end
-    if glob_node.children then for k in pairs(glob_node.children) do keys[k] = true end end
+    if buf_has_leaf then
+        if buf_node.children then
+            for k in pairs(buf_node.children) do
+                keys[k] = true
+            end
+        end
+    elseif glob_has_leaf then
+        if glob_node.children then
+            for k in pairs(glob_node.children) do
+                keys[k] = true
+            end
+        end
+    else
+        if buf_node.children then for k in pairs(buf_node.children) do keys[k] = true end end
+        if glob_node.children then for k in pairs(glob_node.children) do keys[k] = true end end
+    end
     for k in pairs(keys) do
         composite.children[k] = _composite_node(
             buf_node.children and buf_node.children[k],
