@@ -440,6 +440,7 @@ function ApiBuild.Build()
         __index = _G
     })
     mainapi._G = mainapi
+    mainapi.bit = bit
 
     mainapi.vim._empty_dict_mt = {}
     mainapi.vim.empty_dict = function()

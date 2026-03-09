@@ -7,6 +7,7 @@ local real_os_time = os.time
 local real_os_date = os.date
 local real_os_exit = os.exit
 local real_os_remove = os.remove
+local real_loadfile = loadfile
 local has_lfs, lfs = pcall(require, "lfs")
 if not has_lfs then
     error("test_mocks.lua requires LuaFileSystem (lfs)")
@@ -1282,6 +1283,16 @@ local function default_globals(state, colors)
     local shell = create_shell_api(state)
     local keys = create_keys_api()
     local cc_os = create_os_api(state)
+    local function resolve_loadfile_path(path)
+        path = tostring(path or "")
+        if path == "" then
+            return path
+        end
+        if lfs_attr(path) ~= nil then
+            return path
+        end
+        return state.fs.abs_path(path)
+    end
 
     local g = {
         _HOST = "CraftOS-PC",
@@ -1371,6 +1382,23 @@ local function default_globals(state, colors)
                 return win
             end,
         },
+        loadfile = function(path, mode, env)
+            local resolved = resolve_loadfile_path(path)
+            if mode == nil and env == nil then
+                return real_loadfile(resolved)
+            end
+            if env == nil then
+                return real_loadfile(resolved, mode)
+            end
+            return real_loadfile(resolved, mode, env)
+        end,
+        dofile = function(path)
+            local chunk, err = real_loadfile(resolve_loadfile_path(path), "t", _G)
+            if not chunk then
+                error(err, 2)
+            end
+            return chunk()
+        end,
     }
     g.rs = g.redstone
 
