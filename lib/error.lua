@@ -65,6 +65,7 @@ local errStrings = {
     [703] = "Using a Funcref as a Number",
     [724] = "Cannot use deepcopy() with a cyclic reference when {noref} is 1",
     [728] = "Using a Dictionary as a Number",
+    [739] = function(params) return "Cannot create directory: " .. tostring(params[1] or "") end,
     [745] = "Using a List as a Number",
     [790] = "undojoin is not allowed after undo",
     [919] = function(params) return "Directory not found in 'packpath': " .. (params[1] or "") end,

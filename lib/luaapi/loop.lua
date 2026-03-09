@@ -250,16 +250,10 @@ function loop.fs_open(path, mode, permission, callback)
         callback = permission
     end
 
-    local ok, handle_or_err, open_err = pcall(fs.open, path, mode)
-    local handle
+    local handle = fs.open(path, mode)
     local err
-    if ok then
-        handle = handle_or_err
-        if not handle then
-            err = open_err and tostring(open_err) or "ENOENT: no such file or directory"
-        end
-    else
-        err = tostring(handle_or_err)
+    if not handle then
+        err = "ENOENT: no such file or directory"
     end
 
     local fd

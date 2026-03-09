@@ -2700,27 +2700,30 @@ function Builtins.mkdir(name, flags, _)
 
     if fs.exists(path) then
         if fs.isDir(path) then
-            return parents and 1 or 0
+            if parents then
+                return 1
+            end
+            error(Error(739, raw):toString())
         end
-        return 0
+        error(Error(739, raw):toString())
     end
 
     if not parents then
         local parent = _dir_of(path)
         if not fs.exists(parent) or not fs.isDir(parent) then
-            return 0
+            error(Error(739, raw):toString())
         end
     end
 
     local ok = pcall(fs.makeDir, path)
     if not ok then
-        return 0
+        error(Error(739, raw):toString())
     end
 
     if fs.exists(path) and fs.isDir(path) then
         return 1
     end
-    return 0
+    error(Error(739, raw):toString())
 end
 
 function Builtins.isdirectory(path)
@@ -2814,12 +2817,12 @@ function Builtins.readfile(fname, kind, max)
 
     local handle
     do
-        local ok_rb, h_rb = pcall(fs.open, path, "rb")
-        if ok_rb and h_rb then
+        local h_rb = fs.open(path, "rb")
+        if h_rb then
             handle = h_rb
         else
-            local ok_r, h_r = pcall(fs.open, path, "r")
-            if ok_r and h_r then
+            local h_r = fs.open(path, "r")
+            if h_r then
                 handle = h_r
             end
         end
@@ -2867,6 +2870,54 @@ function Builtins.readfile(fname, kind, max)
 
     local lines = _split_readfile_lines(text, binary)
     return _readfile_apply_max(lines, max)
+end
+
+function Builtins.writefile(lines, fname, flags)
+    local raw = tostring(fname or "")
+    local path = _abs_path(raw)
+    local mode = tostring(flags or "")
+    local binary = mode:find("b", 1, true) ~= nil
+
+    local payload
+    if type(lines) == "table" then
+        local parts = {}
+        for i = 1, #lines do
+            parts[i] = tostring(lines[i] or "")
+        end
+        payload = table.concat(parts, "\n")
+        if #parts > 0 and not binary then
+            payload = payload .. "\n"
+        end
+    elseif type(lines) == "string" then
+        payload = lines
+    else
+        error(Error(474, "writefile()"):toString())
+    end
+
+    local handle
+    handle = fs.open(path, binary and "wb" or "w")
+    if not handle then
+        error(Error(212):toString())
+    end
+
+    local ok_write, write_err = pcall(function()
+        if handle.write then
+            handle.write(payload)
+        elseif handle.writeString then
+            handle.writeString(payload)
+        else
+            error("write unavailable")
+        end
+    end)
+    pcall(function()
+        if handle and handle.close then
+            handle.close()
+        end
+    end)
+    if not ok_write then
+        error(Error(212, tostring(write_err)):toString())
+    end
+    return 0
 end
 
 local function _json_decode_list_input(expr)
