@@ -1,6 +1,6 @@
 return {
     id = "api.lpeg_parity",
-    description = "Ports LPeg compatibility checks by comparing CCVim's bundled implementation with the reference lpeg module.",
+    description = "Ports LPeg compatibility checks by comparing CCVim's bundled implementation with the reference lpeg module.", -- luacheck: ignore 631
     
     run = function(ctx)
         local Assert = ctx.assert
@@ -106,14 +106,32 @@ return {
             { name = "bounded repetition", fn = function(M) return M.match((M.P("a") ^ -2) * M.P(-1), "aa") end },
             { name = "pow fractional error", fn = function(M) return (M.P("a") ^ 1.5):match("a") end },
             { name = "lookbehind", fn = function(M) return M.match(M.B("a") * M.P("b"), "ab", 2) end },
-            { name = "grammar recursion named start", fn = function(M) return M.match(M.P({ "S", S = M.P("a") * M.V("S") + M.P("") }), "aaa") end },
-            { name = "grammar recursion numeric start", fn = function(M) return M.match(M.P({ M.P("a") * M.V(1) + M.P("") }), "aaa") end },
-            { name = "grammar missing initial rule error", fn = function(M) return M.match(M.C({ "missing" }), "x") end },
-            { name = "simple capture with nested captures", fn = function(M) return M.match(M.C(M.P("ab") * M.Cc(9)), "ab") end },
+            {
+                name = "grammar recursion named start",
+                fn = function(M) return M.match(M.P({ "S", S = M.P("a") * M.V("S") + M.P("") }), "aaa") end,
+            },
+            {
+                name = "grammar recursion numeric start",
+                fn = function(M) return M.match(M.P({ M.P("a") * M.V(1) + M.P("") }), "aaa") end,
+            },
+            {
+                name = "grammar missing initial rule error",
+                fn = function(M) return M.match(M.C({ "missing" }), "x") end,
+            },
+            {
+                name = "simple capture with nested captures",
+                fn = function(M) return M.match(M.C(M.P("ab") * M.Cc(9)), "ab") end,
+            },
             { name = "constant capture nil slot", fn = function(M) return M.match(M.Cc(nil, "x"), "") end },
             { name = "anonymous group no inner capture", fn = function(M) return M.match(M.Cg(M.P("ab")), "ab") end },
-            { name = "anonymous group with inner captures", fn = function(M) return M.match(M.Cg(M.Cc(1) * M.Cc(2)), "") end },
-            { name = "named group and backref with whole match", fn = function(M) return M.match(M.Cg(M.P("ab"), "k") * M.Cb("k"), "ab") end },
+            {
+                name = "anonymous group with inner captures",
+                fn = function(M) return M.match(M.Cg(M.Cc(1) * M.Cc(2)), "") end,
+            },
+            {
+                name = "named group and backref with whole match",
+                fn = function(M) return M.match(M.Cg(M.P("ab"), "k") * M.Cb("k"), "ab") end,
+            },
             { name = "position capture", fn = function(M) return M.match(M.Cp() * M.P("a"), "a") end },
             { name = "argument capture nil value", fn = function(M) return M.match(M.Carg(2), "", 1, nil) end },
             { name = "argument capture missing error", fn = function(M) return M.match(M.Carg(3), "", 1, nil) end },
@@ -194,7 +212,10 @@ return {
                 end,
             },
             { name = "division number no capture error", fn = function(M) return M.match(M.P("ab") / 2, "ab") end },
-            { name = "division string capture index error", fn = function(M) return M.match(M.P("ab") / "[%1]", "ab") end },
+            {
+                name = "division string capture index error",
+                fn = function(M) return M.match(M.P("ab") / "[%1]", "ab") end,
+            },
             { name = "division string %0", fn = function(M) return M.match(M.P("ab") / "<%0>", "ab") end },
             {
                 name = "substitution capture basic",

@@ -160,7 +160,12 @@ function loop.fs_opendir(path, a2, a3)
         _closed = false,
     })
     local state = FakeUserdata.state(handle)
-    log_loop_fs("fs_opendir(path=%s) -> ok items=%d max=%d", tostring(dir), #(state and state._items or {}), max_entries)
+    log_loop_fs(
+        "fs_opendir(path=%s) -> ok items=%d max=%d",
+        tostring(dir),
+        #(state and state._items or {}),
+        max_entries
+    )
     if callback then
         callback(nil, handle)
         return

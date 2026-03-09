@@ -1,6 +1,6 @@
 return {
     id = "runtime.undo",
-    description = "Ports direct buffer undo history behavior on the real buffer/runtime path; lua-editor-only because it asserts CCVim's internal buffer undo methods directly.",
+    description = "Ports direct buffer undo history behavior on the real buffer/runtime path; lua-editor-only because it asserts CCVim's internal buffer undo methods directly.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

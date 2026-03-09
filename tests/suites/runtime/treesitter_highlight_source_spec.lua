@@ -1,6 +1,6 @@
 return {
     id = "runtime.treesitter_highlight_source",
-    description = "Ports treesitter capture reporting and highlight-source changes on CCVim's runtime render path; lua-editor-only because it asserts internal render state.",
+    description = "Ports treesitter capture reporting and highlight-source changes on CCVim's runtime render path; lua-editor-only because it asserts internal render state.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

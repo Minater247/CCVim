@@ -2947,24 +2947,6 @@ function Runtime.new(init_state, init_opts)
         return tostring(rv)
     end
 
-    local function _redir_text_to_lines(text)
-        if text == "" then
-            return { "" }
-        end
-        local out = {}
-        local start = 1
-        while true do
-            local idx = text:find("\n", start, true)
-            if not idx then
-                out[#out + 1] = text:sub(start)
-                break
-            end
-            out[#out + 1] = text:sub(start, idx - 1)
-            start = idx + 1
-        end
-        return out
-    end
-
     local function _eval_expr_for_cmd(expr_str)
         return rt:eval_expr(expr_str)
     end

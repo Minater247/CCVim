@@ -5,7 +5,11 @@ return {
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert
-        local result = Assert.eval_vim(backend, "netrw SavePosn reuse", "[g:arg_exists_history, g:count_after_first, g:count_after_second]", {
+        local result = Assert.eval_vim(
+            backend,
+            "netrw SavePosn reuse",
+            "[g:arg_exists_history, g:count_after_first, g:count_after_second]",
+            {
             script_ctx = "/tmp/netrw_saveposn_runtime.vim",
             setup = [[
                 enew!
@@ -30,7 +34,8 @@ return {
                 call s:SavePosn(g:netrw_posn)
                 let g:count_after_second = len(g:netrw_posn[bufnr('%')])
             ]],
-        })
+            }
+        )
 
         local history = result[1]
         Assert.eq("exists() history length", #history, 4)

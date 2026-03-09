@@ -1,6 +1,6 @@
 return {
     id = "runtime.nvim_redraw_api",
-    description = "Validates window-targeted and global redraw flags for nvim__redraw; lua-editor-only because it asserts internal redraw flags and flush suppression state rather than externally visible screen output.",
+    description = "Validates window-targeted and global redraw flags for nvim__redraw; lua-editor-only because it asserts internal redraw flags and flush suppression state rather than externally visible screen output.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local backend = ctx.backend

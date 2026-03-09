@@ -1,6 +1,6 @@
 return {
     id = "runtime.redrawstatus",
-    description = "Ports redrawstatus and redrawtabline flagging on the real tabpage/window runtime objects; lua-editor-only because it asserts internal redraw flags.",
+    description = "Ports redrawstatus and redrawtabline flagging on the real tabpage/window runtime objects; lua-editor-only because it asserts internal redraw flags.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

@@ -1,6 +1,6 @@
 return {
     id = "runtime.nvim_set_hl_palette_indices",
-    description = "Ports CCVim terminal-rendering behavior for palette-index highlights; lua-editor-only because the rendered 16-color palette choice is not exposed by headless Neovim's public API.",
+    description = "Ports CCVim terminal-rendering behavior for palette-index highlights; lua-editor-only because the rendered 16-color palette choice is not exposed by headless Neovim's public API.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local backend = ctx.backend

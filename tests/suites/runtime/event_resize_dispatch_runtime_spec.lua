@@ -1,6 +1,6 @@
 return {
     id = "runtime.event_resize_dispatch",
-    description = "Ports resize event dispatch through the real CCVim event loop; lua-editor-only because it targets the internal ComputerCraft event bridge.",
+    description = "Ports resize event dispatch through the real CCVim event loop; lua-editor-only because it targets the internal ComputerCraft event bridge.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

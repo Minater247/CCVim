@@ -236,7 +236,7 @@ local function handle_macro_control_key(k)
     end
 
     if macro_state.pending_action == "execute" then
-        local reg = nil
+        local reg
         if key_is_char(k, "@") then
             reg = macro_state.last_recorded_register
         else
@@ -831,12 +831,18 @@ function Command.maparg(modes, lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
         local local_root = buf.local_mappings and buf.local_mappings[m]
         local local_node = _lookup_node_in_root(local_root, lhs_seq)
-        if local_node and (local_node.callback ~= nil or local_node.rhs_seq ~= nil or local_node.operator_cb ~= nil) then
+        if
+            local_node
+            and (local_node.callback ~= nil or local_node.rhs_seq ~= nil or local_node.operator_cb ~= nil)
+        then
             return local_node, true
         end
 
         local global_node = _lookup_node_in_root(user_global_mappings[m], lhs_seq)
-        if global_node and (global_node.callback ~= nil or global_node.rhs_seq ~= nil or global_node.operator_cb ~= nil) then
+        if
+            global_node
+            and (global_node.callback ~= nil or global_node.rhs_seq ~= nil or global_node.operator_cb ~= nil)
+        then
             return global_node, false
         end
     end

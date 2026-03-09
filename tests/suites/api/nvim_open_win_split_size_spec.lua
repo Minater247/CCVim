@@ -216,7 +216,11 @@ return {
         Assert.eq("width pressure with equalalways keeps left above min width", result[4] >= result[6], true)
         Assert.eq("width pressure with equalalways keeps base above min width", result[5] >= result[6], true)
         Assert.eq("width pressure without equalalways fails", result[7], false)
-        Assert.truthy("width pressure without equalalways reports E36", result[8]:find("E36", 1, true) ~= nil, result[8])
+        Assert.truthy(
+            "width pressure without equalalways reports E36",
+            result[8]:find("E36", 1, true) ~= nil,
+            result[8]
+        )
         Assert.eq("width pressure without equalalways keeps two windows", result[9], 2)
         Assert.eq("width pressure without equalalways keeps left above min width", result[10] >= result[12], true)
 
@@ -293,8 +297,16 @@ return {
         Assert.eq("height pressure with equalalways keeps two windows", result[3], 2)
         Assert.eq("height pressure with equalalways keeps first split above min height", result[4] >= result[5], true)
         Assert.eq("height pressure without equalalways fails", result[6], false)
-        Assert.truthy("height pressure without equalalways reports E36", result[7]:find("E36", 1, true) ~= nil, result[7])
+        Assert.truthy(
+            "height pressure without equalalways reports E36",
+            result[7]:find("E36", 1, true) ~= nil,
+            result[7]
+        )
         Assert.eq("height pressure without equalalways keeps two windows", result[8], 2)
-        Assert.eq("height pressure without equalalways keeps first split above min height", result[9] >= result[10], true)
+        Assert.eq(
+            "height pressure without equalalways keeps first split above min height",
+            result[9] >= result[10],
+            true
+        )
     end,
 }

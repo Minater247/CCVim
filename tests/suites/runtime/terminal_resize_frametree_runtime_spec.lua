@@ -1,6 +1,6 @@
 return {
     id = "runtime.terminal_resize_frametree",
-    description = "Ports terminal resize behavior on the real frametree and autocmd runtime; lua-editor-only because it asserts CCVim internal layout state.",
+    description = "Ports terminal resize behavior on the real frametree and autocmd runtime; lua-editor-only because it asserts CCVim internal layout state.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

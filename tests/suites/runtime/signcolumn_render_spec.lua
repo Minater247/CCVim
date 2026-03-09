@@ -1,6 +1,6 @@
 return {
     id = "runtime.signcolumn_render",
-    description = "Ports signcolumn rendering through the real Window render path; lua-editor-only because it asserts CCVim terminal grid output.",
+    description = "Ports signcolumn rendering through the real Window render path; lua-editor-only because it asserts CCVim terminal grid output.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

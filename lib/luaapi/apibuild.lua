@@ -1,6 +1,5 @@
 local ApiBuild = {}
 
-local Error = loadModule("lib.error")
 local api = loadModule("lib.luaapi.api")
 local loop = loadModule("lib.luaapi.loop")
 local _jit = rawget(_G, 'jit')

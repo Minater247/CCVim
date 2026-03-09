@@ -1,6 +1,6 @@
 return {
     id = "runtime.netrw_glob_substitute_semantics",
-    description = "Ports netrw-related glob and substitute semantics against real backend files and Vimscript evaluation.",
+    description = "Ports netrw-related glob and substitute semantics against real backend files and Vimscript evaluation.", -- luacheck: ignore 631
     
     run = function(ctx)
         local backend = ctx.backend

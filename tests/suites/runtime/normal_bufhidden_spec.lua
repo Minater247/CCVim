@@ -1,6 +1,6 @@
 return {
     id = "runtime.normal_bufhidden",
-    description = "Ports :normal remap/range/bar semantics and bufhidden delete/hide/unload behavior against Neovim-visible buffer state.",
+    description = "Ports :normal remap/range/bar semantics and bufhidden delete/hide/unload behavior against Neovim-visible buffer state.", -- luacheck: ignore 631
     
     run = function(ctx)
         local backend = ctx.backend

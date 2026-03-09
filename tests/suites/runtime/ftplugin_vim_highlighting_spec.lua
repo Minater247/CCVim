@@ -1,6 +1,6 @@
 return {
     id = "runtime.ftplugin_vim_highlighting",
-    description = "Ports ftplugin.vim highlighting regressions through the Vim syntax engine runtime; lua-editor-only because it asserts CCVim syntax_engine internals rather than editor-visible Vimscript parity.",
+    description = "Ports ftplugin.vim highlighting regressions through the Vim syntax engine runtime; lua-editor-only because it asserts CCVim syntax_engine internals rather than editor-visible Vimscript parity.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

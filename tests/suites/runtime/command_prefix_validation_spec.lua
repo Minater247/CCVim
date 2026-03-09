@@ -1,6 +1,6 @@
 return {
     id = "runtime.command_prefix_validation",
-    description = "Validates central count/range handling for commands that allow count, allow line ranges, or allow neither.",
+    description = "Validates central count/range handling for commands that allow count, allow line ranges, or allow neither.", -- luacheck: ignore 631
     
     run = function(ctx)
         local backend = ctx.backend

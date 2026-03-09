@@ -1,6 +1,6 @@
 return {
     id = "runtime.textchanged_events",
-    description = "Ports the documented typeahead suppression for TextChanged and TextChangedI against public editor input.",
+    description = "Ports the documented typeahead suppression for TextChanged and TextChangedI against public editor input.", -- luacheck: ignore 631
     
     run = function(ctx)
         local backend = ctx.backend

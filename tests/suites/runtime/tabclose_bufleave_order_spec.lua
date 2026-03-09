@@ -1,6 +1,6 @@
 return {
     id = "runtime.tabclose_bufleave_order",
-    description = "Ports current-window close ordering so BufLeave sees a registered current buffer and the survivor becomes current.",
+    description = "Ports current-window close ordering so BufLeave sees a registered current buffer and the survivor becomes current.", -- luacheck: ignore 631
     
     run = function(ctx)
         local backend = ctx.backend

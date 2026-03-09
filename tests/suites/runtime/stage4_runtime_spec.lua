@@ -1,6 +1,6 @@
 return {
     id = "runtime.stage4_syntax_engine",
-    description = "Ports stage 4 syntax engine runtime coverage against the real parser and highlighting runtime; lua-editor-only because it exercises CCVim's internal syntax_engine parser/compiler/runtime modules directly.",
+    description = "Ports stage 4 syntax engine runtime coverage against the real parser and highlighting runtime; lua-editor-only because it exercises CCVim's internal syntax_engine parser/compiler/runtime modules directly.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
@@ -119,7 +119,10 @@ return {
 
             do
                 local parsed = Parser.parse('match String "\\<\\d\\+\\%([eE][-+]\\=\\d\\+\\)\\="')
-                Assert.truthy("quoted pattern with equals is not dropped", parsed.pattern ~= nil and parsed.pattern ~= "")
+                Assert.truthy(
+                    "quoted pattern with equals is not dropped",
+                    parsed.pattern ~= nil and parsed.pattern ~= ""
+                )
 
                 local ctx_state = mk_ctx({
                     'match Comment "--.*$"',

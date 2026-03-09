@@ -1,6 +1,6 @@
 return {
     id = "runtime.redraw_policy",
-    description = "Ports redraw policy behavior on the real startup window and buffer; lua-editor-only because it asserts internal redraw flags.",
+    description = "Ports redraw policy behavior on the real startup window and buffer; lua-editor-only because it asserts internal redraw flags.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

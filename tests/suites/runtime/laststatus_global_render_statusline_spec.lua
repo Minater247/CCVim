@@ -1,6 +1,6 @@
 return {
     id = "runtime.laststatus_global_render_statusline",
-    description = "Ports global-statusline render smoke coverage on the real runtime render path; lua-editor-only because it asserts CCVim's tabpage rendering internals.",
+    description = "Ports global-statusline render smoke coverage on the real runtime render path; lua-editor-only because it asserts CCVim's tabpage rendering internals.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

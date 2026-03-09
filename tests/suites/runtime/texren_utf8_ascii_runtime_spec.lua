@@ -1,6 +1,6 @@
 return {
     id = "runtime.texren_utf8_ascii",
-    description = "Ports UTF-8 fallback rendering through CCVim's text renderer; lua-editor-only because it asserts internal renderer output.",
+    description = "Ports UTF-8 fallback rendering through CCVim's text renderer; lua-editor-only because it asserts internal renderer output.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

@@ -1,6 +1,6 @@
 return {
     id = "runtime.tabpage_winsplit_dry_run_no_autocmd",
-    description = "Ports internal Tabpage dry-run split behavior; lua-editor-only because it probes Tabpage internals directly.",
+    description = "Ports internal Tabpage dry-run split behavior; lua-editor-only because it probes Tabpage internals directly.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

@@ -156,7 +156,12 @@ return {
             end
 
             do
-                local syntime_buf = mock.create_buffer(5, "/tmp/stage5_syntime.txt", { "foo bar", "zzz" }, { modified = false })
+                local syntime_buf = mock.create_buffer(
+                    5,
+                    "/tmp/stage5_syntime.txt",
+                    { "foo bar", "zzz" },
+                    { modified = false }
+                )
                 syntime_buf.loaded = true
                 syntime_buf.refcount = 1
                 local syntime_win = mock.create_window(5, syntime_buf, {})

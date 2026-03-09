@@ -1,6 +1,6 @@
 return {
     id = "runtime.laststatus_layout_semantics",
-    description = "Ports laststatus layout sizing and dry-run split semantics on the real tabpage/window runtime objects; lua-editor-only because it probes internal Tabpage layout state and dry-run split probes that headless Neovim does not expose.",
+    description = "Ports laststatus layout sizing and dry-run split semantics on the real tabpage/window runtime objects; lua-editor-only because it probes internal Tabpage layout state and dry-run split probes that headless Neovim does not expose.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
@@ -53,7 +53,11 @@ return {
                 local before_calls = #_G.__laststatus_autocmd_calls
                 local probe = tab1:MakeSplitProbe(win1)
                 local split_ok = tab1:WinSplit(0, probe, false, { dry_run = true })
-                Assert.eq("split dry-run fails with global statusline when separator would consume text row", split_ok, false)
+                Assert.eq(
+                    "split dry-run fails with global statusline when separator would consume text row",
+                    split_ok,
+                    false
+                )
                 Assert.eq("dry-run emits no autocmd for ls=3", #_G.__laststatus_autocmd_calls, before_calls)
             end
 

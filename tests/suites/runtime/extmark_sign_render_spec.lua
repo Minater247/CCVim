@@ -1,6 +1,6 @@
 return {
     id = "runtime.extmark_sign_render",
-    description = "Ports extmark sign rendering through the real Window render path; lua-editor-only because it asserts CCVim terminal grid output.",
+    description = "Ports extmark sign rendering through the real Window render path; lua-editor-only because it asserts CCVim terminal grid output.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

@@ -1,6 +1,6 @@
 return {
     id = "runtime.window_minimum_semantics",
-    description = "Ports internal window minimum width/height calculations on the real CCVim window objects; lua-editor-only because it asserts Window:minwidth()/minheight() directly.",
+    description = "Ports internal window minimum width/height calculations on the real CCVim window objects; lua-editor-only because it asserts Window:minwidth()/minheight() directly.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

@@ -1,6 +1,6 @@
 return {
     id = "runtime.mouse_events",
-    description = "Ports default mouse event handling through CCVim's real event loop; lua-editor-only because it targets the internal ComputerCraft mouse bridge.",
+    description = "Ports default mouse event handling through CCVim's real event loop; lua-editor-only because it targets the internal ComputerCraft mouse bridge.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

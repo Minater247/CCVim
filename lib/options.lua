@@ -472,33 +472,6 @@ local function _name_for_option_function(fn)
     return name
 end
 
-local function _canonicalize_script_local_function_name(raw)
-    local s = tostring(raw or "")
-    s = s:gsub("^%s+", ""):gsub("%s+$", "")
-    if s == "" then
-        return ""
-    end
-    if not (s:sub(1, 2) == "s:" or s:sub(1, 5) == "<SID>") then
-        return s
-    end
-
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
-    if not Runtime or type(Runtime.CanonicalFunctionName) ~= "function" then
-        error("Script-local function reference requires function resolver: " .. s)
-    end
-
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
-    local script_ctx = ScriptSource.CurrentContext()
-    local canon = Runtime.CanonicalFunctionName(s, {
-        state = Runtime._CURRENT_STATE,
-        script_ctx = script_ctx,
-    })
-    if type(canon) ~= "string" or canon == "" then
-        error("Script-local function reference requires script context: " .. s)
-    end
-    return canon
-end
-
 local function _normalize_mouse_flags(value)
     local v = value:gsub("^%s+", ""):gsub("%s+$", "")
     local out = {}

@@ -1,6 +1,6 @@
 return {
     id = "runtime.args_deferred_load_filetype",
-    description = "Ports deferred startup file loading and BufRead-driven filetype assignment through CCVim's internal Args startup pipeline; lua-editor-only because Neovim parity would require the CCVim-specific startup path.",
+    description = "Ports deferred startup file loading and BufRead-driven filetype assignment through CCVim's internal Args startup pipeline; lua-editor-only because Neovim parity would require the CCVim-specific startup path.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local backend = ctx.backend

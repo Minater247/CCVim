@@ -172,7 +172,11 @@ return {
         Assert.eq("expand <SID> without script id errors", result.sid_none[1], false)
         Assert.top_error_code("expand <SID> without script id uses E81", result.sid_none[2], "E81")
         Assert.eq("expand <SID> without script id leaves no value", result.sid_none_value, nil)
-        Assert.truthy("expand <SID> with script context", type(sid_from_script) == "string" and sid_from_script:match("^<SNR>%d+_$") ~= nil, sid_from_script)
+        Assert.truthy(
+            "expand <SID> with script context",
+            type(sid_from_script) == "string" and sid_from_script:match("^<SNR>%d+_$") ~= nil,
+            sid_from_script
+        )
 
         Assert.eq("getline single missing line empty", result.getline_single, "")
         Assert.eq("getline range count", #result.getline_range, 1)

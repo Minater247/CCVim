@@ -1,6 +1,6 @@
 return {
     id = "runtime.utf8_buffer_helpers",
-    description = "Ports UTF-8 buffer helper behavior on the real CCVim buffer/window objects; lua-editor-only because it exercises internal buffer methods directly.",
+    description = "Ports UTF-8 buffer helper behavior on the real CCVim buffer/window objects; lua-editor-only because it exercises internal buffer methods directly.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
@@ -23,7 +23,11 @@ return {
             Assert.eq("line_len counts codepoints", buf:line_len(1, true), 3)
             Assert.eq("line_sub keeps utf8 character boundaries", buf:line_sub(1, 2, 2, true), "é")
             Assert.eq("line_byte_index maps char col to byte index", buf:line_byte_index(1, 3, true, true), 4)
-            Assert.eq("Utf8.col_from_byte maps byte index to char col", Utf8.col_from_byte(buf:get_line(1, true), 4, true), 3)
+            Assert.eq(
+                "Utf8.col_from_byte maps byte index to char col",
+                Utf8.col_from_byte(buf:get_line(1, true), 4, true),
+                3
+            )
         end)
 
         mock.cleanup()

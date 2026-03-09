@@ -1,6 +1,6 @@
 return {
     id = "runtime.highlight_list_render",
-    description = "Renders :highlight and :syntax list entries with the group name unhighlighted and only the literal xxx segment highlighted; lua-editor-only because Neovim's public capture APIs do not expose message highlight segments.",
+    description = "Renders :highlight and :syntax list entries with the group name unhighlighted and only the literal xxx segment highlighted; lua-editor-only because Neovim's public capture APIs do not expose message highlight segments.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
 
     run = function(ctx)
@@ -53,14 +53,22 @@ return {
         ]])
 
         Assert.eq("highlight name uses normal text", result[1][1][1], "Normal")
-        Assert.eq("highlight name text includes separator space", result[1][1][2], string.format("%-" .. name_width .. "s ", "String"))
+        Assert.eq(
+            "highlight name text includes separator space",
+            result[1][1][2],
+            string.format("%-" .. name_width .. "s ", "String")
+        )
         Assert.eq("highlight xxx uses target group", result[1][2][1], "String")
         Assert.eq("highlight xxx text is separate", result[1][2][2], "xxx")
         Assert.eq("highlight suffix returns to normal", result[1][3][1], "Normal")
         Assert.eq("highlight suffix excludes xxx", result[1][3][2], " links to Constant")
 
         Assert.eq("syntax name uses normal text", result[2][1][1], "Normal")
-        Assert.eq("syntax name text includes separator space", result[2][1][2], string.format("%-" .. name_width .. "s ", "TestSyn"))
+        Assert.eq(
+            "syntax name text includes separator space",
+            result[2][1][2],
+            string.format("%-" .. name_width .. "s ", "TestSyn")
+        )
         Assert.eq("syntax xxx uses syntax group", result[2][2][1], "TestSyn")
         Assert.eq("syntax xxx text is separate", result[2][2][2], "xxx")
     end,

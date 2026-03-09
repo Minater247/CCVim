@@ -1,6 +1,6 @@
 return {
     id = "runtime.split_failure_preflight",
-    description = "Ports split/vsplit preflight with actual commands so feasible layouts commit and infeasible layouts fail with E36 before changing layout or firing window/buffer autocmds.",
+    description = "Ports split/vsplit preflight with actual commands so feasible layouts commit and infeasible layouts fail with E36 before changing layout or firing window/buffer autocmds.", -- luacheck: ignore 631
     
     run = function(ctx)
         local backend = ctx.backend

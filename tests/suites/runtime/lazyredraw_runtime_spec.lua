@@ -1,6 +1,6 @@
 return {
     id = "runtime.lazyredraw",
-    description = "Ports lazyredraw event-loop behavior on the real runtime with controlled timer delivery; lua-editor-only because it inspects CCVim's internal redraw scheduler state during the ComputerCraft event loop.",
+    description = "Ports lazyredraw event-loop behavior on the real runtime with controlled timer delivery; lua-editor-only because it inspects CCVim's internal redraw scheduler state during the ComputerCraft event loop.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert

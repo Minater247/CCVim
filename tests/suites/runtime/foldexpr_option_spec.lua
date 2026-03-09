@@ -38,7 +38,11 @@ setlocal foldexpr=s:FoldExpr()
 
             vim.cmd("source " .. vim.fn.fnameescape(%q))
             local expr_b = vim.wo.foldexpr
-            vim.cmd("let v:lnum = 1 | let g:foldexpr_b_value_1 = eval(&foldexpr) | let g:foldexpr_b_value_2 = eval(&foldexpr)")
+            vim.cmd(table.concat({
+                "let v:lnum = 1",
+                "let g:foldexpr_b_value_1 = eval(&foldexpr)",
+                "let g:foldexpr_b_value_2 = eval(&foldexpr)",
+            }, " | "))
 
             return {
                 expr_a:match("^<SNR>%%d+_FoldExpr%%(%%)$") ~= nil,

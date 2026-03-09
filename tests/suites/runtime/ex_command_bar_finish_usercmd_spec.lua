@@ -1,6 +1,6 @@
 return {
     id = "runtime.ex_command_bar_finish_usercmd",
-    description = "Ports sourced Vimscript behavior for quoted bars, finish, silent, syntax pipes, and user-command expansion.",
+    description = "Ports sourced Vimscript behavior for quoted bars, finish, silent, syntax pipes, and user-command expansion.", -- luacheck: ignore 631
     
     run = function(ctx)
         local backend = ctx.backend
@@ -57,7 +57,9 @@ return {
             "",
         }, "\n"))
         Assert.write_file(backend, uargs_script, table.concat({
-            [=[command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | let g:uargs_f = [<f-args>]]=],
+            [=[
+command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | let g:uargs_f = [<f-args>]
+]=],
             "UArgs one two",
             "",
         }, "\n"))
@@ -114,7 +116,17 @@ return {
                 vim.g.nmap_bar_split,
                 vim.fn.maparg("-", "n"),
             }
-        ]=], quoted_bar, finish_script, silent_script, case_cmp_script, syn_script, command_bar_script, keepj_script, uargs_script, nmap_bar_script))
+        ]=],
+            quoted_bar,
+            finish_script,
+            silent_script,
+            case_cmp_script,
+            syn_script,
+            command_bar_script,
+            keepj_script,
+            uargs_script,
+            nmap_bar_script
+        ))
 
         Assert.eq("quoted execute with bars runs", result[1], 42)
         Assert.eq("finish stops script", result[2], 1)
