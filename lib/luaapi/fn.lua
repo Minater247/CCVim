@@ -2542,7 +2542,17 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     return rv
 end
 
-function Builtins.getcwd(winnr, tabnr)
+function Builtins.getcwd(...)
+    local argc = select("#", ...)
+    local winnr = select(1, ...)
+    local tabnr = select(2, ...)
+    if argc > 2 then
+        error(Error(118, "getcwd"):toString())
+    end
+    if (argc >= 1 and winnr == nil) or (argc >= 2 and tabnr == nil) then
+        error(Error(474):toString())
+    end
+
     local tabpage = tabpages[(tabnr == 0 or not tabnr) and curtp or tabnr]
     local window
     if winnr == 0 or not winnr then

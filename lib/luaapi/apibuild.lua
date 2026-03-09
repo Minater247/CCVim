@@ -286,11 +286,6 @@ function ApiBuild.Build()
 
     local function vim_call(func, ...)
         local name = tostring(func)
-        for i = 1, select("#", ...) do
-            if select(i, ...) == nil then
-                error(Error(474):toString())
-            end
-        end
         if select("#", ...) == 0 then
             return fn._call(name)
         end
