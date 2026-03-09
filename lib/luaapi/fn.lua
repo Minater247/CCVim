@@ -3927,6 +3927,30 @@ function Builtins.items(dict, ...)
     if select("#", ...) > 0 then
         error(Error(118, "items"):toString())
     end
+
+    if type(dict) == "string" then
+        local out = {}
+        local len = Utf8.len(dict)
+        for i = 1, len do
+            out[#out + 1] = { i - 1, Utf8.char_at(dict, i) }
+        end
+        return out
+    end
+
+    if type(dict) ~= "table" then
+        error(Error(1225, 1):toString())
+    end
+
+    local mt = getmetatable(dict)
+    local is_list = (mt and mt.__vimxpr_kind == "list") or _is_list(dict)
+    if is_list then
+        local out = {}
+        for i = 1, #dict do
+            out[#out + 1] = { i - 1, dict[i] }
+        end
+        return out
+    end
+
     _require_dict_for_keys_items(dict)
     local out = {}
     for k, v in pairs(dict) do

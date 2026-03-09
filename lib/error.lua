@@ -70,6 +70,7 @@ local errStrings = {
     [919] = function(params) return "Directory not found in 'packpath': " .. (params[1] or "") end,
     [1098] = "String, List or Blob required",
     [1206] = function(params) return "Dictionary required for argument " .. tostring(params[1] or 1) end,
+    [1225] = function(params) return "String, List or Dictionary required for argument " .. tostring(params[1] or 1) end,
     [5002] = "Cannot find window number.",
     [5107] = function(params) return "Error loading lua " .. params[1] end,
     [5108] = function(params) return "Error executing lua " .. (params[1] or "[NULL]") end,

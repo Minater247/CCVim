@@ -35,6 +35,13 @@ return {
         Assert.table_eq("items list [2]", result[2], {1, 20})
         Assert.table_eq("items list [3]", result[3], {2, 30})
 
+        -- Test items() on string returns index-char pairs
+        result = Assert.eval(backend, "eval items string", "vim.fn.items('aé')")
+        Assert.eq("items string is list", backend:is_list(result), true)
+        Assert.eq("items string count", #result, 2)
+        Assert.table_eq("items string [1]", result[1], {0, "a"})
+        Assert.table_eq("items string [2]", result[2], {1, "é"})
+
         -- Test items() on number errors with E1225
         Assert.expect_error(backend, "items number emits E1225",
             "vim.fn.items(1)", "E1225")
