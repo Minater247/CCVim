@@ -7,6 +7,7 @@ local real_os_time = os.time
 local real_os_date = os.date
 local real_os_exit = os.exit
 local real_os_remove = os.remove
+local real_os_rename = os.rename
 local real_loadfile = loadfile
 local has_lfs, lfs = pcall(require, "lfs")
 if not has_lfs then
@@ -131,7 +132,7 @@ local function copy_tree(src, dst)
 end
 
 local function move_path(src, dst)
-    local ok, err = os.rename(src, dst)
+    local ok, err = real_os_rename(src, dst)
     if ok then
         return true
     end

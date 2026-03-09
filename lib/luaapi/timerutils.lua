@@ -18,6 +18,16 @@ function timerutils.in_fast_event()
     return in_fast_event_depth > 0
 end
 
+function timerutils.with_fast_event(fn, ...)
+    in_fast_event_depth = in_fast_event_depth + 1
+    local packed = { pcall(fn, ...) }
+    in_fast_event_depth = math.max(0, in_fast_event_depth - 1)
+    if not packed[1] then
+        error(packed[2], 0)
+    end
+    return table.unpack(packed, 2)
+end
+
 local function to_integer_ms(name, value, default_value, allow_zero)
     if value == nil then
         return default_value

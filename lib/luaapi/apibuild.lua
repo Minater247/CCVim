@@ -12,6 +12,7 @@ local fn = loadModule("lib.luaapi.fn")
 local require = loadModule("lib.luaapi.require")
 local package = loadModule("lib.luaapi.package")
 local fileload = loadModule("lib.luaapi.fileload")
+local fakeuserdata = loadModule("lib.luaapi.fakeuserdata")
 local timerutils = loadModule("lib.luaapi.timerutils")
 local scopes = loadModule("lib.luaapi.scopes")
 local print = loadModule("lib.luaapi.print")
@@ -430,6 +431,13 @@ function ApiBuild.Build()
         table = table_compat,
         unpack = unpack or table.unpack,
         os = os_compat,
+        type = fakeuserdata.type,
+        next = fakeuserdata.next,
+        pairs = fakeuserdata.pairs,
+        ipairs = fakeuserdata.ipairs,
+        rawget = fakeuserdata.rawget,
+        rawset = fakeuserdata.rawset,
+        setmetatable = fakeuserdata.setmetatable,
 
         -- DEBUG
         LOG_DEBUG = LOG_DEBUG,

@@ -11,6 +11,7 @@ local Error = loadModule("lib.error")
 local FrameTree
 local Autocmd
 local Scopes
+local TimerUtils
 
 function Event.StartTimer(time, callback)
     local id = os.startTimer(time)
@@ -430,7 +431,10 @@ function Event.ProcessEvent(ev)
         local cb = timers[timer_id]
         timers[timer_id] = nil
         if cb then
-            cb(timer_id)
+            TimerUtils = TimerUtils or loadModule("lib.luaapi.timerutils")
+            TimerUtils.with_fast_event(function()
+                cb(timer_id)
+            end)
         end
     elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
         local w, h = term.getSize()
