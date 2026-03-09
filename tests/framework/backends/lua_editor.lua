@@ -51,8 +51,15 @@ function LuaEditorBackend.new(opts)
         name = "lua_editor",
         mock = mock,
     }
+    local command_bootstrapped = false
 
     function backend:api_build()
+        if not command_bootstrapped then
+            local Event = self.mock.loadModule("lib.event")
+            Event.LoadCommandModule()
+            self.mock.loadModule("lib.mappings")
+            command_bootstrapped = true
+        end
         local ApiBuild = self.mock.loadModule("lib.luaapi.apibuild")
         local result = ApiBuild.Build()
         return result

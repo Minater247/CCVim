@@ -1542,6 +1542,7 @@ function MockEnv.setup(opts)
     globals.curwin = 1
     globals.curtp = 1
     globals.need_redraw = false
+    globals.what_redraw = {}
     globals.vimmode = "normal"
     globals.vimlog = {}
     globals.registers = {}
@@ -1579,7 +1580,7 @@ function MockEnv.setup(opts)
         _G[k] = v
     end
 
-    _G.what_redraw = {}
+    _G.what_redraw = globals.what_redraw
 
     globals.options = load_module("lib.options")
     _G.options = globals.options
@@ -1639,6 +1640,66 @@ function MockEnv.setup(opts)
         load_module("lib.frame").RebalanceCurrentTab()
     end
     _G.enterWindow = globals.enterWindow
+
+    globals.setMode = function(newmode, newx, newy)
+        local oldmode = globals.vimmode
+        local win = globals.windows[globals.curwin]
+        local mode_changed = (newmode ~= oldmode)
+        local buf_ctx = {
+            bufnr = win.buffer.bufnr,
+            bufname = win.buffer.name,
+        }
+
+        local AutoCmd = load_module("lib.autocmd")
+        local PopupMenu = load_module("lib.popupmenu")
+
+        if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+            win.buffer:undo_end(win)
+            AutoCmd.Run("InsertLeavePre", buf_ctx)
+        end
+
+        globals.vimmode = newmode
+        if newy then
+            win:cursorSetY(newy)
+        end
+        if newx then
+            win:cursorSetX(newx)
+        end
+        if newmode == "insert" then
+            local lines = win.buffer:lines_ref(true)
+            if #lines == 0 then
+                lines[1] = ""
+            end
+        end
+        if mode_changed then
+            if oldmode == "insert" and newmode ~= "insert" then
+                if PopupMenu.visible() then
+                    PopupMenu.close("cancel")
+                end
+                AutoCmd.Run("InsertLeave", buf_ctx)
+            elseif oldmode ~= "insert" and newmode == "insert" then
+                AutoCmd.Run("InsertEnter", buf_ctx)
+            end
+
+            if oldmode == "cmdline" and newmode ~= "cmdline" then
+                AutoCmd.Run("CmdlineLeave", buf_ctx)
+            elseif oldmode ~= "cmdline" and newmode == "cmdline" then
+                AutoCmd.Run("CmdlineEnter", buf_ctx)
+            end
+
+            AutoCmd.Run("ModeChanged", { old_mode = oldmode, new_mode = newmode })
+        end
+        globals.what_redraw["commandline"] = true
+        win:cursorMove(0, 0, false)
+        if newmode == "insert" then
+            win.insert_curs_start = { win.cursorx, win.cursory }
+            if mode_changed and oldmode ~= "insert" then
+                win.buffer:undo_begin(win)
+            end
+        end
+        globals.need_redraw = true
+    end
+    _G.setMode = globals.setMode
 
     -- Set COLORTERM to prevent runtime startup from emitting terminal capability probes.
     local EnvVars = load_module("lib.envvars")
