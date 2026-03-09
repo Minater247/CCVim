@@ -540,6 +540,27 @@ Command.nmap_builtin_callback(
 )
 
 Command.nmap_builtin_callback(
+    {K(keys.z), K(keys.t)},
+    function(count)
+        local win = windows[curwin]
+        if count then
+            win:cursorSetY(count)
+            win:cursorApplyStartofline()
+        end
+
+        if win.opts.wrap then
+            local _, params = win:_wrap_params()
+            local cur_row = win:_wrap_cursor_pos(params)
+            win:_wrap_scroll_rows(cur_row, params)
+        else
+            win.scrolly[1] = win.cursory
+            win.scrolly[2] = 0
+        end
+        win:mark_redraw()
+    end
+)
+
+Command.nmap_builtin_callback(
     {K(keys.z), K(keys.z)},
     function()
         local win = windows[curwin]
@@ -553,6 +574,32 @@ Command.nmap_builtin_callback(
         local target_col = hscroll + math.floor((text_w - 1) / 2)
         local target_row = math.floor((rows - 1) / 2)
         win:cursorSetScreenRow(target_row, { screen_col = target_col })
+    end
+)
+
+Command.nmap_builtin_callback(
+    {K(keys.z), K(keys.b)},
+    function(count)
+        local win = windows[curwin]
+        if count then
+            win:cursorSetY(count)
+            win:cursorApplyStartofline()
+        end
+
+        local target_row = math.max(0, win:textheight() - 1)
+        if win.opts.wrap then
+            local _, params = win:_wrap_params()
+            local cur_row = win:_wrap_cursor_pos(params)
+            win:_wrap_scroll_rows(cur_row - target_row, params)
+        else
+            local top = win.cursory - target_row
+            local linecnt = win.buffer:line_count(true)
+            if top < 1 then top = 1 end
+            if top > linecnt then top = linecnt end
+            win.scrolly[1] = top
+            win.scrolly[2] = 0
+        end
+        win:mark_redraw()
     end
 )
 
