@@ -3782,11 +3782,15 @@ function Runtime.new(init_state, init_opts)
             local canon = Autocmd.NormalizeEvent(event)
             if canon == "FileType" then
                 local ft = Options.get("filetype", nil, b, true)
-                if type(ft) == "string" and ft ~= "" then ctx.pattern = ft end
+                if ft == "" then
+                    goto continue
+                end
+                ctx.pattern = ft
             else
                 ctx.pattern = b.name
             end
             Autocmd.Run(event, ctx)
+            ::continue::
         end
         return true
     end
