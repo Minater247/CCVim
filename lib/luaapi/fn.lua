@@ -23,6 +23,7 @@ local RuntimePath = loadModule("lib.runtimepath")
 local RegisterUtil = loadModule("lib.registers")
 local Utf8       = loadModule("lib.utf8")
 local Command = loadModule("lib.command")
+local Json = loadModule("lib.luaapi.json")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -2829,9 +2830,7 @@ function Builtins.readfile(fname, kind, max)
     end
 
     if not handle then
-        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
-        ExMsg.echoerr(Error(484, raw):toString())
-        return {}
+        error(Error(484, raw):toString())
     end
 
     local ok_read, data = pcall(function()
@@ -2844,9 +2843,7 @@ function Builtins.readfile(fname, kind, max)
     end)
 
     if not ok_read then
-        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
-        ExMsg.echoerr(Error(484, raw):toString())
-        return {}
+        error(Error(484, raw):toString())
     end
 
     local mode = tostring(kind or "")
@@ -2858,7 +2855,6 @@ function Builtins.readfile(fname, kind, max)
         return text
     end
 
-    text = text:gsub("\0", "\n")
     if not binary then
         -- Strip UTF-8 BOM in text mode.
         if text:sub(1, 3) == "\239\187\191" then
@@ -2869,6 +2865,12 @@ function Builtins.readfile(fname, kind, max)
     end
 
     local lines = _split_readfile_lines(text, binary)
+    for i = 1, #lines do
+        lines[i] = tostring(lines[i] or ""):gsub("\0", "\n")
+    end
+    if binary and #lines > 0 and lines[1]:sub(1, 3) == "\239\187\191" then
+        lines[1] = "<feff>" .. lines[1]:sub(4)
+    end
     return _readfile_apply_max(lines, max)
 end
 
@@ -2957,10 +2959,8 @@ function Builtins.json_decode(expr)
         error(Error(474, "json_decode()"):toString())
     end
 
-    local parser = textutils.unserializeJSON
-    local decoded, perr = parser(payload, {
-        parse_null = true,
-        parse_empty_array = false,
+    local decoded, perr = Json.decode(payload, {
+        empty_dict_mt = rawget(vim or {}, "_empty_dict_mt"),
     })
     if decoded == nil then
         local reason = tostring(perr or "json_decode()")
