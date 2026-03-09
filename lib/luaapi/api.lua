@@ -571,10 +571,19 @@ function api.nvim_open_win(buffer, enter, config)
 
     local tabp = tabpages[curtp]
     local split_target = config.win or 0
+    local split = config.split
+    local vertical = (split == "left" or split == "right")
+    local place_after = (split == "right" or split == "below")
+    local has_explicit_split_size = (vertical and type(config.width) == "number")
+        or ((split == "above" or split == "below") and type(config.height) == "number")
 
     if not config.relative then
         local probe = tabp:MakeSplitProbe(nil)
-        if not tabp:WinSplit(split_target, probe, false, { dry_run = true }) then
+        if not tabp:WinSplit(split_target, probe, vertical, {
+            dry_run = true,
+            place_after = place_after,
+            skip_equalize = has_explicit_split_size,
+        }) then
             error(Error(36):toString())
         end
     end
@@ -600,9 +609,18 @@ function api.nvim_open_win(buffer, enter, config)
         table.insert(tabpages[curtp].windows, newwin)
         newwin.tabpagenr = curtp
     else
-        if not tabpages[curtp]:WinSplit(split_target, newwin, false) then
+        if not tabpages[curtp]:WinSplit(split_target, newwin, vertical, {
+            place_after = place_after,
+            skip_equalize = has_explicit_split_size,
+        }) then
             cleanup_failed_split_window(newwin)
             error(Error(36):toString())
+        end
+
+        if vertical and type(config.width) == "number" and newwin.frame then
+            newwin:resizeWidth(config.width - newwin.frame.width)
+        elseif (split == "above" or split == "below") and type(config.height) == "number" and newwin.frame then
+            newwin:resizeHeight(config.height - newwin.frame.height)
         end
     end
 
