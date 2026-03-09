@@ -9,8 +9,6 @@ return {
         local mock = MockEnv.setup()
 
         local ok, err = pcall(function()
-            local Options = mock.loadModule("lib.options")
-
             local Tab = mock.loadModule("lib.tab")
             local TexRen = mock.loadModule("lib.texren")
 

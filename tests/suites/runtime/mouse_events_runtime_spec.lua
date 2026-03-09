@@ -10,10 +10,12 @@ return {
         local epoch_idx = 0
 
         local mock = MockEnv.setup()
-        os.startTimer = function() return 1 end
-        os.cancelTimer = function() end
-        os.pullEvent = function() return "terminate" end
-        os.epoch = function()
+        local cc_os = mock.globals().os
+
+        cc_os.startTimer = function() return 1 end
+        cc_os.cancelTimer = function() end
+        cc_os.pullEvent = function() return "terminate" end
+        cc_os.epoch = function()
             epoch_idx = epoch_idx + 1
             return epochs[epoch_idx] or epochs[#epochs]
         end

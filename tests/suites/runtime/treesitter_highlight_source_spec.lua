@@ -18,8 +18,6 @@ return {
                 return nil
             end
 
-            local Options = mock.loadModule("lib.options")
-
             local Highlight = mock.loadModule("lib.highlight")
             local Scopes = mock.loadModule("lib.luaapi.scopes")
             local Treesitter = mock.loadModule("lib.luaapi.treesitter")

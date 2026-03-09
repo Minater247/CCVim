@@ -7,6 +7,8 @@ return {
         local MockEnv = require("vim.tests.test_mocks")
 
         local mock = MockEnv.setup({ bootstrap_default_editor = true })
+        local globals = mock.globals()
+        local cc_os = globals.os
 
         local ok, err = pcall(function()
             local resize_calls = {}
@@ -25,11 +27,11 @@ return {
                 return true
             end
 
-            os.startTimer = function()
+            cc_os.startTimer = function()
                 return 99
             end
-            os.cancelTimer = function() end
-            os.pullEvent = function()
+            cc_os.cancelTimer = function() end
+            cc_os.pullEvent = function()
                 pulled = pulled + 1
                 if pulled == 1 then
                     return "term_resize"

@@ -9,8 +9,6 @@ return {
         local mock = MockEnv.setup()
 
         local ok, err = pcall(function()
-            local Options = mock.loadModule("lib.options")
-
             local Highlight = mock.loadModule("lib.highlight")
             local Treesitter = mock.loadModule("lib.luaapi.treesitter")
             local Syntax = mock.loadModule("lib.syntax")

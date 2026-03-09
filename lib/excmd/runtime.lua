@@ -1713,7 +1713,7 @@ function Runtime.new(init_state, init_opts)
         while text:sub(1, 1) == ":" do
             text = lstrip(text:sub(2))
         end
-        local l1, l2, has_range, pos, first_kind, has_sep = _scan_range_prefix(text, line_count, win.cursory)
+        local l1, l2, has_range, pos = _scan_range_prefix(text, line_count, win.cursory)
         if has_range then
             text = text:sub(pos)
         end
@@ -1722,7 +1722,7 @@ function Runtime.new(init_state, init_opts)
             text = lstrip(text:sub(2))
         end
         local raw = text:match("^([%a][%w]*)")
-        return raw and raw:lower(), l1, l2, has_range, first_kind, has_sep
+        return raw and raw:lower(), l1, l2, has_range
     end
 
     local function _structured_range_from_spec(spec)
@@ -1767,7 +1767,7 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _build_cmd_context(cursor, win, spec)
-        local raw_cmd, raw_l1, raw_l2, has_raw_range, first_kind, has_sep = _cursor_parse_head(cursor, win)
+        local raw_cmd, raw_l1, raw_l2, has_raw_range = _cursor_parse_head(cursor, win)
         local name = tostring((spec and (spec.dispatch or spec.lname or spec.name)) or raw_cmd or ""):lower()
         local cmd_spec = get_command_spec(name)
         local addr_mode = cmd_spec and cmd_spec.addr

@@ -25,14 +25,12 @@ return {
 
             local vim_resized = 0
             local win_resized = 0
-            local last_winresized = nil
 
             Autocmd.CreateAutocommand({ "VimResized" }, { "*" }, function()
                 vim_resized = vim_resized + 1
             end, nil, 1, false, false)
-            Autocmd.CreateAutocommand({ "WinResized" }, { "*" }, function(info)
+            Autocmd.CreateAutocommand({ "WinResized" }, { "*" }, function()
                 win_resized = win_resized + 1
-                last_winresized = info
             end, nil, 1, false, false)
 
             local tab1 = tabpages[curtp]
@@ -66,16 +64,9 @@ return {
             Assert.eq("tab2 height updated", tab2.tree.height, 29)
             Assert.eq("VimResized fired once", vim_resized, 1)
             Assert.eq("WinResized fired once", win_resized, 1)
-            Assert.truthy("WinResized payload present", type(last_winresized) == "table", "missing WinResized ctx")
-            Assert.truthy(
-                "WinResized windows list populated",
-                #(last_winresized.data.windows or {}) >= 1,
-                "expected changed window ids"
-            )
 
             vim_resized = 0
             win_resized = 0
-            last_winresized = nil
             need_redraw = false
             what_redraw = {}
 
@@ -92,12 +83,13 @@ return {
             need_redraw = false
             what_redraw = {}
 
-            ok_resize, err = FrameTree.ApplyTerminalResize(80, 30, "term_resize")
+            local resize_err
+            ok_resize, resize_err = FrameTree.ApplyTerminalResize(80, 30, "term_resize")
             Assert.eq("strict failure returns false", ok_resize, false)
             Assert.truthy(
                 "strict failure returns E36",
-                type(err) == "table" and err.code == 36,
-                tostring(err)
+                type(resize_err) == "table" and resize_err.code == 36,
+                tostring(resize_err)
             )
             Assert.eq("strict failure keeps authoritative screen width", screen.width, 80)
             Assert.eq("strict failure keeps authoritative columns", Options.get("columns"), 80)

@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Runtime = mock.loadModule("lib.excmd.runtime")
-            local Tabpage = mock.loadModule("layout.tabpage")
 
             local tab = tabpages[curtp]
             local win1 = windows[curwin]

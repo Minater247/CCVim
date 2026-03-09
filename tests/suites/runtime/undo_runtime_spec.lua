@@ -10,7 +10,6 @@ return {
 
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
-            local Runtime = mock.loadModule("lib.excmd.runtime")
             local Buffer = mock.loadModule("layout.buffer")
             mock.loadModule("lib.command")
             mock.loadModule("lib.mappings")
@@ -21,13 +20,6 @@ return {
             local win = windows[curwin]
             curtp = win.tabpagenr
             vimmode = "normal"
-
-            local function err_string(e)
-                if type(e) == "table" and type(e.toString) == "function" then
-                    return e:toString()
-                end
-                return tostring(e)
-            end
 
             local function assert_lines(label, got, want)
                 Assert.eq(label, table.concat(got, "\n"), table.concat(want, "\n"))
@@ -48,11 +40,6 @@ return {
                 win.cursorx = 1
                 win.cursory = 1
                 return buf
-            end
-
-            local function run_script(script, script_ctx)
-                local run_ok, rv = Runtime.run(script, { script_ctx = script_ctx })
-                return run_ok, rv
             end
 
             do
