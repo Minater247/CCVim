@@ -140,13 +140,13 @@ local capture_stack = {}
 -- :redir Support
 -- =====================================
 -- Single active redirection context:
---   { out = {"line1\n", ...}, partial = "pending_echon_text", on_close = fn }
+--   { out = {"line1", ...}, current = "open_current_line", on_close = fn }
 local redir_ctx = nil
 
 local function redir_flush_partial()
-    if redir_ctx and redir_ctx.partial ~= "" then
-        redir_ctx.out[#redir_ctx.out + 1] = redir_ctx.partial .. "\n"
-        redir_ctx.partial = ""
+    if redir_ctx and redir_ctx.current ~= nil then
+        redir_ctx.out[#redir_ctx.out + 1] = redir_ctx.current
+        redir_ctx.current = nil
     end
 end
 
@@ -154,19 +154,20 @@ local function redir_emit(str, nonewline)
     if not redir_ctx then
         return
     end
-
+    local text = tostring(str or "")
     if nonewline then
-        redir_ctx.partial = redir_ctx.partial .. tostring(str or "")
-    else
-        redir_flush_partial()
-        redir_ctx.out[#redir_ctx.out + 1] = tostring(str or "") .. "\n"
+        redir_ctx.current = (redir_ctx.current or "") .. text
+        return
     end
+
+    redir_flush_partial()
+    redir_ctx.current = "\n" .. text
 end
 
 function ExMsg.StartRedir(on_close)
     redir_ctx = {
         out = {},
-        partial = "",
+        current = nil,
         on_close = on_close,
     }
     return true

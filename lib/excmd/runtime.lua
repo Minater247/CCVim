@@ -4553,7 +4553,7 @@ function Runtime.new(init_state, init_opts)
                 local path = spec.path
                 local abspath = _vimfs().abspath(path)
                 if (not spec.append) and (not bang) and fs.exists(abspath) then
-                    error(Error(474, "File exists: " .. path))
+                    error(Error(189, path))
                 end
                 local mode = spec.append and "a" or "w"
                 on_close = function(text)
@@ -4569,7 +4569,7 @@ function Runtime.new(init_state, init_opts)
                 local key = _redir_register_key(spec.reg)
                 on_close = function(text)
                     local base = spec.append and _redir_register_text(spec.reg) or ""
-                    registers[key] = { "inline", _redir_text_to_lines(base .. text) }
+                    registers[key] = { "charwise", base .. text }
                     return true
                 end
             elseif spec.kind == "var" then
@@ -4838,7 +4838,7 @@ function Runtime.new(init_state, init_opts)
             newbuf.name = ""
             _switch_current_buffer(win, newbuf, { skip_enter = true })
 
-            local ff = Options.get("fileformat", win, curbuf)
+            local ff = Options.get("fileformat", win, newbuf)
             local ffs = _csv_first(Options.get("fileformats", win, curbuf))
             if ffs ~= "" then
                 ff = ffs
