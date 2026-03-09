@@ -4136,7 +4136,7 @@ local function _copy_shallow_table(tbl)
     return _copy_mark_kind(tbl, out)
 end
 
-local function _deepcopy_value(obj, noref_mode, cache, stack, depth)
+local function _deepcopy_value(obj, noref_mode, stack, depth)
     if type(obj) ~= "table" then
         return obj
     end
@@ -4147,37 +4147,38 @@ local function _deepcopy_value(obj, noref_mode, cache, stack, depth)
     end
 
     if not noref_mode then
-        local cached = cache[obj]
-        if cached ~= nil then
-            return cached
+        local active = stack[obj]
+        if active ~= nil then
+            return active
         end
         local out = _copy_mark_kind(obj, {})
-        cache[obj] = out
+        stack[obj] = out
         if _copy_table_kind(obj) == "list" then
             for i = 1, #obj do
-                out[i] = _deepcopy_value(obj[i], noref_mode, cache, stack, next_depth)
+                out[i] = _deepcopy_value(obj[i], noref_mode, stack, next_depth)
             end
         else
             for k, v in pairs(obj) do
-                out[k] = _deepcopy_value(v, noref_mode, cache, stack, next_depth)
+                out[k] = _deepcopy_value(v, noref_mode, stack, next_depth)
             end
         end
+        stack[obj] = nil
         return out
     end
 
     if stack[obj] then
-        error(Error(724):toString())
+        error(Error(698):toString())
     end
     stack[obj] = true
 
     local out = _copy_mark_kind(obj, {})
     if _copy_table_kind(obj) == "list" then
         for i = 1, #obj do
-            out[i] = _deepcopy_value(obj[i], noref_mode, cache, stack, next_depth)
+            out[i] = _deepcopy_value(obj[i], noref_mode, stack, next_depth)
         end
     else
         for k, v in pairs(obj) do
-            out[k] = _deepcopy_value(v, noref_mode, cache, stack, next_depth)
+            out[k] = _deepcopy_value(v, noref_mode, stack, next_depth)
         end
     end
 
@@ -4199,7 +4200,7 @@ function Builtins.deepcopy(obj, noref, ...)
     if select("#", ...) > 0 then
         error(Error(118, "deepcopy"):toString())
     end
-    return _deepcopy_value(obj, _vim_truthy(noref), {}, {}, 0)
+    return _deepcopy_value(obj, _vim_truthy(noref), {}, 0)
 end
 
 function Builtins.join(lst, sep)
