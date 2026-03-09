@@ -508,6 +508,7 @@ local NVIM_SPECIAL_KEYCODE = {
     ["<S-Right>"] = bytes3(128, 37, 105),
     ["<Nul>"] = bytes3(128, 255, 88),
     ["<Cmd>"] = bytes3(128, 253, 104),
+    ["<Plug>"] = bytes3(128, 253, 112),
 }
 
 local NVIM_SPECIAL_BY_BYTES = {}
@@ -1165,7 +1166,8 @@ function Key.replace_termcodes(str, do_lt, special)
                             out[#out + 1] = parsed.ch
                         end
                     elseif parsed.kind == "literal_angle" then
-                        out[#out + 1] = "<" .. parsed.content .. ">"
+                        local notation = "<" .. parsed.content .. ">"
+                        out[#out + 1] = NVIM_SPECIAL_KEYCODE[notation] or notation
                     elseif parsed.kind == "cmd" then
                         out[#out + 1] = NVIM_SPECIAL_KEYCODE["<Cmd>"]
                     else
