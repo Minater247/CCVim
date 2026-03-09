@@ -1891,6 +1891,8 @@ function Options.exset_token(token, mode, window, buffer)
                 end
             end
             _apply_value(name, merged, mode, window, buffer, origtoken)
+        elseif append_type == "csl" and cur ~= "" and s ~= "" then
+            _apply_value(name, s .. "," .. tostring(cur), mode, window, buffer, origtoken)
         else
             _apply_value(name, s .. tostring(cur), mode, window, buffer, origtoken)
         end
