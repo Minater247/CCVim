@@ -4461,7 +4461,7 @@ function Runtime.new(init_state, init_opts)
             else
                 local parsed = tonumber(raw)
                 if not parsed then
-                    error(Error(474, argstr))
+                    error(Error(488, argstr))
                 end
                 local ok = win.buffer:undo_change(win, math.floor(parsed))
                 if not ok then

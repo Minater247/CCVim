@@ -2638,6 +2638,21 @@ function Builtins.getcwd(...)
     return VimFs.editor_cwd(window, tabpage)
 end
 
+function Builtins.chdir(path)
+    local target = tostring(path or "")
+    if target == "" then
+        error(Error(474):toString())
+    end
+
+    local abs = VimFs.abspath(target)
+    if not fs.exists(abs) or not fs.isDir(abs) then
+        error(Error(474, target):toString())
+    end
+
+    shell.setDir(abs:sub(2))
+    return 0
+end
+
 function Builtins.findfile(name, path, count)
     local win = windows[curwin]
     local buf = win.buffer
@@ -3557,6 +3572,84 @@ function Builtins.bufloaded(expr)
         return 0
     end
     return _buffer_is_loaded(buf) and 1 or 0
+end
+
+function Builtins.bufexists(expr)
+    local buf
+    if expr == nil or expr == "" or expr == "%" then
+        buf = windows[curwin].buffer
+    else
+        buf = _resolve_buffer_ref(expr)
+    end
+
+    return buf and 1 or 0
+end
+
+function Builtins.getbufvar(expr, varname, default)
+    local buf = _resolve_buffer_ref(expr)
+    if not buf then
+        return default
+    end
+
+    local name = tostring(varname or "")
+    if name:sub(1, 1) == "&" then
+        local optname = name:sub(2)
+        local value = options.get(optname, nil, buf)
+        if value == nil then
+            return default
+        end
+        if value == true then return 1 end
+        if value == false then return 0 end
+        return value
+    end
+
+    return default
+end
+
+function Builtins.getbufline(expr, first, last)
+    local buf = _resolve_buffer_ref(expr)
+    if not buf or not _buffer_is_loaded(buf) then
+        return {}
+    end
+
+    local lines = buf:lines_ref(false)
+    local line_count = #lines
+
+    local function resolve_lnum(v, fallback)
+        if v == nil then
+            return fallback
+        end
+        if type(v) == "string" then
+            if v == "$" then
+                return line_count
+            elseif v:match("^%d+$") then
+                return tonumber(v)
+            end
+            return fallback
+        end
+        if type(v) == "number" then
+            return math.floor(v)
+        end
+        return fallback
+    end
+
+    local start_lnum = resolve_lnum(first, 1)
+    local end_lnum = resolve_lnum(last, start_lnum)
+    if start_lnum > end_lnum then
+        return {}
+    end
+
+    start_lnum = math.max(1, start_lnum)
+    end_lnum = math.min(line_count, end_lnum)
+    if start_lnum > end_lnum then
+        return {}
+    end
+
+    local out = {}
+    for i = start_lnum, end_lnum do
+        out[#out + 1] = lines[i] or ""
+    end
+    return out
 end
 
 -- bufadd({name}): add/get an (unloaded, unlisted) buffer by name.
