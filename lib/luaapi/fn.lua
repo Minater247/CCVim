@@ -1167,6 +1167,23 @@ function Builtins.synconcealed(lnum, col, ...)
     return { q.conceal or 0, q.cchar or "", q.top_id or 0 }
 end
 
+function Builtins.getmatches(winid, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "getmatches"):toString())
+    end
+
+    local win = windows[curwin]
+    if winid ~= nil and winid ~= 0 then
+        local resolved = windows[tonumber(winid) or -1]
+        if not resolved then
+            error(Error(5002):toString())
+        end
+        win = resolved
+    end
+
+    return _syntax_mod().MatchGet(win)
+end
+
 function Builtins.synIDtrans(id, ...)
     if select("#", ...) > 0 then
         error(Error(118, "synIDtrans"):toString())

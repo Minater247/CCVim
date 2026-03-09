@@ -77,6 +77,10 @@ function Syntax.MatchClear(window, slot)
     return Engine.match_clear(window, slot)
 end
 
+function Syntax.MatchGet(window)
+    return Engine.match_get(window)
+end
+
 function Syntax.Query(window, lnum, col)
     return Engine.syn_query(window, lnum, col)
 end

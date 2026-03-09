@@ -339,6 +339,24 @@ function Api.match_set(window, slot, group, pattern)
     return true
 end
 
+function Api.match_get(window)
+    local win = active_window(window)
+    local state = ensure_match_state(win)
+    local out = {}
+    for slot = 1, 3 do
+        local item = state.slots[slot]
+        if item then
+            out[#out + 1] = {
+                group = item.group,
+                pattern = item.pattern,
+                priority = 10,
+                id = slot,
+            }
+        end
+    end
+    return out
+end
+
 function Api.match_command(window, slot, argstr)
     local raw = trim(argstr)
     if raw == "" or raw:lower() == "none" then
