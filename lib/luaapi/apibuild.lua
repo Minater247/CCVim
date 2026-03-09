@@ -103,7 +103,7 @@ local function list_runtime_vim_underscore_modules()
     local dir = ccvim_path .. "/runtime/lua/vim"
     local modules = {}
     for _, name in ipairs(fs.list(dir)) do
-        if name:sub(1, 1) == "_" and name:sub(-4) == ".lua" then
+        if name ~= "_meta.lua" and name:sub(1, 1) == "_" and name:sub(-4) == ".lua" then
             modules[#modules + 1] = "vim." .. name:sub(1, -5)
         end
     end
