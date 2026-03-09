@@ -12,7 +12,7 @@ end
 local function _normalize_autocmd_path(path)
     if type(path) ~= "string" or path == "" then return path or "" end
     if _is_scheme(path) then return path end
-    return VimFs.abspath(path)
+    return VimFs.editor_abspath(path)
 end
 
 local function _expand_sid()
@@ -181,7 +181,7 @@ function Filesystem.ExpandWildcards(path)
     end
 
     -- Resolve to an absolute path first so expansion is deterministic
-    local abs = VimFs.abspath(path)
+    local abs = VimFs.editor_abspath(path)
 
     local results = {}
 

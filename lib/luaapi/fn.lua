@@ -974,7 +974,7 @@ function Builtins.fnamemodify(fname, mods, R)
         i = i + 1
 
         if c == "p" then
-            out = _ensure_dir_trailing(VimFs.abspath(out))
+            out = _ensure_dir_trailing(VimFs.editor_abspath(out))
         elseif c == "8" then
             error("8.3 short format not supported on ComputerCraft")
         elseif c == "~" then -- luacheck: ignore 542
@@ -1873,8 +1873,8 @@ local function _split_path_parts(path)
 end
 
 local function _relpath_from_cwd(abs_target)
-    local cwd = _abs_path(".")
-    local target = _abs_path(abs_target)
+    local cwd = VimFs.editor_cwd()
+    local target = VimFs.editor_abspath(tostring(abs_target or ""))
     if cwd == target then
         return "."
     end
@@ -2635,18 +2635,7 @@ function Builtins.getcwd(...)
         end
     end
 
-    local p = window.curdir or tabpage.curdir
-    if p then
-        return _abs_path(p)
-    end
-
-    local cwd = tostring(shell.dir() or "")
-    if cwd == "" then
-        cwd = "/"
-    elseif cwd:sub(1, 1) ~= "/" then
-        cwd = "/" .. cwd
-    end
-    return VimFs.normalize(cwd, { expand_env = false })
+    return VimFs.editor_cwd(window, tabpage)
 end
 
 function Builtins.findfile(name, path, count)

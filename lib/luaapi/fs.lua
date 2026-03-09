@@ -49,6 +49,16 @@ local function _expand_home(path)
     return home .. tail
 end
 
+local function _shell_cwd()
+    local cwd = tostring(shell.dir() or "")
+    if cwd == "" then
+        cwd = "/"
+    elseif not _startswith(cwd, "/") then
+        cwd = "/" .. cwd
+    end
+    return VimFs.normalize(cwd, { expand_env = false, _fast = true })
+end
+
 --- Normalize a path per :help vim.fs.normalize() (POSIX behavior only).
 --- - Expands leading "~" to $HOME.
 --- - Expands "$VARS" when opts.expand_env is not false.
@@ -116,16 +126,52 @@ function VimFs.abspath(path)
         return normalized
     end
 
-    local cwd = tostring(shell.dir() or "")
-    if cwd == "" then
-        cwd = "/"
+    local cwd = _shell_cwd()
+
+    if normalized == "." then
+        return cwd
+    end
+    if cwd == "/" then
+        return VimFs.normalize("/" .. normalized, { expand_env = false })
+    end
+    return VimFs.normalize(cwd .. "/" .. normalized, { expand_env = false })
+end
+
+function VimFs.editor_cwd(window, tabpage)
+    local win = window or windows[curwin]
+    local tab = tabpage or tabpages[(win and win.tabpagenr) or curtp]
+    local cwd = (win and win.curdir) or (tab and tab.curdir)
+    if cwd == nil or cwd == "" then
+        return _shell_cwd()
+    end
+    if _startswith(cwd, "/") then
+        return VimFs.normalize(cwd, { expand_env = false })
     end
 
-    if not _startswith(cwd, "/") then
-        cwd = "/" .. cwd
+    local shell_cwd = _shell_cwd()
+    if cwd == "." then
+        return shell_cwd
     end
-    cwd = VimFs.normalize(cwd, { expand_env = false, _fast = true })
+    if shell_cwd == "/" then
+        return VimFs.normalize("/" .. cwd, { expand_env = false })
+    end
+    return VimFs.normalize(shell_cwd .. "/" .. cwd, { expand_env = false })
+end
 
+function VimFs.editor_abspath(path, window, tabpage)
+    if type(path) ~= "string" then
+        error(("path: expected string, got %s"):format(type(path)))
+    end
+
+    local normalized = VimFs.normalize(path)
+    if normalized == "" then
+        normalized = "."
+    end
+    if _startswith(normalized, "/") then
+        return normalized
+    end
+
+    local cwd = VimFs.editor_cwd(window, tabpage)
     if normalized == "." then
         return cwd
     end
