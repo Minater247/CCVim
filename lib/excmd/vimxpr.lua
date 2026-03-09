@@ -596,6 +596,7 @@ local function parse(tokens)
                     if peek().typ == "RBRACK" then break end
                     local op = expect("OP").val
                     if op ~= "," then error("Expected ',' in list literal") end
+                    if peek().typ == "RBRACK" then break end
                 end
             end
             expect("RBRACK")

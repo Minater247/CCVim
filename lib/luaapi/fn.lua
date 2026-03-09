@@ -1249,14 +1249,33 @@ end
 -- Minimal support needed for option-value-function use cases.
 Builtins["function"] = function(name, arglist, _dict)
     local fname
+    local direct_fn
     if type(name) == "function" then
         fname = funcref_name_by_fn[name]
     else
         fname = tostring(name or "")
         Runtime = Runtime or loadModule("lib.excmd.runtime")
-        local canon = Runtime.CanonicalFunctionName(fname, { state = Runtime._CURRENT_STATE })
-        if canon then
-            fname = canon
+        local trimmed = fname:gsub("^%s+", ""):gsub("%s+$", "")
+        local looks_funcexpr =
+            trimmed:match("^function%s*%(") ~= nil
+            or trimmed:match("^funcref%s*%(") ~= nil
+            or (trimmed:sub(1, 1) == "{" and trimmed:sub(-1) == "}" and trimmed:find("->", 1, true) ~= nil)
+        if looks_funcexpr then
+            local ok, rv = Runtime.EvalExpression(trimmed, {
+                state = Runtime._CURRENT_STATE,
+                ctrl = Runtime._CURRENT_CTRL,
+                script_ctx = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx,
+            })
+            if not ok or type(rv) ~= "function" then
+                error(Error(474, "function()"):toString())
+            end
+            direct_fn = rv
+            fname = funcref_name_by_fn[rv] or trimmed
+        else
+            local canon = Runtime.CanonicalFunctionName(fname, { state = Runtime._CURRENT_STATE })
+            if canon then
+                fname = canon
+            end
         end
     end
     if type(fname) ~= "string" or fname == "" then
@@ -1282,6 +1301,9 @@ Builtins["function"] = function(name, arglist, _dict)
         for i = 1, nargs do
             argv[#argv + 1] = select(i, ...)
         end
+        if direct_fn then
+            return direct_fn(table.unpack(argv))
+        end
         return call_vimfunc(fname, table.unpack(argv))
     end
     register_funcref_name(fname, funcref)
@@ -1290,6 +1312,19 @@ end
 
 Builtins.funcref = function(name, arglist, dict)
     return Builtins["function"](name, arglist, dict)
+end
+
+Builtins.call = function(func, args, _dict)
+    if type(args) ~= "table" then
+        error(Error(474, "call()"):toString())
+    end
+
+    if type(func) == "function" then
+        return func(table.unpack(args))
+    end
+
+    local fname = tostring(func or "")
+    return call_vimfunc(fname, table.unpack(args))
 end
 
 -- type({expr}): 0 number, 1 string, 2 func, 3 list, 4 dict, 5 float, 6 bool, 7 nil
@@ -2173,6 +2208,19 @@ function Builtins.exists(expr)
         end
     end
     return (scopes._g[s] ~= nil) and 1 or 0
+end
+
+function Builtins.eval(expr)
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
+    local ok, rv = Runtime.EvalExpression(expr, {
+        state = Runtime._CURRENT_STATE,
+        ctrl = Runtime._CURRENT_CTRL,
+        script_ctx = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx,
+    })
+    if not ok then
+        error(Error.IsError(rv) and rv:toString() or tostring(rv))
+    end
+    return rv
 end
 
 -- did_filetype(): true if filetype was set by detection (or already set)

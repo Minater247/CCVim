@@ -574,7 +574,7 @@ local function _normalize_option_value(name, value, source_expr)
             return _name_for_option_function(value)
         end
         if type(value) == "string" then
-            return _canonicalize_script_local_function_name(value)
+            return value
         end
     end
     return value
@@ -1861,7 +1861,7 @@ function Options.exset_token(token, mode, window, buffer)
             if Error.IsError(evaluated) then
                 return evaluated
             end
-            s = evaluated
+            s = trimmed
         end
     end
     local append_type = Options._append_type(name)

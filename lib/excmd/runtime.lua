@@ -470,8 +470,95 @@ local function resolve_path_key(container, seg)
     return seg.key
 end
 
+local function split_list_lhs_items(spec)
+    local s = tostring(spec or "")
+    local out, buf = {}, {}
+    local in_s, in_d, esc = false, false, false
+    local depth_p, depth_c, depth_b = 0, 0, 0
+
+    local function flush()
+        local item = table.concat(buf):gsub("^%s+", ""):gsub("%s+$", "")
+        out[#out + 1] = item
+        buf = {}
+    end
+
+    for i = 1, #s do
+        local ch = s:sub(i, i)
+        if esc then
+            buf[#buf + 1] = ch
+            esc = false
+        elseif ch == "\\" then
+            esc = true
+            buf[#buf + 1] = ch
+        elseif not in_d and ch == "'" then
+            in_s = not in_s
+            buf[#buf + 1] = ch
+        elseif not in_s and ch == '"' then
+            in_d = not in_d
+            buf[#buf + 1] = ch
+        elseif not in_s and not in_d then
+            if ch == "(" then
+                depth_p = depth_p + 1
+                buf[#buf + 1] = ch
+            elseif ch == ")" then
+                depth_p = math.max(0, depth_p - 1)
+                buf[#buf + 1] = ch
+            elseif ch == "{" then
+                depth_c = depth_c + 1
+                buf[#buf + 1] = ch
+            elseif ch == "}" then
+                depth_c = math.max(0, depth_c - 1)
+                buf[#buf + 1] = ch
+            elseif ch == "[" then
+                depth_b = depth_b + 1
+                buf[#buf + 1] = ch
+            elseif ch == "]" then
+                depth_b = math.max(0, depth_b - 1)
+                buf[#buf + 1] = ch
+            elseif ch == "," and depth_p == 0 and depth_c == 0 and depth_b == 0 then
+                flush()
+            else
+                buf[#buf + 1] = ch
+            end
+        else
+            buf[#buf + 1] = ch
+        end
+    end
+
+    if #buf > 0 then
+        flush()
+    end
+    return out
+end
+
 local function assign_lhs(lhs, value, state)
     local s = (lhs or ""):gsub("^%s+", ""):gsub("%s+$", "")
+
+    if s:sub(1, 1) == "[" and s:sub(-1) == "]" then
+        local inner = s:sub(2, -2)
+        local items = split_list_lhs_items(inner)
+        local src = {}
+        if type(value) == "string" then
+            for i = 1, #value do
+                src[#src + 1] = value:sub(i, i)
+            end
+        elseif type(value) == "table" then
+            for i = 1, #value do
+                src[i] = value[i]
+            end
+        end
+        for i = 1, #items do
+            local item = items[i]
+            if item ~= "" then
+                local ok = assign_lhs(item, src[i], state)
+                if Error.IsError(ok) then
+                    return ok
+                end
+            end
+        end
+        return true
+    end
+
     local parsed = split_lvalue_base_and_tail(s)
     if parsed and parsed.tail and parsed.tail ~= "" then
         local segments = parse_lvalue_segments(parsed.tail, state)
