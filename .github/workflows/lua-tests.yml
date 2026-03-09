@@ -1,0 +1,37 @@
+name: lua-tests
+
+on:
+  pull_request:
+    branches: [main, rewrite-2026]
+  push:
+    branches: [main, rewrite-2026]
+
+permissions:
+  contents: read
+
+jobs:
+  headless-nvim:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Lua
+        uses: leafo/gh-actions-lua@v11
+        with:
+          luaVersion: "5.1"
+
+      - name: Set up LuaRocks
+        uses: leafo/gh-actions-luarocks@v4
+
+      - name: Install Neovim
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y neovim
+
+      - name: Install test dependencies
+        run: luarocks install luafilesystem
+
+      - name: Run headless_nvim parity suite
+        run: npm run test:headless_nvim

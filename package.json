@@ -5,6 +5,9 @@
   "scripts": {
     "build:dist": "node scripts/minify_dist.cjs",
     "lint:lua": "luacheck .",
-    "lint": "npm run lint:lua"
+    "lint": "npm run lint:lua",
+    "test:lua_editor": "lua tests/run.lua",
+    "test:headless_nvim": "lua tests/run.lua --backend=headless_nvim",
+    "test": "npm run test:lua_editor && npm run test:headless_nvim"
   }
 }
