@@ -78,6 +78,60 @@ local function append_lua_path(prefix)
     package.path = prefix .. "/?.lua;" .. prefix .. "/?/init.lua;" .. package.path
 end
 
+local function file_exists(path)
+    local handle = io.open(path, "rb")
+    if not handle then
+        return false
+    end
+    handle:close()
+    return true
+end
+
+local function package_searchpath(module_name, search_path)
+    local module_path = tostring(module_name or ""):gsub("%.", "/")
+    local errors = {}
+
+    for template in tostring(search_path or ""):gmatch("[^;]+") do
+        local candidate = template:gsub("%?", module_path)
+        if file_exists(candidate) then
+            return candidate
+        end
+        errors[#errors + 1] = "\n\tno file '" .. candidate .. "'"
+    end
+
+    return nil, table.concat(errors)
+end
+
+local function install_test_module_alias()
+    local searchers = rawget(package, "searchers") or rawget(package, "loaders")
+    if type(searchers) ~= "table" then
+        return
+    end
+
+    local alias_prefix = "vim.tests."
+    local target_prefix = "tests."
+
+    local function alias_searcher(module_name)
+        if module_name:sub(1, #alias_prefix) ~= alias_prefix then
+            return nil
+        end
+
+        local alias_name = target_prefix .. module_name:sub(#alias_prefix + 1)
+        local file_path, search_err = package_searchpath(alias_name, package.path)
+        if not file_path then
+            return nil, search_err
+        end
+
+        local chunk, load_err = loadfile(file_path)
+        if not chunk then
+            error(load_err, 0)
+        end
+        return chunk, file_path
+    end
+
+    table.insert(searchers, 1, alias_searcher)
+end
+
 local function split_abs(path)
     local out = {}
     for seg in path:gmatch("[^/]+") do
@@ -121,6 +175,7 @@ local ccvim_parent = dirname(ccvim_root)
 -- Support both `vim.tests.*` and `tests.*` module prefixes from any cwd.
 append_lua_path(ccvim_parent)
 append_lua_path(ccvim_root)
+install_test_module_alias()
 
 _G.__CCVIM_TEST_ROOT = relpath(cwd(), ccvim_root)
 
