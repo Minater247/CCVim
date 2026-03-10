@@ -762,6 +762,18 @@ local function create_fs_api(state)
         return lfs_attr(path)
     end
 
+    local function host_runtime_attr(path)
+        path = tostring(path or "")
+        local root = tostring(state.ccvim_root or "")
+        if root == "" or path == "" or path:sub(1, 1) ~= "/" then
+            return nil
+        end
+        if path == root or path:sub(1, #root + 1) == root .. "/" then
+            return path_attr(path)
+        end
+        return nil
+    end
+
     function fs.abs_path(path)
         return abs(path)
     end
@@ -804,6 +816,8 @@ local function create_fs_api(state)
             if path_attr(path) ~= nil then
                 return true
             end
+        elseif host_runtime_attr(path) ~= nil then
+            return true
         end
         return path_attr(abs(path)) ~= nil
     end
@@ -812,6 +826,11 @@ local function create_fs_api(state)
         path = tostring(path or "")
         if path ~= "" and path:sub(1, 1) ~= "/" then
             local attr = path_attr(path)
+            if attr and attr.mode == "directory" then
+                return true
+            end
+        else
+            local attr = host_runtime_attr(path)
             if attr and attr.mode == "directory" then
                 return true
             end
@@ -862,6 +881,11 @@ local function create_fs_api(state)
         local target = abs(path)
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
+            if attr and attr.mode == "directory" then
+                target = orig_path
+            end
+        else
+            local attr = host_runtime_attr(orig_path)
             if attr and attr.mode == "directory" then
                 target = orig_path
             end
@@ -945,6 +969,11 @@ local function create_fs_api(state)
         local use_real_path = false
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
+            if attr and attr.mode == "file" then
+                use_real_path = true
+            end
+        else
+            local attr = host_runtime_attr(orig_path)
             if attr and attr.mode == "file" then
                 use_real_path = true
             end
@@ -1570,6 +1599,12 @@ function MockEnv.setup(opts)
     if not ccvim_root or ccvim_root == "" then
         ccvim_root = rawget(_G, "__CCVIM_TEST_ROOT") or "."
     end
+    if ccvim_root:sub(1, 1) ~= "/" then
+        ccvim_root = normalize_path((lfs.currentdir() or ".") .. "/" .. ccvim_root)
+    else
+        ccvim_root = normalize_path(ccvim_root)
+    end
+    state.ccvim_root = ccvim_root
 
     local globals = default_globals(state, colors)
     

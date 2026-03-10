@@ -23,6 +23,7 @@ local RuntimePath = loadModule("lib.runtimepath")
 local RegisterUtil = loadModule("lib.registers")
 local Utf8       = loadModule("lib.utf8")
 local Command = loadModule("lib.command")
+local Commands = loadModule("lib.excmd.commands")
 local Json = loadModule("lib.luaapi.json")
 local ScriptSource = loadModule("lib.scriptsource")
 local ApiBuild = loadModule("lib.luaapi.apibuild")
@@ -2193,6 +2194,20 @@ function Builtins.exists(expr)
         if def then return 1 end
         local gdef = Runtime.ResolveFunctionDef("g:" .. fname, { state = Runtime._CURRENT_STATE })
         if gdef then return 1 end
+        return 0
+    elseif s:sub(1, 1) == ":" then
+        local cname = s:sub(2)
+        if cname == "" then
+            return 0
+        end
+        local key = cname:lower()
+        local state = Runtime._CURRENT_STATE or Runtime._API_STATE
+        if (state and state.commands and state.commands[key]) or Runtime._USER_COMMANDS[key] then
+            return 2
+        end
+        if Commands.resolve_dispatch_name(cname) then
+            return 2
+        end
         return 0
     end
     -- Bare variable name: check function-local first, then global scope.
