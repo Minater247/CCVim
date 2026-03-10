@@ -30,9 +30,11 @@ lib/
 		api.lua
 		apibuild.lua
 		fakejit.lua
+		fakeuserdata.lua
 		fileload.lua
 		fn.lua
 		fs.lua
+		json.lua
 		loop.lua
 		lpeg.lua
 		on_key.lua
@@ -49,6 +51,7 @@ lib/
 	options.lua
 	pack.lua
 	popupmenu.lua
+	registers.lua
 	runtimepath.lua
 	scriptsource.lua
 	sign.lua
