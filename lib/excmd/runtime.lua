@@ -3297,6 +3297,24 @@ function Runtime.new(init_state, init_opts)
         return nil, nil
     end
 
+    local _menu_find_item
+
+    local function _menu_path_descends_through_leaf(name)
+        local parts, perr = _menu_validate_path(name)
+        if Error.IsError(perr) then
+            return nil, perr
+        end
+
+        local prefix = ""
+        for i = 1, #parts - 1 do
+            prefix = (prefix == "") and parts[i] or (prefix .. "." .. parts[i])
+            if _menu_find_item(prefix) then
+                return true, nil
+            end
+        end
+        return false, nil
+    end
+
     local function _menu_item_matches(name, item, pat)
         if _menu_path_matches(name, pat) then
             return true
@@ -3356,7 +3374,7 @@ function Runtime.new(init_state, init_opts)
         return changed
     end
 
-    local function _menu_find_item(name)
+    _menu_find_item = function(name)
         local menus = _menu_state()
         local lookup_order = { "a", "nvo", "n", "vs", "x", "s", "o", "i", "c", "tl" }
         for i = 1, #lookup_order do
@@ -3424,6 +3442,13 @@ function Runtime.new(init_state, init_opts)
             local name = args[idx]
             if not name then
                 return true
+            end
+            local leaf_conflict, cerr = _menu_path_descends_through_leaf(name)
+            if Error.IsError(cerr) then
+                return cerr
+            end
+            if leaf_conflict then
+                return Error(327)
             end
             idx = idx + 1
             local text = lstrip(raw)
@@ -3577,8 +3602,8 @@ function Runtime.new(init_state, init_opts)
             end
 
             local bucket = _menu_mode_bucket(spec.modes)
-            if bucket[name] and menu_opts.unique then
-                return Error(474, "Menu exists: " .. name)
+            if menu_opts.unique then
+                return Error(331)
             end
 
             bucket[name] = {
