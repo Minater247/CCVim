@@ -94,7 +94,7 @@ function Decoration.begin_redraw()
 
     for i = 1, #state.ids do
         local ns_id = state.ids[i]
-        local rv, _ok = call_provider(state, ns_id, "on_start", "start", state.tick)
+        local rv = call_provider(state, ns_id, "on_start", "start", state.tick)
         if rv == false then
             state.disabled[ns_id] = true
         end
@@ -138,7 +138,7 @@ function Decoration.on_window(win, topline0, botline0)
             end
 
             if not state.disabled[ns_id] then
-                local rv, _ok = call_provider(state, ns_id, "on_win", "win", winid, bufnr, topline0, botline0)
+                local rv = call_provider(state, ns_id, "on_win", "win", winid, bufnr, topline0, botline0)
                 if rv == false then
                     win_skip[ns_id] = true
                 end

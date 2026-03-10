@@ -3,7 +3,8 @@ local Utf8 = loadModule("lib.utf8")
 
 local floor = math.floor
 
-local _cfg_cache = { vts_raw = nil, ts_raw = nil, cfg = nil }
+-- { vts_raw = ..., ts_raw = ..., cfg = ... }
+local _cfg_cache = {}
 
 local function parse_vartabstop_list_fast(raw)
     if not raw or raw == "" then return {} end
@@ -130,8 +131,6 @@ function Tab.prev_display_tabstop(col, cfg)
         return col - m
     end
 end
-
-local floor = math.floor
 
 -- ---- shiftwidth(): effective value ----
 function Tab.shiftwidth_effective(buffer)

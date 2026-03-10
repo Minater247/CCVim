@@ -3,9 +3,9 @@ local ExMsg = {}
 local Highlight = loadModule("lib.highlight")
 local Tab = loadModule("lib.tab")
 local TexRen = loadModule("lib.texren")
-local Command
+local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
-local CmdRead
+local CmdRead = loadModule("lib.excmd.cmdread")
 
 --[[
 Array of messages. Each line is {hlgroup, str}.
@@ -90,8 +90,8 @@ local function silence_effect()
     -- Return one of: nil (no silent), {kind='silent', skip_errors=?, on_error=?}, or {kind='unsilent'}
     for i = #silence_stack, 1, -1 do
         local f = silence_stack[i]
-    if f.kind == 'unsilent' then return f end
-    if f.kind == 'silent' and not f.lifted then return f end
+        if f.kind == 'unsilent' then return f end
+        if f.kind == 'silent' and not f.lifted then return f end
     end
     return nil
 end
@@ -140,13 +140,13 @@ local capture_stack = {}
 -- :redir Support
 -- =====================================
 -- Single active redirection context:
---   { out = {"line1\n", ...}, partial = "pending_echon_text", on_close = fn }
+--   { out = {"line1", ...}, current = "open_current_line", on_close = fn }
 local redir_ctx = nil
 
 local function redir_flush_partial()
-    if redir_ctx and redir_ctx.partial ~= "" then
-        redir_ctx.out[#redir_ctx.out + 1] = redir_ctx.partial .. "\n"
-        redir_ctx.partial = ""
+    if redir_ctx and redir_ctx.current ~= nil then
+        redir_ctx.out[#redir_ctx.out + 1] = redir_ctx.current
+        redir_ctx.current = nil
     end
 end
 
@@ -154,19 +154,20 @@ local function redir_emit(str, nonewline)
     if not redir_ctx then
         return
     end
-
+    local text = tostring(str or "")
     if nonewline then
-        redir_ctx.partial = redir_ctx.partial .. tostring(str or "")
-    else
-        redir_flush_partial()
-        redir_ctx.out[#redir_ctx.out + 1] = tostring(str or "") .. "\n"
+        redir_ctx.current = (redir_ctx.current or "") .. text
+        return
     end
+
+    redir_flush_partial()
+    redir_ctx.current = "\n" .. text
 end
 
 function ExMsg.StartRedir(on_close)
     redir_ctx = {
         out = {},
-        partial = "",
+        current = nil,
         on_close = on_close,
     }
     return true
@@ -210,7 +211,9 @@ function ExMsg.EndCapture(cap)
     -- Locate (allow out-of-order end for robustness, though typical usage is LIFO)
     local idx
     for i = #capture_stack, 1, -1 do
-        if capture_stack[i] == cap then idx = i; break end
+        if capture_stack[i] == cap then
+            idx = i; break
+        end
     end
     if not idx then
         return "", nil -- unknown handle; fail softly
@@ -219,8 +222,6 @@ function ExMsg.EndCapture(cap)
     table.remove(capture_stack, idx)
     return table.concat(cap.out), cap.last_err
 end
-
-
 
 -- Renders the display lines to the blit cache.
 local function renderdisplay()
@@ -377,7 +378,6 @@ local function readMore(ch)
         exit_more()
         return
     elseif ch == colonref then
-        CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
         CmdRead.read()
     else
         -- Unsupported key: show long help, keep position.
@@ -405,7 +405,6 @@ local function readEnter(ch)
     if ch == enterref then
         exit_readEnter()
     elseif ch == colonref then
-        CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
         CmdRead.read()
     end
 end
@@ -415,8 +414,6 @@ local function start_more()
     in_press_enter = false
     more_top = 1
     more_help_long = false
-
-    Command = Command or loadModule("lib.command")
 
     -- If the hit-enter handler is currently on top, pop it cleanly.
     local top = Command.override_emitter[#Command.override_emitter]
@@ -490,7 +487,7 @@ local function draw_messages_and_prompt()
     -- Escalate to MoreMessage if we would consume the bottom status line.
     if #screenlines > (screen.height - 1) then
         in_press_enter = false
-        start_more()  -- pops hit-enter if needed; installs pager
+        start_more() -- pops hit-enter if needed; installs pager
         return
     end
 
@@ -498,23 +495,22 @@ local function draw_messages_and_prompt()
         -- Enter/maintain Press ENTER mode (logic only: state & handler)
         in_press_enter = true
 
-        Command = Command or loadModule("lib.command")
         local top = Command.override_emitter[#Command.override_emitter]
         if top ~= readEnter then
             table.insert(Command.override_emitter, readEnter)
             table.insert(Command.emitter_names, "ExMsg.readEnter")
         end
 
-    -- Pure draw into the current target (front or back buffer)
-    draw_press_enter()
+        -- Pure draw into the current target (front or back buffer)
+        draw_press_enter()
     else
-    -- No Press ENTER required; draw these messages as part of the next
-    -- tabpage render (to the back buffer) then clear. Avoid drawing here,
-    -- as the double-buffer swap would wipe front-buffer output.
-    in_press_enter = false
-    pending_one_shot = true
-    what_redraw["commandline"] = true
-    need_redraw = true
+        -- No Press ENTER required; draw these messages as part of the next
+        -- tabpage render (to the back buffer) then clear. Avoid drawing here,
+        -- as the double-buffer swap would wipe front-buffer output.
+        in_press_enter = false
+        pending_one_shot = true
+        what_redraw["commandline"] = true
+        need_redraw = true
     end
 end
 
@@ -546,7 +542,6 @@ end
 function ExMsg.IsOverlayActive()
     return in_more or in_press_enter
 end
-
 
 local function emit(str, hlgroup, nonewline, flush, savetomsg)
     if flush then
@@ -605,11 +600,9 @@ local function emit(str, hlgroup, nonewline, flush, savetomsg)
             end
             return
         end
-    -- else: fall through to normal UI handling for non-skipped errors,
-    -- and lift the silent so subsequent messages are not silent.
-    lift_current_silent()
-    elseif eff and eff.kind == 'unsilent' then
-        -- Explicitly unsilent: proceed with normal behavior below
+        -- else: fall through to normal UI handling for non-skipped errors,
+        -- and lift the silent so subsequent messages are not silent.
+        lift_current_silent()
     end
 
     if nonewline then
@@ -659,7 +652,6 @@ function ExMsg.echo(message)
 end
 
 function ExMsg.echohl(group)
-    ExMsg.flush()
     if not group or group == "" or group:lower() == "none" then
         current_hl = "Normal"
     else

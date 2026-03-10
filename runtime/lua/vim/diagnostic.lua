@@ -398,6 +398,16 @@ do
   })
 end
 
+local function diagnostic_cache_bufnrs()
+  local bufnrs = {}
+  for _, key in ipairs(vim.tbl_keys(diagnostic_cache)) do
+    if type(key) == 'number' then
+      bufnrs[#bufnrs + 1] = key
+    end
+  end
+  return bufnrs
+end
+
 --- @class (private) vim.diagnostic._extmark
 --- @field [1] integer id
 --- @field [2] integer start
@@ -2024,7 +2034,7 @@ function M.hide(namespace, bufnr)
   vim.validate('namespace', namespace, 'number', true)
   vim.validate('bufnr', bufnr, 'number', true)
 
-  local buffers = bufnr and { vim._resolve_bufnr(bufnr) } or vim.tbl_keys(diagnostic_cache)
+  local buffers = bufnr and { vim._resolve_bufnr(bufnr) } or diagnostic_cache_bufnrs()
   for _, iter_bufnr in ipairs(buffers) do
     local namespaces = namespace and { namespace } or vim.tbl_keys(diagnostic_cache[iter_bufnr])
     for _, iter_namespace in ipairs(namespaces) do
@@ -2369,7 +2379,7 @@ function M.reset(namespace, bufnr)
   vim.validate('namespace', namespace, 'number', true)
   vim.validate('bufnr', bufnr, 'number', true)
 
-  local buffers = bufnr and { vim._resolve_bufnr(bufnr) } or vim.tbl_keys(diagnostic_cache)
+  local buffers = bufnr and { vim._resolve_bufnr(bufnr) } or diagnostic_cache_bufnrs()
   for _, iter_bufnr in ipairs(buffers) do
     local namespaces = namespace and { namespace } or vim.tbl_keys(diagnostic_cache[iter_bufnr])
     for _, iter_namespace in ipairs(namespaces) do

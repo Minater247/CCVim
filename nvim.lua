@@ -43,7 +43,7 @@ local function log(level, format, ...)
     handle.close()
 end
 
-_V = {
+local _V = {
     vimversion_maj = 0,
     vimversion_min = 11,
     vimversion_pat = 3,
@@ -53,9 +53,16 @@ _V = {
 
     loaded_modules = {},
     state = {},
+    __ccvim_input_state = {
+        feedkeys_typeahead_depth = 0,
+    },
 
     curtp = 1,
-    tabpages = { { opts = {} } },
+    tabpages = { {
+        -- Enough of a tabpage for options to function during initialization
+        opts = {},
+        updateFrameview = function() end
+    } },
     curwin = 1,
     windows = {}, -- keep track of all the windows by index for more efficient access
     buffers = {},
@@ -83,15 +90,23 @@ _V = {
 }
 _V.vimversion_str = _V.vimversion_maj .. "." .. _V.vimversion_min .. "." .. _V.vimversion_pat
 
-local function loadModule(module)
-    if _V.loaded_modules[module] then
-        return _V.loaded_modules[module]
+local function loadModule(module, opts)
+    opts = opts or {}
+
+    local cached = _V.loaded_modules[module]
+    if cached ~= nil then
+        if type(cached) == "table" and cached.__ccvim_lazy_proxy then
+            if opts.immediate then
+                return cached.__ccvim_materialize()
+            end
+        end
+        return cached
     end
 
     local module_path = ccvim_path .. "/" .. module:gsub("%.", "/") .. ".lua"
 
     setmetatable(_V, {
-        __index = function(tbl, key)
+        __index = function(_tbl, key)
             if _G[key] then
                 return _G[key]
             else
@@ -102,9 +117,51 @@ local function loadModule(module)
 
     local loaded, error = loadfile(module_path, "t", _V)
     if loaded then
-        local mod = loaded()
-        _V.loaded_modules[module] = mod
-        return mod
+        local resolved = false
+        local mod
+
+        local function materialize()
+            if not resolved then
+                mod = loaded()
+                if mod == nil then
+                    mod = true
+                end
+                resolved = true
+                _V.loaded_modules[module] = mod
+            end
+            return mod
+        end
+
+        if opts.immediate then
+            return materialize()
+        end
+
+        local proxy = {
+            __ccvim_lazy_proxy = true,
+            __ccvim_materialize = materialize,
+        }
+        setmetatable(proxy, {
+            __index = function(_, key)
+                return materialize()[key]
+            end,
+            __newindex = function(_, key, value)
+                materialize()[key] = value
+            end,
+            __call = function(_, ...)
+                return materialize()(...)
+            end,
+            __len = function()
+                return #materialize()
+            end,
+            __pairs = function()
+                return pairs(materialize())
+            end,
+            __tostring = function()
+                return tostring(materialize())
+            end,
+        })
+        _V.loaded_modules[module] = proxy
+        return proxy
     else
         _V.LOG_DEBUG("loadModule(%s) failed, error: %s", module, error)
     end
@@ -160,7 +217,11 @@ local startuptime_buf = {}
 function _V.writestartup(message, exttime)
     local mytime = os.epoch("utc")
     local formatted_elapsedtime = string.format("%06.3f", mytime - startupstart)
-    startuptime_buf[#startuptime_buf+1] = formatted_elapsedtime .. (exttime and ("  " .. string.format("%06.3f", os.epoch("utc") - exttime)) or "") .. ": " .. message
+    startuptime_buf[#startuptime_buf+1] = ("%s%s: %s"):format(
+        formatted_elapsedtime,
+        (exttime and ("  " .. string.format("%06.3f", os.epoch("utc") - exttime)) or ""),
+        message
+    )
 end
 
 _V.writestartup("--- NVIM STARTING ---")
@@ -173,11 +234,10 @@ _V.options.set("columns", w)
 
 local Event = loadModule("lib.event")
 Event.LoadCommandModule()
-loadModule("lib.mappings")
+loadModule("lib.mappings", { immediate = true })
 
 local AutoCmd = loadModule("lib.autocmd")
 local PopupMenu = loadModule("lib.popupmenu")
-_V.rebalance_current_window_soft = FrameTree.RebalanceCurrentTab
 _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
 function _V.setMode(newmode, newx, newy)
@@ -316,7 +376,7 @@ function _V.enterWindow(winnr)
         AutoCmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
     end
 
-    _V.rebalance_current_window_soft()
+    FrameTree.RebalanceCurrentTab()
 end
 
 -- Set up the emitter
@@ -344,13 +404,13 @@ _source_runtime_startup("ftplugin.vim")
 _source_runtime_startup("indent.vim")
 
 _V.writestartup("sourcing vimrc file(s)")
-local ok, err = ScriptSource.source(ccvim_path .. "/config/init.lua")
-if not ok then
+local srcok, srcerr = ScriptSource.source(ccvim_path .. "/config/init.lua")
+if not srcok then
     local cause
-    if Error.IsError(err) then
-        cause = err:toString()
+    if Error.IsError(srcerr) then
+        cause = srcerr:toString()
     else
-        cause = tostring(err)
+        cause = tostring(srcerr)
     end
     _V.LOG_DEBUG("Failed to source init file! Reason: %s", cause)
 end
@@ -427,7 +487,7 @@ end
 
 -- Run the main loop
 
-ok, err = xpcall(Event.RunLoop, function(e)
+local ok, err = xpcall(Event.RunLoop, function(e)
     return debug.traceback("A critical internal error occurred:\n" .. tostring(e), 2)
 end)
 

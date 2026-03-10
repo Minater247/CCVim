@@ -77,7 +77,7 @@ local function downloadFile(relPath)
     local data, err
 
     if doRelease then
-        data, err = httpGet(COMPRESSED_URL .. relPath)
+        data = httpGet(COMPRESSED_URL .. relPath)
     end
     
     if not data then
@@ -566,7 +566,13 @@ local function runInstall()
         syntaxes["vim/generated.vim"] = true
     end
     -- Shared
-    if syntaxes["deb822sources.vim"] or syntaxes["debchangelog.vim"] or syntaxes["debsources.vim"] or syntaxes["debversions.vim"] then
+    if
+        syntaxes["deb822sources.vim"]
+        or syntaxes["debchangelog.vim"]
+        or syntaxes["debsources.vim"]
+        or syntaxes["debversions.vim"]
+    then
+            
         syntaxes["shared/debversions.vim"] = true
     end
     if syntaxes["hgcommit.vim"] then

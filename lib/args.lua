@@ -139,9 +139,9 @@ function Args.parse(argv)
     end
 
     -- Step 1: Make the buffers
-    for i = 1, #state.files do
+    for idx = 1, #state.files do
         local buf = Buffer(true, false, false)
-        buf.name = state.files[i]
+        buf.name = state.files[idx]
         buf.opts.readonly = state.readonly
         buf.opts.modifiable = not state.nomodifiable
         state.file_bufnrs[#state.file_bufnrs + 1] = buf.bufnr
@@ -156,30 +156,30 @@ function Args.parse(argv)
         startup_window_buffer = Buffer(true, false)
     end
 
-    for i = 1, state.mkwins do
+    for idx = 1, state.mkwins do
         if startup_window_buffer then
             Window(startup_window_buffer)
         else
-            Window(buffers[i])
+            Window(buffers[idx])
         end
     end
 
     local firsttp = Tabpage(windows[1])
-    for i = 2, #windows do
-        firsttp:WinSplit(windows[i-1].winnr, windows[i], state.win_split_type == 2)
+    for idx = 2, #windows do
+        firsttp:WinSplit(windows[idx-1].winnr, windows[idx], state.win_split_type == 2)
     end
     assert(FrameTree.Equalize(firsttp.tree))
     
     if state.mktabs == 0 then
         state.mktabs = #state.files
     end
-    for i = 2, state.mktabs do
+    for _ = 2, state.mktabs do
         Tabpage()
     end
 
     local visible_count = math.min(#state.file_bufnrs, state.mkwins)
-    for i = 1, visible_count do
-        state.window_bufnrs[i] = state.file_bufnrs[i]
+    for idx = 1, visible_count do
+        state.window_bufnrs[idx] = state.file_bufnrs[idx]
     end
 
     pending_file_bufnrs = state.file_bufnrs

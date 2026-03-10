@@ -19,6 +19,16 @@ end
 local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
 local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
 local resolve_dispatch_name = Commands.resolve_dispatch_name
+local parse_cmd_head
+
+local COMMAND_WRAPPERS = {
+    silent = true,
+    unsilent = true,
+    keepalt = true,
+    keepjumps = true,
+    noautocmd = true,
+    verbose = true,
+}
 
 local function _expr_head_only_before_quote(head)
     local s = tostring(head or "")
@@ -76,6 +86,25 @@ local function split_commands(script)
             if c == "\n" then
                 flush_segment(); i = i + 1; goto continue
             elseif not in_s and not in_d and c == "|" and not seg_no_bar and not esc then
+                local head = trim(table.concat(buf))
+                if head ~= "" then
+                    local cmd, rest = parse_cmd_head(head)
+                    local guard = 0
+                    while type(cmd) == "string" and COMMAND_WRAPPERS[cmd] and guard < 8 do
+                        head = trim(rest or "")
+                        if head == "" then
+                            break
+                        end
+                        cmd, rest = parse_cmd_head(head)
+                        guard = guard + 1
+                    end
+                    if type(cmd) == "string" and cmd ~= "" then
+                        local _, nested_no_bar = _cmd_mode_and_bar(cmd)
+                        if nested_no_bar then
+                            buf[#buf + 1] = c; i = i + 1; goto continue
+                        end
+                    end
+                end
                 local prevc = (i > 1) and script:sub(i - 1, i - 1) or ""
                 if prevc == "\\" then
                     buf[#buf + 1] = c; i = i + 1; goto continue
@@ -115,7 +144,10 @@ local function split_commands(script)
                     local start_string = false
                     if not prev then
                         start_string = true
-                    elseif prev:match("[=,:%(%[%{%+%-%*/%%<>~%^&|?#%.]") or _expr_head_only_before_quote(table.concat(buf)) then
+                    elseif
+                        prev:match("[=,:%(%[%{%+%-%*/%%<>~%^&|?#%.]")
+                        or _expr_head_only_before_quote(table.concat(buf))
+                    then
                         start_string = true
                     end
                     if not start_string then
@@ -250,7 +282,7 @@ local function strip_range_prefix(s)
     return s:sub(i)
 end
 
-local function parse_cmd_head(line)
+function parse_cmd_head(line)
     local s = tostring(line or ""):gsub("^%s+", "")
     while true do
         local c = s:sub(1, 1)
@@ -490,10 +522,10 @@ local function build_ir(script)
                 local v = tostring(cmds[k] or ""):gsub("'", "''")
                 items[#items + 1] = "'" .. v .. "'"
             end
-            local rhs = "[" .. table.concat(items, ", ") .. "]"
+            local heredoc_value = "[" .. table.concat(items, ", ") .. "]"
             ir[#ir + 1] = {
                 cmd = "let",
-                rest = lhs .. " = " .. rhs,
+                rest = lhs .. " = " .. heredoc_value,
                 bang = false,
                 raw = "let",
                 verbose_count = nil,
@@ -711,8 +743,8 @@ local function _compile_condition(expr, ctx)
     return "runtime:truthy(" .. c.code .. ")"
 end
 
-function Compiler.compile_expr(expr, _ctx)
-    return _compile_expr_typed(expr, _ctx).code
+function Compiler.compile_expr(expr, ctx)
+    return _compile_expr_typed(expr, ctx).code
 end
 
 function Compiler.compile_command(node, ctx)
@@ -814,10 +846,16 @@ function Compiler.compile_script(script, opts)
             local node = seq[i]
             local c = node.cmd or ""
             if c == "if" then
-                lua_lines[#lua_lines + 1] = indent .. "if " .. _compile_condition(node.rest or "", { state = opts.state }) .. " then"
+                lua_lines[#lua_lines + 1] = ("%sif %s then"):format(
+                    indent,
+                    _compile_condition(node.rest or "", { state = opts.state })
+                )
                 i = i + 1
             elseif c == "elseif" then
-                lua_lines[#lua_lines + 1] = indent .. "elseif " .. _compile_condition(node.rest or "", { state = opts.state }) .. " then"
+                lua_lines[#lua_lines + 1] = ("%selseif %s then"):format(
+                    indent,
+                    _compile_condition(node.rest or "", { state = opts.state })
+                )
                 i = i + 1
             elseif c == "else" then
                 lua_lines[#lua_lines + 1] = indent .. "else"
@@ -829,20 +867,28 @@ function Compiler.compile_script(script, opts)
                 local lbl = string.format("__cont_%d", node.line or #lua_lines)
                 loop_stack[#loop_stack + 1] = lbl
                 lua_lines[#lua_lines + 1] = indent .. "while true do"
-                lua_lines[#lua_lines + 1] = indent .. "  if not " .. _compile_condition(node.rest or "", { state = opts.state }) .. " then break end"
+                lua_lines[#lua_lines + 1] = ("%s  if not %s then break end"):format(
+                    indent,
+                    _compile_condition(node.rest or "", { state = opts.state })
+                )
                 lua_lines[#lua_lines + 1] = indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()"
                 i = i + 1
             elseif c == "endwhile" then
                 local lbl = loop_stack[#loop_stack]
                 loop_stack[#loop_stack] = nil
+                local lbl_while = lbl or "__cont"
                 lua_lines[#lua_lines + 1] = indent .. "  end)"
                 lua_lines[#lua_lines + 1] = indent .. "  if not __loop_ok then"
-                lua_lines[#lua_lines + 1] = indent .. "    if type(__loop_err) == 'table' and __loop_err.__continue then goto " .. (lbl or "__cont") .. " end"
-                lua_lines[#lua_lines + 1] = indent .. "    if type(__loop_err) == 'table' and __loop_err.__break then break end"
-                lua_lines[#lua_lines + 1] = indent .. "    if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "    if type(__loop_err) == 'table' and __loop_err.__continue then goto " ..
+                    lbl_while .. " end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "    if type(__loop_err) == 'table' and __loop_err.__break then break end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "    if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
                 lua_lines[#lua_lines + 1] = indent .. "    error(__loop_err)"
                 lua_lines[#lua_lines + 1] = indent .. "  end"
-                lua_lines[#lua_lines + 1] = indent .. "  ::" .. (lbl or "__cont") .. "::"
+                lua_lines[#lua_lines + 1] = indent .. "  ::" .. lbl_while .. "::"
                 lua_lines[#lua_lines + 1] = indent .. "end"
                 i = i + 1
             elseif c == "for" then
@@ -853,7 +899,9 @@ function Compiler.compile_script(script, opts)
                     local lbl = string.format("__cont_%d", node.line or #lua_lines)
                     loop_stack[#loop_stack + 1] = lbl
                     lua_lines[#lua_lines + 1] = indent .. "do"
-                    lua_lines[#lua_lines + 1] = indent .. "  for _, __v in ipairs(runtime:iter(" .. Compiler.compile_expr(rhs or "", { state = opts.state }) .. ")) do"
+                    local iter_expr = Compiler.compile_expr(rhs or "", { state = opts.state })
+                    lua_lines[#lua_lines + 1] = indent ..
+                        "  for _, __v in ipairs(runtime:iter(" .. iter_expr .. ")) do"
                     lua_lines[#lua_lines + 1] = indent .. "    runtime:assign(" .. lua_string(lhs) .. ", __v)"
                     lua_lines[#lua_lines + 1] = indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()"
                 end
@@ -861,14 +909,19 @@ function Compiler.compile_script(script, opts)
             elseif c == "endfor" then
                 local lbl = loop_stack[#loop_stack]
                 loop_stack[#loop_stack] = nil
+                local lbl_for = lbl or "__cont"
                 lua_lines[#lua_lines + 1] = indent .. "    end)"
                 lua_lines[#lua_lines + 1] = indent .. "    if not __loop_ok then"
-                lua_lines[#lua_lines + 1] = indent .. "      if type(__loop_err) == 'table' and __loop_err.__continue then goto " .. (lbl or "__cont") .. " end"
-                lua_lines[#lua_lines + 1] = indent .. "      if type(__loop_err) == 'table' and __loop_err.__break then break end"
-                lua_lines[#lua_lines + 1] = indent .. "      if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "      if type(__loop_err) == 'table' and __loop_err.__continue then goto " ..
+                    lbl_for .. " end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "      if type(__loop_err) == 'table' and __loop_err.__break then break end"
+                lua_lines[#lua_lines + 1] = indent ..
+                    "      if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
                 lua_lines[#lua_lines + 1] = indent .. "      error(__loop_err)"
                 lua_lines[#lua_lines + 1] = indent .. "    end"
-                lua_lines[#lua_lines + 1] = indent .. "    ::" .. (lbl or "__cont") .. "::"
+                lua_lines[#lua_lines + 1] = indent .. "    ::" .. lbl_for .. "::"
                 lua_lines[#lua_lines + 1] = indent .. "  end"
                 lua_lines[#lua_lines + 1] = indent .. "end"
                 i = i + 1
@@ -931,12 +984,17 @@ function Compiler.compile_script(script, opts)
                     emit_block(try_body_ir, indent .. "    ", loop_stack)
                     lua_lines[#lua_lines + 1] = indent .. "  end)"
                     lua_lines[#lua_lines + 1] = indent .. "  if not __try_ok then"
-                    lua_lines[#lua_lines + 1] = indent .. "    if type(__try_err) == 'table' and (__try_err.__ret or __try_err.__break or __try_err.__continue) then error(__try_err) end"
+                    lua_lines[#lua_lines + 1] = indent ..
+                        "    if type(__try_err) == 'table' and " ..
+                        "(__try_err.__ret or __try_err.__break or __try_err.__continue)" ..
+                        " then error(__try_err) end"
                     if #catches > 0 then
                         for ci = 1, #catches do
                             local cat = catches[ci]
                             local kw = (ci == 1) and "if" or "elseif"
-                            lua_lines[#lua_lines + 1] = indent .. "    " .. kw .. " runtime:catch_matches(__try_err, " .. lua_string(cat.rest or "") .. ") then"
+                            lua_lines[#lua_lines + 1] = indent .. "    " ..
+                                kw .. " runtime:catch_matches(__try_err, " ..
+                                lua_string(cat.rest or "") .. ") then"
                             emit_block(cat.body or {}, indent .. "      ", loop_stack)
                         end
                         lua_lines[#lua_lines + 1] = indent .. "    else"
@@ -980,7 +1038,11 @@ function Compiler.compile_script(script, opts)
                         lua_lines[#lua_lines + 1] = indent .. "  local __fn = function(runtime)"
                         emit_block(body_ir, indent .. "    ")
                         lua_lines[#lua_lines + 1] = indent .. "  end"
-                        lua_lines[#lua_lines + 1] = indent .. "  runtime:register_function(" .. lua_string(fname) .. ", { " .. table.concat(plist, ", ") .. " }, __fn)"
+                        lua_lines[#lua_lines + 1] = ("%s  runtime:register_function(%s, {%s}, __fn)"):format(
+                            indent,
+                            lua_string(fname),
+                            table.concat(plist, ", ")
+                        )
                         lua_lines[#lua_lines + 1] = indent .. "end"
                     i = end_idx + 1
                 end
@@ -999,7 +1061,10 @@ function Compiler.compile_script(script, opts)
                     .. ", "
                     .. lua_string(node.rest or "")
                     .. ")"
-                lua_lines[#lua_lines + 1] = indent .. Compiler.compile_command(node, { state = opts.state, loop_continue = loop_stack[#loop_stack] })
+                lua_lines[#lua_lines + 1] = ("%s%s"):format(
+                    indent,
+                    Compiler.compile_command(node, { state = opts.state, loop_continue = loop_stack[#loop_stack] })
+                )
                 i = i + 1
             end
         end

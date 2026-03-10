@@ -43,41 +43,20 @@ local function init_defaults()
     defaults.MYVIMRC = ccvim_path .. "/config/init.lua"
 end
 
+local function provider_method(name)
+    return type(provider) == "table" and type(provider[name]) == "function" and provider[name] or nil
+end
+
 local function provider_getter()
     if type(provider) == "function" then
         return provider
     end
-    if type(provider) == "table" then
-        if type(provider.get) == "function" then
-            return provider.get
-        end
-        if type(provider.getenv) == "function" then
-            return provider.getenv
-        end
-    end
-    return nil
+    return provider_method("get") or provider_method("getenv")
 end
 
-local function provider_exists_fn()
-    if type(provider) == "table" and type(provider.exists) == "function" then
-        return provider.exists
-    end
-    return nil
-end
-
-local function provider_setter()
-    if type(provider) == "table" and type(provider.set) == "function" then
-        return provider.set
-    end
-    return nil
-end
-
-local function provider_unsetter()
-    if type(provider) == "table" and type(provider.unset) == "function" then
-        return provider.unset
-    end
-    return nil
-end
+local function provider_exists_fn() return provider_method("exists") end
+local function provider_setter()    return provider_method("set")    end
+local function provider_unsetter()  return provider_method("unset")  end
 
 local function provider_get(name)
     local getter = provider_getter()

@@ -12,7 +12,7 @@ local captured = {}
 vim.api.nvim_create_autocmd('DirChanged', {
   group = gid,
   pattern = '*',
-  callback = function(info)
+  callback = function()
     -- deep copy of v.event
     local ev = {}
     for k,v in pairs(vim.v.event) do ev[k] = v end
@@ -21,13 +21,22 @@ vim.api.nvim_create_autocmd('DirChanged', {
 })
 
 -- Fire with synthetic data (engine-internal trigger not yet wired for directory changes here)
-vim.api.nvim_exec_autocmds('DirChanged', { data = { scope = 'window', cwd = '/old', new_cwd = '/new', changed_window = true } })
+vim.api.nvim_exec_autocmds(
+  'DirChanged',
+  {
+    data = {
+      scope = 'window',
+      cwd = '/old',
+      new_cwd = '/new',
+      changed_window = true
+    }
+  }
+)
 
 ok('autocmd fired once', #captured == 1, tostring(#captured))
 ok('v.event.scope', captured[1] and captured[1].scope == 'window', captured[1] and captured[1].scope)
 ok('v.event.cwd choose new_cwd', captured[1] and captured[1].cwd == '/new', captured[1] and captured[1].cwd)
 
 -- After event should be cleared/restored (empty table expected)
-local post_empty = true
-for k,_ in pairs(vim.v.event) do post_empty = false break end
+local post_empty = next(vim.v.event) == nil
 ok('v.event cleared after run', post_empty)

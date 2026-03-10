@@ -8,9 +8,10 @@ local Compiler = loadModule("lib.excmd.compiler")
 local Commands = loadModule("lib.excmd.commands")
 local Options = loadModule("lib.options")
 local Autocmd = loadModule("lib.autocmd")
-local ScriptSource
+local ScriptSource = loadModule("lib.scriptsource")
 local scopes = loadModule("lib.luaapi.scopes")
 local Builtins = loadModule("lib.luaapi.fn")
+local Utf8 = loadModule("lib.utf8")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -159,7 +160,7 @@ local function canonical_function_name(name, opts)
 end
 
 local function fresh_v(extra)
-    local v = { ["true"] = true, ["false"] = false, null = nil, errmsg = "", exception = nil, throwpoint = nil }
+    local v = { ["true"] = true, ["false"] = false, errmsg = "" }
     if type(extra) == "table" then
         for k, val in pairs(extra) do v[k] = val end
     end
@@ -202,7 +203,7 @@ local function eval_expr(expr, state)
     }
     local funcs = state.funcs or {}
     local rv = VimExpr.evaluate(expr, { scope = scope, funcs = funcs })
-    if Error.IsError(rv) then error(rv:toString()) end
+    if Error.IsError(rv) then error(rv) end
     return rv
 end
 
@@ -269,7 +270,6 @@ local function try_autoload_function(name)
         return false
     end
 
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     LOG_DEBUG("autoload: loading %s for %s", script, name)
 
     local ok = ScriptSource.source_runtime(script .. ".vim")
@@ -469,8 +469,95 @@ local function resolve_path_key(container, seg)
     return seg.key
 end
 
+local function split_list_lhs_items(spec)
+    local s = tostring(spec or "")
+    local out, buf = {}, {}
+    local in_s, in_d, esc = false, false, false
+    local depth_p, depth_c, depth_b = 0, 0, 0
+
+    local function flush()
+        local item = table.concat(buf):gsub("^%s+", ""):gsub("%s+$", "")
+        out[#out + 1] = item
+        buf = {}
+    end
+
+    for i = 1, #s do
+        local ch = s:sub(i, i)
+        if esc then
+            buf[#buf + 1] = ch
+            esc = false
+        elseif ch == "\\" then
+            esc = true
+            buf[#buf + 1] = ch
+        elseif not in_d and ch == "'" then
+            in_s = not in_s
+            buf[#buf + 1] = ch
+        elseif not in_s and ch == '"' then
+            in_d = not in_d
+            buf[#buf + 1] = ch
+        elseif not in_s and not in_d then
+            if ch == "(" then
+                depth_p = depth_p + 1
+                buf[#buf + 1] = ch
+            elseif ch == ")" then
+                depth_p = math.max(0, depth_p - 1)
+                buf[#buf + 1] = ch
+            elseif ch == "{" then
+                depth_c = depth_c + 1
+                buf[#buf + 1] = ch
+            elseif ch == "}" then
+                depth_c = math.max(0, depth_c - 1)
+                buf[#buf + 1] = ch
+            elseif ch == "[" then
+                depth_b = depth_b + 1
+                buf[#buf + 1] = ch
+            elseif ch == "]" then
+                depth_b = math.max(0, depth_b - 1)
+                buf[#buf + 1] = ch
+            elseif ch == "," and depth_p == 0 and depth_c == 0 and depth_b == 0 then
+                flush()
+            else
+                buf[#buf + 1] = ch
+            end
+        else
+            buf[#buf + 1] = ch
+        end
+    end
+
+    if #buf > 0 then
+        flush()
+    end
+    return out
+end
+
 local function assign_lhs(lhs, value, state)
     local s = (lhs or ""):gsub("^%s+", ""):gsub("%s+$", "")
+
+    if s:sub(1, 1) == "[" and s:sub(-1) == "]" then
+        local inner = s:sub(2, -2)
+        local items = split_list_lhs_items(inner)
+        local src = {}
+        if type(value) == "string" then
+            for i = 1, #value do
+                src[#src + 1] = value:sub(i, i)
+            end
+        elseif type(value) == "table" then
+            for i = 1, #value do
+                src[i] = value[i]
+            end
+        end
+        for i = 1, #items do
+            local item = items[i]
+            if item ~= "" then
+                local ok = assign_lhs(item, src[i], state)
+                if Error.IsError(ok) then
+                    return ok
+                end
+            end
+        end
+        return true
+    end
+
     local parsed = split_lvalue_base_and_tail(s)
     if parsed and parsed.tail and parsed.tail ~= "" then
         local segments = parse_lvalue_segments(parsed.tail, state)
@@ -512,7 +599,7 @@ local function assign_lhs(lhs, value, state)
     state.g[s] = value; return true
 end
 
-local function unlet(names, bang, state)
+local function unlet(names, _, state)
     local top = state.frames[#state.frames]
     for tok in names:gmatch("%S+") do
         local name = tok:gsub(",%$", "")
@@ -896,24 +983,24 @@ end
 local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
 local MENU_COMMAND_SPECS = Commands.MENU_COMMAND_SPECS
 local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
+local get_command_spec = Commands.get_spec
 local resolve_dispatch_name = Commands.resolve_dispatch_name
 
-function Runtime.new(state, opts)
-    local ExMsg
+function Runtime.new(init_state, init_opts)
+    local ExMsg = loadModule("lib.excmd.exmsg")
     local function _exmsg()
-        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
         return ExMsg
     end
 
-    local self = {
-        state = ensure_state(state),
-        opts = opts or {},
+    local rt = {
+        state = ensure_state(init_state),
+        opts = init_opts or {},
         Error = Error,
         return_exc = {},
         exec_cursor = {},
     }
 
-    function self:set_exec_cursor(line, text, cmd, rest)
+    function rt:set_exec_cursor(line, text, cmd, rest)
         self.exec_cursor.line = line
         self.exec_cursor.text = text
         self.exec_cursor.cmd = cmd
@@ -921,11 +1008,11 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:get_exec_cursor()
+    function rt:get_exec_cursor()
         return self.exec_cursor
     end
 
-    function self:push_frame(arg_values, param_names)
+    function rt:push_frame(arg_values, param_names)
         local l_scope, a_scope = build_call_scopes(arg_values, param_names)
         local frame = { l = l_scope, a = a_scope, v = self.state.v }
         local sf = self.state.frames
@@ -933,12 +1020,12 @@ function Runtime.new(state, opts)
         return frame
     end
 
-    function self:pop_frame()
+    function rt:pop_frame()
         local sf = self.state.frames
         sf[#sf] = nil
     end
 
-    function self:call_func(name, args)
+    function rt:call_func(name, args)
         local unpack_fn = table.unpack or unpack
 
         local function resolve_vlua(callee)
@@ -1016,7 +1103,7 @@ function Runtime.new(state, opts)
         error(rv)
     end
 
-    function self:register_function(name, params, body)
+    function rt:register_function(name, params, body)
         local def = {
             params = params or {},
             body = body,
@@ -1037,7 +1124,7 @@ function Runtime.new(state, opts)
         Runtime._FUNCS[def.name] = def
     end
 
-    function self:eval_expr(expr)
+    function rt:eval_expr(expr)
         local state = self.state
         local top = state.frames[#state.frames]
         local scope = {
@@ -1086,11 +1173,11 @@ function Runtime.new(state, opts)
             funcs = funcs,
             script_sid = state.script_sid,
         })
-        if Error.IsError(rv) then error(rv:toString()) end
+        if Error.IsError(rv) then error(rv) end
         return rv
     end
 
-    function self:get_var(name)
+    function rt:get_var(name)
         local var = strip(name)
         local scope, key = var:match("^([gslavwb]):(.+)$")
         local top = self.state.frames[#self.state.frames]
@@ -1106,7 +1193,7 @@ function Runtime.new(state, opts)
         return self.state.g[var]
     end
 
-    function self:get_option(name, mode)
+    function rt:get_option(name, mode)
         local win = windows[curwin]
         local buf = win.buffer
         local getlocal = mode == "local"
@@ -1118,7 +1205,7 @@ function Runtime.new(state, opts)
         return val
     end
 
-    function self:cmp(a, op, b)
+    function rt:cmp(a, op, b)
         if op == "==" then return a == b end
         if op == "!=" then return a ~= b end
 
@@ -1141,15 +1228,15 @@ function Runtime.new(state, opts)
         error("Unknown comparison operator: " .. tostring(op))
     end
 
-    function self:truthy(v)
+    function rt:truthy(v)
         return truthy(v)
     end
 
-    function self:assign(lhs, value)
+    function rt:assign(lhs, value)
         return assign_lhs(lhs, value, self.state)
     end
 
-    function self:assign_compound(lhs, op, rhs)
+    function rt:assign_compound(lhs, op, rhs)
         local cur = self:get_var(lhs)
         local value
 
@@ -1184,21 +1271,20 @@ function Runtime.new(state, opts)
         return assign_lhs(lhs, value, self.state)
     end
 
-    function self:unlet(spec, bang)
+    function rt:unlet(spec, bang)
         return unlet(spec, bang, self.state)
     end
 
-    function self:iter(val)
+    function rt:iter(val)
         return iter_list(val)
     end
 
-    function self:_push_script_ctx()
+    function rt:_push_script_ctx()
         local state = self.state
         self.__prev_state = Runtime._CURRENT_STATE
         self.__prev_ctrl = Runtime._CURRENT_CTRL
         self.__pushed_ctx = false
         if state.script_ctx and state.script_ctx ~= "" then
-            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PushContext(state.script_ctx)
             self.__pushed_ctx = true
         end
@@ -1206,11 +1292,10 @@ function Runtime.new(state, opts)
         Runtime._CURRENT_CTRL = nil
     end
 
-    function self:_pop_script_ctx()
+    function rt:_pop_script_ctx()
         Runtime._CURRENT_STATE = self.__prev_state
         Runtime._CURRENT_CTRL = self.__prev_ctrl
         if self.__pushed_ctx then
-            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PopContext()
         end
         self.__pushed_ctx = false
@@ -1218,23 +1303,23 @@ function Runtime.new(state, opts)
         self.__prev_ctrl = nil
     end
 
-    function self:_pcall(fn)
+    function rt:_pcall(fn)
         return pcall(fn)
     end
 
-    function self:return_exc(value)
+    function rt:return_exc(value)
         return { __ret = true, value = value }
     end
 
-    function self:break_exc()
+    function rt:break_exc()
         return { __break = true }
     end
 
-    function self:continue_exc()
+    function rt:continue_exc()
         return { __continue = true }
     end
 
-    function self:catch_matches(err, spec)
+    function rt:catch_matches(err, spec)
         local s = strip(spec or "")
         if s == "" then
             return true
@@ -1269,7 +1354,7 @@ function Runtime.new(state, opts)
         return win, win.buffer
     end
 
-    function self:exec_script(script)
+    function rt:exec_script(script)
         local lazy_block = Options.get("lazyredraw")
         if lazy_block then
             lazyredraw_block = lazyredraw_block + 1
@@ -1305,11 +1390,12 @@ function Runtime.new(state, opts)
         return rv
     end
 
-    function self:execute(expr)
+    function rt:execute(expr)
         local s = tostring(expr or "")
 
         local function expand_execute_dollar_single_quoted(input_expr)
-            local interpolated = tostring(input_expr or ""):match("^%$'(.*)'$")
+            local text = tostring(input_expr or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local interpolated = text:match("^%$'(.*)'$")
             if not interpolated then
                 return nil, false
             end
@@ -1381,7 +1467,7 @@ function Runtime.new(state, opts)
         return self:exec_script(line)
     end
 
-    function self:exec_verbose(level, body)
+    function rt:exec_verbose(level, body)
         level = tonumber(level) or 1
         body = tostring(body or ""):gsub("^%s*", "", 1)
         local prev_verbose = tonumber(Options.get("verbose", nil, nil, false, true)) or 0
@@ -1403,7 +1489,7 @@ function Runtime.new(state, opts)
         return rv
     end
 
-    function self:exec_silent(rest, is_unsilent, is_bang)
+    function rt:exec_silent(rest, is_unsilent, is_bang)
         local inner = tostring(rest or "")
         if inner == "" then
             return true
@@ -1443,7 +1529,7 @@ function Runtime.new(state, opts)
         error(rv)
     end
 
-    function self:set_options(rest, mode)
+    function rt:set_options(rest, mode)
         local win, buf = current_win_buf()
         mode = mode or "both"
         local args = rejoin_equals(split_set_args(tostring(rest or "")))
@@ -1454,88 +1540,94 @@ function Runtime.new(state, opts)
         return true
     end
 
-    local ScriptSourceMod
-    local Buffer
-    local Window
-    local VimFn
-    local VimFs
-    local Tags
-    local Highlight
-    local LuaLoader
-    local Filesystem
-    local RuntimePath
-    local Pack
-    local Command
-    local Key
-    local Syntax
+    local ScriptSourceMod = loadModule("lib.scriptsource")
+    local Buffer = loadModule("layout.buffer")
+    local Window = loadModule("layout.window")
+    local VimFn = loadModule("lib.luaapi.fn")
+    local VimFs = loadModule("lib.luaapi.fs")
+    local Tags = loadModule("lib.tags")
+    local Highlight = loadModule("lib.highlight")
+    local LuaLoader = loadModule("lib.lualoader")
+    local Filesystem = loadModule("lib.filesystem")
+    local RuntimePath = loadModule("lib.runtimepath")
+    local Pack = loadModule("lib.pack")
+    local Command = loadModule("lib.command")
+    local Key = loadModule("lib.key")
+    local Syntax = loadModule("lib.syntax")
 
     local function _scriptsource()
-        ScriptSourceMod = ScriptSourceMod or loadModule("lib.scriptsource")
         return ScriptSourceMod
     end
 
     local function _buffer_mod()
-        Buffer = Buffer or loadModule("layout.buffer")
         return Buffer
     end
 
     local function _window_mod()
-        Window = Window or loadModule("layout.window")
         return Window
     end
 
     local function _vimfn()
-        VimFn = VimFn or loadModule("lib.luaapi.fn")
         return VimFn
     end
 
     local function _vimfs()
-        VimFs = VimFs or loadModule("lib.luaapi.fs")
         return VimFs
     end
 
     local function _tags()
-        Tags = Tags or loadModule("lib.tags")
         return Tags
     end
 
     local function _highlight()
-        Highlight = Highlight or loadModule("lib.highlight")
         return Highlight
     end
 
+    local function _emit_highlight_listing(names)
+        local msg = _exmsg()
+        local hl = _highlight()
+
+        msg.echo("")
+        for i = 1, #names do
+            local name = names[i]
+            msg.echon(string.format("%-14s ", name))
+            msg.echohl(name)
+            msg.echon("xxx")
+            msg.echohl("None")
+
+            local suffix = hl.ListingSuffix(name)
+            if suffix ~= "" then
+                msg.echon(suffix)
+            end
+            msg.flush()
+        end
+    end
+
     local function _lualoader()
-        LuaLoader = LuaLoader or loadModule("lib.lualoader")
         return LuaLoader
     end
 
     local function _filesystem()
-        Filesystem = Filesystem or loadModule("lib.filesystem")
         return Filesystem
     end
 
     local function _runtimepath()
-        RuntimePath = RuntimePath or loadModule("lib.runtimepath")
         return RuntimePath
     end
 
     local function _pack()
-        Pack = Pack or loadModule("lib.pack")
         return Pack
     end
 
     local function _command_mod()
-        Command = Command or loadModule("lib.command")
         return Command
     end
 
     local function _key_mod()
-        Key = Key or loadModule("lib.key")
         return Key
     end
 
     local function _syntax()
-        Syntax = Syntax or loadModule("lib.syntax")
         return Syntax
     end
 
@@ -1642,8 +1734,7 @@ function Runtime.new(state, opts)
         end
 
         win:cursorSet(1, 1)
-        win.need_redraw = true
-        need_redraw = true
+        win:mark_redraw()
         return true
     end
 
@@ -1666,15 +1757,15 @@ function Runtime.new(state, opts)
             local c = text:sub(i, i)
             if c == "%" then
                 i = i + 1
-                return 1, line_count, true
+                return 1, line_count, true, "%"
             end
             if c == "." then
                 i = i + 1
-                return current_line, current_line, true
+                return current_line, current_line, true, "."
             end
             if c == "$" then
                 i = i + 1
-                return line_count, line_count, true
+                return line_count, line_count, true, "$"
             end
             if c:match("%d") then
                 local j = i
@@ -1682,14 +1773,14 @@ function Runtime.new(state, opts)
                     i = i + 1
                 end
                 local num = tonumber(text:sub(j, i - 1))
-                return num, num, true
+                return num, num, true, "number"
             end
-            return nil, nil, false
+            return nil, nil, false, nil
         end
 
-        local l1, l2, ok = parse_addr()
+        local l1, l2, ok, kind1 = parse_addr()
         if not ok then
-            return nil, nil, false, i
+            return nil, nil, false, i, nil, false
         end
         skip_ws()
         local sep = text:sub(i, i)
@@ -1697,10 +1788,10 @@ function Runtime.new(state, opts)
             i = i + 1
             local r1, r2, ok2 = parse_addr()
             if ok2 then
-                return l1, r2 or r1, true, i
+                return l1, r2 or r1, true, i, kind1, true
             end
         end
-        return l1, l2, true, i
+        return l1, l2, true, i, kind1, false
     end
 
     local function _cursor_parse_head(cursor, win)
@@ -1724,13 +1815,109 @@ function Runtime.new(state, opts)
         return raw and raw:lower(), l1, l2, has_range
     end
 
-    local function _build_cmd_context(cursor, win)
-        local raw_cmd, l1, l2, has_range = _cursor_parse_head(cursor, win)
-        return {
+    local function _structured_range_from_spec(spec)
+        if type(spec) ~= "table" then
+            return nil, nil, false, nil
+        end
+
+        if spec.line1 ~= nil or spec.line2 ~= nil then
+            local line1 = tonumber(spec.line1)
+            local line2 = tonumber(spec.line2 or spec.line1)
+            if not line1 or not line2 then
+                return nil, nil, false, "Invalid 'range'"
+            end
+            return line1, line2, true, nil
+        end
+
+        local range = spec.range
+        if range == nil then
+            return nil, nil, false, nil
+        end
+
+        if type(range) == "number" then
+            return range, range, true, nil
+        end
+
+        if type(range) == "table" then
+            if #range == 1 then
+                local line = tonumber(range[1])
+                if line then
+                    return line, line, true, nil
+                end
+            elseif #range == 2 then
+                local line1 = tonumber(range[1])
+                local line2 = tonumber(range[2])
+                if line1 and line2 then
+                    return line1, line2, true, nil
+                end
+            end
+        end
+
+        return nil, nil, false, "Invalid 'range'"
+    end
+
+    local function _build_cmd_context(cursor, win, spec)
+        local raw_cmd, raw_l1, raw_l2, has_raw_range = _cursor_parse_head(cursor, win)
+        local name = tostring((spec and (spec.dispatch or spec.lname or spec.name)) or raw_cmd or ""):lower()
+        local cmd_spec = get_command_spec(name)
+        local addr_mode = cmd_spec and cmd_spec.addr
+        local ctx = {
             raw_cmd = raw_cmd,
-            line1 = has_range and l1,
-            line2 = has_range and l2,
+            line1 = nil,
+            line2 = nil,
+            range = 0,
+            count = nil,
         }
+
+        if has_raw_range then
+            if name == "" then
+                ctx.line1 = raw_l1
+                ctx.line2 = raw_l2
+                ctx.range = (raw_l1 == raw_l2) and 1 or 2
+            elseif addr_mode == "none" then
+                error(Error(481, tostring((cursor and cursor.text) or "")))
+            elseif addr_mode == "count" then
+                ctx.count = raw_l2
+            else
+                ctx.line1 = raw_l1
+                ctx.line2 = raw_l2
+                ctx.range = (raw_l1 == raw_l2) and 1 or 2
+            end
+        end
+
+        if type(spec) == "table" then
+            if spec.count ~= nil then
+                local count = tonumber(spec.count)
+                if not count then
+                    error("Invalid 'count'")
+                end
+                if addr_mode == "count" then
+                    ctx.count = count
+                else
+                    error("Command cannot accept count: " .. name)
+                end
+            end
+
+            local line1, line2, has_structured_range, range_err = _structured_range_from_spec(spec)
+            if range_err then
+                error(range_err)
+            end
+            if has_structured_range then
+                if addr_mode == "line" then
+                    ctx.line1 = line1
+                    ctx.line2 = line2
+                    ctx.range = (line1 == line2) and 1 or 2
+                elseif addr_mode == "count" then
+                    ctx.count = line2
+                elseif addr_mode == "none" or addr_mode == nil then
+                    error("Command cannot accept range: " .. name)
+                else
+                    error("Invalid 'range'")
+                end
+            end
+        end
+
+        return ctx
     end
 
     local function _parse_copy_move_target(raw, win)
@@ -1819,16 +2006,20 @@ function Runtime.new(state, opts)
     end
 
     local function _store_deleted_lines(reg, explicit_reg, lines)
+        local function rotate_numbered()
+            for i = 9, 2, -1 do
+                registers[i] = registers[i - 1]
+            end
+            registers[1] = { "linewise", lines }
+        end
+
         if reg == "_" then
             return
         end
         if reg == '"' then
             registers["unnamed"] = { "linewise", lines }
             if not explicit_reg then
-                for i = 9, 2, -1 do
-                    registers[i] = registers[i - 1]
-                end
-                registers[1] = { "linewise", lines }
+                rotate_numbered()
             end
             return
         end
@@ -1847,10 +2038,14 @@ function Runtime.new(state, opts)
             end
             registers[key] = { "linewise", lines }
             registers["unnamed"] = { "linewise", lines }
+            rotate_numbered()
             return
         end
         registers[reg] = { "linewise", lines }
         registers["unnamed"] = { "linewise", lines }
+        if explicit_reg and not reg:match("^%d$") and reg ~= "-" then
+            rotate_numbered()
+        end
     end
 
     local function _put_register_key(reg)
@@ -2203,7 +2398,7 @@ function Runtime.new(state, opts)
         return _split_text_lines(tostring(payload or "")), nil
     end
 
-    function self:put(argstr, bang, cmdctx)
+    function rt:put(argstr, bang, cmdctx)
         local raw = strip(argstr)
         local source_kind = "register"
         local reg = '"'
@@ -2216,7 +2411,7 @@ function Runtime.new(state, opts)
             elseif #raw == 1 then
                 reg = raw
             else
-                return Error(474, raw)
+                return Error(488, raw)
             end
         else
             local reg_default = '"'
@@ -2233,16 +2428,16 @@ function Runtime.new(state, opts)
 
         local lines
         if source_kind == "expr" then
-            local eval_expr = expr
-            if eval_expr == "" then
-                eval_expr = Runtime._LAST_PUT_EXPR
+            local put_expr = expr
+            if put_expr == "" then
+                put_expr = Runtime._LAST_PUT_EXPR
             else
-                Runtime._LAST_PUT_EXPR = eval_expr
+                Runtime._LAST_PUT_EXPR = put_expr
             end
 
             local value = ""
-            if eval_expr ~= "" then
-                value = self:eval_expr(eval_expr)
+            if put_expr ~= "" then
+                value = self:eval_expr(put_expr)
             end
 
             if type(value) == "table" and not value.__call then
@@ -2276,18 +2471,12 @@ function Runtime.new(state, opts)
         if target_line < 1 then
             target_line = 1
         end
-        if type(win.cursorSet) == "function" then
-            win:cursorSet(1, target_line)
-        else
-            win.cursorx = 1
-            win.cursory = target_line
-        end
-        win.need_redraw = true
-        need_redraw = true
+        win:cursorSet(1, target_line)
+        win:mark_redraw()
         return true
     end
 
-    function self:substitute(argstr, _bang, cmdctx)
+    function rt:substitute(argstr, _bang, cmdctx)
         local spec, perr = _parse_substitute_args(argstr)
         if Error.IsError(perr) then
             return perr
@@ -2296,7 +2485,7 @@ function Runtime.new(state, opts)
         local pattern
         local replacement
         local flags = spec.flags or ""
-        local count = nil
+        local count
         if spec.repeat_last then
             pattern = Runtime._LAST_SUBSTITUTE_PATTERN
             replacement = Runtime._LAST_SUBSTITUTE_REPL
@@ -2394,13 +2583,12 @@ function Runtime.new(state, opts)
 
         if (not count_only) and changed then
             buf:set_lines(line1 - 1, line2, false, new_lines)
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
         end
         return true
     end
 
-    function self:global(argstr, bang, cmdctx)
+    function rt:global(argstr, bang, cmdctx)
         local pattern, cmd, perr = _parse_global_pattern_and_cmd(argstr)
         if Error.IsError(perr) then
             return perr
@@ -2464,7 +2652,7 @@ function Runtime.new(state, opts)
 
             win:cursorSet(win.cursorx, line_no)
             if inner == "" then
-                _exmsg().echo(buf:get_line(line_no, true) or "")
+                _exmsg().echo((buf:get_line(line_no, true) or "") .. "\n")
             else
                 local ok, rv = pcall(function()
                     return self:exec_script(inner)
@@ -2481,7 +2669,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:sort(argstr, bang, cmdctx)
+    function rt:sort(argstr, bang, cmdctx)
         local raw = strip(argstr)
         local ignorecase = false
         local numeric = false
@@ -2495,11 +2683,8 @@ function Runtime.new(state, opts)
                 numeric = true
             elseif ch == "r" then
                 reverse = true
-            elseif ch:match("%s") then
-                -- ignore
             else
-                -- unimplemented sort modifiers (pattern/format/radix/etc)
-                -- are ignored for now to keep netrw's common sort flow working.
+                error(("Unknown ch in sort! CH=%s INPUT=%s"):format(ch, raw))
             end
         end
 
@@ -2564,14 +2749,8 @@ function Runtime.new(state, opts)
         end
 
         buf:set_lines(line1 - 1, line2, false, out)
-        if type(win.cursorSet) == "function" then
-            win:cursorSet(1, line1)
-        else
-            win.cursorx = 1
-            win.cursory = line1
-        end
-        win.need_redraw = true
-        need_redraw = true
+        win:cursorSet(1, line1)
+        win:mark_redraw()
         return true
     end
 
@@ -2619,7 +2798,39 @@ function Runtime.new(state, opts)
     end
 
     local function _delete_list_text(line)
-        return tostring(line or ""):gsub("\t", "^I") .. "$"
+        local text = tostring(line or "")
+        local out = { ">" }
+        local col = 2
+        for i = 1, #text do
+            local ch = text:sub(i, i)
+            if ch == "\t" then
+                local spaces = 8 - ((col - 1) % 8)
+                out[#out + 1] = string.rep(" ", spaces)
+                col = col + spaces
+            else
+                out[#out + 1] = ch
+                col = col + 1
+            end
+        end
+        return table.concat(out)
+    end
+
+    local function _delete_print_text(line)
+        local text = tostring(line or "")
+        local out = {}
+        local col = 1
+        for i = 1, #text do
+            local ch = text:sub(i, i)
+            if ch == "\t" then
+                local spaces = 8 - ((col - 1) % 8)
+                out[#out + 1] = string.rep(" ", spaces)
+                col = col + spaces
+            else
+                out[#out + 1] = ch
+                col = col + 1
+            end
+        end
+        return table.concat(out)
     end
 
     local function _csv_first(value)
@@ -2718,26 +2929,8 @@ function Runtime.new(state, opts)
         return tostring(rv)
     end
 
-    local function _redir_text_to_lines(text)
-        if text == "" then
-            return { "" }
-        end
-        local out = {}
-        local start = 1
-        while true do
-            local idx = text:find("\n", start, true)
-            if not idx then
-                out[#out + 1] = text:sub(start)
-                break
-            end
-            out[#out + 1] = text:sub(start, idx - 1)
-            start = idx + 1
-        end
-        return out
-    end
-
     local function _eval_expr_for_cmd(expr_str)
-        return self:eval_expr(expr_str)
+        return rt:eval_expr(expr_str)
     end
 
     local MAP_ARG_OPTIONS = {
@@ -2750,11 +2943,13 @@ function Runtime.new(state, opts)
         special = true,
     }
 
-    local function _map_command_opts(opts)
+    local function _map_command_opts(opts, map_meta)
+        local out = map_meta and { map_meta = map_meta } or nil
         if opts and opts.buffer then
-            return { buffer_local = true }
+            out = out or {}
+            out.buffer_local = true
         end
-        return nil
+        return out
     end
 
     local function _consume_map_options(raw)
@@ -2878,9 +3073,9 @@ function Runtime.new(state, opts)
             return text, nil
         end
 
-        local sid = script_sid_for_state(self.state)
+        local sid = script_sid_for_state(rt.state)
         if not sid then
-            return nil, Error(81, "Using <SID> not in a script context")
+            return nil, Error(81)
         end
         local snr_prefix = "<SNR>" .. tostring(sid) .. "_"
         return (text:gsub("<[sS][iI][dD]>", snr_prefix)), nil
@@ -2936,7 +3131,13 @@ function Runtime.new(state, opts)
         local rhs_seq, rerr = _strtoseq_tolerant(rhs_expanded)
         if Error.IsError(rerr) then return rerr end
 
-        local map_opts = _map_command_opts(parsed.opts)
+        local map_opts = _map_command_opts(parsed.opts, {
+            raw_lhs = parsed.lhs,
+            raw_rhs = parsed.rhs,
+            expanded_lhs = lhs_expanded,
+            expanded_rhs = rhs_expanded,
+            sid = script_sid_for_state(rt.state),
+        })
         if spec.recursive then
             CommandMod.remap_keys(modes, lhs_seq, rhs_seq, map_opts)
         else
@@ -2946,10 +3147,10 @@ function Runtime.new(state, opts)
     end
 
     local function _menu_state()
-        local menus = self.state.menus
+        local menus = rt.state.menus
         if type(menus) ~= "table" then
             menus = {}
-            self.state.menus = menus
+            rt.state.menus = menus
         end
         menus.items = menus.items or {}
         menus.tooltips = menus.tooltips or {}
@@ -3096,6 +3297,24 @@ function Runtime.new(state, opts)
         return nil, nil
     end
 
+    local _menu_find_item
+
+    local function _menu_path_descends_through_leaf(name)
+        local parts, perr = _menu_validate_path(name)
+        if Error.IsError(perr) then
+            return nil, perr
+        end
+
+        local prefix = ""
+        for i = 1, #parts - 1 do
+            prefix = (prefix == "") and parts[i] or (prefix .. "." .. parts[i])
+            if _menu_find_item(prefix) then
+                return true, nil
+            end
+        end
+        return false, nil
+    end
+
     local function _menu_item_matches(name, item, pat)
         if _menu_path_matches(name, pat) then
             return true
@@ -3155,7 +3374,7 @@ function Runtime.new(state, opts)
         return changed
     end
 
-    local function _menu_find_item(name)
+    _menu_find_item = function(name)
         local menus = _menu_state()
         local lookup_order = { "a", "nvo", "n", "vs", "x", "s", "o", "i", "c", "tl" }
         for i = 1, #lookup_order do
@@ -3224,8 +3443,24 @@ function Runtime.new(state, opts)
             if not name then
                 return true
             end
-            idx = idx + 1
-            local text = table.concat(args, " ", idx)
+            local leaf_conflict, cerr = _menu_path_descends_through_leaf(name)
+            if Error.IsError(cerr) then
+                return cerr
+            end
+            if leaf_conflict then
+                return Error(327)
+            end
+            local text = lstrip(raw)
+            if priority then
+                text = lstrip(
+                    text:gsub(
+                        "^" .. tostring(priority):gsub(
+                            "([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"
+                        ) .. "%s*", "", 1
+                    )
+                )
+            end
+            text = lstrip(text:gsub("^" .. tostring(name):gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. "%s*", "", 1))
             local menus = _menu_state()
             menus.tooltips[name] = {
                 name = name,
@@ -3295,7 +3530,7 @@ function Runtime.new(state, opts)
                 return true
             end
 
-            local run = rhs
+            local run
             local low = rhs:lower()
             if low:sub(1, 5) == "<cmd>" then
                 run = rhs:sub(6)
@@ -3304,7 +3539,7 @@ function Runtime.new(state, opts)
                 if run == "" then
                     return true
                 end
-                return self:exec_script(run)
+                return rt:exec_script(run)
             end
             if rhs:sub(1, 1) == ":" then
                 run = rhs:sub(2)
@@ -3313,14 +3548,14 @@ function Runtime.new(state, opts)
                 if run == "" then
                     return true
                 end
-                return self:exec_script(run)
+                return rt:exec_script(run)
             end
-            return self:exec_script(rhs)
+            return rt:exec_script(rhs)
         end
 
         if spec.action == "define" then
             local operation
-            local token = args[idx] and args[idx]:lower() or nil
+            local token = args[idx] and args[idx]:lower()
             if token == "enable" or token == "disable" then
                 operation = token
                 idx = idx + 1
@@ -3333,7 +3568,7 @@ function Runtime.new(state, opts)
             end
 
             if not operation then
-                token = args[idx] and args[idx]:lower() or nil
+                token = args[idx] and args[idx]:lower()
                 if token == "enable" or token == "disable" then
                     operation = token
                     idx = idx + 1
@@ -3372,8 +3607,8 @@ function Runtime.new(state, opts)
             end
 
             local bucket = _menu_mode_bucket(spec.modes)
-            if bucket[name] and menu_opts.unique then
-                return Error(474, "Menu exists: " .. name)
+            if menu_opts.unique then
+                return Error(331)
             end
 
             bucket[name] = {
@@ -3490,7 +3725,7 @@ function Runtime.new(state, opts)
         }
     end
 
-    function self:define_autocmd(rest, bang)
+    function rt:define_autocmd(rest, bang)
         local args = split_ws(rest)
         local H, err = _consume_autocmd_header(args)
         if Error.IsError(err) then
@@ -3555,7 +3790,7 @@ function Runtime.new(state, opts)
             self.state.script_ctx)
     end
 
-    function self:doautoall(rest)
+    function rt:doautoall(rest)
         local event = tostring(rest or ""):match("^(%S+)")
         if not event then error(Error(474, "Argument required")) end
         local win = windows[curwin]
@@ -3574,16 +3809,20 @@ function Runtime.new(state, opts)
             local canon = Autocmd.NormalizeEvent(event)
             if canon == "FileType" then
                 local ft = Options.get("filetype", nil, b, true)
-                if type(ft) == "string" and ft ~= "" then ctx.pattern = ft end
+                if ft == "" then
+                    goto continue
+                end
+                ctx.pattern = ft
             else
                 ctx.pattern = b.name
             end
             Autocmd.Run(event, ctx)
+            ::continue::
         end
         return true
     end
 
-    function self:doautocmd(rest)
+    function rt:doautocmd(rest)
         local raw = strip(rest)
         if raw == "" then
             error(Error(474, "Argument required"))
@@ -3612,7 +3851,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:augroup(raw, bang)
+    function rt:augroup(raw, bang)
         local arg = strip(raw)
         if arg == "" then
             return true
@@ -3634,7 +3873,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:delcommand(raw)
+    function rt:delcommand(raw)
         local args = split_ws(raw)
         if #args == 0 then error(Error(474, "Argument required")) end
         local name = args[1]
@@ -3646,7 +3885,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:comclear()
+    function rt:comclear()
         Runtime._USER_COMMANDS = {}
         self.state.commands = {}
         return true
@@ -3720,7 +3959,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:filetype(argstr)
+    function rt:filetype(argstr)
         local args = split_ws(argstr)
         if #args == 0 then
             local detect = _filetype_detection_on() and "ON" or "OFF"
@@ -3804,7 +4043,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:define_command(rest, bang)
+    function rt:define_command(rest, bang)
         local nargs = 0
         local name
         local body
@@ -3837,7 +4076,7 @@ function Runtime.new(state, opts)
         return true
     end
 
-    function self:_invoke_builtin(cmd, argstr, bang, cmdctx)
+    function rt:_invoke_builtin(cmd, argstr, bang, cmdctx)
         if MAP_COMMAND_SPECS[cmd] then
             local rv = _run_map_ex_command(cmd, argstr, bang)
             if Error.IsError(rv) then error(rv) end
@@ -3879,7 +4118,29 @@ function Runtime.new(state, opts)
         elseif cmd == "finish" then
             error(self:return_exc(nil))
         elseif cmd == "quit" then
+            Autocmd.Run("QuitPre", _buf_ctx_from(windows[curwin].buffer))
             local q = tabpages[curtp]:close(windows[curwin], bang, nil, "autowriteall")
+            if q ~= true then error(q) end
+            return true
+        elseif cmd == "close" then
+            local target = windows[curwin]
+            if cmdctx.count ~= nil then
+                local count = tonumber(cmdctx.count)
+                if count < 1 then
+                    error(Error(16))
+                end
+                local target_win = tabpages[curtp].windows[count]
+                if not target_win then
+                    error(Error(16))
+                end
+                target = target_win
+            end
+
+            if #tabpages[curtp].windows == 1 then
+                error(Error(444))
+            end
+
+            local q = tabpages[curtp]:close(target, bang, nil, "autowriteall")
             if q ~= true then error(q) end
             return true
         elseif cmd == "source" then
@@ -4175,12 +4436,7 @@ function Runtime.new(state, opts)
                 if first < 1 then first = 1 end
                 if last > line_count then last = line_count end
                 for line = first, last do
-                    if type(win.cursorSet) == "function" then
-                        win:cursorSet(1, line)
-                    else
-                        win.cursorx = 1
-                        win.cursory = line
-                    end
+                    win:cursorSet(1, line)
                     run_normal_once()
                 end
                 if normal_pause_batch then
@@ -4203,15 +4459,14 @@ function Runtime.new(state, opts)
             else
                 local parsed = tonumber(raw)
                 if not parsed then
-                    error(Error(474, argstr))
+                    error(Error(488, argstr))
                 end
                 local ok = win.buffer:undo_change(win, math.floor(parsed))
                 if not ok then
                     error(Error(474, argstr))
                 end
             end
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             runtime_undo_batch_resume()
             return true
         elseif cmd == "redo" then
@@ -4228,8 +4483,7 @@ function Runtime.new(state, opts)
             end
             if count > 0 then
                 win.buffer:redo(win, count)
-                win.need_redraw = true
-                need_redraw = true
+                win:mark_redraw()
             end
             runtime_undo_batch_resume()
             return true
@@ -4326,7 +4580,7 @@ function Runtime.new(state, opts)
                 local path = spec.path
                 local abspath = _vimfs().abspath(path)
                 if (not spec.append) and (not bang) and fs.exists(abspath) then
-                    error(Error(474, "File exists: " .. path))
+                    error(Error(189, path))
                 end
                 local mode = spec.append and "a" or "w"
                 on_close = function(text)
@@ -4342,7 +4596,7 @@ function Runtime.new(state, opts)
                 local key = _redir_register_key(spec.reg)
                 on_close = function(text)
                     local base = spec.append and _redir_register_text(spec.reg) or ""
-                    registers[key] = { "inline", _redir_text_to_lines(base .. text) }
+                    registers[key] = { "charwise", base .. text }
                     return true
                 end
             elseif spec.kind == "var" then
@@ -4438,8 +4692,7 @@ function Runtime.new(state, opts)
             _switch_current_buffer(win, target_buf)
             target_buf.refcount = target_buf.refcount + 1
             win:cursorSet(1, 1)
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "edit" then
             local win = windows[curwin]
@@ -4466,8 +4719,7 @@ function Runtime.new(state, opts)
                 win.buffer.name = target
             end
             _exmsg().echo(_file_status_message(win, bang))
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "delete" then
             local win = windows[curwin]
@@ -4504,12 +4756,11 @@ function Runtime.new(state, opts)
             end
             win:cursorSet(win.cursorx, target_line)
             if post_mode == "print" then
-                _exmsg().echo(buf:get_line(target_line, true) or "")
+                _exmsg().echo(_delete_print_text(buf:get_line(target_line, true) or "") .. "\n")
             elseif post_mode == "list" then
-                _exmsg().echo(_delete_list_text(buf:get_line(target_line, true) or ""))
+                _exmsg().echo(_delete_list_text(buf:get_line(target_line, true) or "") .. "\n")
             end
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "mark" then
             local char = strip(argstr)
@@ -4554,14 +4805,8 @@ function Runtime.new(state, opts)
             local start0 = insert_at - 1
             buf:set_lines(start0, start0, false, lines)
             local target_line = insert_at + #lines - 1
-            if type(win.cursorSet) == "function" then
-                win:cursorSet(1, target_line)
-            else
-                win.cursorx = 1
-                win.cursory = target_line
-            end
-            win.need_redraw = true
-            need_redraw = true
+            win:cursorSet(1, target_line)
+            win:mark_redraw()
             return true
         elseif cmd == "move" then
             local win = windows[curwin]
@@ -4601,14 +4846,8 @@ function Runtime.new(state, opts)
                 target_line = insert_at + moved_count - 1
             end
 
-            if type(win.cursorSet) == "function" then
-                win:cursorSet(1, target_line)
-            else
-                win.cursorx = 1
-                win.cursory = target_line
-            end
-            win.need_redraw = true
-            need_redraw = true
+            win:cursorSet(1, target_line)
+            win:mark_redraw()
             return true
         elseif cmd == "enew" then
             if strip(argstr) ~= "" then
@@ -4626,7 +4865,7 @@ function Runtime.new(state, opts)
             newbuf.name = ""
             _switch_current_buffer(win, newbuf, { skip_enter = true })
 
-            local ff = Options.get("fileformat", win, curbuf)
+            local ff = Options.get("fileformat", win, newbuf)
             local ffs = _csv_first(Options.get("fileformats", win, curbuf))
             if ffs ~= "" then
                 ff = ffs
@@ -4636,8 +4875,7 @@ function Runtime.new(state, opts)
             newbuf:Load(true)
             Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
             win:cursorSet(1, 1)
-            win.need_redraw = true
-            need_redraw = true
+            win:mark_redraw()
             return true
         elseif cmd == "find" then
             local found, err = _resolve_find_name(argstr)
@@ -4736,26 +4974,7 @@ function Runtime.new(state, opts)
         elseif cmd == "wincmd" then
             local args = split_ws(argstr)
             local key = args[1]
-            local count
-
-            local cursor = self:get_exec_cursor()
-            if cursor and cursor.cmd == "wincmd" then
-                local line = lstrip(tostring(cursor.text or ""))
-                while line:sub(1, 1) == ":" do
-                    line = lstrip(line:sub(2))
-                end
-                local prefix, rest = line:match("^(%d+)(.*)$")
-                if prefix then
-                    rest = lstrip(rest or "")
-                    local raw_cmd = rest:match("^([%a][%w]*)")
-                    if raw_cmd then
-                        local resolved = resolve_dispatch_name(raw_cmd:lower())
-                        if resolved == "wincmd" then
-                            count = tonumber(prefix)
-                        end
-                    end
-                end
-            end
+            local count = cmdctx.count
 
             if key and key:match("^%d+$") then
                 if count == nil then
@@ -4924,7 +5143,17 @@ function Runtime.new(state, opts)
         elseif cmd == "help" then
             local target = strip(argstr)
             if target == "" then target = "help.txt" end
-            local match = _tags().SearchFile(ccvim_path .. "/runtime/doc/tags", target)
+            local match, doc_root
+            local rtp = _runtimepath().get_search_list()
+            for i = 1, #rtp do
+                local base = rtp[i]
+                local found = _tags().SearchFile(base .. "/doc/tags", target)
+                if found then
+                    match = found
+                    doc_root = base .. "/doc"
+                    break
+                end
+            end
             if not match then error(Error(149, target)) end
 
             local function help_jump_pos(buf, tag, exaddr)
@@ -4939,7 +5168,7 @@ function Runtime.new(state, opts)
                         local text = lines[ln] or ""
                         local byte_idx = text:find(needle, 1, true)
                         if byte_idx then
-                            local col = buf:str_col_from_byte(text, byte_idx) or 1
+                            local col = Utf8.col_from_byte(text, byte_idx) or 1
                             return ln, col
                         end
                     end
@@ -4989,7 +5218,7 @@ function Runtime.new(state, opts)
             newbuf.opts.buftype = "help"
             newbuf.opts.readonly = true
             newbuf.opts.modifiable = false
-            newbuf.name = ccvim_path .. "/runtime/doc/" .. match[2]
+            newbuf.name = doc_root .. "/" .. match[2]
             newbuf:Load(true)
             Options.set("filetype", "help", true, nil, newbuf)
             local jumpline, jumpcol = help_jump_pos(newbuf, match[1], match[3])
@@ -5008,13 +5237,19 @@ function Runtime.new(state, opts)
             local args = split_ws(argstr)
             local changed = false
             local hl = _highlight()
-            if #args == 0 then return true end
+            if #args == 0 then
+                _emit_highlight_listing(hl.ListNames())
+                return true
+            end
             if args[1] == "clear" then
                 hl.Clear(args[2])
                 changed = true
             elseif args[2] == "NONE" then
                 hl.Clear(args[1])
                 changed = true
+            elseif #args == 1 and hl.HasGroup(args[1]) then
+                _emit_highlight_listing({ args[1] })
+                return true
             else
                 local is_default = false
                 if args[1] == "default" or args[1] == "def" then
@@ -5076,7 +5311,7 @@ function Runtime.new(state, opts)
         return nil
     end
 
-    function self:invoke_compiled_command(spec)
+    function rt:invoke_compiled_command(spec)
         spec = spec or {}
         local name = tostring(spec.name or "")
         local lname = tostring(spec.lname or "")
@@ -5086,7 +5321,7 @@ function Runtime.new(state, opts)
         local qargs = tostring(spec.qargs or "")
         local bang = not not spec.bang
         local win = windows[curwin]
-        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win)
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec)
 
         if name == "" then
             if cmdctx.raw_cmd == nil and cmdctx.line2 ~= nil then
@@ -5100,12 +5335,7 @@ function Runtime.new(state, opts)
                 elseif target > line_count then
                     target = line_count
                 end
-                if type(win.cursorSet) == "function" then
-                    win:cursorSet(1, target)
-                else
-                    win.cursorx = 1
-                    win.cursory = target
-                end
+                win:cursorSet(1, target)
             end
             return true
         end
@@ -5120,15 +5350,21 @@ function Runtime.new(state, opts)
 
         local line1 = cmdctx.line1 or win.cursory
         local line2 = cmdctx.line2 or line1
-        local range = 0
-        if cmdctx.line1 ~= nil then
-            range = (line1 == line2) and 1 or 2
-        end
-        local count = cmdctx.line2 or 0
+        local range = cmdctx.range or 0
+        local count = cmdctx.count or cmdctx.line2 or 0
 
         local def = self.state.commands[lname]
         if def then
-            local script = expand_user_command_template(def.body, qargs, ensure_args(), bang, count, line1, line2, range)
+            local script = expand_user_command_template(
+                def.body,
+                qargs,
+                ensure_args(),
+                bang,
+                count,
+                line1,
+                line2,
+                range
+            )
             return self:exec_script(script)
         end
 
@@ -5155,7 +5391,16 @@ function Runtime.new(state, opts)
             error(Error(492, name))
         end
         if type(global.body) == "string" then
-            local script = expand_user_command_template(global.body, qargs, ensure_args(), bang, count, line1, line2, range)
+            local script = expand_user_command_template(
+                global.body,
+                qargs,
+                ensure_args(),
+                bang,
+                count,
+                line1,
+                line2,
+                range
+            )
             return self:exec_script(script)
         end
         if type(global.handler) == "function" then
@@ -5165,16 +5410,29 @@ function Runtime.new(state, opts)
                 fargs = ensure_args(),
                 _ccvim = { raw_args = qargs },
                 bang = bang,
+                count = count,
+                line1 = line1,
+                line2 = line2,
+                range = range,
             })
         end
         if type(global.command) == "string" then
-            local script = expand_user_command_template(global.command, qargs, ensure_args(), bang, count, line1, line2, range)
+            local script = expand_user_command_template(
+                global.command,
+                qargs,
+                ensure_args(),
+                bang,
+                count,
+                line1,
+                line2,
+                range
+            )
             return self:exec_script(script)
         end
         return true
     end
 
-    function self:invoke_command(name, argstr, bang)
+    function rt:invoke_command(name, argstr, bang)
         return self:invoke_compiled_command({
             name = name,
             qargs = argstr,
@@ -5182,7 +5440,7 @@ function Runtime.new(state, opts)
         })
     end
 
-    return setmetatable(self, { __index = Runtime })
+    return setmetatable(rt, { __index = Runtime })
 end
 
 Runtime.create = Runtime.new
@@ -5192,7 +5450,14 @@ function Runtime.CanonicalFunctionName(name, opts)
 end
 
 function Runtime.CurrentScriptSid()
-    return script_sid_for_state(Runtime._CURRENT_STATE)
+    local state = Runtime._CURRENT_STATE
+    if type(state) ~= "table" then
+        return nil
+    end
+    if type(state.script_ctx) ~= "string" or state.script_ctx == "" then
+        return nil
+    end
+    return script_sid_for_ctx(state.script_ctx)
 end
 
 function Runtime.ResolveFunctionDef(name, opts)
@@ -5289,6 +5554,7 @@ function Runtime.EvalExpression(expr, opts)
     state = ensure_state(state)
     if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
         state.script_ctx = opts.script_ctx
+        state.script_sid = script_sid_for_ctx(opts.script_ctx)
     end
     if opts.v and type(opts.v) == "table" then
         state.v = state.v or fresh_v()
@@ -5332,6 +5598,7 @@ function Runtime.run(script, opts)
     state = ensure_state(state)
     if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
         state.script_ctx = opts.script_ctx
+        state.script_sid = script_sid_for_ctx(opts.script_ctx)
     end
 
     local prev_state = Runtime._CURRENT_STATE

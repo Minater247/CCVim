@@ -8,9 +8,10 @@ local Key    = loadModule("lib.key")
 local OnKey = loadModule("lib.luaapi.on_key")
 local ExMsg  = loadModule("lib.excmd.exmsg")
 local Error = loadModule("lib.error")
-local FrameTree
-local Autocmd
-local Scopes
+local FrameTree = loadModule("lib.frame")
+local Autocmd = loadModule("lib.autocmd")
+local Scopes = loadModule("lib.luaapi.scopes")
+local TimerUtils = loadModule("lib.luaapi.timerutils")
 
 function Event.StartTimer(time, callback)
     local id = os.startTimer(time)
@@ -60,18 +61,6 @@ local function current_mod_flags()
     local ctrld   = mods_down[keys.leftCtrl] or mods_down[keys.rightCtrl]
     local alted   = mods_down[keys.leftAlt] or mods_down[keys.rightAlt]
     return ctrld, shifted, alted
-end
-
-local function key_to_on_key_string(key)
-    local ch = key:emittable()
-    if ch then
-        -- vim.on_key follows nvim keycode behavior where Enter is "\r".
-        if ch == "\n" then
-            return "\r"
-        end
-        return ch
-    end
-    return key:printable()
 end
 
 local function shift_is_held()
@@ -153,7 +142,6 @@ local function target_window_at(x, y)
         return nil
     end
 
-    FrameTree = FrameTree or loadModule("lib.frame")
     local frame, local_x, local_row = FrameTree.FrameAtWithLocal(tab.tree, x, local_y)
     if not frame or not frame.window then
         return nil
@@ -167,7 +155,6 @@ local function focus_window(win)
 end
 
 local function set_mouse_vvars(win, button, x, y, clicks)
-    Scopes = Scopes or loadModule("lib.luaapi.scopes")
     local v = Scopes._v
     v.mouse_win = win.winnr
     v.mouse_winid = win.winnr
@@ -266,7 +253,6 @@ local function place_cursor_from_click(win, local_x, local_y)
 end
 
 local function fire_menu_popup(win, button, x, y, clicks)
-    Autocmd = Autocmd or loadModule("lib.autocmd")
     Autocmd.Run("MenuPopup", {
         bufnr = win.buffer.bufnr,
         bufname = win.buffer.name,
@@ -351,7 +337,7 @@ end
 
 local function handle_mouse_up(button, x, y)
     mouse_down[button] = false
-    local win = nil
+    local win
     local t = target_window_at(x, y)
     if t then
         win = t
@@ -417,7 +403,7 @@ function Event.ProcessEvent(ev)
         elseif not ignored_keys[k] then
             local c, s, a = current_mod_flags()
             local key = Key:new(k, c, s, a)
-            local keystr = key_to_on_key_string(key)
+            local keystr = Key.to_termcode_string(key)
             local discard = OnKey.dispatch(keystr, keystr)
             if not discard then
                 Command.HandleKey(key)
@@ -442,11 +428,13 @@ function Event.ProcessEvent(ev)
         local cb = timers[timer_id]
         timers[timer_id] = nil
         if cb then
-            cb(timer_id)
+            TimerUtils.with_fast_event(function()
+                cb(timer_id)
+            end)
         end
     elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
         local w, h = term.getSize()
-        local ok, err = _V.apply_terminal_resize(w, h, ev[1])
+        local ok, err = apply_terminal_resize(w, h, ev[1])
         if not ok and err then
             local msg
             if Error.IsError(err) then

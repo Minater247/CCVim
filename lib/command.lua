@@ -3,18 +3,53 @@ local Command                     = {}
 local Event                       = loadModule("lib.event")
 local ExMsg                       = loadModule("lib.excmd.exmsg")
 local PopupMenu                   = loadModule("lib.popupmenu")
+local Key                         = loadModule("lib.key")
+local RegisterUtil                = loadModule("lib.registers")
 
 local POLICY_FULL, POLICY_CB_ONLY, POLICY_NOREMAP = 1, 2, 3
 Command.POLICY_FULL = POLICY_FULL
 Command.POLICY_CB_ONLY = POLICY_CB_ONLY
 Command.POLICY_NOREMAP = POLICY_NOREMAP
 
+local state
+local cancel_ambiguous_timer
+local reset_state
+local execute_node
+local clear_count
+
+local macro_state = {
+    recording_register = nil,
+    executing_register = nil,
+    last_recorded_register = nil,
+    pending_action = nil, -- "record" | "execute" | nil
+    recorded_keys = {},
+    replaying_internal = false,
+    defer_executing_clear = false,
+}
+
 -- =========================
 -- Host-settable hooks / options
 -- =========================
 -- Called when a key must be emitted "raw" (i.e., no mapping matched).
 -- Receives an array { key, ... }.
-Command.emit_raw                  = function(seq) end
+Command.emit_raw                  = function(keys_seq)
+    local win = windows[curwin]
+
+    for i = 1, #(keys_seq or {}) do
+        local key = keys_seq[i]
+        if vimmode == "insert" then
+            local printable = key:printable()
+            if printable == "<C-[>" then
+                setMode("normal")
+            else
+                local emitted = key:emittable()
+                if emitted ~= nil then
+                    win:insertText(emitted)
+                end
+            end
+        end
+    end
+end
 
 -- In which modes counts are enabled (default: only normal mode).
 Command.count_modes               = { normal = true }
@@ -54,10 +89,191 @@ local function normalize_seq(seq)
     return out
 end
 
+local function current_count_value()
+    return state and state.count_committed and state.count_value or nil
+end
+
+local function top_level_normal_input()
+    return vimmode == "normal"
+        and #Command.override_emitter == 0
+        and not state.pending_op
+        and ((not state.active) or (#state.seq == 0 and state.best_node == nil))
+end
+
+local function key_char(key)
+    local ch = key:emittable()
+    if ch ~= nil and #ch == 1 then
+        return ch
+    end
+    local printable = key:printable()
+    if printable ~= nil and #printable == 1 then
+        return printable
+    end
+    return nil
+end
+
+local function key_is_char(key, ch)
+    return key_char(key) == ch
+end
+
+local function macro_register_info(key)
+    local ch = key_char(key)
+    if ch == nil then
+        return nil
+    end
+    if ch:match("%a") then
+        local lower = string.lower(ch)
+        return lower, lower ~= ch
+    end
+    if ch:match("[%d\"%-#%*%+/:.=]") then
+        return ch, false
+    end
+    return nil
+end
+
+local function append_recorded_key(key)
+    if macro_state.recording_register == nil then
+        return
+    end
+    local seq = macro_state.recorded_keys
+    seq[#seq + 1] = key
+end
+
+local function start_macro_recording(reg, append)
+    macro_state.recording_register = reg
+    if append then
+        macro_state.recorded_keys = RegisterUtil.entry_to_sequence(RegisterUtil.get_entry(reg))
+    else
+        macro_state.recorded_keys = {}
+    end
+end
+
+local function stop_macro_recording()
+    local reg = macro_state.recording_register
+    if reg == nil then
+        return
+    end
+    RegisterUtil.set_entry(reg, RegisterUtil.sequence_to_entry(macro_state.recorded_keys, "charwise"))
+    macro_state.last_recorded_register = reg
+    macro_state.recording_register = nil
+    macro_state.recorded_keys = {}
+end
+
+local function finalize_pending_input()
+    if #Command.override_emitter > 0 then
+        reset_state()
+        return true
+    end
+
+    if state.active then
+        if state.best_node then
+            local node = state.best_node
+            cancel_ambiguous_timer()
+            execute_node(node)
+            reset_state()
+            return true
+        end
+        reset_state()
+    end
+    return false
+end
+
+local function execute_macro(reg, count)
+    local seq = RegisterUtil.entry_to_sequence(RegisterUtil.get_entry(reg))
+    if not seq or #seq == 0 then
+        return true
+    end
+
+    count = math.max(1, math.floor(tonumber(count) or 1))
+    local prev_pending = macro_state.pending_action
+    local prev_executing = macro_state.executing_register
+    local prev_replaying = macro_state.replaying_internal
+    local prev_defer = macro_state.defer_executing_clear
+    macro_state.pending_action = nil
+    macro_state.executing_register = reg
+    macro_state.replaying_internal = true
+    macro_state.defer_executing_clear = false
+
+    local ok, err = xpcall(function()
+        for _ = 1, count do
+            for i = 1, #seq do
+                Command.HandleKey(seq[i])
+            end
+            finalize_pending_input()
+        end
+    end, debug.traceback)
+
+    macro_state.replaying_internal = prev_replaying
+    macro_state.defer_executing_clear = true
+    if prev_replaying then
+        macro_state.executing_register = prev_executing
+        macro_state.defer_executing_clear = prev_defer
+    end
+    macro_state.pending_action = prev_pending
+    if not ok then
+        if not prev_replaying then
+            macro_state.executing_register = prev_executing
+            macro_state.defer_executing_clear = prev_defer
+        end
+        error(err)
+    end
+    return true
+end
+
+local function handle_macro_control_key(k)
+    if not top_level_normal_input() then
+        return false
+    end
+
+    if macro_state.pending_action == "record" then
+        local reg, append = macro_register_info(k)
+        macro_state.pending_action = nil
+        clear_count()
+        if reg ~= nil then
+            start_macro_recording(reg, append)
+        end
+        return true
+    end
+
+    if macro_state.pending_action == "execute" then
+        local reg
+        if key_is_char(k, "@") then
+            reg = macro_state.last_recorded_register
+        else
+            reg = macro_register_info(k)
+        end
+        local count = current_count_value()
+        macro_state.pending_action = nil
+        clear_count()
+        if reg ~= nil then
+            return execute_macro(reg, count)
+        end
+        return true
+    end
+
+    if macro_state.recording_register ~= nil and key_is_char(k, "q") then
+        stop_macro_recording()
+        clear_count()
+        return true
+    end
+
+    if macro_state.recording_register == nil and key_is_char(k, "q") then
+        macro_state.pending_action = "record"
+        clear_count()
+        return true
+    end
+
+    if key_is_char(k, "@") then
+        macro_state.pending_action = "execute"
+        return true
+    end
+
+    return false
+end
+
 local function node_has_children(node)
     if not node or not node.children then return false end
-    for _ in pairs(node.children) do return true end
-    return false
+    return next(node.children) ~= nil
 end
 
 -- Mode expansion: accept full names, alias string like "ni", or list/table
@@ -196,6 +412,8 @@ local function _composite_node(buf_node, glob_node)
     local composite = { children = {} }
     local buf_has_leaf = (buf_node.callback ~= nil) or (buf_node.rhs_seq ~= nil)
         or (buf_node.operator_cb ~= nil) or (buf_node.motion_root ~= nil)
+    local glob_has_leaf = (glob_node.callback ~= nil) or (glob_node.rhs_seq ~= nil)
+        or (glob_node.operator_cb ~= nil) or (glob_node.motion_root ~= nil)
 
     if buf_has_leaf then
         composite.callback    = buf_node.callback
@@ -212,8 +430,22 @@ local function _composite_node(buf_node, glob_node)
     end
 
     local keys = {}
-    if buf_node.children then for k in pairs(buf_node.children) do keys[k] = true end end
-    if glob_node.children then for k in pairs(glob_node.children) do keys[k] = true end end
+    if buf_has_leaf then
+        if buf_node.children then
+            for k in pairs(buf_node.children) do
+                keys[k] = true
+            end
+        end
+    elseif glob_has_leaf then
+        if glob_node.children then
+            for k in pairs(glob_node.children) do
+                keys[k] = true
+            end
+        end
+    else
+        if buf_node.children then for k in pairs(buf_node.children) do keys[k] = true end end
+        if glob_node.children then for k in pairs(glob_node.children) do keys[k] = true end end
+    end
     for k in pairs(keys) do
         composite.children[k] = _composite_node(
             buf_node.children and buf_node.children[k],
@@ -264,6 +496,7 @@ local function _clear_leaf(node)
     node.recursive = nil
     node.operator_cb = nil
     node.motion_root = nil
+    node.map_meta = nil
 end
 
 local function _node_is_empty(node)
@@ -320,7 +553,13 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
     node.callback  = callback
     node.rhs_seq   = nil
     node.recursive = nil
-    Command.Log("map-callback  mode=%s seq=%s cb=%s%s", mode_full, seq_tostring(seq_nums), tostring(callback), opts and " [buf-local]" or "")
+    Command.Log(
+        "map-callback  mode=%s seq=%s cb=%s%s",
+        mode_full,
+        seq_tostring(seq_nums),
+        tostring(callback),
+        opts and " [buf-local]" or ""
+    )
 end
 
 local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
@@ -354,8 +593,24 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
     node.callback  = nil
     node.rhs_seq   = normalize_seq(rhs_seq)
     node.recursive = recursive ~= false
+    node.map_meta  = opts and opts.map_meta or nil
 
-    Command.Log("map-keys      mode=%s lhs=%s rhs=%s recursive=%s%s", mode_full, seq_tostring(seq_nums), seq_tostring(node.rhs_seq), tostring(node.recursive), opts and " [buf-local]" or "")
+    Command.Log(
+        "map-keys      mode=%s lhs=%s rhs=%s recursive=%s%s",
+        mode_full,
+        seq_tostring(seq_nums),
+        seq_tostring(node.rhs_seq),
+        tostring(node.recursive),
+        opts and " [buf-local]" or ""
+    )
+end
+
+local function _seq_to_map_text(seq)
+    local out = {}
+    for i = 1, #(seq or {}) do
+        out[#out + 1] = Key.to_termcode_string(seq[i], { force_keycode = false, from_expr = false })
+    end
+    return Key.keytrans(table.concat(out))
 end
 
 
@@ -570,6 +825,59 @@ function Command.has_mapping(modes, lhs_seq)
     return false
 end
 
+function Command.maparg(modes, lhs_seq)
+    local buf = windows[curwin].buffer
+
+    for _, m in ipairs(expand_modes(modes)) do
+        local local_root = buf.local_mappings and buf.local_mappings[m]
+        local local_node = _lookup_node_in_root(local_root, lhs_seq)
+        if
+            local_node
+            and (local_node.callback ~= nil or local_node.rhs_seq ~= nil or local_node.operator_cb ~= nil)
+        then
+            return local_node, true
+        end
+
+        local global_node = _lookup_node_in_root(user_global_mappings[m], lhs_seq)
+        if
+            global_node
+            and (global_node.callback ~= nil or global_node.rhs_seq ~= nil or global_node.operator_cb ~= nil)
+        then
+            return global_node, false
+        end
+    end
+
+    return nil, false
+end
+
+function Command.mapping_to_string(node)
+    if not node or not node.rhs_seq then
+        return ""
+    end
+    local meta = node.map_meta or {}
+    return meta.expanded_rhs or _seq_to_map_text(node.rhs_seq)
+end
+
+function Command.mapping_to_dict(node, is_buffer_local, lhs_seq)
+    if not node or not node.rhs_seq then
+        return {}
+    end
+
+    local meta = node.map_meta or {}
+    local sid = tonumber(meta.sid)
+    if sid == nil then
+        sid = 0
+    end
+
+    return {
+        lhs = meta.expanded_lhs or _seq_to_map_text(lhs_seq),
+        rhs = meta.raw_rhs or _seq_to_map_text(node.rhs_seq),
+        sid = sid,
+        buffer = is_buffer_local and 1 or 0,
+        noremap = (node.recursive == false) and 1 or 0,
+    }
+end
+
 -- Convenience wrappers continue to work; add an optional opts:
 -- opts is an array with either buffer_local = true (current buffer) or buffer = some_buf_obj (specific buf)
 function Command.nmap_callback(lhs_seq, cb, opts) return Command.map_callback("normal", lhs_seq, cb, opts) end
@@ -658,7 +966,7 @@ end
 -- =========================
 -- State machine
 -- =========================
-local state = {
+state = {
     active          = false,
     mode            = "normal", -- always full name; kept in sync with vimmode below
     node            = nil,
@@ -685,7 +993,7 @@ local function _cancel_timer(id)
     Event.CancelTimer(id)
 end
 
-local function cancel_ambiguous_timer()
+cancel_ambiguous_timer = function()
     if state.timer_id ~= nil then
         _cancel_timer(state.timer_id)
         Command.Log("TIMER cancel")
@@ -703,7 +1011,7 @@ local function reset_mapping_only()
     state.mode = vimmode -- vimmode should be "normal"/"insert"/"visual"
 end
 
-local function clear_count()
+clear_count = function()
     state.count_tentative = false
     state.count_committed = false
     state.count_value     = nil
@@ -715,7 +1023,7 @@ local function _clear_op_pending()
     state.op_motion  = nil
 end
 
-local function reset_state()
+reset_state = function()
     reset_mapping_only()
     clear_count()
     _clear_op_pending()
@@ -744,9 +1052,15 @@ local function _with_undo_block(fn)
     return rv
 end
 
-local function execute_node(node)
+execute_node = function(node)
     local cnt = (state.count_committed and state.count_value)
-    Command.Log("execute cb=%s rhs_len=%d recursive=%s count=%d", tostring(node.callback), node.rhs_seq and #node.rhs_seq or 0, tostring(node.recursive), cnt)
+    Command.Log(
+        "execute cb=%s rhs_len=%d recursive=%s count=%d",
+        tostring(node.callback),
+        node.rhs_seq and #node.rhs_seq or 0,
+        tostring(node.recursive),
+        cnt
+    )
 
     if node.callback then
         local rv = _with_undo_block(function()
@@ -869,6 +1183,13 @@ function Command._feed_seq_with_policy(seq, policy, capture_counts)
     for i = 1, #seq do
         local code = seq[i]
 
+        if handle_macro_control_key(code) then
+            consumed_any = true
+            goto continue
+        end
+
+        append_recorded_key(code)
+
         if #Command.override_emitter > 0 then
             Command.override_emitter[#Command.override_emitter](code)
             consumed_any = true
@@ -883,6 +1204,8 @@ function Command._feed_seq_with_policy(seq, policy, capture_counts)
             end
             consumed_any = consumed_any or consumed
         end
+
+        ::continue::
     end
 
     -- If override turned on during the loop, don't try to execute a pending leaf.
@@ -910,7 +1233,7 @@ end
 function Command.execute_normal_keys(seq, opts)
     opts = opts or {}
     local remap = opts.remap ~= false
-    local policy = remap and POLICY_FULL or POLICY_CB_ONLY
+    local policy = remap and POLICY_FULL or POLICY_NOREMAP
     local lazy_block = options.get("lazyredraw")
     if lazy_block then
         lazyredraw_block = lazyredraw_block + 1
@@ -1088,10 +1411,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                         end
                     else
                         -- No digit-leading mapping path from here; this digit participates in the count.
-                        if d == 0 and not state.count_tentative then
-                            -- Leading 0 with no tentative/committed count: treat as real key
-                            -- fall through to trie
-                        else
+                        if d ~= 0 or state.count_tentative then
                             if not state.count_tentative then clear_count() end
                             state.count_committed = true
                             push_digit(d)
@@ -1099,9 +1419,6 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                         end
                     end
                 end
-            else
-                -- Not at sequence start: any digits are mapping keys, not count
-                -- fall through to trie
             end
 
             -- If we are in a tentative-count state, only extend it here when we haven't already
@@ -1109,7 +1426,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
             if state.count_tentative and at_sequence_start() and not handled_count_digit then
                 if d ~= 0 then
                     push_digit(d)
-                    handled_count_digit = true
+                    handled_count_digit = true -- luacheck: ignore 311
                 end
                 -- fall through to trie
             end
@@ -1121,8 +1438,14 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     if not next_node then
         cancel_ambiguous_timer()
 
-        Command.Log("no-edge: children=%s trying=%s root-keys=%s count_tentative=%d count_value=%d",
-            node_keys_tostring(state.node), code:printable(), node_keys_tostring(root), state.count_tentative, state.count_value)
+        Command.Log(
+            "no-edge: children=%s trying=%s root-keys=%s count_tentative=%d count_value=%d",
+            node_keys_tostring(state.node),
+            code:printable(),
+            node_keys_tostring(root),
+            state.count_tentative,
+            state.count_value
+        )
 
         -- Special case: digit-only leaf was pending with a count context and a new digit arrived.
         do
@@ -1289,6 +1612,10 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
         end
 
         if capture_counts then
+            if state.active and #state.seq > 0 then
+                reset_state()
+                return Command._handle_key_with_policy(code, policy, true)
+            end
             reset_state()
             Command.Log("emit_raw code=%s (no mapping, user input)", code:printable())
             Command.emit_raw({ code })
@@ -1310,8 +1637,14 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     local has_more            = node_has_children(next_node)
 
     if at_leaf then
-        Command.Log("leaf-found cb=%s rhs_len=%d operator=%s has_mode=%s policy=%d",
-            tostring(next_node.callback), next_node.rhs_seq and #next_node.rhs_seq or 0, tostring(next_node.operator_cb ~= nil), tostring(has_mode), policy)
+        Command.Log(
+            "leaf-found cb=%s rhs_len=%d operator=%s has_mode=%s policy=%d",
+            tostring(next_node.callback),
+            next_node.rhs_seq and #next_node.rhs_seq or 0,
+            tostring(next_node.operator_cb ~= nil),
+            tostring(has_mode),
+            policy
+        )
 
         state.best_node = next_node
 
@@ -1367,11 +1700,22 @@ end
 
 -- Public: normal key from user input (full mapping semantics; counts allowed)
 function Command.HandleKey(k)
+    if macro_state.defer_executing_clear and not macro_state.replaying_internal then
+        macro_state.executing_register = nil
+        macro_state.defer_executing_clear = false
+    end
+
     if vimmode == "insert" then
         if PopupMenu.visible() then
             return PopupMenu.handle_key(k)
         end
     end
+
+    if handle_macro_control_key(k) then
+        return true
+    end
+
+    append_recorded_key(k)
 
     if #Command.override_emitter > 0 then
         Command.override_emitter[#Command.override_emitter](k)
@@ -1386,6 +1730,19 @@ end
 function Command.Reset()
     cancel_ambiguous_timer()
     reset_state()
+    macro_state.pending_action = nil
+end
+
+function Command.reg_recording()
+    return macro_state.recording_register or ""
+end
+
+function Command.reg_executing()
+    return macro_state.executing_register or ""
+end
+
+function Command.reg_recorded()
+    return macro_state.last_recorded_register or ""
 end
 
 function Command._debug_dump_mode(mode_full)

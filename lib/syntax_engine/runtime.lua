@@ -118,17 +118,6 @@ local function offsets_from_attrs(attrs)
     return VimRegex.parse_syntax_offsets(table.concat(parts, ","))
 end
 
-local function unquote_token(raw)
-    local s = tostring(raw or "")
-    local n = #s
-    if n < 2 then return s end
-    local q = s:sub(1, 1)
-    if (q == "'" or q == "\"") and s:sub(n, n) == q then
-        return s:sub(2, n - 1)
-    end
-    return s
-end
-
 local function split_delim_pattern(raw)
     local token = tostring(raw or "")
     local n = #token
@@ -150,7 +139,8 @@ local function split_delim_pattern(raw)
         return s, nil
     end
 
-    local i, n = 2, #s
+    local i = 2
+    n = #s
     local esc = false
     local in_class = false
     local class_count = 0
@@ -650,8 +640,8 @@ local function find_in_spec(line, lower_line, start_pos, spec, anchored, ext_in,
         if search_pos < 1 then search_pos = 1 end
     end
 
-    local s, e, caps = nil, nil, nil
-    local p_start = nil
+    local caps, p_start = nil, nil
+    local s, e
     local profile = PROFILE_CTX and PROFILE_CTX.profile
     if profile and profile.enabled then
         p_start = profile_now()
@@ -929,7 +919,16 @@ local function find_best_start_event(plan, state, line, lower_line, pos, anchore
     if best and best.match_start < keyword_limit then
         keyword_limit = best.match_start
     end
-    local keyword_best = find_best_keyword_event(plan, top, pending_next, line, lower_line, pos, anchored, keyword_limit)
+    local keyword_best = find_best_keyword_event(
+        plan,
+        top,
+        pending_next,
+        line,
+        lower_line,
+        pos,
+        anchored,
+        keyword_limit
+    )
     if keyword_best then
         best = pick_earliest_event(best, keyword_best)
     end
@@ -1173,7 +1172,7 @@ local function resolved_matchgroup_ref(plan, spec)
     return plan.ir.group_ids[mg] or mg
 end
 
-local function should_paint_region_delim(plan, entry, spec)
+local function should_paint_region_delim(entry, spec)
     if not entry then
         return false
     end
@@ -1356,7 +1355,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
             return cursor_pos + 1
         end
 
-        if max_col > 0 and should_paint_region_delim(plan, popped, event.spec) then
+        if max_col > 0 and should_paint_region_delim(popped, event.spec) then
             local group_id = popped.group_id
             local mgref = resolved_matchgroup_ref(plan, event.spec)
             if mgref then group_id = mgref end
@@ -1463,7 +1462,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     state.stack[#state.stack + 1] = entry
                     state.pending_next = nil
 
-                    if should_paint_region_delim(plan, entry, anchored.spec) then
+                    if should_paint_region_delim(entry, anchored.spec) then
                         local group_id = entry.group_id
                         local mgref = resolved_matchgroup_ref(plan, anchored.spec)
                         if mgref then group_id = mgref end
@@ -1507,7 +1506,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
         local end_ev = top and find_region_end_event(top, line, lower_line, pos, max_col)
         local start_ev = find_best_start_event(plan, state, line, lower_line, pos, false, max_col)
 
-        local event = nil
+        local event
         if end_ev and start_ev then
             if end_ev.match_start < start_ev.match_start then
                 event = end_ev
@@ -1567,7 +1566,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                 state.stack[#state.stack + 1] = entry
                 state.pending_next = nil
 
-                if should_paint_region_delim(plan, entry, event.spec) then
+                if should_paint_region_delim(entry, event.spec) then
                     local group_id = entry.group_id
                     local mgref = resolved_matchgroup_ref(plan, event.spec)
                     if mgref then group_id = mgref end
@@ -1724,7 +1723,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
         end
 
         local before = state
-        ctx.checkpoints[ln] = { state = before, hash = nil }
+        ctx.checkpoints[ln] = { state = before }
 
         local text = buffer_get_line(buffer, ln)
         local next_state, spans = highlight_line(plan, state, text, ctx.synmaxcol or 0)
@@ -1809,7 +1808,7 @@ function Runtime.line_to_blit(ctx, buffer, line)
 
     if not ctx.checkpoints[1] then
         local st = new_state()
-        ctx.checkpoints[1] = { state = st, hash = nil }
+        ctx.checkpoints[1] = { state = st }
     end
 
     local cache = ctx.span_cache[line]
@@ -1847,7 +1846,7 @@ function Runtime.lines_to_blit(ctx, buffer, first_line, last_line)
 
     if not ctx.checkpoints[1] then
         local st = new_state()
-        ctx.checkpoints[1] = { state = st, hash = nil }
+        ctx.checkpoints[1] = { state = st }
     end
 
     if (ctx.dirty_from or 1) <= last then

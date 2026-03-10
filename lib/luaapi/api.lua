@@ -12,12 +12,13 @@ local scopes = loadModule("lib.luaapi.scopes")
 local AutoCmd = loadModule("lib.autocmd")
 local Fn = loadModule("lib.luaapi.fn")
 local Decoration = loadModule("lib.decoration")
-local ScriptSource
+local ScriptSource = loadModule("lib.scriptsource")
 local Error = loadModule("lib.error")
 local Utf8 = loadModule("lib.utf8")
 local PopupMenu = loadModule("lib.popupmenu")
 local Event = loadModule("lib.event")
 local BufAttach = loadModule("lib.bufattach")
+local OnKey = loadModule("lib.luaapi.on_key")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -242,16 +243,25 @@ local feedkeys_flushing = false
 
 local NVIM_CMD_MARKER = string.char(128, 253, 104)
 
-local function _run_feedkeys_cmdline(cmdline)
-    local state = {
-        g = scopes._g,
-        s = {},
-        v = scopes._v,
-        funcs = Runtime._FUNCS,
-    }
+local function inline_runtime_state()
+    local state = Runtime._API_STATE
+    if type(state) ~= "table" then
+        state = {}
+        Runtime._API_STATE = state
+    end
+    state.g = scopes._g
+    state.s = {}
+    state.v = scopes._v
+    state.funcs = Runtime._FUNCS
+    state.frames = {}
+    state.commands = state.commands or {}
+    state.menus = state.menus or {}
+    return state
+end
 
+local function _run_feedkeys_cmdline(cmdline)
     local ok, err = Runtime.run(tostring(cmdline or ""), {
-        state = state,
+        state = inline_runtime_state(),
         origin = {
             kind = "feedkeys-cmd",
         },
@@ -392,16 +402,33 @@ local function flush_feedkeys_queue()
     local ok, err = pcall(function()
         for i = 1, #queue do
             local op = queue[i]
-            if op.kind == "keys" then
-                for j = 1, #op.seq do
-                    if op.noremap then
-                        Command._handle_key_with_policy(op.seq[j], Command.POLICY_NOREMAP, true)
-                    else
-                        Command.HandleKey(op.seq[j])
+            local typed_state = __ccvim_input_state
+            if op.typed then
+                typed_state.feedkeys_typeahead_depth = typed_state.feedkeys_typeahead_depth + 1
+            end
+            local op_ok, op_err = pcall(function()
+                if op.kind == "keys" then
+                    for j = 1, #op.seq do
+                        local key = op.seq[j]
+                        local keystr = Key.to_termcode_string(key)
+                        local discard = OnKey.dispatch_safely(keystr, keystr)
+                        if not discard then
+                            if op.noremap then
+                                Command._handle_key_with_policy(key, Command.POLICY_NOREMAP, true)
+                            else
+                                Command.HandleKey(key)
+                            end
+                        end
                     end
+                elseif op.kind == "cmd" then
+                    _run_feedkeys_cmdline(op.cmd)
                 end
-            elseif op.kind == "cmd" then
-                _run_feedkeys_cmdline(op.cmd)
+            end)
+            if op.typed then
+                typed_state.feedkeys_typeahead_depth = math.max(0, typed_state.feedkeys_typeahead_depth - 1)
+            end
+            if not op_ok then
+                error(op_err)
             end
         end
     end)
@@ -431,7 +458,7 @@ end
 -- Namespace Management
 -- ========================
 -- Namespace 0 is the global namespace (highlights/etc.). Additional namespaces start at 1.
-local ns_name_to_id, ns_id_to_name = {}, {}
+local ns_name_to_id = {}
 local next_ns_id = 1
 
 ---Creates or retrieves a namespace id.
@@ -447,7 +474,6 @@ function api.nvim_create_namespace(name)
     next_ns_id = next_ns_id + 1
     if name ~= "" then
         ns_name_to_id[name] = id
-        ns_id_to_name[id] = name
     end
     return id
 end
@@ -485,7 +511,7 @@ function api.nvim_tabpage_list_wins(tp)
     if tp == 0 then tp = curtp end
 
     local rv = {}
-    for k, v in pairs(tabpages[tp].windows) do
+    for _, v in pairs(tabpages[tp].windows) do
         rv[#rv + 1] = v.winnr
     end
 
@@ -566,10 +592,19 @@ function api.nvim_open_win(buffer, enter, config)
 
     local tabp = tabpages[curtp]
     local split_target = config.win or 0
+    local split = config.split
+    local vertical = (split == "left" or split == "right")
+    local place_after = (split == "right" or split == "below")
+    local has_explicit_split_size = (vertical and type(config.width) == "number")
+        or ((split == "above" or split == "below") and type(config.height) == "number")
 
     if not config.relative then
         local probe = tabp:MakeSplitProbe(nil)
-        if not tabp:WinSplit(split_target, probe, false, { dry_run = true }) then
+        if not tabp:WinSplit(split_target, probe, vertical, {
+            dry_run = true,
+            place_after = place_after,
+            skip_equalize = has_explicit_split_size,
+        }) then
             error(Error(36):toString())
         end
     end
@@ -595,9 +630,18 @@ function api.nvim_open_win(buffer, enter, config)
         table.insert(tabpages[curtp].windows, newwin)
         newwin.tabpagenr = curtp
     else
-        if not tabpages[curtp]:WinSplit(split_target, newwin, false) then
+        if not tabpages[curtp]:WinSplit(split_target, newwin, vertical, {
+            place_after = place_after,
+            skip_equalize = has_explicit_split_size,
+        }) then
             cleanup_failed_split_window(newwin)
             error(Error(36):toString())
+        end
+
+        if vertical and type(config.width) == "number" and newwin.frame then
+            newwin:resizeWidth(config.width - newwin.frame.width)
+        elseif (split == "above" or split == "below") and type(config.height) == "number" and newwin.frame then
+            newwin:resizeHeight(config.height - newwin.frame.height)
         end
     end
 
@@ -826,7 +870,7 @@ function api.nvim_buf_set_lines(buffer, start, end_, strict_indexing, replacemen
     local buf = buf_for_bufnr(buffer)
     assert(buf)
 
-    buf:set_lines(start, end_, strict_indexing, replacement)
+    buf:set_lines(start, end_, strict_indexing, replacement, true)
     request_buffer_redraw(buf, true)
 end
 
@@ -841,7 +885,6 @@ function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
     lhs = Key.strtoseq(lhs_text)
 
     if opts.callback then
-        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local cb = ScriptSource.wrap(nil, opts.callback)
         Command.map_callback(mode, lhs, cb, { buffer = buf })
     else
@@ -863,7 +906,6 @@ function api.nvim_set_keymap(mode, lhs, rhs, opts)
     lhs = Key.strtoseq(lhs_text)
 
     if opts.callback then
-        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local cb = ScriptSource.wrap(nil, opts.callback)
         Command.map_callback(mode, lhs, cb)
     else
@@ -905,8 +947,8 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
     assert(buf)
     buf:ensure_loaded(true)
 
-    local srow = tonumber(start_row or 0) or 0
-    local scol = tonumber(start_col or 0) or 0
+    local srow = tonumber(start_row) or 0
+    local scol = tonumber(start_col) or 0
     local erow = tonumber(end_row or srow) or srow
     local ecol = tonumber(end_col or scol) or scol
 
@@ -931,8 +973,8 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
 
     local sline = lines[sidx] or ""
     local eline = lines[eidx] or ""
-    local prefix = buf:str_sub(sline, 1, scol)
-    local suffix = buf:str_sub(eline, ecol + 1)
+    local prefix = Utf8.sub(sline, 1, scol)
+    local suffix = Utf8.sub(eline, ecol + 1)
 
     local repl = {}
     if type(replacement) == "table" then
@@ -947,7 +989,7 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
     repl[1] = prefix .. repl[1]
     repl[#repl] = repl[#repl] .. suffix
 
-    buf:set_lines(sidx - 1, eidx, false, repl)
+    buf:set_lines(sidx - 1, eidx, false, repl, true)
     request_buffer_redraw(buf, true)
 end
 
@@ -1061,6 +1103,77 @@ function api.nvim_get_option_value(name, opts)
     return options.get(name, win, buf, opts.scope == "local", opts.scope == "global")
 end
 
+function api.nvim_get_option_info2(name, opts)
+    opts = opts or {}
+    if opts.scope and opts.scope ~= "local" and opts.scope ~= "global" then
+        error("invalid scope: " .. tostring(opts.scope), 2)
+    end
+
+    local win, buf
+    if opts.win ~= nil then
+        win = win_for_id(opts.win)
+    else
+        win = windows[curwin]
+    end
+    if opts.buf ~= nil then
+        buf = buf_for_bufnr(opts.buf)
+    else
+        buf = win.buffer
+    end
+
+    local info = options.get_info(name)
+    if not info then
+        error("invalid option name: " .. tostring(name), 2)
+    end
+
+    local last_set_scope = "global"
+    if opts.scope == "local" then
+        if info.scope == "buf" then
+            last_set_scope = "buf"
+        elseif info.scope == "win" then
+            last_set_scope = "win"
+        end
+    elseif opts.scope ~= "global" then
+        if info.scope == "buf" and options.has_local_value(info.name, win, buf) then
+            last_set_scope = "buf"
+        elseif info.scope == "win" and options.has_local_value(info.name, win, buf) then
+            last_set_scope = "win"
+        end
+    end
+
+    local last_set = options.get_last_set_info(info.name, last_set_scope, win, buf)
+
+    return {
+        name = info.name,
+        shortname = info.shortname,
+        type = info.type,
+        default = info.default,
+        was_set = last_set.was_set,
+        last_set_sid = last_set.last_set_sid,
+        last_set_linenr = last_set.last_set_linenr,
+        last_set_chan = last_set.last_set_chan,
+        scope = info.scope,
+        global_local = info.global_local,
+        commalist = info.commalist,
+        flaglist = info.flaglist,
+        allows_duplicates = info.allows_duplicates,
+    }
+end
+
+function api.nvim_get_option_info(name)
+    return api.nvim_get_option_info2(name, {})
+end
+
+function api.nvim_get_all_options_info()
+    local out = {}
+    local names = options.list_all_info_names()
+    for i = 1, #names do
+        local name = names[i]
+        out[name] = api.nvim_get_option_info2(name, {})
+    end
+    return out
+end
+
 -- TODO: Craft the full strings if the option is passed
 function api.nvim_get_mode()
     if vimmode == "normal" then
@@ -1159,13 +1272,10 @@ function api.nvim__redraw(opts)
     lazyredraw_force = true
 
     if flush and not Decoration.is_redraw_active() then
-        local tab = tabpages[curtp]
-        if tab and type(tab.render) == "function" then
-            need_redraw = false
-            tab:render()
-            what_redraw = {}
-            lazyredraw_force = false
-        end
+        need_redraw = false
+        tabpages[curtp]:render()
+        what_redraw = {}
+        lazyredraw_force = false
     end
 end
 
@@ -1258,10 +1368,11 @@ function api.nvim_exec(src, output)
 end
 
 -- nvim_exec2(src, {output?:boolean}) -> { output?: string }
+-- TODO: Handle errors properly!
 function api.nvim_exec2(src, opts)
     opts = opts or {}
-    local ok, out, err = exec_script(src, { output = not not opts.output })
-    return opts.output and { output = out } or { output = nil }
+    local _, out = exec_script(src, { output = not not opts.output })
+    return opts.output and { output = out } or {}
 end
 
 local function as_list(x)
@@ -1505,7 +1616,6 @@ function api.nvim_create_autocmd(event, opts)
         end
     end
 
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     local cb = opts.callback and ScriptSource.wrap(nil, opts.callback)
     local script_ctx = ScriptSource.CurrentContext()
 
@@ -1811,7 +1921,7 @@ function api.nvim_buf_delete(buffer, opts)
 end
 
 -- TODO: set up proper RPC handling for send_buffer
-function api.nvim_buf_attach(buffer, send_buffer, opts)
+function api.nvim_buf_attach(buffer, _send_buffer, opts)
     local bufnr = tonumber(buffer)
     if not bufnr then
         return false
@@ -1846,7 +1956,6 @@ function api.nvim_buf_attach(buffer, send_buffer, opts)
         end
     end
 
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     local listener = {
         on_lines = opts.on_lines and ScriptSource.wrap(nil, opts.on_lines),
         on_bytes = opts.on_bytes and ScriptSource.wrap(nil, opts.on_bytes),
@@ -1928,8 +2037,8 @@ end
 
 local function _extmark_pos_from_arg(arg)
     if type(arg) == "table" then
-        local line = tonumber(arg[1] or 0) or 0
-        local col = tonumber(arg[2] or 0) or 0
+        local line = tonumber(arg[1]) or 0
+        local col = tonumber(arg[2]) or 0
         return line, col
     end
     if type(arg) == "number" then
@@ -1956,14 +2065,14 @@ local function _extmark_in_range(mark, start_line, start_col, end_line, end_col)
     return true
 end
 
-function api.nvim_buf_get_extmarks(buffer, ns_id, start, _end, opts)
+function api.nvim_buf_get_extmarks(buffer, ns_id, start, end_, opts)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
     opts = opts or {}
     buf._extmarks = buf._extmarks or {}
 
     local start_line, start_col = _extmark_pos_from_arg(start)
-    local end_line, end_col = _extmark_pos_from_arg(_end)
+    local end_line, end_col = _extmark_pos_from_arg(end_)
     if end_line < start_line or (end_line == start_line and end_col >= 0 and end_col < start_col) then
         start_line, end_line = end_line, start_line
         start_col, end_col = end_col, start_col
@@ -2104,7 +2213,8 @@ function api.nvim_strwidth(text)
     return Utf8.len(text)
 end
 
-function api.nvim_echo(chunks, history, opts)
+-- TODO: Handle history, opts arguments
+function api.nvim_echo(chunks, _history, _opts)
     local parts = {}
     if type(chunks) == "table" then
         for i = 1, #chunks do
@@ -2156,11 +2266,13 @@ function api.nvim_win_set_config(window, config)
     if config.height ~= nil then win.floatpos.h = config.height end
 end
 
-function api.nvim_replace_termcodes(str, from_part, do_lt, special)
+-- TODO: Handle from_part argument
+function api.nvim_replace_termcodes(str, _from_part, do_lt, special)
     return Key.replace_termcodes(str, do_lt, special)
 end
 
-function api.nvim_feedkeys(keys, mode, escape_ks)
+-- TODO: Handle escape_ks argument
+function api.nvim_feedkeys(keys, mode, _escape_ks)
     local ops = _parse_feedkeys_ops(tostring(keys or ""))
     mode = tostring(mode or "")
     local remap = true
@@ -2174,6 +2286,7 @@ function api.nvim_feedkeys(keys, mode, escape_ks)
         if ops[i].kind == "keys" then
             ops[i].noremap = not remap
         end
+        ops[i].typed = mode:find("t", 1, true) ~= nil
     end
     local prepend = mode:find("i", 1, true) ~= nil
     local immediate = mode:find("x", 1, true) ~= nil
@@ -2191,7 +2304,8 @@ function api.nvim_feedkeys(keys, mode, escape_ks)
     end
 end
 
-function api.nvim_select_popupmenu_item(item, insert, finish, opts)
+-- TODO: Handle opts argument
+function api.nvim_select_popupmenu_item(item, insert, finish, _opts)
     PopupMenu.select(item, insert, finish)
 end
 
@@ -2289,10 +2403,64 @@ function api.nvim_cmd(cmd, opts)
         end
     end
 
-    local script = (argstr ~= "") and (head .. " " .. argstr) or head
-    local rv = api.nvim_exec2(script, { output = not not opts.output })
+    local prefix = ""
+    if cmd and cmd.range ~= nil then
+        local range = cmd.range
+        if type(range) == "table" and #range == 2 then
+            prefix = tostring(range[1]) .. "," .. tostring(range[2])
+        elseif type(range) == "table" and #range == 1 then
+            prefix = tostring(range[1])
+        else
+            prefix = tostring(range)
+        end
+    elseif cmd and cmd.line1 ~= nil then
+        prefix = tostring(cmd.line1)
+        if cmd.line2 ~= nil and cmd.line2 ~= cmd.line1 then
+            prefix = prefix .. "," .. tostring(cmd.line2)
+        end
+    elseif cmd and cmd.count ~= nil then
+        prefix = tostring(cmd.count)
+    end
+
+    local cursor_text = (argstr ~= "") and (head .. " " .. argstr) or head
+    local script = prefix .. cursor_text
+
     if opts.output then
+        local rv = api.nvim_exec2(script, { output = true })
         return rv.output or ""
+    end
+
+    local ws_args = nil
+    if cmd and type(cmd.args) == "table" then
+        ws_args = {}
+        for i = 1, #cmd.args do
+            ws_args[i] = tostring(cmd.args[i])
+        end
+    end
+
+    local spec = {
+        name = name,
+        lname = name:lower(),
+        qargs = argstr,
+        bang = not not cmd.bang,
+        ws_args = ws_args,
+        count = cmd.count,
+        range = cmd.range,
+        line1 = cmd.line1,
+        line2 = cmd.line2,
+    }
+
+    local state = inline_runtime_state()
+    local rt = Runtime.new(state)
+    rt:set_exec_cursor(1, cursor_text, spec.lname, spec.qargs)
+
+    local ok, rv = pcall(function()
+        return rt:invoke_compiled_command(spec)
+    end)
+    if not ok then
+        local msg = Error.IsError(rv) and rv:toString() or tostring(rv)
+        scopes._v.errmsg = msg
+        error(msg)
     end
     return ""
 end
@@ -2308,7 +2476,7 @@ function api.nvim_buf_line_count(bufnr)
     return buf:line_count(false)
 end
 
-function api.nvim_buf_get_lines(bufnr, start, _end, strict_indexing)
+function api.nvim_buf_get_lines(bufnr, start, l_end, strict_indexing)
     local buf = buf_for_bufnr(bufnr)
     assert(buf)
 
@@ -2316,7 +2484,7 @@ function api.nvim_buf_get_lines(bufnr, start, _end, strict_indexing)
 
     -- Normalize negatives relative to end+1 (0-based)
     local s = start >= 0 and start or (line_count + 1 + start)
-    local e = _end >= 0 and _end or (line_count + 1 + _end)
+    local e = l_end >= 0 and l_end or (line_count + 1 + l_end)
 
     if strict_indexing then
         if s < 0 or s > line_count or e < 0 or e > line_count then

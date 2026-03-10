@@ -15,7 +15,6 @@
 local R = {}
 
 local str_find = string.find
-local str_sub = string.sub
 local str_lower = string.lower
 
 local DOT_NO_NL = "[^\n]"
@@ -448,7 +447,7 @@ local function tokenize_simple(pat)
     end
 
     ntoks = ntoks + 1
-    toks[ntoks] = { t = "EOF", v = nil }
+    toks[ntoks] = { t = "EOF" }
     return toks
 end
 
@@ -1410,7 +1409,7 @@ local function vm_tokenize(pat)
     end
 
     ntoks = ntoks + 1
-    toks[ntoks] = { t = "EOF", v = nil }
+    toks[ntoks] = { t = "EOF" }
 
     return toks
 end
@@ -1680,7 +1679,7 @@ local function vm_match_class_token(code, ch, case_sensitive)
     end
 
     local e = code:sub(2, 2)
-    local matched = false
+    local matched
 
     if e == "d" then
         matched = ch:match("%d") ~= nil
@@ -1766,8 +1765,6 @@ local function vm_parse_bracket(raw)
     end
 
     while i <= n - 1 do
-        local ch = raw:sub(i, i)
-
         local function read_item(idx)
             local c = raw:sub(idx, idx)
             if c == "\\" and idx < (n - 1) then
@@ -1955,9 +1952,7 @@ local function vm_starts_with_bol(node)
     if kind == "SEQ" then
         for i = 1, #node.nodes do
             local sub = node.nodes[i]
-            if sub.kind == "ZS" or sub.kind == "ZE" or sub.kind == "LOOK" then
-                -- skip zero-width wrappers that do not consume position
-            else
+            if sub.kind ~= "ZS" and sub.kind ~= "ZE" and sub.kind ~= "LOOK" then
                 return vm_starts_with_bol(sub)
             end
         end
@@ -2333,9 +2328,9 @@ local function vm_make_matcher(ast, hints)
             return false
         end
 
-        local function run_from(start_pos)
+        local function run_from(start_posn)
             local init = {
-                pos = start_pos,
+                pos = start_posn,
                 zs = nil,
                 ze = nil,
                 ext = vm_clone_ext(ext_in),
@@ -2348,7 +2343,7 @@ local function vm_make_matcher(ast, hints)
             end)
 
             if winner then
-                local s = winner.zs or start_pos
+                local s = winner.zs or start_posn
                 local e
                 if winner.ze ~= nil then
                     e = winner.ze - 1

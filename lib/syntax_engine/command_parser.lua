@@ -236,7 +236,12 @@ local function normalize_assignments(tokens)
         elseif tok:sub(-1) == "=" and tokens[i + 1] then
             out[#out + 1] = tok .. tokens[i + 1]
             i = i + 2
-        elseif tokens[i + 1] and tokens[i + 1]:sub(1, 1) == "=" and #tokens[i + 1] > 1 and not tok:find("=", 1, true) then
+        elseif
+            tokens[i + 1]
+            and tokens[i + 1]:sub(1, 1) == "="
+            and #tokens[i + 1] > 1
+            and not tok:find("=", 1, true)
+        then
             out[#out + 1] = tok .. tokens[i + 1]
             i = i + 2
         else

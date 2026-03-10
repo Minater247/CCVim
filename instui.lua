@@ -101,7 +101,7 @@ local function buildMenuState(items)
         itemTypes      = {},
         textboxState   = {},
         checkboxState  = {},
-        editingTextbox = nil,
+        editingTextbox = nil, -- TODO: remove this, document as function comment
         selectedIndex  = 1,
         top            = 1,
     }
@@ -388,6 +388,7 @@ function TUI.render()
                 local value        = menu.textboxState[idx] or ""
                 local labelPart    = label .. ": "
                 local valPart      = value
+                local remaining
 
                 local labelToWrite = labelPart
                 if #labelToWrite > w then

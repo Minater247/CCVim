@@ -1,6 +1,6 @@
 local FrameTree = {}
 local Error = loadModule("lib.error")
-local AutoCmd
+local AutoCmd = loadModule("lib.autocmd")
 
 ---@class FrameTree
 
@@ -77,11 +77,21 @@ local function get_horizontal_resizability(node)
             return get_horizontal_resizability(node.children[1]) + get_horizontal_resizability(node.children[2])
         elseif node.split_type == "h" then
             -- top-bottom
-            return math.min(get_horizontal_resizability(node.children[1]), get_horizontal_resizability(node.children[2]))
+            return math.min(
+                get_horizontal_resizability(node.children[1]),
+                get_horizontal_resizability(node.children[2])
+            )
         end
     else
         local can = node.width - node.window:minwidth()
-        LOG_INTERNAL("frametree", "Horizontal resizability: %d is %d (%d - %d)", node.window.winnr, can, node.width, node.window:minwidth())
+        LOG_INTERNAL(
+            "frametree",
+            "Horizontal resizability: %d is %d (%d - %d)",
+            node.window.winnr,
+            can,
+            node.width,
+            node.window:minwidth()
+        )
         return clamp_nonnegative(can)
     end
 end
@@ -222,7 +232,13 @@ local function get_vertical_pushability(node)
         retval = retval + get_vertical_resizability(getOtherChild(node))
     end
 
-    LOG_INTERNAL("frametree", "Pushability of %s height %d is %d", tostring(node.window and node.window.winnr or "frame"), node.height, retval)
+    LOG_INTERNAL(
+        "frametree",
+        "Pushability of %s height %d is %d",
+        tostring(node.window and node.window.winnr or "frame"),
+        node.height,
+        retval
+    )
 
     return retval
 end
@@ -569,7 +585,7 @@ FrameTree.VerticalSplit = function(node, new_win, place_right)
     local parent    = node.parent
     local total_w   = node.width
     local new_node  = { parent = parent, width = total_w, height = node.height, split_type = "v" }
-    local new_frame = { parent = new_node, window = new_win }
+    local new_frm = { parent = new_node, window = new_win }
 
     if node.height < subtree_min_height(node) or node.height < new_win:minheight() then
         return false
@@ -596,13 +612,11 @@ FrameTree.VerticalSplit = function(node, new_win, place_right)
 
     -- Apply shrink: equalalways => even water-fill, else original greedy push.
     if shrink ~= 0 then
-        local done
         if options.get("equalalways") then
-            done = apply_width_delta_even(node, shrink)
+            apply_width_delta_even(node, shrink)
         else
-            done = push_width_resize(node, shrink)
+            push_width_resize(node, shrink)
         end
-
         -- Recompute actual sizes after attempting shrink
         local actual_existing = node.width
         local actual_new = total_w - actual_existing
@@ -626,17 +640,17 @@ FrameTree.VerticalSplit = function(node, new_win, place_right)
 
     -- Wire up wrapper
     node.parent = new_node
-    new_frame.height = new_node.height
+    new_frm.height = new_node.height
     if place_right then
-        new_frame.width = new_node.width - node.width
-        new_node.children = { node, new_frame }
-        new_win.frame = new_frame
+        new_frm.width = new_node.width - node.width
+        new_node.children = { node, new_frm }
+        new_win.frame = new_frm
     else
-        new_frame.width = total_w - node.width
-        new_node.children = { new_frame, node }
-        new_frame.parent = new_node
+        new_frm.width = total_w - node.width
+        new_node.children = { new_frm, node }
+        new_frm.parent = new_node
         node.parent = new_node
-        new_win.frame = new_frame
+        new_win.frame = new_frm
     end
 
     if parent then
@@ -656,7 +670,7 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
     local parent     = node.parent
     local total_h    = node.height
     local new_node   = { parent = parent, width = node.width, height = total_h, split_type = "h" }
-    local new_frame  = { parent = new_node, window = new_win }
+    local new_frm  = { parent = new_node, window = new_win }
 
     if node.width < subtree_min_width(node) or node.width < new_win:minwidth() then
         return false
@@ -680,13 +694,11 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
 
     -- Apply shrink: equalalways => even water-fill, else original greedy push.
     if shrink ~= 0 then
-        local done
         if options.get("equalalways") then
-            done = apply_height_delta_even(node, shrink)
+            apply_height_delta_even(node, shrink)
         else
-            done = push_height_resize(node, shrink)
+            push_height_resize(node, shrink)
         end
-
         -- Accept partial (best-effort) *of* we still satisfy minima.
         local actual_existing = node.height
         local actual_new = total_h - actual_existing
@@ -710,17 +722,17 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
 
     -- Wire up wrapper
     node.parent = new_node
-    new_frame.width = new_node.width
+    new_frm.width = new_node.width
     if place_bottom then
-        new_frame.height = new_node.height - node.height
-        new_node.children = { node, new_frame }
-        new_win.frame = new_frame
+        new_frm.height = new_node.height - node.height
+        new_node.children = { node, new_frm }
+        new_win.frame = new_frm
     else
-        new_frame.height = total_h - node.height
-        new_node.children = { new_frame, node }
-        new_frame.parent = new_node
+        new_frm.height = total_h - node.height
+        new_node.children = { new_frm, node }
+        new_frm.parent = new_node
         node.parent = new_node
-        new_win.frame = new_frame
+        new_win.frame = new_frm
     end
 
     if parent then
@@ -739,13 +751,13 @@ function FrameTree.Equalize(node)
         return true
     end
 
-    local function columns(node)
+    local function columns(nd)
         -- How many width "lanes" (columns) this subtree contributes
-        if not node or not node.split_type then
+        if not nd or not nd.split_type then
             return 1
         end
-        local a, b = node.children[1], node.children[2]
-        if node.split_type == "v" then
+        local a, b = nd.children[1], nd.children[2]
+        if nd.split_type == "v" then
             return columns(a) + columns(b)
         else -- "h"
             local ca, cb = columns(a), columns(b)
@@ -753,13 +765,13 @@ function FrameTree.Equalize(node)
         end
     end
 
-    local function rows(node)
+    local function rows(nd)
         -- How many height "lanes" (rows) this subtree contributes
-        if not node or not node.split_type then
+        if not nd or not nd.split_type then
             return 1
         end
-        local a, b = node.children[1], node.children[2]
-        if node.split_type == "h" then
+        local a, b = nd.children[1], nd.children[2]
+        if nd.split_type == "h" then
             return rows(a) + rows(b)
         else -- "v"
             local ra, rb = rows(a), rows(b)
@@ -891,7 +903,7 @@ FrameTree.DumpTree = function(node)
 
         -- If the node has children, recursively dump them
         if n.children then
-            for i, child in ipairs(n.children) do
+            for _, child in ipairs(n.children) do
                 dump(child, indent + 1)
             end
         end
@@ -1134,7 +1146,6 @@ function FrameTree.ApplyTerminalResize(new_w, new_h, source_event)
 
     local changed_ids = _collect_changed_window_ids(tabpages[curtp], before)
 
-    AutoCmd = AutoCmd or loadModule("lib.autocmd")
     AutoCmd.Run("VimResized", { force = true })
     if #changed_ids > 0 then
         local first = tostring(changed_ids[1])
@@ -1242,10 +1253,22 @@ FrameTree.self_tests = function()
         assert(FrameTree.ResizeHeight(window, 0), "'create_window': Resize of size 0 should work (height)")
 
         -- nonzero size resize should not succeed
-        assert(not FrameTree.ResizeWidth(window, 1), "'create_window': Resize of size non-0 should not work (+width)")
-        assert(not FrameTree.ResizeHeight(window, 1), "'create_window': Resize of size non-0 should not work (+height)")
-        assert(not FrameTree.ResizeWidth(window, -1), "'create_window': Resize of size non-0 should not work (-width)")
-        assert(not FrameTree.ResizeHeight(window, -1), "'create_window': Resize of size non-0 should not work (-height)")
+        assert(
+            not FrameTree.ResizeWidth(window, 1),
+            "'create_window': Resize of size non-0 should not work (+width)"
+        )
+        assert(
+            not FrameTree.ResizeHeight(window, 1),
+            "'create_window': Resize of size non-0 should not work (+height)"
+        )
+        assert(
+            not FrameTree.ResizeWidth(window, -1),
+            "'create_window': Resize of size non-0 should not work (-width)"
+        )
+        assert(
+            not FrameTree.ResizeHeight(window, -1),
+            "'create_window': Resize of size non-0 should not work (-height)"
+        )
     end
 
     local split_window_vert = function()
@@ -1312,7 +1335,10 @@ FrameTree.self_tests = function()
         assert(root.children[2].width == 80, me .. "Bottom child should have width 40, has " .. root.children[2].width)
 
         assert(root.children[1].height == 13, me .. "Top child height should be 25, have " .. root.children[1].height)
-        assert(root.children[2].height == 12, me .. "Bottom child height should be 25, have " .. root.children[2].height)
+        assert(
+            root.children[2].height == 12,
+            me .. "Bottom child height should be 25, have " .. root.children[2].height
+        )
 
         assert(root.children[1].parent == root, me .. "Top child should be parented to the root node")
         assert(root.children[2].parent == root, me .. "Bottom child should be parented to the root node")
@@ -1330,7 +1356,7 @@ FrameTree.self_tests = function()
         assert(success and new_root, me .. "Split should succeed")
         root = new_root
 
-        success, new_root = FrameTree.VerticalSplit(root.children[2],
+        success = FrameTree.VerticalSplit(root.children[2],
             { winnr = 2, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success, me .. "Second split should succeed")
 
@@ -1362,7 +1388,10 @@ FrameTree.self_tests = function()
             me .. "Right child of right side should have parent of the right of root")
         assert(root.children[2].parent == root, me .. "Right side frame should be parented to root")
 
-        assert(root.children[1].width == 40, me .. "Left child should have width 40, but has " .. root.children[1].width)
+        assert(
+            root.children[1].width == 40,
+            me .. "Left child should have width 40, but has " .. root.children[1].width
+        )
         assert(root.children[2].children[1].width == 20,
             "Left child of right side should have width 20, but has " .. root.children[2].children[1].width)
         assert(root.children[2].children[2].width == 20,
@@ -1402,9 +1431,14 @@ FrameTree.self_tests = function()
         assert(root.children[2].window.winnr == 1,
             "Right child should be window with ID 1, but is ID " .. root.children[2].window.winnr)
 
-        assert(root.children[1].width == 30, me .. "Left child should have width 30, but has " .. root.children[1].width)
-        assert(root.children[2].width == 50, me .. "Right child should have width 50, but has " .. root.children[2]
-            .width)
+        assert(
+            root.children[1].width == 30,
+            me .. "Left child should have width 30, but has " .. root.children[1].width
+        )
+        assert(
+            root.children[2].width == 50,
+            me .. "Right child should have width 50, but has " .. root.children[2].width
+        )
 
         assert(root.children[1].height == 25,
             me .. "Left child should have height 25, but has " .. root.children[1].height)
@@ -1424,7 +1458,7 @@ FrameTree.self_tests = function()
         assert(success and new_root, me .. "Split should succeed")
         root = new_root
 
-        local success, new_root = FrameTree.HorizontalSplit(root.children[2],
+        success = FrameTree.HorizontalSplit(root.children[2]
             { winnr = 2, minwidth = function() return 1 end, minheight = function() return 1 end }, true)
         assert(success, me .. "Split should succeed")
 
@@ -1452,7 +1486,6 @@ FrameTree.self_tests = function()
             -- Print traceback
             local traceback = debug.traceback(err)
             -- Get error details like function and line number
-            local info = debug.getinfo(2)
             LOG_ERROR(traceback)
             fails = fails + 1
         end)

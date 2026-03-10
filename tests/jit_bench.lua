@@ -75,7 +75,9 @@ local function parse_args(argv)
     end
 
     if not opts.input then
-        io.stderr:write("usage: lua vim/tests/jit_bench.lua path/to/file.vim [--iters N] [--warmup N] [--script-ctx CTX] [-o compiled.lua]\n")
+        io.stderr:write(
+            "usage: lua vim/tests/jit_bench.lua path/to/file.vim [--iters N] [--warmup N] [--script-ctx CTX] [-o compiled.lua]\n" -- luacheck: ignore 631
+        )
         os.exit(2)
     end
 

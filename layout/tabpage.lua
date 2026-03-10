@@ -172,6 +172,26 @@ function Tabpage:CanWinSplit(target_winnr, new_win, vertical)
         return false
     end
 
+    if options.get("equalalways") and probe_frame.window then
+        if vertical then
+            local needed_width = probe_frame.window:minwidth() + new_win:minwidth()
+            if probe_frame.width < needed_width then
+                local ok = FrameTree.ResizeWidth(probe_frame, needed_width - probe_frame.width)
+                if not ok or probe_frame.width < needed_width then
+                    return false
+                end
+            end
+        else
+            local needed_height = probe_frame.window:minheight() + new_win:minheight()
+            if probe_frame.height < needed_height then
+                local ok = FrameTree.ResizeHeight(probe_frame, needed_height - probe_frame.height)
+                if not ok or probe_frame.height < needed_height then
+                    return false
+                end
+            end
+        end
+    end
+
     local ok, split_anchor
     if vertical then
         ok, split_anchor = FrameTree.VerticalSplit(probe_frame, new_win)
@@ -208,14 +228,18 @@ function Tabpage:CanWinSplit(target_winnr, new_win, vertical)
         end
 
         local frame_bottom = yoff + node.height - 1
-        local status_rows = statusline_rows_for_frame(laststatus, post_split_window_count, frame_bottom, root_after.height)
+        local status_rows = statusline_rows_for_frame(
+            laststatus,
+            post_split_window_count,
+            frame_bottom,
+            root_after.height
+        )
         local text_rows = node.height - status_rows
         if text_rows < 1 then
             return false
         end
 
-        local min_text_rows = 1
-        min_text_rows = tonumber(node.window:minheight()) or 1
+        local min_text_rows = tonumber(node.window:minheight()) or 1
         if text_rows < min_text_rows then
             return false
         end
@@ -399,11 +423,32 @@ function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
 
     local set_root = frame == self.tree
 
+    local grew_for_split = false
+    if options.get("equalalways") and frame.window then
+        if vertical then
+            local needed_width = frame.window:minwidth() + new_win:minwidth()
+            if frame.width < needed_width then
+                if not FrameTree.ResizeWidth(frame, needed_width - frame.width) or frame.width < needed_width then
+                    return false
+                end
+                grew_for_split = true
+            end
+        else
+            local needed_height = frame.window:minheight() + new_win:minheight()
+            if frame.height < needed_height then
+                if not FrameTree.ResizeHeight(frame, needed_height - frame.height) or frame.height < needed_height then
+                    return false
+                end
+                grew_for_split = true
+            end
+        end
+    end
+
     local success, new_frm
     if vertical then
-        success, new_frm = FrameTree.VerticalSplit(frame, new_win)
+        success, new_frm = FrameTree.VerticalSplit(frame, new_win, opts.place_after == true)
     else
-        success, new_frm = FrameTree.HorizontalSplit(frame, new_win)
+        success, new_frm = FrameTree.HorizontalSplit(frame, new_win, opts.place_after == true)
     end
 
     if not success then
@@ -423,7 +468,7 @@ function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
     new_win:cursorMove(0, 0)
     windows[curwin]:cursorMove(0, 0)
 
-    if options.get("equalalways") then
+    if options.get("equalalways") and (not opts.skip_equalize or grew_for_split) then
         FrameTree.Equalize(self.tree)
     end
 

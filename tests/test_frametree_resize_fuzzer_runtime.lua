@@ -152,7 +152,7 @@ local function run_scenario(seed, equalalways)
 
     for step = 1, 2500 do
         local op = math.random(1, 100)
-        local opdesc = "unknown"
+        local opdesc
 
         if op <= 20 then
             -- Regression target: split a window, then close it immediately.

@@ -1,13 +1,13 @@
 local Options = {}
 
 local Error = loadModule("lib.error")
-local ExMsg
-local AutoCmd
-local Syntax
-local Fn
-local VimExpr
-local ScriptSource
-local Runtime
+local ExMsg = loadModule("lib.excmd.exmsg")
+local AutoCmd = loadModule("lib.autocmd")
+local Syntax = loadModule("lib.syntax")
+local Fn = loadModule("lib.luaapi.fn")
+local VimExpr = loadModule("lib.excmd.vimxpr")
+local ScriptSource = loadModule("lib.scriptsource")
+local Runtime = loadModule("lib.excmd.runtime")
 
 -- TODO: winhl is currently unhandled anywhere
 
@@ -459,7 +459,6 @@ local function _name_for_option_function(fn)
         return known
     end
 
-    Fn = Fn or loadModule("lib.luaapi.fn")
     local name = Fn._funcref_name(fn)
 
     if type(name) ~= "string" or name == "" then
@@ -470,33 +469,6 @@ local function _name_for_option_function(fn)
     function_option_name_by_ref[fn] = name
     Fn._register_funcref(name, fn)
     return name
-end
-
-local function _canonicalize_script_local_function_name(raw)
-    local s = tostring(raw or "")
-    s = s:gsub("^%s+", ""):gsub("%s+$", "")
-    if s == "" then
-        return ""
-    end
-    if not (s:sub(1, 2) == "s:" or s:sub(1, 5) == "<SID>") then
-        return s
-    end
-
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
-    if not Runtime or type(Runtime.CanonicalFunctionName) ~= "function" then
-        error("Script-local function reference requires function resolver: " .. s)
-    end
-
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
-    local script_ctx = ScriptSource.CurrentContext()
-    local canon = Runtime.CanonicalFunctionName(s, {
-        state = Runtime._CURRENT_STATE,
-        script_ctx = script_ctx,
-    })
-    if type(canon) ~= "string" or canon == "" then
-        error("Script-local function reference requires script context: " .. s)
-    end
-    return canon
 end
 
 local function _normalize_mouse_flags(value)
@@ -574,7 +546,7 @@ local function _normalize_option_value(name, value, source_expr)
             return _name_for_option_function(value)
         end
         if type(value) == "string" then
-            return _canonicalize_script_local_function_name(value)
+            return value
         end
     end
     return value
@@ -588,7 +560,6 @@ local expr_option_specs = {
 }
 
 local function _current_script_ctx()
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     return ScriptSource.CurrentContext()
 end
 
@@ -597,10 +568,32 @@ local function _capture_expr_option_state(name)
     if not spec then
         return nil
     end
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     return Runtime.CaptureDurableScriptState({
         script_ctx = _current_script_ctx(),
     })
+end
+
+local function _canonicalize_expr_option_string(name, value)
+    local spec = expr_option_specs[name]
+    if not spec or type(value) ~= "string" then
+        return value
+    end
+
+    local lead, fn_name, tail = value:match("^(%s*)(s:[%w_#]+)(%s*%b().*)$")
+    if not fn_name then
+        lead, fn_name, tail = value:match("^(%s*)(<SID>[%w_#]+)(%s*%b().*)$")
+    end
+    if not fn_name then
+        return value
+    end
+
+    local canon = Runtime.CanonicalFunctionName(fn_name, {
+        script_ctx = _current_script_ctx(),
+    })
+    if type(canon) ~= "string" or canon == "" then
+        return value
+    end
+    return lead .. canon .. tail
 end
 
 local function _set_expr_option_state(name, window, state)
@@ -641,7 +634,6 @@ function Options.EvalExprOption(name, expr, window, buffer, vscope)
     local canon = Options.resolve_abbrev(name) or name
     expr = tostring(expr or "")
 
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local durable = Options.GetExprOptionScriptState(canon, window, buffer)
     local state = Runtime.MakeRuntimeState(durable, vscope)
 
@@ -809,6 +801,55 @@ local opt_aliases = {
     vbs = "verbose",
 }
 
+local option_set_info = {
+    global = {},
+    win = {},
+    buf = {},
+    tab = {},
+}
+
+local function record_option_set(name, scope_name, key)
+    local scope_tbl = option_set_info[scope_name]
+    if not scope_tbl then
+        return
+    end
+
+    scope_tbl[key] = scope_tbl[key] or {}
+    scope_tbl[key][name] = {
+        was_set = true,
+        last_set_sid = 0,
+        last_set_linenr = 0,
+        last_set_chan = 0,
+    }
+end
+
+local function map_loc_to_scope(loc)
+    if loc == "ltw" or loc == "gow" then
+        return "win"
+    end
+    if loc == "ltb" or loc == "gob" then
+        return "buf"
+    end
+    return "global"
+end
+
+local function option_is_global_local(loc)
+    return loc == "gob" or loc == "gow" or loc == "got"
+end
+
+local function has_local_value(name, loc, window, buffer)
+    if loc == "ltw" or loc == "gow" then
+        return window.opts[name] ~= nil
+    end
+    if loc == "ltb" or loc == "gob" then
+        return buffer.opts[name] ~= nil
+    end
+    if loc == "ltt" or loc == "got" then
+        return tabpages[curtp].opts[name] ~= nil
+    end
+    return false
+end
+
 local legacy_options = {}
 
 -- Removed options: return defaults on get, but setting is not supported.
@@ -835,7 +876,7 @@ local removed_options = {
     esckeys = true,
     guifontset = "",
     guipty = false,
-    highlight = "8:SpecialKey,~:EndOfBuffer,@:NonText,d:Directory,e:ErrorMsg,i:IncSearch,l:Search,y:CurSearch,m:MoreMsg,M:ModeMsg,n:LineNr,a:LineNrAbove,b:LineNrBelow,N:CursorLineNr,G:CursorLineSign,O:CursorLineFold,r:Question,s:StatusLine,S:StatusLineNC,c:VertSplit,t:Title,v:Visual,V:VisualNOS,w:WarningMsg,W:WildMenu,f:Folded,F:FoldColumn,A:DiffAdd,C:DiffChange,D:DiffDelete,T:DiffText,E:DiffTextAdd,>:SignColumn,-:Conceal,B:SpellBad,P:SpellCap,R:SpellRare,L:SpellLocal,+:Pmenu,=:PmenuSel,k:PmenuMatch,<:PmenuMatchSel,[:PmenuKind,]:PmenuKindSel,{:PmenuExtra,}:PmenuExtraSel,x:PmenuSbar,X:PmenuThumb,*:TabLine,#:TabLineSel,_:TabLineFill,!:CursorColumn,.:CursorLine,o:ColorColumn,q:QuickFixLine,z:StatusLineTerm,Z:StatusLineTermNC,g:MsgArea,h:ComplMatchIns,%:TabPanel,^:TabPanelSel,&:TabPanelFill,I:PreInsert",
+    highlight = "8:SpecialKey,~:EndOfBuffer,@:NonText,d:Directory,e:ErrorMsg,i:IncSearch,l:Search,y:CurSearch,m:MoreMsg,M:ModeMsg,n:LineNr,a:LineNrAbove,b:LineNrBelow,N:CursorLineNr,G:CursorLineSign,O:CursorLineFold,r:Question,s:StatusLine,S:StatusLineNC,c:VertSplit,t:Title,v:Visual,V:VisualNOS,w:WarningMsg,W:WildMenu,f:Folded,F:FoldColumn,A:DiffAdd,C:DiffChange,D:DiffDelete,T:DiffText,E:DiffTextAdd,>:SignColumn,-:Conceal,B:SpellBad,P:SpellCap,R:SpellRare,L:SpellLocal,+:Pmenu,=:PmenuSel,k:PmenuMatch,<:PmenuMatchSel,[:PmenuKind,]:PmenuKindSel,{:PmenuExtra,}:PmenuExtraSel,x:PmenuSbar,X:PmenuThumb,*:TabLine,#:TabLineSel,_:TabLineFill,!:CursorColumn,.:CursorLine,o:ColorColumn,q:QuickFixLine,z:StatusLineTerm,Z:StatusLineTermNC,g:MsgArea,h:ComplMatchIns,%:TabPanel,^:TabPanelSel,&:TabPanelFill,I:PreInsert", -- luacheck: ignore 631
     hkmap = false,
     hkmapp = false,
     pastetoggle = "",
@@ -848,7 +889,7 @@ local removed_options = {
     maxmemtot = 0,
     printdevice = "",
     printencoding = "",
-    printexpr = "system('lpr' . (&printdevice == '' ? '' : ' -P' . &printdevice) . ' ' . v:fname_in) . delete(v:fname_in) + v:shell_error",
+    printexpr = "system('lpr' . (&printdevice == '' ? '' : ' -P' . &printdevice) . ' ' . v:fname_in) . delete(v:fname_in) + v:shell_error", -- luacheck: ignore 631
     printfont = "courier",
     printheader = "%<%f%h%m%=Page %N",
     printmbcharset = "",
@@ -909,6 +950,97 @@ function Options.resolve_abbrev(name)
     return nil
 end
 
+function Options.get_info(name)
+    local canon = Options.resolve_abbrev(name)
+    if not canon or not opt_locs[canon] then
+        return nil
+    end
+
+    local loc = opt_locs[canon]
+    local typ = opt_types[canon] or "string"
+    if typ == "stringfunc" then
+        typ = "string"
+    end
+
+    local append_kind = append_type_special[canon]
+
+    -- Find shortest alias for shortname field
+    local shortname = canon
+    for alias, target in pairs(opt_aliases) do
+        if target == canon and (#alias < #shortname or (#alias == #shortname and alias < shortname)) then
+            shortname = alias
+        end
+    end
+
+    return {
+        name = canon,
+        shortname = shortname,
+        scope = map_loc_to_scope(loc),
+        global_local = option_is_global_local(loc),
+        commalist = append_kind == "csl",
+        flaglist = append_kind == "flags",
+        type = typ,
+        default = opt_defaults[canon],
+        allows_duplicates = append_kind ~= "flags",
+        _loc = loc,
+    }
+end
+
+function Options.list_all_info_names()
+    local out = {}
+    for name, _ in pairs(opt_locs) do
+        out[#out + 1] = name
+    end
+    table.sort(out)
+    return out
+end
+
+function Options.has_local_value(name, window, buffer)
+    local canon = Options.resolve_abbrev(name)
+    if not canon then
+        return false
+    end
+    local loc = opt_locs[canon]
+    if not loc then
+        return false
+    end
+    return has_local_value(canon, loc, window, buffer)
+end
+
+local default_set_info = {
+    was_set = false,
+    last_set_sid = 0,
+    last_set_linenr = 0,
+    last_set_chan = 0,
+}
+
+function Options.get_last_set_info(name, scope, window, buffer)
+    local canon = Options.resolve_abbrev(name)
+    if not canon then
+        return default_set_info
+    end
+
+    local slot
+    if scope == "buf" then
+        local key = buffer and buffer.bufnr or 0
+        slot = option_set_info.buf[key]
+    elseif scope == "win" then
+        local key = window and window.winnr or 0
+        slot = option_set_info.win[key]
+    elseif scope == "tab" then
+        slot = option_set_info.tab[curtp]
+    else
+        slot = option_set_info.global[0]
+    end
+
+    local info = slot and slot[canon]
+    if not info then
+        return default_set_info
+    end
+
+    return info
+end
+
 local global_opts = {}
 
 local function first2(a, b)
@@ -924,12 +1056,6 @@ local function first3(a, b, c)
         return c
     end
 end
-
-local tolocal = {
-    gow = "ltw",
-    got = "ltt",
-    gob = "ltb"
-}
 
 local getters = {
     ggg = function(n)
@@ -986,10 +1112,10 @@ local global_getters = {
     got = function(n)
         return first2(global_opts[n], opt_defaults[n])
     end,
-    gow = function(n, win)
+    gow = function(n)
         return first2(global_opts[n], opt_defaults[n])
     end,
-    gob = function(n, _, buf)
+    gob = function(n)
         return first2(global_opts[n], opt_defaults[n])
     end
 }
@@ -1030,7 +1156,12 @@ function Options.get(opt_name, window, buffer, getlocal, getglobal)
         f = getters[kind]
     end
     if not f then
-        error("Unhandled option type: " .. tostring(kind) .. (getlocal and " local" or "") .. (getglobal and " global" or ""))
+        error(
+            "Unhandled option type: "
+            .. tostring(kind)
+            .. (getlocal and " local" or "")
+            .. (getglobal and " global" or "")
+        )
     end
     return f(opt_name, window, buffer)
 end
@@ -1181,9 +1312,31 @@ function Options.FormatCommentString(text, window, buffer)
     return cms:sub(1, s - 1) .. body .. cms:sub(e + 1)
 end
 
+local function sync_screen_geometry_from_options()
+    local width = Options.get("columns")
+    local height = Options.get("lines")
+    if screen.width == width and screen.height == height then
+        return
+    end
+
+    screen.width = width
+    screen.height = height
+    for _, tabp in pairs(tabpages) do
+        tabp:updateFrameview()
+    end
+    what_redraw["all"] = true
+    need_redraw = true
+end
+
 local option_updatees = {
-    statusline = function(value, win, buffer, _local, global)
-        if _local then
+    columns = function(_value)
+        sync_screen_geometry_from_options()
+    end,
+    lines = function(_value)
+        sync_screen_geometry_from_options()
+    end,
+    statusline = function(_value, win, _buffer, local_, _global)
+        if local_ then
             win.need_redraw = true
         else
             what_redraw["windows"] = true
@@ -1244,7 +1397,6 @@ local option_updatees = {
 
         LOG_DEBUG("option(filetype): old='%s' new='%s' bufnr=%s", oldft, newft, tostring(buffer.bufnr))
 
-        AutoCmd = AutoCmd or loadModule("lib.autocmd")
         AutoCmd.Run("FileType", {
             bufnr = buffer.bufnr,
             bufname = buffer.name,
@@ -1259,10 +1411,8 @@ local option_updatees = {
 
         LOG_DEBUG("option(syntax): new='%s' bufnr=%s", tostring(value), tostring(buffer.bufnr))
 
-        Syntax = Syntax or loadModule("lib.syntax")
         Syntax.OnSyntaxOptionSet(buffer, value)
 
-        AutoCmd = AutoCmd or loadModule("lib.autocmd")
         AutoCmd.Run("Syntax", {
             bufnr = buffer.bufnr,
             bufname = buffer.name,
@@ -1274,7 +1424,6 @@ local option_updatees = {
         need_redraw = true
     end,
     synmaxcol = function(value, _win, buffer)
-        Syntax = Syntax or loadModule("lib.syntax")
         Syntax.OnSynmaxcolOptionSet(buffer, value)
 
         what_redraw["windows"] = true
@@ -1303,7 +1452,9 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
 
     value = _normalize_option_value(name, value, name .. "=" .. tostring(value))
     if not _is_valid_option_type(name, value) then
-        error("Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value))
+        error(
+            "Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value)
+        )
     end
     local expr_state = _capture_expr_option_state(name)
 
@@ -1314,59 +1465,84 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
 
     if loc == "ggg" then
         global_opts[name] = value
+        record_option_set(name, "global", 0)
     elseif loc == "gob" then
         if setlocal then
             buffer.opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             buffer.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "gow" then
         if setlocal then
             window.opts[name] = value
+            record_option_set(name, "win", window.winnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             window.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "win", window.winnr)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "got" then
         if setlocal then
             tabpages[curtp].opts[name] = value
+            record_option_set(name, "tab", curtp)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             tabpages[curtp].opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "tab", curtp)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "ltt" then
         if setlocal then
             tabpages[curtp].opts[name] = value
+            record_option_set(name, "tab", curtp)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             tabpages[curtp].opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "tab", curtp)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "ltw" then
         if setlocal then
             window.opts[name] = value
+            record_option_set(name, "win", window.winnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             window.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "win", window.winnr)
+            record_option_set(name, "global", 0)
         end
     elseif loc == "ltb" then
         if setlocal then
             buffer.opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
         elseif setglobal then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         else
             buffer.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
+            record_option_set(name, "global", 0)
         end
     end
 
@@ -1409,60 +1585,83 @@ local function _apply_value(name, value, mode, window, buffer, source_expr)
     -- type-check
     value = _normalize_option_value(name, value, source_expr)
     if not _is_valid_option_type(name, value) then
-        error("Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value))
+        error(
+            "Invalid set of option " .. name .. ": expected " .. _expected_option_type(name) .. ", got " .. type(value)
+        )
     end
     local expr_state = _capture_expr_option_state(name)
 
     local loc = opt_locs[name]
     if loc == "ggg" then
         global_opts[name] = value
+        record_option_set(name, "global", 0)
     elseif loc == "gob" or loc == "gow" or loc == "got" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "local" then
             if loc == "gob" then
                 buffer.opts[name] = value
+                record_option_set(name, "buf", buffer.bufnr)
             elseif loc == "gow" then
                 window.opts[name] = value
+                record_option_set(name, "win", window.winnr)
             else
                 tabpages[curtp].opts[name] = value
+                record_option_set(name, "tab", curtp)
             end
         else -- "both": set global and current local
             global_opts[name] = value
+            record_option_set(name, "global", 0)
             if loc == "gob" then
                 buffer.opts[name] = value
+                record_option_set(name, "buf", buffer.bufnr)
             elseif loc == "gow" then
                 window.opts[name] = value
+                record_option_set(name, "win", window.winnr)
             else
                 tabpages[curtp].opts[name] = value
+                record_option_set(name, "tab", curtp)
             end
         end
     elseif loc == "ltb" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "both" then
             buffer.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
+            record_option_set(name, "global", 0)
         else
             buffer.opts[name] = value
+            record_option_set(name, "buf", buffer.bufnr)
         end
     elseif loc == "ltw" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "both" then
             window.opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "win", window.winnr)
+            record_option_set(name, "global", 0)
         else
             window.opts[name] = value
+            record_option_set(name, "win", window.winnr)
         end
     elseif loc == "ltt" then
         if mode == "global" then
             global_opts[name] = value
+            record_option_set(name, "global", 0)
         elseif mode == "both" then
             tabpages[curtp].opts[name] = value
             global_opts[name] = value
+            record_option_set(name, "tab", curtp)
+            record_option_set(name, "global", 0)
         else
             tabpages[curtp].opts[name] = value
+            record_option_set(name, "tab", curtp)
         end
     else
         error("Unhandled option location: " .. tostring(loc))
@@ -1508,7 +1707,7 @@ function Options.exset_token(token, mode, window, buffer)
 
     -- Suffixes: ?, &, <, !
     local disp, to_def, to_glob, toggle_tail = false, false, false, false
-    local def_kind = nil -- "vim" (default) or "vi"
+    local def_kind -- "vim" (default) or "vi"
     local neg_prefix, inv_prefix = false, false
     local name, op, rhs = parse_assignment(token)
     if not name then
@@ -1568,7 +1767,6 @@ function Options.exset_token(token, mode, window, buffer)
     -- Display: requested via ? or bare non-boolean option (no trailing mutator).
     if disp or (is_bare_nonbool and not has_mutating_suffix) then
         local cur = Options.get(name, window, buffer, (mode == "local"), mode == "global")
-        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
         if typ == "boolean" then
             ExMsg.echo((cur and "" or "no") .. name)
         else
@@ -1638,6 +1836,7 @@ function Options.exset_token(token, mode, window, buffer)
     -- Strings
     local cur = Options.get(name, window, buffer, (mode ~= "global")) or ""
     local s   = _unescape(rhs or "")
+    s = _canonicalize_expr_option_string(name, s)
     if typ == "stringfunc" and op == "=" then
         local trimmed = s:gsub("^%s+", ""):gsub("%s+$", "")
         local looks_funcexpr =
@@ -1645,12 +1844,11 @@ function Options.exset_token(token, mode, window, buffer)
             or trimmed:match("^funcref%s*%(") ~= nil
             or (trimmed:sub(1, 1) == "{" and trimmed:sub(-1) == "}" and trimmed:find("->", 1, true) ~= nil)
         if looks_funcexpr then
-            VimExpr = VimExpr or loadModule("lib.excmd.vimxpr")
             local evaluated = VimExpr.evaluate(trimmed)
             if Error.IsError(evaluated) then
                 return evaluated
             end
-            s = evaluated
+            s = trimmed
         end
     end
     local append_type = Options._append_type(name)
@@ -1680,6 +1878,8 @@ function Options.exset_token(token, mode, window, buffer)
                 end
             end
             _apply_value(name, merged, mode, window, buffer, origtoken)
+        elseif append_type == "csl" and cur ~= "" and s ~= "" then
+            _apply_value(name, s .. "," .. tostring(cur), mode, window, buffer, origtoken)
         else
             _apply_value(name, s .. tostring(cur), mode, window, buffer, origtoken)
         end

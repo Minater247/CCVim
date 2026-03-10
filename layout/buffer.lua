@@ -8,7 +8,7 @@ local VimFs = loadModule("lib.luaapi.fs")
 local Syntax = loadModule("lib.syntax")
 local Utf8 = loadModule("lib.utf8")
 local BufAttach = loadModule("lib.bufattach")
-local Sign
+local Sign = loadModule("lib.sign")
 
 local curr_bufno = 1
 
@@ -19,6 +19,9 @@ end
 
 local function _run_textchanged(buf, noauto)
     if noauto then
+        return
+    end
+    if __ccvim_input_state.feedkeys_typeahead_depth > 0 then
         return
     end
     if windows[curwin].buffer ~= buf then
@@ -330,11 +333,18 @@ function Buffer:Load(read_contents)
                 if h then
                     local s = h.readAll() or ""
                     h.close()
+                    s = s:gsub("\r\n", "\n")
+                    if s:sub(-1) == "\n" then
+                        s = s:sub(1, -2)
+                    end
                     self.lines = {}
                     local i = 1
-                    for l in (s .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+                    for l in (s .. "\n"):gmatch("([^\n]*)\n") do
                         self.lines[i] = l
                         i = i + 1
+                    end
+                    if #self.lines == 0 then
+                        self.lines = { "" }
                     end
                 else
                     -- Treat unreadable entries (e.g., directories) as empty but continue.
@@ -393,34 +403,6 @@ end
 function Buffer:get_line(line_nr, load_if_unloaded)
     local lines = self:lines_ref(load_if_unloaded)
     return lines[line_nr]
-end
-
-function Buffer:str_len(s)
-    return Utf8.len(s or "")
-end
-
-function Buffer:str_sub(s, start_col1, end_col1)
-    return Utf8.sub(s or "", start_col1, end_col1)
-end
-
-function Buffer:str_char_at(s, col1)
-    return Utf8.char_at(s or "", col1)
-end
-
-function Buffer:str_codepoint_at(s, col1)
-    return Utf8.codepoint_at(s or "", col1)
-end
-
-function Buffer:str_byte_index(s, col1, allow_eol)
-    return Utf8.byte_index(s or "", col1, allow_eol)
-end
-
-function Buffer:str_col_from_byte(s, byte_idx, allow_eol)
-    return Utf8.col_from_byte(s or "", byte_idx, allow_eol)
-end
-
-function Buffer:str_each_codepoint(s, visitor)
-    return Utf8.each_codepoint(s or "", visitor)
 end
 
 function Buffer:_ensure_undo_state()
@@ -623,7 +605,6 @@ function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
     end
     self.opts.modified = modified == true
 
-    Sign = Sign or loadModule("lib.sign")
     Sign.on_lines_changed(self, 1, #old_lines, #self.lines)
 
     _notify_full_replace(self, old_lines, self.lines)
@@ -634,14 +615,9 @@ function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
     local target_win = win or _buffer_window(self)
     if target_win and cursor then
         local new_y = math.max(1, math.min(cursor[2], #self.lines))
-        local max_x = self:str_len(self.lines[new_y] or "") + 1
+        local max_x = Utf8.len(self.lines[new_y] or "") + 1
         local new_x = math.max(1, math.min(cursor[1], max_x))
-        if type(target_win.cursorSet) == "function" then
-            target_win:cursorSet(new_x, new_y)
-        else
-            target_win.cursorx = new_x
-            target_win.cursory = new_y
-        end
+        target_win:cursorSet(new_x, new_y)
     end
 
     for _, candidate in pairs(windows) do
@@ -774,12 +750,7 @@ function Buffer:undo_line(win, noauto)
         self.opts.modified = true
 
         if target_win then
-            if type(target_win.cursorSet) == "function" then
-                target_win:cursorSet(1, target_line)
-            else
-                target_win.cursorx = 1
-                target_win.cursory = target_line
-            end
+            target_win:cursorSet(1, target_line)
         end
 
         _notify_buf_lines(self, {
@@ -833,12 +804,7 @@ function Buffer:undo_line(win, noauto)
     self:undo_mark_changed()
     self.opts.modified = true
     if target_win then
-        if type(target_win.cursorSet) == "function" then
-            target_win:cursorSet(1, target_line)
-        else
-            target_win.cursorx = 1
-            target_win.cursory = target_line
-        end
+        target_win:cursorSet(1, target_line)
     end
     self:undo_end(target_win)
 
@@ -846,33 +812,27 @@ function Buffer:undo_line(win, noauto)
 end
 
 function Buffer:line_len(line_nr, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.len(line)
+    return Utf8.len(self:get_line(line_nr, load_if_unloaded))
 end
 
 function Buffer:line_sub(line_nr, start_col1, end_col1, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.sub(line, start_col1, end_col1)
+    return Utf8.sub(self:get_line(line_nr, load_if_unloaded), start_col1, end_col1)
 end
 
 function Buffer:line_char_at(line_nr, col1, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.char_at(line, col1)
+    return Utf8.char_at(self:get_line(line_nr, load_if_unloaded), col1)
 end
 
 function Buffer:line_codepoint_at(line_nr, col1, load_if_unloaded)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.codepoint_at(line, col1)
+    return Utf8.codepoint_at(self:get_line(line_nr, load_if_unloaded), col1)
 end
 
 function Buffer:line_byte_index(line_nr, col1, load_if_unloaded, allow_eol)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.byte_index(line, col1, allow_eol)
+    return Utf8.byte_index(self:get_line(line_nr, load_if_unloaded), col1, allow_eol)
 end
 
 function Buffer:line_col_from_byte(line_nr, byte_idx, load_if_unloaded, allow_eol)
-    local line = self:get_line(line_nr, load_if_unloaded) or ""
-    return Utf8.col_from_byte(line, byte_idx, allow_eol)
+    return Utf8.col_from_byte(self:get_line(line_nr, load_if_unloaded), byte_idx, allow_eol)
 end
 
 function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
@@ -991,7 +951,6 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     end
 
     if not opts.skip_sign_adjust then
-        Sign = Sign or loadModule("lib.sign")
         Sign.on_lines_changed(self, s, k_remove, 0)
     end
 
@@ -1027,7 +986,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     return removed
 end
 
-function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
+function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
     self.loaded = true
     local line_count = #self.lines
 
@@ -1093,7 +1052,6 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     end
 
     if k_remove > 0 or m_insert > 0 then
-        Sign = Sign or loadModule("lib.sign")
         Sign.on_lines_changed(self, start1, k_remove, m_insert)
     end
     
@@ -1123,7 +1081,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
         })
     end
 
-    _run_textchanged(self, false)
+    _run_textchanged(self, noauto)
     Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
     _request_full_redraw()
     self:undo_end()
@@ -1147,7 +1105,12 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     local bufhidden = options.get("bufhidden", nil, self)
     local hidden = options.get("hidden")
 
-    if not forceabandon and self.opts.modified and _autowrite_enabled(autowrite_kind) and not _autowrite_blocked_buftype(self) then
+    if
+        not forceabandon
+        and self.opts.modified
+        and _autowrite_enabled(autowrite_kind)
+        and not _autowrite_blocked_buftype(self)
+    then
         local status = self:write(false)
         if status ~= true then
             return status
@@ -1155,9 +1118,8 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     end
 
     if bufhidden ~= "" then
-        if bufhidden == "hide" then
-            -- Keep buffer loaded and listed regardless of global 'hidden'.
-        elseif bufhidden == "unload" then
+        -- If bufhidden is "hidden", then this is ignored
+        if bufhidden == "unload" then
             -- Approximate unload semantics: keep the buffer object, but drop
             -- transient parse context and clear loaded contents.
             self.syntax_ctx = nil
@@ -1165,18 +1127,19 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
             self.loaded = false
             BufAttach.detach(self.bufnr)
         elseif bufhidden == "delete" then
-            -- Behave like :bdelete when last window reference is gone.
             self.opts.buflisted = false
             if self.refcount <= 1 then
+                self.syntax_ctx = nil
+                self.lines = {}
+                self.loaded = false
                 BufAttach.detach(self.bufnr)
-                buffers[self.bufnr] = nil
             end
         elseif bufhidden == "wipe" then
             if self.refcount <= 1 then
                 BufAttach.detach(self.bufnr)
                 buffers[self.bufnr] = nil
             end
-        else
+        elseif bufhidden ~= "hide" then
             error("Unhandled: bufhidden = " .. bufhidden)
         end
     else

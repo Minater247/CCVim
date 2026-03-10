@@ -427,7 +427,15 @@ local function parse_lua_backend(bufnr, lang)
                     end
 
                     if close_end then
-                        add_capture(doc, row0, i - 1, close_end, comment_capture, line:sub(i, close_end), { spell = true })
+                        add_capture(
+                            doc,
+                            row0,
+                            i - 1,
+                            close_end,
+                            comment_capture,
+                            line:sub(i, close_end),
+                            { spell = true }
+                        )
                         i = close_end + 1
                     else
                         add_capture(doc, row0, i - 1, line_len, comment_capture, line:sub(i), { spell = true })
@@ -507,7 +515,13 @@ local function parse_lua_backend(bufnr, lang)
                             tok.capture = "keyword.function"
                         elseif text == "if" or text == "elseif" or text == "else" or text == "then" then
                             tok.capture = "keyword.conditional"
-                        elseif text == "for" or text == "while" or text == "repeat" or text == "until" or text == "do" then
+                        elseif
+                            text == "for"
+                            or text == "while"
+                            or text == "repeat"
+                            or text == "until"
+                            or text == "do"
+                        then
                             tok.capture = "keyword.repeat"
                         elseif text == "and" or text == "or" or text == "not" then
                             tok.capture = "keyword.operator"
@@ -531,7 +545,10 @@ local function parse_lua_backend(bufnr, lang)
                         local prev = line:sub(j - 1, j - 1)
                         if c:match("[%w_]") or c == "." then
                             j = j + 1
-                        elseif (c == "+" or c == "-") and (prev == "e" or prev == "E" or prev == "p" or prev == "P") then
+                        elseif
+                            (c == "+" or c == "-")
+                            and (prev == "e" or prev == "E" or prev == "p" or prev == "P")
+                        then
                             j = j + 1
                         else
                             break
@@ -1042,7 +1059,7 @@ end
 
 local function spans_in_range(doc, start_row, stop_row)
     local out = {}
-    local sr = tonumber(start_row or 0) or 0
+    local sr = tonumber(start_row) or 0
     local er = tonumber(stop_row or (sr + 1)) or (sr + 1)
 
     for row = sr, er - 1 do
@@ -1521,7 +1538,7 @@ function M.get_captures_at_pos(bufnr, row, col)
         return {}
     end
 
-    return active:captures_at_pos(tonumber(row or 0) or 0, tonumber(col or 0) or 0)
+    return active:captures_at_pos(tonumber(row) or 0, tonumber(col) or 0)
 end
 
 function M.get_captures_at_cursor(winnr)

@@ -11,6 +11,7 @@ local fn = loadModule("lib.luaapi.fn")
 local require = loadModule("lib.luaapi.require")
 local package = loadModule("lib.luaapi.package")
 local fileload = loadModule("lib.luaapi.fileload")
+local fakeuserdata = loadModule("lib.luaapi.fakeuserdata")
 local timerutils = loadModule("lib.luaapi.timerutils")
 local scopes = loadModule("lib.luaapi.scopes")
 local print = loadModule("lib.luaapi.print")
@@ -18,6 +19,49 @@ local strutils = loadModule("lib.luaapi.strutils")
 local envvars = loadModule("lib.envvars")
 local lpeg = loadModule("lib.luaapi.lpeg")
 local treesitter = loadModule("lib.luaapi.treesitter")
+
+local bit = rawget(_G, "bit")
+if not bit then
+    local bit32lib = rawget(_G, "bit32")
+    if bit32lib then
+        local function tobit(x)
+            x = tonumber(x) or 0
+            x = x % 0x100000000
+            if x >= 0x80000000 then
+                return x - 0x100000000
+            end
+            return x
+        end
+
+        local function tohex(x, n)
+            local width = math.abs(tonumber(n) or 8)
+            if width < 1 then
+                width = 1
+            end
+            local modulus = 16 ^ width
+            local value = (tonumber(x) or 0) % modulus
+            local s = string.format("%0" .. tostring(width) .. "x", value)
+            if (tonumber(n) or 8) < 0 then
+                s = string.upper(s)
+            end
+            return s
+        end
+
+        bit = {
+            band = bit32lib.band,
+            bor = bit32lib.bor,
+            bxor = bit32lib.bxor,
+            bnot = bit32lib.bnot,
+            lshift = bit32lib.lshift,
+            rshift = bit32lib.rshift,
+            arshift = bit32lib.arshift or bit32lib.rshift,
+            rol = bit32lib.lrotate,
+            ror = bit32lib.rrotate,
+            tobit = tobit,
+            tohex = tohex,
+        }
+    end
+end
 
 local mainapi
 local VIM_NIL = setmetatable({}, {
@@ -60,7 +104,7 @@ local function list_runtime_vim_underscore_modules()
     local dir = ccvim_path .. "/runtime/lua/vim"
     local modules = {}
     for _, name in ipairs(fs.list(dir)) do
-        if name:sub(1, 1) == "_" and name:sub(-4) == ".lua" then
+        if name ~= "_meta.lua" and name:sub(1, 1) == "_" and name:sub(-4) == ".lua" then
             modules[#modules + 1] = "vim." .. name:sub(1, -5)
         end
     end
@@ -218,16 +262,25 @@ function ApiBuild.Build()
 
     local LuaLoader
 
+    local function inline_runtime_state()
+        local state = Runtime._API_STATE
+        if type(state) ~= "table" then
+            state = {}
+            Runtime._API_STATE = state
+        end
+        state.g = scopes._g
+        state.s = {}
+        state.v = scopes._v
+        state.funcs = Runtime._FUNCS
+        state.frames = {}
+        state.commands = state.commands or {}
+        state.menus = state.menus or {}
+        return state
+    end
+
     local function run_cmdline(line)
         local ok, rv = Runtime.run(line, {
-            state = {
-                g = scopes._g,
-                s = {},
-                v = scopes._v,
-                funcs = Runtime._FUNCS,
-                frames = {},
-                commands = {},
-            },
+            state = inline_runtime_state(),
             origin = {
                 kind = "lua-inline",
                 api = "vim.cmd",
@@ -235,7 +288,6 @@ function ApiBuild.Build()
         })
         if not ok then
             local msg = rv:toString()
-            scopes._v.errmsg = msg
             error(msg)
         end
         return rv
@@ -296,6 +348,59 @@ function ApiBuild.Build()
         maxn = table_maxn,
     }, { __index = table })
 
+    local function get_scoped_var(scope, handle, key)
+        local h = handle or 0
+        if h == 0 then
+            h = (scope == "b" and windows[curwin].buffer.bufnr)
+                or (scope == "w" and curwin)
+                or (scope == "t" and curtp)
+                or 0
+        end
+
+        if scope == "g" then
+            return scopes._g[key]
+        elseif scope == "v" then
+            return scopes._v[key]
+        elseif scope == "b" then
+            return scopes.b[h][key]
+        elseif scope == "w" then
+            return scopes.w[h][key]
+        elseif scope == "t" then
+            return scopes.t[h][key]
+        end
+    end
+
+    local function set_scoped_var(scope, handle, key, value)
+        if value == VIM_NIL then
+            value = nil
+        end
+
+        local h = handle or 0
+        if h == 0 then
+            h = (scope == "b" and windows[curwin].buffer.bufnr)
+                or (scope == "w" and curwin)
+                or (scope == "t" and curtp)
+                or 0
+        end
+
+        if scope == "g" then
+            scopes._g[key] = value
+            return
+        elseif scope == "v" then
+            scopes._v[key] = value
+            return
+        elseif scope == "b" then
+            scopes.b[h][key] = value
+            return
+        elseif scope == "w" then
+            scopes.w[h][key] = value
+            return
+        elseif scope == "t" then
+            scopes.t[h][key] = value
+            return
+        end
+    end
+
     local os_compat = setmetatable({
         getenv = envvars.get,
     }, { __index = os })
@@ -325,6 +430,8 @@ function ApiBuild.Build()
             call = vim_call,
             on_key = on_key.on_key,
             _on_key = on_key.dispatch,
+            _getvar = get_scoped_var,
+            _setvar = set_scoped_var,
         },
         jit = jit,
         require = require,
@@ -332,6 +439,13 @@ function ApiBuild.Build()
         table = table_compat,
         unpack = unpack or table.unpack,
         os = os_compat,
+        type = fakeuserdata.type,
+        next = fakeuserdata.next,
+        pairs = fakeuserdata.pairs,
+        ipairs = fakeuserdata.ipairs,
+        rawget = fakeuserdata.rawget,
+        rawset = fakeuserdata.rawset,
+        setmetatable = fakeuserdata.setmetatable,
 
         -- DEBUG
         LOG_DEBUG = LOG_DEBUG,
@@ -343,6 +457,7 @@ function ApiBuild.Build()
         __index = _G
     })
     mainapi._G = mainapi
+    mainapi.bit = bit
 
     mainapi.vim._empty_dict_mt = {}
     mainapi.vim.empty_dict = function()

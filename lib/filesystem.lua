@@ -1,8 +1,9 @@
 local Filesystem = {}
 
-local ScriptSource
-local Scopes
-local Runtime
+local Error = loadModule("lib.error")
+local ScriptSource = loadModule("lib.scriptsource")
+local Scopes = loadModule("lib.luaapi.scopes")
+local Runtime = loadModule("lib.excmd.runtime")
 local VimFs = loadModule("lib.luaapi.fs")
 
 local function _is_scheme(path)
@@ -12,26 +13,25 @@ end
 local function _normalize_autocmd_path(path)
     if type(path) ~= "string" or path == "" then return path or "" end
     if _is_scheme(path) then return path end
-    return VimFs.abspath(path)
+    return VimFs.editor_abspath(path)
 end
 
 local function _expand_sid()
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
-
     local sid = tonumber(Runtime.CurrentScriptSid())
 
     -- Fallback: if only script context is available, derive SID from canonicalization.
     if not sid then
-        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local ctx = ScriptSource.CurrentContext()
-        local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = ctx })
-        sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
+        if type(ctx) == "string" and ctx ~= "" then
+            local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = ctx })
+            sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
+        end
     end
 
     if sid then
         return "<SNR>" .. tostring(sid) .. "_"
     end
-    return ""
+    return Error(81)
 end
 
 function Filesystem.ExpandWildcards(path)
@@ -175,13 +175,31 @@ function Filesystem.ExpandWildcards(path)
     end
 
     local function list_sorted(dir)
+        local dirs, files = {}, {}
         local entries = fs.list(dir) or {}
-        table.sort(entries)
-        return entries
+        for i = 1, #entries do
+            local name = entries[i]
+            local child = join(dir, name)
+            if fs.isDir(child) then
+                dirs[#dirs + 1] = name
+            else
+                files[#files + 1] = name
+            end
+        end
+        table.sort(dirs)
+        table.sort(files)
+        for i = 1, #files do
+            dirs[#dirs + 1] = files[i]
+        end
+        return dirs
+    end
+
+    local function glob_matches_dotfiles(seg)
+        return seg:sub(1, 1) == "."
     end
 
     -- Resolve to an absolute path first so expansion is deterministic
-    local abs = VimFs.abspath(path)
+    local abs = VimFs.editor_abspath(path)
 
     local results = {}
 
@@ -218,8 +236,13 @@ function Filesystem.ExpandWildcards(path)
             if has_glob(seg) then
                 local patt = to_lua_pattern(seg)
                 if fs.isDir(base) then
-                    for _, name in ipairs(list_sorted(base)) do
-                        if name:match(patt) then
+                    local names = list_sorted(base)
+                    if glob_matches_dotfiles(seg) then
+                        table.insert(names, 1, "..")
+                        table.insert(names, 1, ".")
+                    end
+                    for _, name in ipairs(names) do
+                        if (name:sub(1, 1) ~= "." or glob_matches_dotfiles(seg)) and name:match(patt) then
                             local child = join(base, name)
                             if is_last or fs.isDir(child) then
                                 expand_from(child, idx + 1)
@@ -255,7 +278,7 @@ function Filesystem.ExpandWildcards(path)
     return out
 end
 
-function Filesystem.Expand(str, nosuf)
+function Filesystem.Expand(str)
     local expansions = {}
 
     if str:sub(1, 1) == "%" then
@@ -268,11 +291,9 @@ function Filesystem.Expand(str, nosuf)
         local brack_l = tostring(brack or ""):lower()
 
         if brack_l == "sfile" then
-            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             expansions = { ScriptSource.CurrentContext() }
             str = rest
         elseif brack_l == "amatch" or brack_l == "afile" or brack_l == "abuf" then
-            Scopes = Scopes or loadModule("lib.luaapi.scopes")
             local ve = Scopes._v and Scopes._v.event or {}
             if brack_l == "amatch" then
                 local v = ve.match
@@ -294,7 +315,11 @@ function Filesystem.Expand(str, nosuf)
             end
             str = rest
         elseif brack_l == "sid" then
-            expansions = { _expand_sid() }
+            local sid = _expand_sid()
+            if Error.IsError(sid) then
+                return sid
+            end
+            expansions = { sid }
             str = rest
         else
             error("UNHANDLED: expand(\"<" .. brack .. ">\"): " .. str)
@@ -302,14 +327,8 @@ function Filesystem.Expand(str, nosuf)
     elseif str:sub(1, 1) == "#" then
         error("UNHANDLED: expand(\"#...\"): " .. str)
     else
-        -- TODO: make this work better using regex
-        local out = ""
-        local c = str:sub(1, 1)
-        while c ~= ":" and c ~= "" do
-            out = out .. c
-            str = str:sub(2)
-            c = str:sub(1, 1)
-        end
+        local out = str:match("^([^:]*)") or ""
+        str = str:sub(#out + 1)
         expansions = { out }
     end
 

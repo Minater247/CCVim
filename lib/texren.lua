@@ -223,18 +223,16 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
     local wl = params.wraplen or 0
     local wordwrap = params.wordwrap
     local breakset = nil
-    local src_is_break, src_is_space = nil, nil
+    local src_is_break = nil
     if wordwrap and params.breakat and type(params.breakat) == "string" then
         breakset = {}
         each_char_with_byte(params.breakat, function(_, cp)
             breakset[Utf8.ascii_cell_for_codepoint(cp)] = true
         end)
         src_is_break = {}
-        src_is_space = {}
         each_char_with_byte(str, function(si, cp)
             local ch = Utf8.ascii_cell_for_codepoint(cp)
             if breakset[ch] then src_is_break[si] = true end
-            if cp == 9 or ch == " " then src_is_space[si] = true end
         end)
     end
 
@@ -257,14 +255,6 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
         if want_pos and mapped_col_local and not mapped_line then
             mapped_line, mapped_col = line_idx, mapped_col_local
         end
-    end
-
-    local function map_dropped_space_to_prev_line()
-        local line_idx = math.max(1, ri - 1)
-        local len = rv[line_idx] and #rv[line_idx] or 0
-        mapped_line = line_idx
-        mapped_col = len + 1
-        mapped_ch_explicit = " "
     end
 
     -- No wrapping or single-line

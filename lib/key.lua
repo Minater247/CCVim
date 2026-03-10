@@ -11,10 +11,6 @@ local function S(n)
     return bit32.bor(n, 8192)
 end
 
-local function CS(n)
-    return bit32.bor(n, 12288)
-end
-
 local printables = {
     [keys.tab] = "Tab",
     [keys.backspace] = "BS",
@@ -221,7 +217,7 @@ local shiftables = {
 local emittables = {
     [keys.tab] = "\t",
     [keys.backspace] = "\b",
-    [keys.enter] = "\n",
+    [keys.enter] = "\r",
     [keys.space] = " ",
 
     [keys.one] = "1",
@@ -289,7 +285,7 @@ local emittables = {
     [keys.numPadAdd] = "+",
     [keys.numPadDecimal] = "",
     [keys.multiply or keys.numPadMultiply] = "*",
-    [keys.numPadEnter] = "\n",
+    [keys.numPadEnter] = "\r",
     [keys.numPadDivide] = "/",
 
     [S(keys.one)] = "!",
@@ -343,12 +339,15 @@ local emittables = {
     [S(keys.slash)] = "?",
 
     [S(keys.space)] = " ",
-    [S(keys.enter)] = "\n",
+    [S(keys.enter)] = "\r",
 }
 
 function Key:new(keynr, ctrld, shifted, alted)
+    local ctrlval = ctrld and 4096 or 0
+    local shiftval = shifted and 8192 or 0
+    local altval = alted and 16384 or 0
     local obj = setmetatable({
-        numeric = bit32.bor(keynr, bit32.bor(ctrld and 4096 or 0, bit32.bor(shifted and 8192 or 0, alted and 16384 or 0)))
+        numeric = bit32.bor(keynr, bit32.bor(ctrlval, bit32.bor(shiftval, altval)))
     }, Key)
 
     return obj
@@ -470,7 +469,6 @@ local TERM_PREFIX_2 = 254
 local TERM_PREFIX = string.char(TERM_PREFIX_1, TERM_PREFIX_2)
 local NVIM_K_SPECIAL = 128
 local NVIM_KS_MODIFIER = 252
-local NVIM_KS_COMMAND = 253
 
 local function bytes3(a, b, c)
     return string.char(a, b, c)
@@ -510,6 +508,7 @@ local NVIM_SPECIAL_KEYCODE = {
     ["<S-Right>"] = bytes3(128, 37, 105),
     ["<Nul>"] = bytes3(128, 255, 88),
     ["<Cmd>"] = bytes3(128, 253, 104),
+    ["<Plug>"] = bytes3(128, 253, 112),
 }
 
 local NVIM_SPECIAL_BY_BYTES = {}
@@ -683,8 +682,11 @@ end
 
 local function push_char(seq, ch)
     -- Map literal characters to base key + (optional) shift bit.
-    if ch == "\n" or ch == "\r" then
+    if ch == "\r" then
         table.insert(seq, Key:new(keys.enter, false, false, false))
+        return
+    elseif ch == "\n" then
+        table.insert(seq, key_from_numeric(C(keys.j)))
         return
     elseif ch == "\t" then
         table.insert(seq, Key:new(keys.tab, false, false, false))
@@ -781,7 +783,8 @@ local function parse_angle_content(content)
         error(("Malformed angle key notation: <%s>"):format(content))
     end
 
-    local keynr, inherent_shift = nil, false
+    local keynr
+    local inherent_shift = false
     if #base_token == 1 then
         if click_count then
             error(("Unknown key name <%s>"):format(content))
@@ -860,7 +863,7 @@ local function decode_modifier_payload_byte_to_numeric(mod, payload)
     local has_ctrl = bit32.band(mod, 4) ~= 0
     local has_alt = bit32.band(mod, 8) ~= 0
 
-    local base_num = nil
+    local base_num
     local inherent_shift = false
 
     if has_ctrl and payload >= string.byte("A") and payload <= string.byte("Z") then
@@ -1130,6 +1133,10 @@ local function key_to_termcode_string(key, opts)
     return encode_numeric_termcode(num)
 end
 
+function Key.to_termcode_string(key, opts)
+    return key_to_termcode_string(key, opts)
+end
+
 function Key.replace_termcodes(str, do_lt, special)
     local text = tostring(str or "")
     local replace_special = (special == true or special == 1)
@@ -1166,7 +1173,8 @@ function Key.replace_termcodes(str, do_lt, special)
                             out[#out + 1] = parsed.ch
                         end
                     elseif parsed.kind == "literal_angle" then
-                        out[#out + 1] = "<" .. parsed.content .. ">"
+                        local notation = "<" .. parsed.content .. ">"
+                        out[#out + 1] = NVIM_SPECIAL_KEYCODE[notation] or notation
                     elseif parsed.kind == "cmd" then
                         out[#out + 1] = NVIM_SPECIAL_KEYCODE["<Cmd>"]
                     else
@@ -1257,7 +1265,7 @@ local function keytrans_modifier_at(text, i)
     end
     local j = i + 3
 
-    local base_atom = nil
+    local base_atom
     local special_notation, nsi = decode_nvim_special_at(text, j)
     if special_notation then
         base_atom = special_notation:sub(2, -2)

@@ -1,6 +1,7 @@
 local ListChars = {}
 
-local cache = { raw = nil, parsed = nil }
+-- {raw = ..., cached = ...}
+local cache = {}
 
 local function parse(raw)
     local out = {}

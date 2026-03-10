@@ -33,13 +33,11 @@ local function normalize_path(path)
     local abs = starts_with(p, "/")
     local out = {}
     for part in p:gmatch("[^/]+") do
-        if part == "." then
-            -- no-op
-        elseif part == ".." then
+        if part == ".." then
             if #out > 0 then
                 out[#out] = nil
             end
-        else
+        elseif part ~= "." then
             out[#out + 1] = part
         end
     end
@@ -375,14 +373,20 @@ local function init_lua_engine_runtime()
         setTextColor = function(_) end,
         setBackgroundColor = function(_) end,
     }
-    _G.LOG_ERROR = function(...) end
-    _G.LOG_DEBUG = function(...) end
-    _G.LOG_INTERNAL = function(...) end
+    _G.LOG_ERROR = function() end
+    _G.LOG_DEBUG = function() end
+    _G.LOG_INTERNAL = function() end
 
     local cache = {}
-    function _G.loadModule(name)
-        if cache[name] then
-            return cache[name]
+    function _G.loadModule(name, opts)
+        opts = opts or {}
+
+        local cached = cache[name]
+        if cached ~= nil then
+            if type(cached) == "table" and cached.__ccvim_lazy_proxy and opts.immediate then
+                return cached.__ccvim_materialize()
+            end
+            return cached
         end
 
         local rel = name:gsub("%.", "/") .. ".lua"
@@ -397,9 +401,50 @@ local function init_lua_engine_runtime()
             error(("loadModule failed for %s (%s)"):format(name, tostring(err)))
         end
 
-        local mod = chunk()
-        cache[name] = mod
-        return mod
+        local resolved = false
+        local mod
+        local function materialize()
+            if not resolved then
+                mod = chunk()
+                if mod == nil then
+                    mod = true
+                end
+                resolved = true
+                cache[name] = mod
+            end
+            return mod
+        end
+
+        if opts.immediate then
+            return materialize()
+        end
+
+        local proxy = {
+            __ccvim_lazy_proxy = true,
+            __ccvim_materialize = materialize,
+        }
+        setmetatable(proxy, {
+            __index = function(_, key)
+                return materialize()[key]
+            end,
+            __newindex = function(_, key, value)
+                materialize()[key] = value
+            end,
+            __call = function(_, ...)
+                return materialize()(...)
+            end,
+            __len = function()
+                return #materialize()
+            end,
+            __pairs = function()
+                return pairs(materialize())
+            end,
+            __tostring = function()
+                return tostring(materialize())
+            end,
+        })
+        cache[name] = proxy
+        return proxy
     end
 end
 
@@ -559,7 +604,7 @@ local function load_syntax_commands(ft, opts)
             end,
         })
 
-        local chunk, lerr = load("return (" .. lua_expr .. ")", "cond", "t", env)
+        local chunk = load("return (" .. lua_expr .. ")", "cond", "t", env)
         if not chunk then
             return false
         end
@@ -664,7 +709,10 @@ local function load_syntax_commands(ft, opts)
                         end
                     end
                 elseif parsed.kind ~= "unknown" then
-                    if force_contained and (parsed.kind == "keyword" or parsed.kind == "match" or parsed.kind == "region") then
+                    if
+                        force_contained
+                        and (parsed.kind == "keyword" or parsed.kind == "match" or parsed.kind == "region")
+                    then
                         parsed.options.flags.contained = true
                     end
 

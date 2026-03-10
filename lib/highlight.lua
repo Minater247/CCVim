@@ -234,6 +234,47 @@ function Highlight.HasGroup(name, ns)
     end
 end
 
+function Highlight.ListNames(ns)
+    local names = {}
+    local seen = {}
+
+    local function collect(tbl)
+        for name, _ in pairs(tbl) do
+            if type(name) == "string" and not seen[name] then
+                seen[name] = true
+                names[#names + 1] = name
+            end
+        end
+    end
+
+    if ns and ns ~= 0 and hlns[1] then
+        collect(hlns[1])
+    end
+    collect(ns_table(ns))
+    table.sort(names)
+    return names
+end
+
+function Highlight.ListingSuffix(name, ns)
+    local tbl = ns_table(ns)
+    if tbl._:hasLinkKey(name) then
+        return " links to " .. tostring(tbl._:getLink(name))
+    end
+
+    local raw = tbl[name]
+    if (raw == nil or #raw == 0) and ns and ns ~= 0 then
+        raw = hlns[1][name]
+    end
+
+    if raw == nil then
+        return ""
+    end
+    if #raw == 0 then
+        return " cleared"
+    end
+    return ""
+end
+
 local function findClosestColor(val)
     if is_palette_index(val) then
         return val

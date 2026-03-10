@@ -1,7 +1,7 @@
 local loop = {}
 
-local VimRegex = loadModule("lib.excmd.vim_regex")
 local Event = loadModule("lib.event")
+local FakeUserdata = loadModule("lib.luaapi.fakeuserdata")
 local VimFs = loadModule("lib.luaapi.fs")
 local EnvVars = loadModule("lib.envvars")
 
@@ -24,6 +24,36 @@ local function modtimeconv(msec)
         sec = math.floor(msec / 1000),
         nsec = msec * 1000000
     }
+end
+
+local next_fs_fd = 2
+local open_fds = {}
+
+local function new_fs_req(op, fields)
+    fields = fields or {}
+    fields._op = op
+    fields._done = true
+    return FakeUserdata.new("uv_fs_t", fields)
+end
+
+local function alloc_fd(handle)
+    next_fs_fd = next_fs_fd + 1
+    open_fds[next_fs_fd] = handle
+    return next_fs_fd
+end
+
+local function resolve_fd(fd)
+    if type(fd) == "number" then
+        local handle = open_fds[fd]
+        if not handle then
+            return nil, "EBADF: bad file descriptor"
+        end
+        return handle, fd
+    end
+    if type(fd) == "table" and (fd.read or fd.close or fd.seek) then
+        return fd, nil
+    end
+    return nil, "EBADF: bad file descriptor"
 end
 
 local function _fs_stat_impl(path)
@@ -53,7 +83,12 @@ end
 function loop.fs_stat(path, callback)
     local stat, err = _fs_stat_impl(path)
     if type(callback) == "function" then
-        log_loop_fs("fs_stat(path=%s, cb=true) -> err=%s type=%s", tostring(path), tostring(err), tostring(stat and stat.type))
+        log_loop_fs(
+            "fs_stat(path=%s, cb=true) -> err=%s type=%s",
+            tostring(path),
+            tostring(err),
+            tostring(stat and stat.type)
+        )
         callback(err, stat)
         return
     end
@@ -117,14 +152,20 @@ function loop.fs_opendir(path, a2, a3)
         return nil, err
     end
 
-    local handle = {
+    local handle = FakeUserdata.new("uv_dir_t", {
         _path = dir,
         _items = fs.list(dir) or {},
         _idx = 1,
         _max_entries = max_entries,
         _closed = false,
-    }
-    log_loop_fs("fs_opendir(path=%s) -> ok items=%d max=%d", tostring(dir), #handle._items, max_entries)
+    })
+    local state = FakeUserdata.state(handle)
+    log_loop_fs(
+        "fs_opendir(path=%s) -> ok items=%d max=%d",
+        tostring(dir),
+        #(state and state._items or {}),
+        max_entries
+    )
     if callback then
         callback(nil, handle)
         return
@@ -133,7 +174,8 @@ function loop.fs_opendir(path, a2, a3)
 end
 
 function loop.fs_readdir(handle, callback)
-    if type(handle) ~= "table" or not handle._path then
+    local state = FakeUserdata.state(handle)
+    if state == nil or not state._path then
         local err = "EBADF: bad directory handle"
         log_loop_fs("fs_readdir(handle=%s) -> %s", tostring(handle), err)
         if type(callback) == "function" then
@@ -142,9 +184,9 @@ function loop.fs_readdir(handle, callback)
         end
         return nil, err
     end
-    if handle._closed then
+    if state._closed then
         local err = "EBADF: directory handle closed"
-        log_loop_fs("fs_readdir(path=%s) -> %s", tostring(handle._path), err)
+        log_loop_fs("fs_readdir(path=%s) -> %s", tostring(state._path), err)
         if type(callback) == "function" then
             callback(err, nil)
             return
@@ -152,8 +194,8 @@ function loop.fs_readdir(handle, callback)
         return nil, err
     end
 
-    if handle._idx > #handle._items then
-        log_loop_fs("fs_readdir(path=%s) -> eof", tostring(handle._path))
+    if state._idx > #state._items then
+        log_loop_fs("fs_readdir(path=%s) -> eof", tostring(state._path))
         if type(callback) == "function" then
             callback(nil, nil)
             return
@@ -162,20 +204,20 @@ function loop.fs_readdir(handle, callback)
     end
 
     local out = {}
-    local max_entries = handle._max_entries or #handle._items
+    local max_entries = state._max_entries or #state._items
     for _ = 1, max_entries do
-        local name = handle._items[handle._idx]
+        local name = state._items[state._idx]
         if not name then
             break
         end
-        handle._idx = handle._idx + 1
-        local abs = join_path(handle._path, name)
+        state._idx = state._idx + 1
+        local abs = join_path(state._path, name)
         out[#out + 1] = {
             name = name,
             type = fs.isDir(abs) and "directory" or "file",
         }
     end
-    log_loop_fs("fs_readdir(path=%s) -> %d entries", tostring(handle._path), #out)
+    log_loop_fs("fs_readdir(path=%s) -> %d entries", tostring(state._path), #out)
     if type(callback) == "function" then
         callback(nil, out)
         return
@@ -184,7 +226,8 @@ function loop.fs_readdir(handle, callback)
 end
 
 function loop.fs_closedir(handle, callback)
-    if type(handle) ~= "table" or not handle._path then
+    local state = FakeUserdata.state(handle)
+    if state == nil or not state._path then
         local err = "EBADF: bad directory handle"
         log_loop_fs("fs_closedir(handle=%s) -> %s", tostring(handle), err)
         if type(callback) == "function" then
@@ -193,8 +236,8 @@ function loop.fs_closedir(handle, callback)
         end
         return nil, err
     end
-    handle._closed = true
-    log_loop_fs("fs_closedir(path=%s) -> ok", tostring(handle._path))
+    state._closed = true
+    log_loop_fs("fs_closedir(path=%s) -> ok", tostring(state._path))
     if type(callback) == "function" then
         callback(nil)
         return
@@ -212,28 +255,25 @@ function loop.fs_open(path, mode, permission, callback)
         callback = permission
     end
 
-    local ok, handle_or_err, open_err = pcall(fs.open, path, mode)
-    local handle
+    local handle = fs.open(path, mode)
     local err
-    if ok then
-        handle = handle_or_err
-        if not handle then
-            err = open_err and tostring(open_err) or "ENOENT: no such file or directory"
-        end
-    else
-        err = tostring(handle_or_err)
+    if not handle then
+        err = "ENOENT: no such file or directory"
+    end
+
+    local fd
+    if err == nil and handle ~= nil then
+        fd = alloc_fd(handle)
     end
 
     if type(callback) == "function" then
-        callback(err, handle)
-        return {
-            _type = "uv_fs_t",
-            _op = "open",
+        callback(err, fd)
+        return new_fs_req("open", {
             _path = path,
-            _done = true,
-        }
+            _fd = fd,
+        })
     end
-    return handle, err
+    return fd, err
 end
 
 function loop.fs_read(fd, size, offset, callback)
@@ -243,15 +283,20 @@ function loop.fs_read(fd, size, offset, callback)
     end
 
     local ok, rv_or_err = pcall(function()
-        local initseek = fd.seek()
-        if offset and offset >= 0 then
-            fd.seek("set", offset)
+        local handle, resolve_err = resolve_fd(fd)
+        if not handle then
+            error(resolve_err)
         end
 
-        local data = fd.read and fd.read(size)
+        local initseek = handle.seek and handle.seek()
+        if offset and offset >= 0 then
+            handle.seek("set", offset)
+        end
+
+        local data = handle.read and handle.read(size)
 
         if offset and offset >= 0 and initseek ~= nil then
-            fd.seek("set", initseek)
+            handle.seek("set", initseek)
         end
         return data or ""
     end)
@@ -265,19 +310,22 @@ function loop.fs_read(fd, size, offset, callback)
 
     if type(callback) == "function" then
         callback(err, data)
-        return {
-            _type = "uv_fs_t",
-            _op = "read",
-            _done = true,
-        }
+        return new_fs_req("read")
     end
     return data, err
 end
 
 function loop.fs_close(fd, callback)
     local ok, close_err = pcall(function()
-        if fd.close then
-            fd.close()
+        local handle, fd_num_or_nil = resolve_fd(fd)
+        if not handle then
+            error(fd_num_or_nil)
+        end
+        if handle.close then
+            handle.close()
+        end
+        if fd_num_or_nil ~= nil then
+            open_fds[fd_num_or_nil] = nil
         end
     end)
     local err
@@ -286,11 +334,7 @@ function loop.fs_close(fd, callback)
     end
     if type(callback) == "function" then
         callback(err)
-        return {
-            _type = "uv_fs_t",
-            _op = "close",
-            _done = true,
-        }
+        return new_fs_req("close")
     end
     return err == nil, err
 end
@@ -323,12 +367,9 @@ function loop.fs_unlink(path, callback)
     if type(callback) == "function" then
         log_loop_fs("fs_unlink(path=%s, cb=true) -> err=%s ok=%s", tostring(path), tostring(err), tostring(ok))
         callback(err, ok and true)
-        return {
-            _type = "uv_fs_t",
-            _op = "unlink",
+        return new_fs_req("unlink", {
             _path = path,
-            _done = true,
-        }
+        })
     end
     return ok, err, errname
 end
@@ -372,13 +413,10 @@ function loop.fs_rename(path, new_path, callback)
             tostring(ok)
         )
         callback(err, ok and true)
-        return {
-            _type = "uv_fs_t",
-            _op = "rename",
+        return new_fs_req("rename", {
             _path = path,
             _new_path = new_path,
-            _done = true,
-        }
+        })
     end
     return ok, err, errname
 end
@@ -673,7 +711,7 @@ function loop.fs_event_start(fs_event, path, flags, callback)
 end
 
 -- TODO: stop the scheduled timer per above
-function loop.fs_event_stop(fs_event)
+function loop.fs_event_stop(_)
     return 0
 end
 

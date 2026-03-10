@@ -8,10 +8,10 @@ local Compiler = loadModule("lib.syntax_engine.compiler")
 local Options = loadModule("lib.options")
 local Highlight = loadModule("lib.highlight")
 local VimRegex = loadModule("lib.excmd.vim_regex")
+local ExMsg = loadModule("lib.excmd.exmsg")
 
-local treesitter_mod
+local treesitter_mod = loadModule("lib.luaapi.treesitter")
 local function treesitter()
-    treesitter_mod = treesitter_mod or loadModule("lib.luaapi.treesitter")
     return treesitter_mod
 end
 
@@ -38,7 +38,7 @@ local function active_ctx(window)
 end
 
 local function ensure_compiled(ctx)
-    if not ctx.syntax_ir_dirty then
+    if ctx.syntax_ir ~= nil and not ctx.syntax_ir_dirty then
         return ctx.syntax_ir
     end
     ctx.syntax_ir = Compiler.compile(ctx.syntax_commands)
@@ -216,6 +216,30 @@ local function syntax_group_name(ctx, group_id)
     return g and g.name
 end
 
+local function syntax_list_names(ctx, parsed)
+    local ir = ensure_compiled(ctx)
+    local names = {}
+
+    if parsed.scope == "named" then
+        for i = 1, #(parsed.groups or {}) do
+            local name = parsed.groups[i]
+            local id = ir.group_ids and ir.group_ids[name]
+            if id and ir.groups and ir.groups[id] then
+                names[#names + 1] = name
+            end
+        end
+    else
+        for _, group in pairs(ir.groups or {}) do
+            if group and group.name and group.name ~= "" then
+                names[#names + 1] = group.name
+            end
+        end
+        table.sort(names)
+    end
+
+    return names
+end
+
 function Api.invalidate_from_line(buffer, line)
     local ctx = ensure_buffer_ctx(buffer)
     return State.mark_dirty(ctx, line)
@@ -305,7 +329,22 @@ function Api.syntax_command(window, raw_cmd)
     local parsed = CommandParser.parse(raw_cmd)
 
     if parsed.kind == "list" then
-        ensure_compiled(ctx)
+        local names = syntax_list_names(ctx, parsed)
+        ExMsg.echo("")
+        if #names == 0 then
+            ExMsg.echo("No Syntax items defined for this buffer")
+            return true
+        end
+
+        ExMsg.echo("--- Syntax items ---")
+        for i = 1, #names do
+            local name = names[i]
+            ExMsg.echon(string.format("%-14s ", name))
+            ExMsg.echohl(name)
+            ExMsg.echon("xxx")
+            ExMsg.echohl("None")
+            ExMsg.flush()
+        end
         return true
     end
 
@@ -337,6 +376,24 @@ function Api.match_set(window, slot, group, pattern)
         case_sensitive = case_sensitive,
     }
     return true
+end
+
+function Api.match_get(window)
+    local win = active_window(window)
+    local state = ensure_match_state(win)
+    local out = {}
+    for slot = 1, 3 do
+        local item = state.slots[slot]
+        if item then
+            out[#out + 1] = {
+                group = item.group,
+                pattern = item.pattern,
+                priority = 10,
+                id = slot,
+            }
+        end
+    end
+    return out
 end
 
 function Api.match_command(window, slot, argstr)

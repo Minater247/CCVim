@@ -11,6 +11,8 @@
 
 local WordNav = {}
 
+local Utf8 = loadModule("lib.utf8")
+
 local function _build_iskeyword_set(buf)
 	buf._ikw_cache = buf._ikw_cache or { spec = nil, set = nil }
 	local spec = options.get("iskeyword", nil, buf)
@@ -57,7 +59,7 @@ function WordNav.invalidateCache(buf)
 end
 
 -- ---------- low-level helpers ----------
-local function _line_len(buf, lines, y) return buf:str_len(lines[y] or "") end
+local function _line_len(_, lines, y) return Utf8.len(lines[y] or "") end
 
 local function _fwd(buf, lines, y, x)
 	local n = _line_len(buf, lines, y)
@@ -76,12 +78,12 @@ local function _back(buf, lines, y, x)
 	return y, n
 end
 
-local function _is_blank(buf, lines, y, x)
+local function _is_blank(_, lines, y, x)
 	if y < 1 or y > #lines then return true end
 	local s = lines[y] or ""
-	local n = buf:str_len(s)
+	local n = Utf8.len(s)
 	if x < 1 or x > n then return true end
-	local ch = buf:str_char_at(s, x)
+	local ch = Utf8.char_at(s, x)
 	return ch == " " or ch == "\t"
 end
 
@@ -89,7 +91,7 @@ end
 local function _class_of(buf, lines, y, x, isWORD, kwset)
 	if _is_blank(buf, lines, y, x) then return 0 end
 	if isWORD then return 1 end
-	local cp = buf:str_codepoint_at(lines[y], x)
+	local cp = Utf8.codepoint_at(lines[y], x)
 	return kwset[cp] and 1 or 2
 end
 
@@ -113,7 +115,9 @@ local function _advance_past_run(buf, lines, y, x, isWORD, kwset, c0)
 	local yy, xx = y, x
 	while true do
 		local ny, nx = _fwd(buf, lines, yy, xx)
-		if not ny or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then return ny, nx end
+		if not ny or ny ~= yy or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then
+			return ny, nx
+		end
 		yy, xx = ny, nx
 	end
 end
@@ -126,7 +130,7 @@ local function _next_once(buf, lines, y, x, isWORD, to_end, kwset)
 		if not yy then return nil, nil end
 		local c0 = _class_of(buf, lines, yy, xx, isWORD, kwset)
 		local ty, tx = _fwd(buf, lines, yy, xx)
-		local at_run_end = (not ty) or (_class_of(buf, lines, ty, tx, isWORD, kwset) ~= c0)
+		local at_run_end = (not ty) or (ty ~= yy) or (_class_of(buf, lines, ty, tx, isWORD, kwset) ~= c0)
 		if at_run_end then
 			yy, xx = _skip_blanks_fwd(buf, lines, ty, tx)
 			if not yy then return nil, nil end
@@ -134,7 +138,9 @@ local function _next_once(buf, lines, y, x, isWORD, to_end, kwset)
 		end
 		while true do
 			local ny, nx = _fwd(buf, lines, yy, xx)
-			if not ny or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then return yy, xx end
+			if not ny or ny ~= yy or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then
+				return yy, xx
+			end
 			yy, xx = ny, nx
 		end
 	else
@@ -157,7 +163,7 @@ local function _rewind_over_same_run_left(buf, lines, y, x, isWORD, kwset)
 	while true do
 		local py, px = _back(buf, lines, yy, xx)
 		if not py then return nil, nil end
-		if _class_of(buf, lines, py, px, isWORD, kwset) ~= c0 then
+		if py ~= yy or _class_of(buf, lines, py, px, isWORD, kwset) ~= c0 then
 			-- (py,px) is outside the run we started in (likely blank or a different run)
 			return py, px
 		end
@@ -208,7 +214,9 @@ local function _prev_once(buf, lines, y, x, isWORD, to_end, kwset)
 		-- Walk left to the *first* char of this run.
 		while true do
 			local py, px = _back(buf, lines, yy, xx)
-			if not py or _class_of(buf, lines, py, px, isWORD, kwset) ~= _class_of(buf, lines, yy, xx, isWORD, kwset) then
+			if not py or py ~= yy
+				or _class_of(buf, lines, py, px, isWORD, kwset) ~= _class_of(buf, lines, yy, xx, isWORD, kwset)
+			then
 				return yy, xx
 			end
 			yy, xx = py, px
@@ -268,7 +276,7 @@ function WordNav.wordUnder(win, isWORD, y, x)
 	if #lines == 0 then return nil end
 	if y < 1 or y > #lines then return nil end
 	local line = lines[y] or ""
-	local linelen = buf:str_len(line)
+	local linelen = Utf8.len(line)
 	if linelen == 0 then return nil end
 	if x < 1 then x = 1 end
 	if x > linelen then x = linelen end
