@@ -8,6 +8,7 @@ exclude_files = {
 
 globals = {
     "_",
+    "__ccvim_input_state",
     "_ENV",
     "_log_caller",
     "Tabpage",
