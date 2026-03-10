@@ -203,7 +203,7 @@ local function eval_expr(expr, state)
     }
     local funcs = state.funcs or {}
     local rv = VimExpr.evaluate(expr, { scope = scope, funcs = funcs })
-    if Error.IsError(rv) then error(rv:toString()) end
+    if Error.IsError(rv) then error(rv) end
     return rv
 end
 
@@ -1175,7 +1175,7 @@ function Runtime.new(init_state, init_opts)
             funcs = funcs,
             script_sid = state.script_sid,
         })
-        if Error.IsError(rv) then error(rv:toString()) end
+        if Error.IsError(rv) then error(rv) end
         return rv
     end
 
@@ -3093,7 +3093,7 @@ function Runtime.new(init_state, init_opts)
 
         local sid = script_sid_for_state(rt.state)
         if not sid then
-            return nil, Error(81, "Using <SID> not in a script context")
+            return nil, Error(81)
         end
         local snr_prefix = "<SNR>" .. tostring(sid) .. "_"
         return (text:gsub("<[sS][iI][dD]>", snr_prefix)), nil
@@ -5424,7 +5424,14 @@ function Runtime.CanonicalFunctionName(name, opts)
 end
 
 function Runtime.CurrentScriptSid()
-    return script_sid_for_state(Runtime._CURRENT_STATE)
+    local state = Runtime._CURRENT_STATE
+    if type(state) ~= "table" then
+        return nil
+    end
+    if type(state.script_ctx) ~= "string" or state.script_ctx == "" then
+        return nil
+    end
+    return script_sid_for_ctx(state.script_ctx)
 end
 
 function Runtime.ResolveFunctionDef(name, opts)
@@ -5521,6 +5528,7 @@ function Runtime.EvalExpression(expr, opts)
     state = ensure_state(state)
     if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
         state.script_ctx = opts.script_ctx
+        state.script_sid = script_sid_for_ctx(opts.script_ctx)
     end
     if opts.v and type(opts.v) == "table" then
         state.v = state.v or fresh_v()
@@ -5564,6 +5572,7 @@ function Runtime.run(script, opts)
     state = ensure_state(state)
     if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
         state.script_ctx = opts.script_ctx
+        state.script_sid = script_sid_for_ctx(opts.script_ctx)
     end
 
     local prev_state = Runtime._CURRENT_STATE

@@ -132,6 +132,9 @@ function ScriptSource.source(path)
     local pre = os.epoch("utc")
 
     local internalpath = Filesystem.Expand(path)
+    if Error.IsError(internalpath) then
+        return false, internalpath
+    end
 
     -- Also accept a table of strings
     if type(internalpath) == "table" then

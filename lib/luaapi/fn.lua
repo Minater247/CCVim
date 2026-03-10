@@ -24,6 +24,7 @@ local RegisterUtil = loadModule("lib.registers")
 local Utf8       = loadModule("lib.utf8")
 local Command = loadModule("lib.command")
 local Json = loadModule("lib.luaapi.json")
+local ScriptSource
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -442,20 +443,7 @@ end
 local function _expand_cfile(buf)
     local win = windows[curwin]
     local raw = _extract_cfile_text(win)
-    if raw == "" then
-        return ""
-    end
-
-    if _is_abs_or_explicit_rel(raw) then
-        return _eval_includeexpr(raw, buf)
-    end
-
-    local path_spec = (buf and options.get("path", nil, buf)) or ".,,"
-    local found = _resolve_with_includeexpr(raw, path_spec, buf, false, true)
-    if #found > 0 then
-        return found[1]
-    end
-    return _eval_includeexpr(raw, buf)
+    return raw
 end
 
 local function _is_vim_list_expr(expr)
@@ -738,6 +726,9 @@ function Builtins.expand(str, nosuf, list)
     end
 
     local expansions = Filesystem.Expand(raw, nosuf)
+    if Error.IsError(expansions) then
+        return expansions
+    end
 
     if list then
         if type(expansions) == "string" then
@@ -4141,7 +4132,22 @@ local function _expand_map_sid_name(name)
     end
 
     Runtime = Runtime or loadModule("lib.excmd.runtime")
-    local sid = Runtime.CurrentScriptSid()
+    local sid
+    local state = Runtime._CURRENT_STATE
+    if type(state) == "table" and type(state.script_ctx) == "string" and state.script_ctx ~= "" then
+        sid = tonumber(state.script_sid)
+        if not sid then
+            local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = state.script_ctx })
+            sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
+        end
+    else
+        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
+        local ctx = ScriptSource.CurrentContext()
+        if type(ctx) == "string" and ctx ~= "" then
+            local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = ctx })
+            sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
+        end
+    end
     if not sid then
         return raw
     end
@@ -4834,10 +4840,9 @@ function Builtins.resolve(filename)
     if name == "" then
         return ""
     end
-    local keep_trailing = name:sub(-1) == "/"
     local out = Builtins.simplify(name)
-    if keep_trailing and out ~= "/" and out:sub(-1) ~= "/" then
-        out = out .. "/"
+    if out ~= "/" and out ~= "//" then
+        out = out:gsub("/+$", "")
     end
     return out
 end

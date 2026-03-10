@@ -1,5 +1,6 @@
 local Filesystem = {}
 
+local Error = loadModule("lib.error")
 local ScriptSource
 local Scopes
 local Runtime
@@ -24,14 +25,16 @@ local function _expand_sid()
     if not sid then
         ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local ctx = ScriptSource.CurrentContext()
-        local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = ctx })
-        sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
+        if type(ctx) == "string" and ctx ~= "" then
+            local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = ctx })
+            sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
+        end
     end
 
     if sid then
         return "<SNR>" .. tostring(sid) .. "_"
     end
-    return ""
+    return Error(81)
 end
 
 function Filesystem.ExpandWildcards(path)
@@ -294,7 +297,11 @@ function Filesystem.Expand(str)
             end
             str = rest
         elseif brack_l == "sid" then
-            expansions = { _expand_sid() }
+            local sid = _expand_sid()
+            if Error.IsError(sid) then
+                return sid
+            end
+            expansions = { sid }
             str = rest
         else
             error("UNHANDLED: expand(\"<" .. brack .. ">\"): " .. str)
