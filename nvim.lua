@@ -81,6 +81,7 @@ local _V = {
     startuptime = false,
 
     ccvim_path = ccvim_path,
+    ccvimversion_str = "0.8",
 
     -- error = function(...)
     --     log("DEBUG", "Error thrown:\n%s", debug.traceback())

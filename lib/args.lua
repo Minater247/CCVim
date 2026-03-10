@@ -25,7 +25,7 @@ local function print_help(argv0)
 end
 
 local function print_version(argv0)
-    print("CCVim v" .. vimversion_str)
+    print("CCVim v" .. ccvimversion_str)
     print("LuaJIT " .. (jit and jit.version or "Unavailable"))
     print("Run \"" .. argv0 .. " -V1 -v\" for more info.")
 end

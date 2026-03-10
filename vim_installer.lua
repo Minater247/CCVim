@@ -1,16 +1,8 @@
-local TUI = require("instui")
-assert(TUI)
-
-local label = "CCVIM Installer v0.2"
-
-local BASE_URL
+local DEFAULT_BRANCH = "rewrite-2026"
+local APP_VERSION = "0.8"
+local INSTALLER_VERSION = "0.2"
 local COMPRESSED_URL = "https://minater247.github.io/CCVim/"
 local MANIFEST = "nvim.idx"
-
-local install_dir = "/vim"
-local git_branch = "rewrite-2026"
-
-local manifest_tree
 
 local function httpGet(url)
     local res, err = http.get(url)
@@ -22,6 +14,49 @@ local function httpGet(url)
     res.close()
     return data
 end
+
+local function resolveInstallerFile(relPath)
+    local program = shell.getRunningProgram()
+
+    local dir = fs.getDir(program)
+    if dir and dir ~= "" then
+        return fs.combine(dir, relPath)
+    end
+
+    return relPath
+end
+
+local function ensureInstallerDependency(relPath)
+    local localPath = resolveInstallerFile(relPath)
+    if fs.exists(localPath) then
+        return localPath
+    end
+
+    local data, err = httpGet("https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. DEFAULT_BRANCH .. "/" .. relPath)
+    if not data then
+        error(("failed to download %s: %s"):format(relPath, tostring(err)))
+    end
+
+    local fh, ferr = fs.open(localPath, "w")
+    if not fh then
+        error(("failed to open %s for writing: %s"):format(localPath, tostring(ferr)))
+    end
+    fh.write(data)
+    fh.close()
+
+    return localPath
+end
+
+local TUI = assert(dofile(ensureInstallerDependency("instui.lua")))
+assert(TUI)
+
+local label = "CCVIM Installer v" .. INSTALLER_VERSION
+
+local BASE_URL = "https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. DEFAULT_BRANCH .. "/"
+local install_dir = "/vim"
+local git_branch = DEFAULT_BRANCH
+
+local manifest_tree
 
 local function parseManifest(text)
     --   directory = table
@@ -712,6 +747,18 @@ local function runInstall()
         if not ok then return failure(err) end
     end
 
+    TUI.addMessage(installerBox, "Downloading installer metadata...")
+    local metadata_files = {
+        ".version",
+        "instui.lua",
+        "vim_installer.lua",
+    }
+    for i, f in ipairs(metadata_files) do
+        TUI.addMessage(installerBox, ("[%d/%d] %s"):format(i, #metadata_files, f))
+        ok, err = downloadFile(f)
+        if not ok then return failure(err) end
+    end
+
 
     TUI.addMessage(installerBox, "All files downloaded successfully.")
     TUI.addMessage(installerBox, "Installation complete.")
@@ -738,7 +785,7 @@ local function buildInstallMenu()
         TUI.Components.checkbox("Install compressed (Release)", doRelease, function(newval)
             doRelease = newval
         end),
-        TUI.Components.option("Begin Installation", function()
+        TUI.Components.option("Begin Install / Update", function()
             TUI.setQuitEnabled(false)
             TUI.pushMenu(buildInstallProgressMenu())
             runInstall()
@@ -762,6 +809,10 @@ local function updateBranch(branchname)
     git_branch = branchname
 end
 
+local function openInstallMenu()
+    TUI.pushMenu(buildInstallMenu())
+end
+
 local menu = {
     TUI.Components.info(label),
     TUI.Components.separator(),
@@ -770,11 +821,9 @@ local menu = {
 
     TUI.Components.separator(),
 
-    TUI.Components.option("Install CCVIM", function()
-        TUI.pushMenu(buildInstallMenu())
-    end),
-    TUI.Components.option("Add to universal path"),
-    TUI.Components.option("Update CCVIM"),
+    TUI.Components.option("Install CCVIM", openInstallMenu),
+    TUI.Components.disabledOption("Add to universal path"),
+    TUI.Components.option("Update CCVIM", openInstallMenu),
 
     TUI.Components.separator(),
 
