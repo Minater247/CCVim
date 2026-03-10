@@ -1,4 +1,9 @@
 local LuaEditorBackend = {}
+local NIL = setmetatable({}, {
+    __tostring = function()
+        return "vim.NIL"
+    end,
+})
 
 local function stringify_error(err)
     if type(err) == "table" and type(err.toString) == "function" then
@@ -50,6 +55,7 @@ function LuaEditorBackend.new(opts)
     local backend = {
         name = "lua_editor",
         mock = mock,
+        NIL = NIL,
     }
     local command_bootstrapped = false
 
@@ -132,6 +138,38 @@ function LuaEditorBackend.new(opts)
 
     backend.EMPTY_DICT_MT = backend:get_empty_dict_mt()
 
+    local function normalize_result(value, vim_nil, seen)
+        if value == vim_nil then
+            return backend.NIL
+        end
+        if type(value) ~= "table" then
+            return value
+        end
+
+        seen = seen or {}
+        if seen[value] then
+            return value
+        end
+        seen[value] = true
+
+        local replacements = {}
+        for k, v in pairs(value) do
+            local nk = normalize_result(k, vim_nil, seen)
+            local nv = normalize_result(v, vim_nil, seen)
+            if nk ~= k or nv ~= v then
+                replacements[#replacements + 1] = { k = k, nk = nk, nv = nv }
+            end
+        end
+
+        for i = 1, #replacements do
+            local item = replacements[i]
+            value[item.k] = nil
+            value[item.nk] = item.nv
+        end
+
+        return value
+    end
+
     function backend:eval_lua(lua_expr)
         local api = self:api_build()
         local env = setmetatable({
@@ -149,7 +187,7 @@ function LuaEditorBackend.new(opts)
             return nil, rv
         end
 
-        return rv, nil
+        return normalize_result(rv, api.vim.NIL), nil
     end
 
     function backend:eval_vimscript(vimscript_expr, options)
@@ -191,7 +229,7 @@ function LuaEditorBackend.new(opts)
             if not ok_eval then
                 return nil, stringify_error(result)
             end
-            return result, nil
+            return normalize_result(result, self:api_build().vim.NIL), nil
         end
 
         local VimXpr = self.mock.loadModule("lib.excmd.vimxpr")
@@ -199,7 +237,7 @@ function LuaEditorBackend.new(opts)
         if type(result) == "table" and result.IsError then
             return nil, stringify_error(result)
         end
-        return result, nil
+        return normalize_result(result, self:api_build().vim.NIL), nil
     end
 
     function backend:eval_block(code)
@@ -222,11 +260,18 @@ function LuaEditorBackend.new(opts)
             return nil, rv
         end
 
-        return rv, nil
+        return normalize_result(rv, api.vim.NIL), nil
+    end
+
+    function backend:is_nil(value)
+        return value == self.NIL
     end
 
     function backend:is_empty_dict(tbl)
         if type(tbl) ~= "table" then
+            return false
+        end
+        if self:is_nil(tbl) then
             return false
         end
         return getmetatable(tbl) == self:get_empty_dict_mt()
@@ -234,6 +279,9 @@ function LuaEditorBackend.new(opts)
 
     function backend:is_list(tbl)
         if type(tbl) ~= "table" then
+            return false
+        end
+        if self:is_nil(tbl) then
             return false
         end
         if self:is_empty_dict(tbl) then
@@ -260,6 +308,9 @@ function LuaEditorBackend.new(opts)
 
     function backend:is_dict(tbl)
         if type(tbl) ~= "table" then
+            return false
+        end
+        if self:is_nil(tbl) then
             return false
         end
         -- Empty dict has the marker metatable

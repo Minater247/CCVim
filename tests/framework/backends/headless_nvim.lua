@@ -2,6 +2,11 @@ local HeadlessNvimBackend = {}
 
 -- Metatable marker for empty dictionaries
 local EMPTY_DICT_MT = {}
+local NIL = setmetatable({}, {
+    __tostring = function()
+        return "vim.NIL"
+    end,
+})
 
 local function shell_quote(s)
     s = tostring(s)
@@ -274,6 +279,9 @@ local function json_decode(json_str)
             if type(val) ~= "table" then
                 return val
             end
+            if val.__vim_nil then
+                return NIL
+            end
             local count = 0
             for _ in pairs(val) do
                 count = count + 1
@@ -294,13 +302,16 @@ local function json_decode(json_str)
     local ref_data = decoded.refs
     local materialized = {}  -- Map from ref ID to actual table
 
-    local function restore_refs(val)
-        if type(val) ~= "table" then
-            return val
-        end
+        local function restore_refs(val)
+            if type(val) ~= "table" then
+                return val
+            end
+            if val.__vim_nil then
+                return NIL
+            end
 
-        -- Check for reference marker
-        local ref_id = val.__ref
+            -- Check for reference marker
+            local ref_id = val.__ref
         if ref_id then
             -- Check if already materialized
             if materialized[ref_id] then
@@ -367,6 +378,7 @@ function HeadlessNvimBackend.new()
     local backend = {
         name = "headless_nvim",
         EMPTY_DICT_MT = EMPTY_DICT_MT,
+        NIL = NIL,
     }
 
     function backend:make_temp_path(prefix, suffix)
@@ -451,6 +463,9 @@ local function serialize_with_refs(value)
   -- Second pass: encode each unique table
   local function encode(val)
     local t = type(val)
+    if val == vim.NIL then
+      return {__vim_nil = true}
+    end
     if t == "table" then
       local id = refs[val]
       if ref_data[id] then
@@ -596,6 +611,9 @@ local function serialize_with_refs(value)
   -- Second pass: encode each unique table
   local function encode(val)
     local t = type(val)
+    if val == vim.NIL then
+      return {__vim_nil = true}
+    end
     if t == "table" then
       local id = refs[val]
       if ref_data[id] then
@@ -664,8 +682,15 @@ end
         return json_decode(json_result)
     end
 
+    function backend:is_nil(value)
+        return value == self.NIL
+    end
+
     function backend:is_empty_dict(tbl)
         if type(tbl) ~= "table" then
+            return false
+        end
+        if self:is_nil(tbl) then
             return false
         end
         return getmetatable(tbl) == EMPTY_DICT_MT
@@ -673,6 +698,9 @@ end
 
     function backend:is_list(tbl)
         if type(tbl) ~= "table" then
+            return false
+        end
+        if self:is_nil(tbl) then
             return false
         end
         if self:is_empty_dict(tbl) then
@@ -697,6 +725,9 @@ end
 
     function backend:is_dict(tbl)
         if type(tbl) ~= "table" then
+            return false
+        end
+        if self:is_nil(tbl) then
             return false
         end
         if self:is_empty_dict(tbl) then

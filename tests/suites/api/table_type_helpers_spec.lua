@@ -1,6 +1,6 @@
 return {
     id = "api.table_type_helpers",
-    description = "Validates backend table type helper methods (is_list, is_dict, is_empty_dict).",
+    description = "Validates backend table type helper methods (is_list, is_dict, is_empty_dict, is_nil).",
     
     run = function(ctx)
         local backend = ctx.backend
@@ -34,5 +34,17 @@ return {
         Assert.eq("is_list for number", backend:is_list(42), false)
         Assert.eq("is_dict for string", backend:is_dict("hello"), false)
         Assert.eq("is_empty_dict for nil", backend:is_empty_dict(nil), false)
+
+        result = Assert.eval_block(backend, "eval NIL roundtrip", [[
+            return {
+                value = vim.NIL,
+                list = { vim.NIL, 1 },
+            }
+        ]])
+        Assert.eq("is_nil for direct NIL", backend:is_nil(result.value), true)
+        Assert.eq("is_nil for list element", backend:is_nil(result.list[1]), true)
+        Assert.eq("NIL list keeps following item", result.list[2], 1)
+        Assert.eq("NIL sentinel is not list", backend:is_list(result.value), false)
+        Assert.eq("NIL sentinel is not dict", backend:is_dict(result.value), false)
     end,
 }
