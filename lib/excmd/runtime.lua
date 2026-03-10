@@ -5142,6 +5142,9 @@ function Runtime.new(init_state, init_opts)
             return rv
         elseif cmd == "help" then
             local target = strip(argstr)
+            if bang and target == "" then
+                error(Error(478))
+            end
             if target == "" then target = "help.txt" end
             local match, doc_root
             local rtp = _runtimepath().get_search_list()
