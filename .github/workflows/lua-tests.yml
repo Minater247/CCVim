@@ -26,7 +26,9 @@ jobs:
         uses: leafo/gh-actions-luarocks@v4
 
       - name: Install test dependencies
-        run: luarocks install luafilesystem
+        run: |
+          luarocks install luafilesystem
+          luarocks install lpeg
 
       - name: Run lua_editor suite
         run: npm test
