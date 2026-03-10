@@ -12,7 +12,7 @@ local scopes = loadModule("lib.luaapi.scopes")
 local AutoCmd = loadModule("lib.autocmd")
 local Fn = loadModule("lib.luaapi.fn")
 local Decoration = loadModule("lib.decoration")
-local ScriptSource
+local ScriptSource = loadModule("lib.scriptsource")
 local Error = loadModule("lib.error")
 local Utf8 = loadModule("lib.utf8")
 local PopupMenu = loadModule("lib.popupmenu")
@@ -873,7 +873,6 @@ function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
     lhs = Key.strtoseq(lhs_text)
 
     if opts.callback then
-        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local cb = ScriptSource.wrap(nil, opts.callback)
         Command.map_callback(mode, lhs, cb, { buffer = buf })
     else
@@ -895,7 +894,6 @@ function api.nvim_set_keymap(mode, lhs, rhs, opts)
     lhs = Key.strtoseq(lhs_text)
 
     if opts.callback then
-        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local cb = ScriptSource.wrap(nil, opts.callback)
         Command.map_callback(mode, lhs, cb)
     else
@@ -1606,7 +1604,6 @@ function api.nvim_create_autocmd(event, opts)
         end
     end
 
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     local cb = opts.callback and ScriptSource.wrap(nil, opts.callback)
     local script_ctx = ScriptSource.CurrentContext()
 
@@ -1947,7 +1944,6 @@ function api.nvim_buf_attach(buffer, _send_buffer, opts)
         end
     end
 
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     local listener = {
         on_lines = opts.on_lines and ScriptSource.wrap(nil, opts.on_lines),
         on_bytes = opts.on_bytes and ScriptSource.wrap(nil, opts.on_bytes),

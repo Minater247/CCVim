@@ -57,7 +57,7 @@ function LuaEditorBackend.new(opts)
         if not command_bootstrapped then
             local Event = self.mock.loadModule("lib.event")
             Event.LoadCommandModule()
-            self.mock.loadModule("lib.mappings")
+            self.mock.loadModule("lib.mappings", { immediate = true })
             command_bootstrapped = true
         end
         local ApiBuild = self.mock.loadModule("lib.luaapi.apibuild")

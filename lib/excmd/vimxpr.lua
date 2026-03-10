@@ -8,7 +8,7 @@ local EnvVars       = loadModule("lib.envvars")
 local Scopes        = loadModule("lib.luaapi.scopes")
 local Key           = loadModule("lib.key")
 local VimFnBuiltins = loadModule("lib.luaapi.fn")
-local ApiBuild
+local ApiBuild = loadModule("lib.luaapi.apibuild")
 -- =========================================================
 
 -- -------- helpers --------
@@ -176,7 +176,6 @@ local function resolve_vlua_path(path)
         end
         return cur
     end
-    ApiBuild = ApiBuild or loadModule("lib.luaapi.apibuild")
     local api = ApiBuild.Build()
     local f = api and traverse(api)
     if type(f) ~= "function" then return Error(117, "v:lua." .. path) end

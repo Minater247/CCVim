@@ -4,7 +4,7 @@ local Options = loadModule("lib.options")
 local RuntimePath = loadModule("lib.runtimepath")
 local Error = loadModule("lib.error")
 local Scopes = loadModule("lib.luaapi.scopes")
-local ScriptSource
+local ScriptSource = loadModule("lib.scriptsource")
 
 Pack.loaded = Pack.loaded or {}
 
@@ -102,7 +102,6 @@ local function collect_scripts(root, recursive)
 end
 
 local function source_files(paths)
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     for _, path in ipairs(paths) do
         local ok, err = ScriptSource.source(path)
         if not ok then

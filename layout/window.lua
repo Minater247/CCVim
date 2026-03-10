@@ -15,10 +15,10 @@ local Utf8 = loadModule("lib.utf8")
 local Error = loadModule("lib.error")
 local Autocmd = loadModule("lib.autocmd")
 local Decoration = loadModule("lib.decoration")
-local VimExpr
-local VimFn
-local Scopes
-local CmdRead
+local VimExpr = loadModule("lib.excmd.vimxpr")
+local VimFn = loadModule("lib.luaapi.fn")
+local Scopes = loadModule("lib.luaapi.scopes")
+local CmdRead = loadModule("lib.excmd.cmdread")
 
 local curr_winno = 1
 
@@ -1486,8 +1486,6 @@ function Window:render(xoff, yoff)
     local hscroll = self.scrollx or 1
     if hscroll < 1 then hscroll = 1 end
 
-    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
-
     local tabcfg = Tab.get_tab_config(self.buffer)
     local listcfg = nil
     if options.get("list", self) then
@@ -2040,10 +2038,6 @@ function Window:_eval_indentexpr(lnum)
     if expr == "" then
         return nil, false
     end
-
-    VimExpr = VimExpr or loadModule("lib.excmd.vimxpr")
-    VimFn = VimFn or loadModule("lib.luaapi.fn")
-    Scopes = Scopes or loadModule("lib.luaapi.scopes")
 
     local save_y, save_x = self.cursory, self.cursorx
     local max_line = math.max(1, self.buffer:line_count(true))

@@ -3,9 +3,9 @@ local ExMsg = {}
 local Highlight = loadModule("lib.highlight")
 local Tab = loadModule("lib.tab")
 local TexRen = loadModule("lib.texren")
-local Command
+local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
-local CmdRead
+local CmdRead = loadModule("lib.excmd.cmdread")
 
 --[[
 Array of messages. Each line is {hlgroup, str}.
@@ -378,7 +378,6 @@ local function readMore(ch)
         exit_more()
         return
     elseif ch == colonref then
-        CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
         CmdRead.read()
     else
         -- Unsupported key: show long help, keep position.
@@ -406,7 +405,6 @@ local function readEnter(ch)
     if ch == enterref then
         exit_readEnter()
     elseif ch == colonref then
-        CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
         CmdRead.read()
     end
 end
@@ -416,8 +414,6 @@ local function start_more()
     in_press_enter = false
     more_top = 1
     more_help_long = false
-
-    Command = Command or loadModule("lib.command")
 
     -- If the hit-enter handler is currently on top, pop it cleanly.
     local top = Command.override_emitter[#Command.override_emitter]
@@ -499,7 +495,6 @@ local function draw_messages_and_prompt()
         -- Enter/maintain Press ENTER mode (logic only: state & handler)
         in_press_enter = true
 
-        Command = Command or loadModule("lib.command")
         local top = Command.override_emitter[#Command.override_emitter]
         if top ~= readEnter then
             table.insert(Command.override_emitter, readEnter)

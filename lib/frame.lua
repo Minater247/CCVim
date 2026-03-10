@@ -1,6 +1,6 @@
 local FrameTree = {}
 local Error = loadModule("lib.error")
-local AutoCmd
+local AutoCmd = loadModule("lib.autocmd")
 
 ---@class FrameTree
 
@@ -1146,7 +1146,6 @@ function FrameTree.ApplyTerminalResize(new_w, new_h, source_event)
 
     local changed_ids = _collect_changed_window_ids(tabpages[curtp], before)
 
-    AutoCmd = AutoCmd or loadModule("lib.autocmd")
     AutoCmd.Run("VimResized", { force = true })
     if #changed_ids > 0 then
         local first = tostring(changed_ids[1])

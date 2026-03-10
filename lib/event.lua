@@ -8,10 +8,10 @@ local Key    = loadModule("lib.key")
 local OnKey = loadModule("lib.luaapi.on_key")
 local ExMsg  = loadModule("lib.excmd.exmsg")
 local Error = loadModule("lib.error")
-local FrameTree
-local Autocmd
-local Scopes
-local TimerUtils
+local FrameTree = loadModule("lib.frame")
+local Autocmd = loadModule("lib.autocmd")
+local Scopes = loadModule("lib.luaapi.scopes")
+local TimerUtils = loadModule("lib.luaapi.timerutils")
 
 function Event.StartTimer(time, callback)
     local id = os.startTimer(time)
@@ -142,7 +142,6 @@ local function target_window_at(x, y)
         return nil
     end
 
-    FrameTree = FrameTree or loadModule("lib.frame")
     local frame, local_x, local_row = FrameTree.FrameAtWithLocal(tab.tree, x, local_y)
     if not frame or not frame.window then
         return nil
@@ -156,7 +155,6 @@ local function focus_window(win)
 end
 
 local function set_mouse_vvars(win, button, x, y, clicks)
-    Scopes = Scopes or loadModule("lib.luaapi.scopes")
     local v = Scopes._v
     v.mouse_win = win.winnr
     v.mouse_winid = win.winnr
@@ -255,7 +253,6 @@ local function place_cursor_from_click(win, local_x, local_y)
 end
 
 local function fire_menu_popup(win, button, x, y, clicks)
-    Autocmd = Autocmd or loadModule("lib.autocmd")
     Autocmd.Run("MenuPopup", {
         bufnr = win.buffer.bufnr,
         bufname = win.buffer.name,
@@ -431,7 +428,6 @@ function Event.ProcessEvent(ev)
         local cb = timers[timer_id]
         timers[timer_id] = nil
         if cb then
-            TimerUtils = TimerUtils or loadModule("lib.luaapi.timerutils")
             TimerUtils.with_fast_event(function()
                 cb(timer_id)
             end)

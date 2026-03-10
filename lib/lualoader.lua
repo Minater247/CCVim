@@ -4,7 +4,7 @@ local vimapi = loadModule("lib.luaapi.apibuild").Build()
 setmetatable(vimapi, { __index = _G })
 vimapi._G = vimapi
 local Error = loadModule("lib.error")
-local ScriptSource
+local ScriptSource = loadModule("lib.scriptsource")
 
 local loaded = {}
 
@@ -25,7 +25,6 @@ function LuaLoader.LoadFile(path, ...)
             LOG_ERROR("CHUNK ERROR: " .. err)
             return error(err, 0)
         end
-        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         ScriptSource.PushContext(path)
         plugin = chunk(...)
         ScriptSource.PopContext()

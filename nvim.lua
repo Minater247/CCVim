@@ -87,9 +87,17 @@ local _V = {
 }
 _V.vimversion_str = _V.vimversion_maj .. "." .. _V.vimversion_min .. "." .. _V.vimversion_pat
 
-local function loadModule(module)
-    if _V.loaded_modules[module] then
-        return _V.loaded_modules[module]
+local function loadModule(module, opts)
+    opts = opts or {}
+
+    local cached = _V.loaded_modules[module]
+    if cached ~= nil then
+        if type(cached) == "table" and cached.__ccvim_lazy_proxy then
+            if opts.immediate then
+                return cached.__ccvim_materialize()
+            end
+        end
+        return cached
     end
 
     local module_path = ccvim_path .. "/" .. module:gsub("%.", "/") .. ".lua"
@@ -106,9 +114,51 @@ local function loadModule(module)
 
     local loaded, error = loadfile(module_path, "t", _V)
     if loaded then
-        local mod = loaded()
-        _V.loaded_modules[module] = mod
-        return mod
+        local resolved = false
+        local mod
+
+        local function materialize()
+            if not resolved then
+                mod = loaded()
+                if mod == nil then
+                    mod = true
+                end
+                resolved = true
+                _V.loaded_modules[module] = mod
+            end
+            return mod
+        end
+
+        if opts.immediate then
+            return materialize()
+        end
+
+        local proxy = {
+            __ccvim_lazy_proxy = true,
+            __ccvim_materialize = materialize,
+        }
+        setmetatable(proxy, {
+            __index = function(_, key)
+                return materialize()[key]
+            end,
+            __newindex = function(_, key, value)
+                materialize()[key] = value
+            end,
+            __call = function(_, ...)
+                return materialize()(...)
+            end,
+            __len = function()
+                return #materialize()
+            end,
+            __pairs = function()
+                return pairs(materialize())
+            end,
+            __tostring = function()
+                return tostring(materialize())
+            end,
+        })
+        _V.loaded_modules[module] = proxy
+        return proxy
     else
         _V.LOG_DEBUG("loadModule(%s) failed, error: %s", module, error)
     end
@@ -181,7 +231,7 @@ _V.options.set("columns", w)
 
 local Event = loadModule("lib.event")
 Event.LoadCommandModule()
-loadModule("lib.mappings")
+loadModule("lib.mappings", { immediate = true })
 
 local AutoCmd = loadModule("lib.autocmd")
 local PopupMenu = loadModule("lib.popupmenu")

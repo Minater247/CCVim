@@ -1427,41 +1427,83 @@ local function make_module_loader(root, globals, stubs)
         return chunk
     end
 
-    local function load_module(name)
-        if loaded[name] ~= nil then
-            return loaded[name]
-        end
+    local function load_module(name, opts)
+        opts = opts or {}
 
+        local cached = loaded[name]
+        if cached ~= nil then
+            if type(cached) == "table" and cached.__ccvim_lazy_proxy and opts.immediate then
+                return cached.__ccvim_materialize()
+            end
+            return cached
+        end
 
         local stub = stubs[name]
-        if stub ~= nil then
-            if type(stub) == "function" then
-                loaded[name] = stub()
-            else
-                loaded[name] = stub
-            end
-            return loaded[name]
+        local chunk
+        if stub == nil then
+            local path = module_to_path(name)
+            local env = setmetatable({}, {
+                __index = function(_, k)
+                    local v = globals[k]
+                    if v ~= nil then
+                        return v
+                    end
+                    return _G[k]
+                end,
+            })
+            env._G = _G  -- Use real global environment so Lua base functions are available
+            env.loadModule = load_module
+            chunk = load_chunk(path, env)
         end
 
-        local path = module_to_path(name)
-        local env = setmetatable({}, {
-            __index = function(_, k)
-                local v = globals[k]
-                if v ~= nil then
-                    return v
+        local resolved = false
+        local mod
+        local function materialize()
+            if not resolved then
+                if stub ~= nil then
+                    mod = type(stub) == "function" and stub() or stub
+                else
+                    mod = chunk()
                 end
-                return _G[k]
+                if mod == nil then
+                    mod = true
+                end
+                resolved = true
+                loaded[name] = mod
+            end
+            return mod
+        end
+
+        if opts.immediate then
+            return materialize()
+        end
+
+        local proxy = {
+            __ccvim_lazy_proxy = true,
+            __ccvim_materialize = materialize,
+        }
+        setmetatable(proxy, {
+            __index = function(_, key)
+                return materialize()[key]
+            end,
+            __newindex = function(_, key, value)
+                materialize()[key] = value
+            end,
+            __call = function(_, ...)
+                return materialize()(...)
+            end,
+            __len = function()
+                return #materialize()
+            end,
+            __pairs = function()
+                return pairs(materialize())
+            end,
+            __tostring = function()
+                return tostring(materialize())
             end,
         })
-        env._G = _G  -- Use real global environment so Lua base functions are available
-        env.loadModule = load_module
-        local chunk = load_chunk(path, env)
-        local rv = chunk()
-        if rv == nil then
-            rv = true
-        end
-        loaded[name] = rv
-        return rv
+        loaded[name] = proxy
+        return proxy
     end
 
     return load_module, loaded
@@ -1723,8 +1765,8 @@ function MockEnv.setup(opts)
 
     local mock = {}
 
-    function mock.loadModule(name)
-        return load_module(name)
+    function mock.loadModule(name, opts)
+        return load_module(name, opts)
     end
 
     function mock.cleanup()

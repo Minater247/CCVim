@@ -10,9 +10,8 @@ local Highlight = loadModule("lib.highlight")
 local VimRegex = loadModule("lib.excmd.vim_regex")
 local ExMsg = loadModule("lib.excmd.exmsg")
 
-local treesitter_mod
+local treesitter_mod = loadModule("lib.luaapi.treesitter")
 local function treesitter()
-    treesitter_mod = treesitter_mod or loadModule("lib.luaapi.treesitter")
     return treesitter_mod
 end
 

@@ -8,7 +8,7 @@ local Compiler = loadModule("lib.excmd.compiler")
 local Commands = loadModule("lib.excmd.commands")
 local Options = loadModule("lib.options")
 local Autocmd = loadModule("lib.autocmd")
-local ScriptSource
+local ScriptSource = loadModule("lib.scriptsource")
 local scopes = loadModule("lib.luaapi.scopes")
 local Builtins = loadModule("lib.luaapi.fn")
 local Utf8 = loadModule("lib.utf8")
@@ -270,7 +270,6 @@ local function try_autoload_function(name)
         return false
     end
 
-    ScriptSource = ScriptSource or loadModule("lib.scriptsource")
     LOG_DEBUG("autoload: loading %s for %s", script, name)
 
     local ok = ScriptSource.source_runtime(script .. ".vim")
@@ -988,9 +987,8 @@ local get_command_spec = Commands.get_spec
 local resolve_dispatch_name = Commands.resolve_dispatch_name
 
 function Runtime.new(init_state, init_opts)
-    local ExMsg
+    local ExMsg = loadModule("lib.excmd.exmsg")
     local function _exmsg()
-        ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
         return ExMsg
     end
 
@@ -1287,7 +1285,6 @@ function Runtime.new(init_state, init_opts)
         self.__prev_ctrl = Runtime._CURRENT_CTRL
         self.__pushed_ctx = false
         if state.script_ctx and state.script_ctx ~= "" then
-            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PushContext(state.script_ctx)
             self.__pushed_ctx = true
         end
@@ -1299,7 +1296,6 @@ function Runtime.new(init_state, init_opts)
         Runtime._CURRENT_STATE = self.__prev_state
         Runtime._CURRENT_CTRL = self.__prev_ctrl
         if self.__pushed_ctx then
-            ScriptSource = ScriptSource or loadModule("lib.scriptsource")
             ScriptSource.PopContext()
         end
         self.__pushed_ctx = false
@@ -1544,53 +1540,46 @@ function Runtime.new(init_state, init_opts)
         return true
     end
 
-    local ScriptSourceMod
-    local Buffer
-    local Window
-    local VimFn
-    local VimFs
-    local Tags
-    local Highlight
-    local LuaLoader
-    local Filesystem
-    local RuntimePath
-    local Pack
-    local Command
-    local Key
-    local Syntax
+    local ScriptSourceMod = loadModule("lib.scriptsource")
+    local Buffer = loadModule("layout.buffer")
+    local Window = loadModule("layout.window")
+    local VimFn = loadModule("lib.luaapi.fn")
+    local VimFs = loadModule("lib.luaapi.fs")
+    local Tags = loadModule("lib.tags")
+    local Highlight = loadModule("lib.highlight")
+    local LuaLoader = loadModule("lib.lualoader")
+    local Filesystem = loadModule("lib.filesystem")
+    local RuntimePath = loadModule("lib.runtimepath")
+    local Pack = loadModule("lib.pack")
+    local Command = loadModule("lib.command")
+    local Key = loadModule("lib.key")
+    local Syntax = loadModule("lib.syntax")
 
     local function _scriptsource()
-        ScriptSourceMod = ScriptSourceMod or loadModule("lib.scriptsource")
         return ScriptSourceMod
     end
 
     local function _buffer_mod()
-        Buffer = Buffer or loadModule("layout.buffer")
         return Buffer
     end
 
     local function _window_mod()
-        Window = Window or loadModule("layout.window")
         return Window
     end
 
     local function _vimfn()
-        VimFn = VimFn or loadModule("lib.luaapi.fn")
         return VimFn
     end
 
     local function _vimfs()
-        VimFs = VimFs or loadModule("lib.luaapi.fs")
         return VimFs
     end
 
     local function _tags()
-        Tags = Tags or loadModule("lib.tags")
         return Tags
     end
 
     local function _highlight()
-        Highlight = Highlight or loadModule("lib.highlight")
         return Highlight
     end
 
@@ -1615,37 +1604,30 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _lualoader()
-        LuaLoader = LuaLoader or loadModule("lib.lualoader")
         return LuaLoader
     end
 
     local function _filesystem()
-        Filesystem = Filesystem or loadModule("lib.filesystem")
         return Filesystem
     end
 
     local function _runtimepath()
-        RuntimePath = RuntimePath or loadModule("lib.runtimepath")
         return RuntimePath
     end
 
     local function _pack()
-        Pack = Pack or loadModule("lib.pack")
         return Pack
     end
 
     local function _command_mod()
-        Command = Command or loadModule("lib.command")
         return Command
     end
 
     local function _key_mod()
-        Key = Key or loadModule("lib.key")
         return Key
     end
 
     local function _syntax()
-        Syntax = Syntax or loadModule("lib.syntax")
         return Syntax
     end
 

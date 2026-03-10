@@ -4,12 +4,12 @@ local Builtins   = {}
 
 local Error      = loadModule("lib.error")
 local Highlight  = loadModule("lib.highlight")
-local Syntax
-local Runtime
-local ExMsg
-local EnvVars
+local Syntax = loadModule("lib.syntax")
+local Runtime = loadModule("lib.excmd.runtime")
+local ExMsg = loadModule("lib.excmd.exmsg")
+local EnvVars = loadModule("lib.envvars")
 local FrameTree  = loadModule("lib.frame")
-local CmdRead
+local CmdRead = loadModule("lib.excmd.cmdread")
 local PopupMenu  = loadModule("lib.popupmenu")
 local Buffer     = loadModule("layout.buffer")
 local Tab        = loadModule("lib.tab")
@@ -24,8 +24,8 @@ local RegisterUtil = loadModule("lib.registers")
 local Utf8       = loadModule("lib.utf8")
 local Command = loadModule("lib.command")
 local Json = loadModule("lib.luaapi.json")
-local ScriptSource
-local ApiBuild
+local ScriptSource = loadModule("lib.scriptsource")
+local ApiBuild = loadModule("lib.luaapi.apibuild")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -40,7 +40,6 @@ local function call_vimfunc(name, ...)
     if type(b) == "function" then
         return b(...)
     end
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     -- User-defined Vimscript function
     local def, resolved_name = Runtime.ResolveFunctionDef(name, { state = Runtime._CURRENT_STATE })
     if not def and Runtime.TryAutoloadFunction(name) then
@@ -76,7 +75,6 @@ local function call_vimfunc(name, ...)
             l_scope.self = selfdict
         end
     end
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     if def.kind == "compiled" and type(def.body) == "function" then
         local state = {
             g = scopes._g,
@@ -447,7 +445,6 @@ local function _is_vim_list_expr(expr)
 end
 
 local function _syntax_mod()
-    Syntax = Syntax or loadModule("lib.syntax")
     return Syntax
 end
 
@@ -1241,7 +1238,6 @@ Builtins["function"] = function(name, arglist, _dict)
         fname = funcref_name_by_fn[name]
     else
         fname = tostring(name or "")
-        Runtime = Runtime or loadModule("lib.excmd.runtime")
         local trimmed = fname:gsub("^%s+", ""):gsub("%s+$", "")
         local looks_funcexpr =
             trimmed:match("^function%s*%(") ~= nil
@@ -1802,7 +1798,6 @@ function Builtins.feedkeys(keys, mode, escape_ks, ...)
 end
 
 function Builtins.getcmdline()
-    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
     if CmdRead.is_active() then
         return CmdRead.getline()
     end
@@ -1810,7 +1805,6 @@ function Builtins.getcmdline()
 end
 
 function Builtins.getcmdpos()
-    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
     if CmdRead.is_active() then
         return CmdRead.getpos()
     end
@@ -1818,7 +1812,6 @@ function Builtins.getcmdpos()
 end
 
 function Builtins.getcmdtype()
-    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
     if CmdRead.is_active() then
         return ":"
     end
@@ -1826,7 +1819,6 @@ function Builtins.getcmdtype()
 end
 
 function Builtins.setcmdline(str, pos)
-    CmdRead = CmdRead or loadModule("lib.excmd.cmdread")
     if not CmdRead.is_active() then
         return 1
     end
@@ -2028,7 +2020,6 @@ end
 
 -- exists({name}): support for internal scopes, $ENV and *FuncName
 function Builtins.exists(expr)
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local eval_scope = eval_scope_stack[#eval_scope_stack]
 
     local function expand_curly_name(raw)
@@ -2184,12 +2175,10 @@ function Builtins.exists(expr)
         return 0
     elseif s:sub(1, 1) == "$" then
         local key = s:sub(2)
-        EnvVars = EnvVars or loadModule("lib.envvars")
         return EnvVars.exists(key) and 1 or 0
     elseif s:sub(1, 1) == "*" then
         local fname = s:sub(2)
         if Builtins[fname] ~= nil then return 1 end
-        Runtime = Runtime or loadModule("lib.excmd.runtime")
         local def = Runtime.ResolveFunctionDef(fname, { state = Runtime._CURRENT_STATE })
         if def then return 1 end
         local gdef = Runtime.ResolveFunctionDef("g:" .. fname, { state = Runtime._CURRENT_STATE })
@@ -2197,7 +2186,6 @@ function Builtins.exists(expr)
         return 0
     end
     -- Bare variable name: check function-local first, then global scope.
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local st = Runtime._CURRENT_STATE
     local frames = st and st.frames
     if frames then
@@ -2211,7 +2199,6 @@ function Builtins.exists(expr)
 end
 
 function Builtins.eval(expr)
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local state = Runtime._CURRENT_STATE or Runtime._API_STATE
     local ok, rv = Runtime.EvalExpression(expr, {
         state = state,
@@ -2449,7 +2436,6 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
             end
         else
             local rt_ok, eval_ok, eval_rv = pcall(function()
-                Runtime = Runtime or loadModule("lib.excmd.runtime")
                 return Runtime.EvalExpression(skip, {
                     state = Runtime._CURRENT_STATE,
                     ctrl = Runtime._CURRENT_CTRL,
@@ -2963,7 +2949,6 @@ function Builtins.json_decode(expr)
         error(Error(474, "json_decode()"):toString())
     end
 
-    ApiBuild = ApiBuild or loadModule("lib.luaapi.apibuild")
     local decoded, perr = Json.decode(payload, {
         empty_dict_mt = rawget(ApiBuild.Build().vim, "_empty_dict_mt"),
     })
@@ -2979,9 +2964,7 @@ function Builtins.menu_info(path, modes, ...)
         error(Error(118, "menu_info"):toString())
     end
 
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local state = Runtime._CURRENT_STATE or Runtime._API_STATE
-    ApiBuild = ApiBuild or loadModule("lib.luaapi.apibuild")
     local empty_dict_mt = rawget(ApiBuild.Build().vim, "_empty_dict_mt")
     if not state then
         return setmetatable({}, empty_dict_mt)
@@ -4211,7 +4194,6 @@ local function _expand_map_sid_name(name)
         return raw
     end
 
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
     local sid
     local state = Runtime._CURRENT_STATE
     if type(state) == "table" and type(state.script_ctx) == "string" and state.script_ctx ~= "" then
@@ -4221,7 +4203,6 @@ local function _expand_map_sid_name(name)
             sid = tonumber(tostring(canon or ""):match("^<SNR>(%d+)_"))
         end
     else
-        ScriptSource = ScriptSource or loadModule("lib.scriptsource")
         local ctx = ScriptSource.CurrentContext()
         if type(ctx) == "string" and ctx ~= "" then
             local canon = Runtime.CanonicalFunctionName("s:_sid_probe", { script_ctx = ctx })
@@ -4790,9 +4771,6 @@ function Builtins.execute(command, silent, ...)
         error(Error(1098):toString())
     end
 
-    Runtime = Runtime or loadModule("lib.excmd.runtime")
-    ExMsg = ExMsg or loadModule("lib.excmd.exmsg")
-
     local cap = ExMsg.StartCapture()
     ExMsg.PushUISuppress()
     local thrown = nil
@@ -5060,7 +5038,6 @@ function Builtins.string(expr, ...)
 end
 
 function Builtins.getenv(name)
-    EnvVars = EnvVars or loadModule("lib.envvars")
     return EnvVars.get(name)
 end
 

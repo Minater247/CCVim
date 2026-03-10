@@ -11,8 +11,8 @@ return {
         local ok, err = pcall(function()
             local Options = mock.loadModule("lib.options")
             local Buffer = mock.loadModule("layout.buffer")
-            mock.loadModule("lib.command")
-            mock.loadModule("lib.mappings")
+            mock.loadModule("lib.command", { immediate = true })
+            mock.loadModule("lib.mappings", { immediate = true })
 
             screen.width = 80
             screen.height = 24

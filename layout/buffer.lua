@@ -8,7 +8,7 @@ local VimFs = loadModule("lib.luaapi.fs")
 local Syntax = loadModule("lib.syntax")
 local Utf8 = loadModule("lib.utf8")
 local BufAttach = loadModule("lib.bufattach")
-local Sign
+local Sign = loadModule("lib.sign")
 
 local curr_bufno = 1
 
@@ -595,7 +595,6 @@ function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
     end
     self.opts.modified = modified == true
 
-    Sign = Sign or loadModule("lib.sign")
     Sign.on_lines_changed(self, 1, #old_lines, #self.lines)
 
     _notify_full_replace(self, old_lines, self.lines)
@@ -942,7 +941,6 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     end
 
     if not opts.skip_sign_adjust then
-        Sign = Sign or loadModule("lib.sign")
         Sign.on_lines_changed(self, s, k_remove, 0)
     end
 
@@ -1044,7 +1042,6 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
     end
 
     if k_remove > 0 or m_insert > 0 then
-        Sign = Sign or loadModule("lib.sign")
         Sign.on_lines_changed(self, start1, k_remove, m_insert)
     end
     
