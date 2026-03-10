@@ -20,7 +20,7 @@ jobs:
       - name: Set up Lua
         uses: leafo/gh-actions-lua@v11
         with:
-          luaVersion: "5.1"
+          luaVersion: "5.4"
 
       - name: Set up LuaRocks
         uses: leafo/gh-actions-luarocks@v4
