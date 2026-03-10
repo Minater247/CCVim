@@ -290,10 +290,12 @@ local function tokenize(input)
                             j = j + 1
                         end
                         if j <= n then
-                            decoded = decode_angle_escape(input:sub(i, j - 1))
-                            if decoded ~= nil then
-                                i = j + 1
+                            local angle_content = input:sub(i, j - 1)
+                            decoded = decode_angle_escape(angle_content)
+                            if decoded == nil then
+                                decoded = "<" .. angle_content .. ">"
                             end
+                            i = j + 1
                         end
                     end
                     if decoded ~= nil then
