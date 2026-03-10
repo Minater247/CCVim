@@ -30,6 +30,7 @@ local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
 local _jobs = {}
 local _next_job_id = 1
+local eval_scope_stack = {}
 
 -- Helper: call a Vimscript function by name (user-defined via runtime registry) or a builtin here.
 local function call_vimfunc(name, ...)
@@ -440,12 +441,6 @@ local function _extract_cfile_text(win)
     return Utf8.sub(line, s, e)
 end
 
-local function _expand_cfile(buf)
-    local win = windows[curwin]
-    local raw = _extract_cfile_text(win)
-    return raw
-end
-
 local function _is_vim_list_expr(expr)
     return type(expr) == "table" and not expr.__call
 end
@@ -721,8 +716,7 @@ end
 function Builtins.expand(str, nosuf, list)
     local raw = tostring(str or "")
     if raw:find("<cfile>", 1, true) then
-        local buf = windows[curwin].buffer
-        raw = raw:gsub("<cfile>", _expand_cfile(buf))
+        raw = raw:gsub("<cfile>", _extract_cfile_text(windows[curwin]))
     end
 
     local expansions = Filesystem.Expand(raw, nosuf)
@@ -2034,6 +2028,7 @@ end
 -- exists({name}): support for internal scopes, $ENV and *FuncName
 function Builtins.exists(expr)
     Runtime = Runtime or loadModule("lib.excmd.runtime")
+    local eval_scope = eval_scope_stack[#eval_scope_stack]
 
     local function expand_curly_name(raw)
         if type(raw) ~= "string" then return raw end
@@ -2128,6 +2123,9 @@ function Builtins.exists(expr)
         return (scopes._v[key] ~= nil) and 1 or 0
     elseif s:sub(1, 2) == "s:" then
         local key = s:sub(3)
+        if eval_scope and eval_scope.s and eval_scope.s[key] ~= nil then
+            return 1
+        end
         local st = Runtime._CURRENT_STATE
         if st and st.s then
             local ok = (st.s[key] ~= nil) and 1 or 0
@@ -2135,10 +2133,19 @@ function Builtins.exists(expr)
                 LOG_DEBUG("exists(s:vimentered) state=%s val=%s -> %s", tostring(st), tostring(st.s[key]),
                     tostring(ok))
             end
-            return ok
+            if ok == 1 then
+                return ok
+            end
         end
         if key == "vimentered" then
             LOG_DEBUG("exists(s:vimentered) state=nil -> 0")
+        end
+        local ok_eval, val = Runtime.EvalExpression(s, {
+            state = Runtime._CURRENT_STATE,
+            ctrl = Runtime._CURRENT_CTRL,
+        })
+        if ok_eval and val ~= nil then
+            return 1
         end
         return 0
     elseif s:sub(1, 2) == "b:" then
@@ -4989,6 +4996,12 @@ local export = {
     fn = Builtins
 }
 
+export._push_eval_scope = function(scope)
+    eval_scope_stack[#eval_scope_stack + 1] = scope
+end
+export._pop_eval_scope = function()
+    eval_scope_stack[#eval_scope_stack] = nil
+end
 export._call = call_vimfunc
 export._funcref_name = function(fn)
     return funcref_name_by_fn[fn]

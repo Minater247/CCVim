@@ -2670,7 +2670,7 @@ function Runtime.new(init_state, init_opts)
 
             win:cursorSet(win.cursorx, line_no)
             if inner == "" then
-                _exmsg().echo(buf:get_line(line_no, true) or "")
+                _exmsg().echo((buf:get_line(line_no, true) or "") .. "\n")
             else
                 local ok, rv = pcall(function()
                     return self:exec_script(inner)
@@ -4740,9 +4740,9 @@ function Runtime.new(init_state, init_opts)
             end
             win:cursorSet(win.cursorx, target_line)
             if post_mode == "print" then
-                _exmsg().echo("\n" .. _delete_print_text(buf:get_line(target_line, true) or ""))
+                _exmsg().echo(_delete_print_text(buf:get_line(target_line, true) or "") .. "\n")
             elseif post_mode == "list" then
-                _exmsg().echo("\n" .. _delete_list_text(buf:get_line(target_line, true) or ""))
+                _exmsg().echo(_delete_list_text(buf:get_line(target_line, true) or "") .. "\n")
             end
             win:mark_redraw()
             return true
@@ -5127,7 +5127,17 @@ function Runtime.new(init_state, init_opts)
         elseif cmd == "help" then
             local target = strip(argstr)
             if target == "" then target = "help.txt" end
-            local match = _tags().SearchFile(ccvim_path .. "/runtime/doc/tags", target)
+            local match, doc_root
+            local rtp = _runtimepath().get_search_list()
+            for i = 1, #rtp do
+                local base = rtp[i]
+                local found = _tags().SearchFile(base .. "/doc/tags", target)
+                if found then
+                    match = found
+                    doc_root = base .. "/doc"
+                    break
+                end
+            end
             if not match then error(Error(149, target)) end
 
             local function help_jump_pos(buf, tag, exaddr)
@@ -5192,7 +5202,7 @@ function Runtime.new(init_state, init_opts)
             newbuf.opts.buftype = "help"
             newbuf.opts.readonly = true
             newbuf.opts.modifiable = false
-            newbuf.name = ccvim_path .. "/runtime/doc/" .. match[2]
+            newbuf.name = doc_root .. "/" .. match[2]
             newbuf:Load(true)
             Options.set("filetype", "help", true, nil, newbuf)
             local jumpline, jumpcol = help_jump_pos(newbuf, match[1], match[3])

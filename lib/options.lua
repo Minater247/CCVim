@@ -576,6 +576,30 @@ local function _capture_expr_option_state(name)
     })
 end
 
+local function _canonicalize_expr_option_string(name, value)
+    local spec = expr_option_specs[name]
+    if not spec or type(value) ~= "string" then
+        return value
+    end
+
+    local lead, fn_name, tail = value:match("^(%s*)(s:[%w_#]+)(%s*%b().*)$")
+    if not fn_name then
+        lead, fn_name, tail = value:match("^(%s*)(<SID>[%w_#]+)(%s*%b().*)$")
+    end
+    if not fn_name then
+        return value
+    end
+
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
+    local canon = Runtime.CanonicalFunctionName(fn_name, {
+        script_ctx = _current_script_ctx(),
+    })
+    if type(canon) ~= "string" or canon == "" then
+        return value
+    end
+    return lead .. canon .. tail
+end
+
 local function _set_expr_option_state(name, window, state)
     local spec = expr_option_specs[name]
     if not spec or not window then
@@ -1822,6 +1846,7 @@ function Options.exset_token(token, mode, window, buffer)
     -- Strings
     local cur = Options.get(name, window, buffer, (mode ~= "global")) or ""
     local s   = _unescape(rhs or "")
+    s = _canonicalize_expr_option_string(name, s)
     if typ == "stringfunc" and op == "=" then
         local trimmed = s:gsub("^%s+", ""):gsub("%s+$", "")
         local looks_funcexpr =

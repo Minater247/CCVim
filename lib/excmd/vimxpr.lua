@@ -7,7 +7,7 @@ local VimRegex      = loadModule("lib.excmd.vim_regex")
 local EnvVars       = loadModule("lib.envvars")
 local Scopes        = loadModule("lib.luaapi.scopes")
 local Key           = loadModule("lib.key")
-local VimFnBuiltins = loadModule("lib.luaapi.fn") or {}
+local VimFnBuiltins = loadModule("lib.luaapi.fn")
 local ApiBuild
 -- =========================================================
 
@@ -544,13 +544,34 @@ local function parse(tokens)
         end
         return tostring(tok and tok.val or "")
     end
+    local function tok_end(tok)
+        local text = tok_text(tok)
+        return (tok and tok.pos or 1) + #text - 1
+    end
 
     local expr, unary, apply_postfix
 
     function apply_postfix(node)
         while true do
             local t = peek()
-            if t.typ == "LBRACK" then
+            if t.typ == "OP" and t.val == "." and node.endpos and t.pos == (node.endpos + 1) then
+                local save_i = i
+                adv() -- '.'
+                local keytok = peek()
+                if keytok.typ == "ID" and keytok.pos == (t.pos + 1) then
+                    local key = adv()
+                    node = {
+                        kind = "index",
+                        a = node,
+                        idx = { kind = "str", val = key.val, pos = key.pos, endpos = tok_end(key) },
+                        pos = t.pos,
+                        endpos = tok_end(key),
+                    }
+                else
+                    i = save_i
+                    break
+                end
+            elseif t.typ == "LBRACK" then
                 adv() -- '['
                 local first = nil
                 if peek().typ ~= "COLON" and peek().typ ~= "RBRACK" then
@@ -562,14 +583,21 @@ local function parse(tokens)
                     if peek().typ ~= "RBRACK" then
                         last = expr(0)
                     end
-                    expect("RBRACK")
-                    node = { kind = "slice", a = node, first = first, last = last, pos = t.pos }
+                    local close = expect("RBRACK")
+                    node = {
+                        kind = "slice",
+                        a = node,
+                        first = first,
+                        last = last,
+                        pos = t.pos,
+                        endpos = tok_end(close)
+                    }
                 else
                     if first == nil then
                         error("Expected index or slice inside []")
                     end
-                    expect("RBRACK")
-                    node = { kind = "index", a = node, idx = first, pos = t.pos }
+                    local close = expect("RBRACK")
+                    node = { kind = "index", a = node, idx = first, pos = t.pos, endpos = tok_end(close) }
                 end
             else
                 break
@@ -585,7 +613,11 @@ local function parse(tokens)
             return { kind = "unary", op = op, a = unary(), pos = t.pos }
         end
         if t.typ == "LPAREN" then
-            adv(); local n = expr(0); expect("RPAREN"); return apply_postfix(n)
+            adv()
+            local n = expr(0)
+            local close = expect("RPAREN")
+            n.endpos = tok_end(close)
+            return apply_postfix(n)
         end
         if t.typ == "LBRACK" then
             -- List literal: [expr, expr, ...]
@@ -601,8 +633,8 @@ local function parse(tokens)
                     if peek().typ == "RBRACK" then break end
                 end
             end
-            expect("RBRACK")
-            return apply_postfix({ kind = "list", items = items, pos = t.pos })
+            local close = expect("RBRACK")
+            return apply_postfix({ kind = "list", items = items, pos = t.pos, endpos = tok_end(close) })
         end
         if t.typ == "LBRACE" then
             -- Try |curly-braces-names| first: {expr}name
@@ -710,46 +742,59 @@ local function parse(tokens)
                     if op ~= "," then error("Expected ',' in dict literal") end
                 end
             end
-            expect("RBRACE")
-            return apply_postfix({ kind = "dict", entries = entries, pos = t.pos })
+            local close = expect("RBRACE")
+            return apply_postfix({ kind = "dict", entries = entries, pos = t.pos, endpos = tok_end(close) })
         end
         if t.typ == "AMP" then
             adv()
-            local id = expect("ID").val
+            local idtok = expect("ID")
+            local id = idtok.val
             local scope = nil
+            local endpos = tok_end(idtok)
             if peek().typ == "COLON" then
-                adv()
+                local colon = adv()
                 scope = id
+                endpos = tok_end(colon)
                 local nxt = peek()
                 if nxt.typ == "ID" then
-                    id = adv().val
+                    local name_tok = adv()
+                    id = name_tok.val
+                    endpos = tok_end(name_tok)
                 elseif nxt.typ == "NUM" then
-                    id = tok_text(adv())
+                    local name_tok = adv()
+                    id = tok_text(name_tok)
+                    endpos = tok_end(name_tok)
                 else
                     error(("Expected ID or NUM after option scope at %d, got %s %s"):format(
                         nxt.pos, nxt.typ, tostring(nxt.val)))
                 end
             end
-            return apply_postfix({ kind = "opt", name = id, scope = scope, pos = t.pos })
+            return apply_postfix({ kind = "opt", name = id, scope = scope, pos = t.pos, endpos = endpos })
         end
         if t.typ == "ENV" then
             local tok = adv()
-            return apply_postfix({ kind = "env", name = tok.val, pos = tok.pos })
+            return apply_postfix({ kind = "env", name = tok.val, pos = tok.pos, endpos = tok_end(tok) })
         end
         if t.typ == "REG" then
             local tok = adv()
-            return apply_postfix({ kind = "reg", name = tok.val, pos = tok.pos })
+            return apply_postfix({ kind = "reg", name = tok.val, pos = tok.pos, endpos = tok_end(tok) })
         end
         if t.typ == "ID" then
             local id = adv().val
+            local endpos = tok_end(tokens[i - 1])
             local scope, name = nil, id
             if peek().typ == "COLON" then
-                adv()
+                local colon = adv()
+                endpos = tok_end(colon)
                 local nxt = peek()
                 if nxt.typ == "ID" then
-                    name = adv().val
+                    local name_tok = adv()
+                    name = name_tok.val
+                    endpos = tok_end(name_tok)
                 elseif nxt.typ == "NUM" then
-                    name = tok_text(adv())
+                    local name_tok = adv()
+                    name = tok_text(name_tok)
+                    endpos = tok_end(name_tok)
                 else
                     -- Bare scope dictionary reference, e.g. g: / b: / s: ...
                     scope = id
@@ -758,7 +803,7 @@ local function parse(tokens)
                 scope = scope or id
             end
             if scope and name == nil then
-                return apply_postfix({ kind = "scope", scope = scope, pos = t.pos })
+                return apply_postfix({ kind = "scope", scope = scope, pos = t.pos, endpos = endpos })
             end
             if scope == "v" and name == "lua" then
                 local dot_i = i
@@ -785,14 +830,15 @@ local function parse(tokens)
                             if op ~= "," then error("Expected ',' in arg list") end
                         end
                     end
-                    expect("RPAREN")
+                    local close = expect("RPAREN")
                     return apply_postfix({
                         kind = "call",
                         name = name,
                         scope = scope,
                         lua_path = table.concat(segs, "."),
                         args = args,
-                        pos = t.pos
+                        pos = t.pos,
+                        endpos = tok_end(close),
                     })
                 else
                     i = dot_i
@@ -812,8 +858,15 @@ local function parse(tokens)
                         if op ~= "," then error("Expected ',' in arg list") end
                     end
                 end
-                expect("RPAREN")
-                return apply_postfix({ kind = "call", name = name, scope = scope, args = args, pos = t.pos })
+                local close = expect("RPAREN")
+                return apply_postfix({
+                    kind = "call",
+                    name = name,
+                    scope = scope,
+                    args = args,
+                    pos = t.pos,
+                    endpos = tok_end(close)
+                })
             end
             if peek().typ == "LBRACE" then
                 local base = (scope and (scope .. ":") or "") .. tostring(name)
@@ -838,12 +891,18 @@ local function parse(tokens)
                         parts[#parts + 1] = { kind = "lit", val = table.concat(suffix) }
                     end
                 end
-                return apply_postfix({ kind = "varcurly", parts = parts, pos = t.pos })
+                return apply_postfix({ kind = "varcurly", parts = parts, pos = t.pos, endpos = endpos })
             end
-            return apply_postfix({ kind = "var", scope = scope, name = name, pos = t.pos })
+            return apply_postfix({ kind = "var", scope = scope, name = name, pos = t.pos, endpos = endpos })
         end
-        if t.typ == "NUM" then return apply_postfix({ kind = "num", val = adv().val, pos = t.pos }) end
-        if t.typ == "STR" then return apply_postfix({ kind = "str", val = adv().val, pos = t.pos }) end
+        if t.typ == "NUM" then
+            local tok = adv()
+            return apply_postfix({ kind = "num", val = tok.val, pos = tok.pos, endpos = tok_end(tok) })
+        end
+        if t.typ == "STR" then
+            local tok = adv()
+            return apply_postfix({ kind = "str", val = tok.val, pos = tok.pos, endpos = tok_end(tok) })
+        end
         error(("Unexpected token %s %s at %d"):format(t.typ, tostring(t.val), t.pos))
     end
 
@@ -1099,7 +1158,9 @@ local function eval_node(node, vim9, env)
             local v = eval_node(node.args[i], vim9, env); if is_error(v) then return v end
             argv[i] = v
         end
+        VimFnBuiltins._push_eval_scope(env and env.scope)
         local ok, rv = pcall(f, table.unpack(argv))
+        VimFnBuiltins._pop_eval_scope()
         if not ok then
             if (Error.IsError(rv)) then
                 rv = rv:toString()

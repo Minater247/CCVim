@@ -19,6 +19,16 @@ end
 local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
 local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
 local resolve_dispatch_name = Commands.resolve_dispatch_name
+local parse_cmd_head
+
+local COMMAND_WRAPPERS = {
+    silent = true,
+    unsilent = true,
+    keepalt = true,
+    keepjumps = true,
+    noautocmd = true,
+    verbose = true,
+}
 
 local function _expr_head_only_before_quote(head)
     local s = tostring(head or "")
@@ -76,6 +86,25 @@ local function split_commands(script)
             if c == "\n" then
                 flush_segment(); i = i + 1; goto continue
             elseif not in_s and not in_d and c == "|" and not seg_no_bar and not esc then
+                local head = trim(table.concat(buf))
+                if head ~= "" then
+                    local cmd, rest = parse_cmd_head(head)
+                    local guard = 0
+                    while type(cmd) == "string" and COMMAND_WRAPPERS[cmd] and guard < 8 do
+                        head = trim(rest or "")
+                        if head == "" then
+                            break
+                        end
+                        cmd, rest = parse_cmd_head(head)
+                        guard = guard + 1
+                    end
+                    if type(cmd) == "string" and cmd ~= "" then
+                        local _, nested_no_bar = _cmd_mode_and_bar(cmd)
+                        if nested_no_bar then
+                            buf[#buf + 1] = c; i = i + 1; goto continue
+                        end
+                    end
+                end
                 local prevc = (i > 1) and script:sub(i - 1, i - 1) or ""
                 if prevc == "\\" then
                     buf[#buf + 1] = c; i = i + 1; goto continue
@@ -253,7 +282,7 @@ local function strip_range_prefix(s)
     return s:sub(i)
 end
 
-local function parse_cmd_head(line)
+function parse_cmd_head(line)
     local s = tostring(line or ""):gsub("^%s+", "")
     while true do
         local c = s:sub(1, 1)
