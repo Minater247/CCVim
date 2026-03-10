@@ -21,6 +21,9 @@ local function _run_textchanged(buf, noauto)
     if noauto then
         return
     end
+    if __ccvim_input_state.feedkeys_typeahead_depth > 0 then
+        return
+    end
     if windows[curwin].buffer ~= buf then
         return
     end
@@ -330,11 +333,18 @@ function Buffer:Load(read_contents)
                 if h then
                     local s = h.readAll() or ""
                     h.close()
+                    s = s:gsub("\r\n", "\n")
+                    if s:sub(-1) == "\n" then
+                        s = s:sub(1, -2)
+                    end
                     self.lines = {}
                     local i = 1
-                    for l in (s .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+                    for l in (s .. "\n"):gmatch("([^\n]*)\n") do
                         self.lines[i] = l
                         i = i + 1
+                    end
+                    if #self.lines == 0 then
+                        self.lines = { "" }
                     end
                 else
                     -- Treat unreadable entries (e.g., directories) as empty but continue.
@@ -976,7 +986,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     return removed
 end
 
-function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
+function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
     self.loaded = true
     local line_count = #self.lines
 
@@ -1071,7 +1081,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement)
         })
     end
 
-    _run_textchanged(self, false)
+    _run_textchanged(self, noauto)
     Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
     _request_full_redraw()
     self:undo_end()

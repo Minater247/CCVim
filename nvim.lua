@@ -53,6 +53,9 @@ local _V = {
 
     loaded_modules = {},
     state = {},
+    __ccvim_input_state = {
+        feedkeys_typeahead_depth = 0,
+    },
 
     curtp = 1,
     tabpages = { {

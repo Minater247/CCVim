@@ -1625,6 +1625,9 @@ function MockEnv.setup(opts)
     globals.vimlog = {}
     globals.registers = {}
     globals.global_marks = {}
+    globals.__ccvim_input_state = {
+        feedkeys_typeahead_depth = 0,
+    }
 
     globals.LOG_DEBUG = function() end
     globals.LOG_ERROR = function() end
@@ -1800,8 +1803,8 @@ function MockEnv.setup(opts)
 
     local mock = {}
 
-    function mock.loadModule(name, opts)
-        return load_module(name, opts)
+    function mock.loadModule(name, options)
+        return load_module(name, options)
     end
 
     function mock.cleanup()

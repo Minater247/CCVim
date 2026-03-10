@@ -3048,7 +3048,7 @@ function Builtins.menu_info(path, modes, ...)
         silent = false,
         rhs = tostring(item.rhs or ""),
         display = leaf,
-        noremenu = not not (item.recursive == false),
+        noremenu = item.recursive == false,
     }
 end
 

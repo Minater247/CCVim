@@ -402,21 +402,33 @@ local function flush_feedkeys_queue()
     local ok, err = pcall(function()
         for i = 1, #queue do
             local op = queue[i]
-            if op.kind == "keys" then
-                for j = 1, #op.seq do
-                    local key = op.seq[j]
-                    local keystr = Key.to_termcode_string(key)
-                    local discard = OnKey.dispatch_safely(keystr, keystr)
-                    if not discard then
-                        if op.noremap then
-                            Command._handle_key_with_policy(key, Command.POLICY_NOREMAP, true)
-                        else
-                            Command.HandleKey(key)
+            local typed_state = __ccvim_input_state
+            if op.typed then
+                typed_state.feedkeys_typeahead_depth = typed_state.feedkeys_typeahead_depth + 1
+            end
+            local op_ok, op_err = pcall(function()
+                if op.kind == "keys" then
+                    for j = 1, #op.seq do
+                        local key = op.seq[j]
+                        local keystr = Key.to_termcode_string(key)
+                        local discard = OnKey.dispatch_safely(keystr, keystr)
+                        if not discard then
+                            if op.noremap then
+                                Command._handle_key_with_policy(key, Command.POLICY_NOREMAP, true)
+                            else
+                                Command.HandleKey(key)
+                            end
                         end
                     end
+                elseif op.kind == "cmd" then
+                    _run_feedkeys_cmdline(op.cmd)
                 end
-            elseif op.kind == "cmd" then
-                _run_feedkeys_cmdline(op.cmd)
+            end)
+            if op.typed then
+                typed_state.feedkeys_typeahead_depth = math.max(0, typed_state.feedkeys_typeahead_depth - 1)
+            end
+            if not op_ok then
+                error(op_err)
             end
         end
     end)
@@ -858,7 +870,7 @@ function api.nvim_buf_set_lines(buffer, start, end_, strict_indexing, replacemen
     local buf = buf_for_bufnr(buffer)
     assert(buf)
 
-    buf:set_lines(start, end_, strict_indexing, replacement)
+    buf:set_lines(start, end_, strict_indexing, replacement, true)
     request_buffer_redraw(buf, true)
 end
 
@@ -977,7 +989,7 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
     repl[1] = prefix .. repl[1]
     repl[#repl] = repl[#repl] .. suffix
 
-    buf:set_lines(sidx - 1, eidx, false, repl)
+    buf:set_lines(sidx - 1, eidx, false, repl, true)
     request_buffer_redraw(buf, true)
 end
 
@@ -2274,6 +2286,7 @@ function api.nvim_feedkeys(keys, mode, _escape_ks)
         if ops[i].kind == "keys" then
             ops[i].noremap = not remap
         end
+        ops[i].typed = mode:find("t", 1, true) ~= nil
     end
     local prepend = mode:find("i", 1, true) ~= nil
     local immediate = mode:find("x", 1, true) ~= nil
