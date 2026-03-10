@@ -2335,11 +2335,15 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
 
     Utf8.each_codepoint(text, function(cp)
         if cp == 10 then
+            local pre_line = cur
+            local pre_col = col1
             if _indentkey_pre_newline() then
                 _reindent_current_line()
+                pre_line = cur
+                pre_col = col1
             end
             do_split_line()
-            if has_indentexpr or options.get("autoindent", nil, buf) then
+            if options.get("autoindent", nil, buf) or _indentkey_match_typed("\n", pre_line, pre_col, cur, col1) then
                 _reindent_current_line()
             end
             last_action_inserted = true
