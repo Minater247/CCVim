@@ -115,7 +115,9 @@ local function _advance_past_run(buf, lines, y, x, isWORD, kwset, c0)
 	local yy, xx = y, x
 	while true do
 		local ny, nx = _fwd(buf, lines, yy, xx)
-		if not ny or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then return ny, nx end
+		if not ny or ny ~= yy or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then
+			return ny, nx
+		end
 		yy, xx = ny, nx
 	end
 end
@@ -128,7 +130,7 @@ local function _next_once(buf, lines, y, x, isWORD, to_end, kwset)
 		if not yy then return nil, nil end
 		local c0 = _class_of(buf, lines, yy, xx, isWORD, kwset)
 		local ty, tx = _fwd(buf, lines, yy, xx)
-		local at_run_end = (not ty) or (_class_of(buf, lines, ty, tx, isWORD, kwset) ~= c0)
+		local at_run_end = (not ty) or (ty ~= yy) or (_class_of(buf, lines, ty, tx, isWORD, kwset) ~= c0)
 		if at_run_end then
 			yy, xx = _skip_blanks_fwd(buf, lines, ty, tx)
 			if not yy then return nil, nil end
@@ -136,7 +138,9 @@ local function _next_once(buf, lines, y, x, isWORD, to_end, kwset)
 		end
 		while true do
 			local ny, nx = _fwd(buf, lines, yy, xx)
-			if not ny or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then return yy, xx end
+			if not ny or ny ~= yy or _class_of(buf, lines, ny, nx, isWORD, kwset) ~= c0 then
+				return yy, xx
+			end
 			yy, xx = ny, nx
 		end
 	else
@@ -159,7 +163,7 @@ local function _rewind_over_same_run_left(buf, lines, y, x, isWORD, kwset)
 	while true do
 		local py, px = _back(buf, lines, yy, xx)
 		if not py then return nil, nil end
-		if _class_of(buf, lines, py, px, isWORD, kwset) ~= c0 then
+		if py ~= yy or _class_of(buf, lines, py, px, isWORD, kwset) ~= c0 then
 			-- (py,px) is outside the run we started in (likely blank or a different run)
 			return py, px
 		end
@@ -210,7 +214,9 @@ local function _prev_once(buf, lines, y, x, isWORD, to_end, kwset)
 		-- Walk left to the *first* char of this run.
 		while true do
 			local py, px = _back(buf, lines, yy, xx)
-			if not py or _class_of(buf, lines, py, px, isWORD, kwset) ~= _class_of(buf, lines, yy, xx, isWORD, kwset) then
+			if not py or py ~= yy
+				or _class_of(buf, lines, py, px, isWORD, kwset) ~= _class_of(buf, lines, yy, xx, isWORD, kwset)
+			then
 				return yy, xx
 			end
 			yy, xx = py, px
