@@ -175,9 +175,27 @@ function Filesystem.ExpandWildcards(path)
     end
 
     local function list_sorted(dir)
+        local dirs, files = {}, {}
         local entries = fs.list(dir) or {}
-        table.sort(entries)
-        return entries
+        for i = 1, #entries do
+            local name = entries[i]
+            local child = join(dir, name)
+            if fs.isDir(child) then
+                dirs[#dirs + 1] = name
+            else
+                files[#files + 1] = name
+            end
+        end
+        table.sort(dirs)
+        table.sort(files)
+        for i = 1, #files do
+            dirs[#dirs + 1] = files[i]
+        end
+        return dirs
+    end
+
+    local function glob_matches_dotfiles(seg)
+        return seg:sub(1, 1) == "."
     end
 
     -- Resolve to an absolute path first so expansion is deterministic
@@ -218,8 +236,13 @@ function Filesystem.ExpandWildcards(path)
             if has_glob(seg) then
                 local patt = to_lua_pattern(seg)
                 if fs.isDir(base) then
-                    for _, name in ipairs(list_sorted(base)) do
-                        if name:match(patt) then
+                    local names = list_sorted(base)
+                    if glob_matches_dotfiles(seg) then
+                        table.insert(names, 1, "..")
+                        table.insert(names, 1, ".")
+                    end
+                    for _, name in ipairs(names) do
+                        if (name:sub(1, 1) ~= "." or glob_matches_dotfiles(seg)) and name:match(patt) then
                             local child = join(base, name)
                             if is_last or fs.isDir(child) then
                                 expand_from(child, idx + 1)

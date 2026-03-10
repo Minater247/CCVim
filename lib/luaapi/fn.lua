@@ -1852,7 +1852,17 @@ end
 
 local function _relpath_from_cwd(abs_target)
     local cwd = VimFs.editor_cwd()
-    local target = VimFs.editor_abspath(tostring(abs_target or ""))
+    local raw_target = tostring(abs_target or "")
+    local cwd_dot = (cwd == "/") and "/." or (cwd .. "/.")
+    local cwd_dotdot = (cwd == "/") and "/.." or (cwd .. "/..")
+    if raw_target == cwd_dot then
+        return "."
+    end
+    if raw_target == cwd_dotdot then
+        return ".."
+    end
+
+    local target = VimFs.editor_abspath(raw_target)
     if cwd == target then
         return "."
     end
@@ -1910,7 +1920,7 @@ local function _glob_matches_for_relative_expr(expr, matches)
     local keep_dot_slash = e:sub(1, 2) == "./"
     for i = 1, #matches do
         local rel = _relpath_from_cwd(matches[i])
-        if keep_dot_slash and rel ~= "." and rel:sub(1, 2) ~= "./" and rel:sub(1, 3) ~= "../" then
+        if keep_dot_slash and rel:sub(1, 2) ~= "./" then
             rel = "./" .. rel
         end
         out[#out + 1] = rel

@@ -29,6 +29,13 @@ return {
                     g2 = vim.fn.eval([[glob('./.*', 0, 1, 1)]]),
                     g3 = vim.fn.eval([[glob('*', 0, 1, 1)]]),
                     g4 = vim.fn.eval([[glob('.*', 0, 1, 1)]]),
+                    root_dot = (function()
+                        local cwd = vim.fn.getcwd()
+                        vim.fn.chdir('/')
+                        local rv = vim.fn.eval([[glob('.*', 0, 1, 1)]])
+                        vim.fn.chdir(cwd)
+                        return rv
+                    end)(),
                     simp = vim.fn.eval([[simplify('./*')]]),
                     s1 = vim.fn.eval([[substitute('vim/.gitignore*', "\*$", "", "")]]),
                     s2 = vim.fn.eval([[substitute('vim/.gitignore*', '\*$', "", "")]]),
@@ -53,6 +60,8 @@ return {
         assert_list_eq("glob('./.*') stays relative", result.g2, { "./.", "./..", "./.gitignore" })
         assert_list_eq("glob('*') stays cwd-relative", result.g3, { "lua", "README.md" })
         assert_list_eq("glob('.*') stays cwd-relative", result.g4, { ".", "..", ".gitignore" })
+        Assert.eq("glob('.*') at root keeps current dir", result.root_dot[1], ".")
+        Assert.eq("glob('.*') at root keeps parent dir", result.root_dot[2], "..")
         Assert.eq("simplify('./*') keeps dot prefix", result.simp, "./*")
         Assert.eq("double-quoted pattern keeps backslash", result.s1, "vim/.gitignore")
         Assert.eq("single-quoted pattern works", result.s2, "vim/.gitignore")
