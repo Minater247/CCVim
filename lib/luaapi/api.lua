@@ -243,16 +243,25 @@ local feedkeys_flushing = false
 
 local NVIM_CMD_MARKER = string.char(128, 253, 104)
 
-local function _run_feedkeys_cmdline(cmdline)
-    local state = {
-        g = scopes._g,
-        s = {},
-        v = scopes._v,
-        funcs = Runtime._FUNCS,
-    }
+local function inline_runtime_state()
+    local state = Runtime._API_STATE
+    if type(state) ~= "table" then
+        state = {}
+        Runtime._API_STATE = state
+    end
+    state.g = scopes._g
+    state.s = {}
+    state.v = scopes._v
+    state.funcs = Runtime._FUNCS
+    state.frames = {}
+    state.commands = state.commands or {}
+    state.menus = state.menus or {}
+    return state
+end
 
+local function _run_feedkeys_cmdline(cmdline)
     local ok, err = Runtime.run(tostring(cmdline or ""), {
-        state = state,
+        state = inline_runtime_state(),
         origin = {
             kind = "feedkeys-cmd",
         },
@@ -2432,14 +2441,7 @@ function api.nvim_cmd(cmd, opts)
         line2 = cmd.line2,
     }
 
-    local state = {
-        g = scopes._g,
-        s = {},
-        v = scopes._v,
-        funcs = Runtime._FUNCS,
-        frames = {},
-        commands = {},
-    }
+    local state = inline_runtime_state()
     local rt = Runtime.new(state)
     rt:set_exec_cursor(1, cursor_text, spec.lname, spec.qargs)
 

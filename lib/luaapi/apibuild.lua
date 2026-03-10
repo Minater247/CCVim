@@ -262,16 +262,25 @@ function ApiBuild.Build()
 
     local LuaLoader
 
+    local function inline_runtime_state()
+        local state = Runtime._API_STATE
+        if type(state) ~= "table" then
+            state = {}
+            Runtime._API_STATE = state
+        end
+        state.g = scopes._g
+        state.s = {}
+        state.v = scopes._v
+        state.funcs = Runtime._FUNCS
+        state.frames = {}
+        state.commands = state.commands or {}
+        state.menus = state.menus or {}
+        return state
+    end
+
     local function run_cmdline(line)
         local ok, rv = Runtime.run(line, {
-            state = {
-                g = scopes._g,
-                s = {},
-                v = scopes._v,
-                funcs = Runtime._FUNCS,
-                frames = {},
-                commands = {},
-            },
+            state = inline_runtime_state(),
             origin = {
                 kind = "lua-inline",
                 api = "vim.cmd",

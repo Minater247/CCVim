@@ -3444,7 +3444,11 @@ function Runtime.new(init_state, init_opts)
                 return true
             end
             idx = idx + 1
-            local text = table.concat(args, " ", idx)
+            local text = lstrip(raw)
+            if priority then
+                text = lstrip(text:gsub("^" .. tostring(priority):gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. "%s*", "", 1))
+            end
+            text = lstrip(text:gsub("^" .. tostring(name):gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. "%s*", "", 1))
             local menus = _menu_state()
             menus.tooltips[name] = {
                 name = name,

@@ -25,6 +25,7 @@ local Utf8       = loadModule("lib.utf8")
 local Command = loadModule("lib.command")
 local Json = loadModule("lib.luaapi.json")
 local ScriptSource
+local ApiBuild
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -2211,10 +2212,11 @@ end
 
 function Builtins.eval(expr)
     Runtime = Runtime or loadModule("lib.excmd.runtime")
+    local state = Runtime._CURRENT_STATE or Runtime._API_STATE
     local ok, rv = Runtime.EvalExpression(expr, {
-        state = Runtime._CURRENT_STATE,
+        state = state,
         ctrl = Runtime._CURRENT_CTRL,
-        script_ctx = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx,
+        script_ctx = state and state.script_ctx,
     })
     if not ok then
         error(Error.IsError(rv) and rv:toString() or tostring(rv))
@@ -2961,14 +2963,85 @@ function Builtins.json_decode(expr)
         error(Error(474, "json_decode()"):toString())
     end
 
+    ApiBuild = ApiBuild or loadModule("lib.luaapi.apibuild")
     local decoded, perr = Json.decode(payload, {
-        empty_dict_mt = rawget(vim or {}, "_empty_dict_mt"),
+        empty_dict_mt = rawget(ApiBuild.Build().vim, "_empty_dict_mt"),
     })
     if decoded == nil then
         local reason = tostring(perr or "json_decode()")
         error(Error(474, reason):toString())
     end
     return decoded
+end
+
+function Builtins.menu_info(path, modes, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "menu_info"):toString())
+    end
+
+    Runtime = Runtime or loadModule("lib.excmd.runtime")
+    local state = Runtime._CURRENT_STATE or Runtime._API_STATE
+    ApiBuild = ApiBuild or loadModule("lib.luaapi.apibuild")
+    local empty_dict_mt = rawget(ApiBuild.Build().vim, "_empty_dict_mt")
+    if not state then
+        return setmetatable({}, empty_dict_mt)
+    end
+    local menus = state.menus
+
+    local raw_path = tostring(path or "")
+    local mode_key = tostring(modes or "")
+    local parts = {}
+    for part in raw_path:gmatch("([^.]+)") do
+        parts[#parts + 1] = part
+    end
+    local leaf = parts[#parts] or raw_path
+
+    if mode_key == "t" then
+        local tip = menus.tooltips[raw_path]
+        if not tip then
+            return setmetatable({}, empty_dict_mt)
+        end
+        return {
+            modes = "t",
+            script = false,
+            name = leaf,
+            priority = tonumber(tip.priority) or 500,
+            enabled = false,
+            shortcut = "",
+            silent = false,
+            rhs = tostring(tip.text or ""),
+            display = leaf,
+            noremenu = false,
+        }
+    end
+
+    local item
+    local bucket = menus.items[mode_key] or {}
+    item = bucket[raw_path]
+    if not item then
+        for _, candidate in pairs(bucket) do
+            if candidate.translated == raw_path then
+                item = candidate
+                break
+            end
+        end
+    end
+    if not item then
+        return setmetatable({}, empty_dict_mt)
+    end
+
+    return {
+        modes = tostring(item.modes or mode_key),
+        script = false,
+        name = leaf,
+        priority = tonumber(item.priority) or 500,
+        enabled = not not item.enabled,
+        shortcut = "",
+        silent = false,
+        rhs = tostring(item.rhs or ""),
+        display = leaf,
+        noremenu = not not (item.recursive == false),
+    }
 end
 
 -- match({expr}, {pat} [, {start} [, {count}]])
