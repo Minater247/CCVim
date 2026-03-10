@@ -977,7 +977,7 @@ Command.nmap_builtin_operator_with_motions(
         if motion_name == "$" then
             local lines = {}
             lines[1] = Utf8.sub(buf:get_line(win.cursory, true), win.cursorx)
-            buf:set_line(win.cursory, Utf8.sun(buf:get_line(win.cursory, true), 1, win.cursorx - 1))
+            buf:set_line(win.cursory, Utf8.sub(buf:get_line(win.cursory, true), 1, win.cursorx - 1))
 
             if total > 1 then
                 local removed = buf:remove_lines(win.cursory + 1, win.cursory + total - 1)

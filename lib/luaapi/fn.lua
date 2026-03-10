@@ -82,7 +82,7 @@ local function call_vimfunc(name, ...)
             s = def.scope or {},
             script_sid = def.script_sid,
             script_ctx = def.script_ctx,
-            v = { ["true"] = true, ["false"] = false, null = nil, errmsg = "", exception = nil, throwpoint = nil },
+            v = { ["true"] = true, ["false"] = false, errmsg = "" },
             funcs = def.funcs or Runtime._FUNCS or {},
         }
         local rt = Runtime.new(state)
@@ -91,14 +91,14 @@ local function call_vimfunc(name, ...)
         rt:pop_frame()
         if ok then return rv end
         if type(rv) == "table" and rv.__ret then return rv.value end
-        error(Error.IsError(rv) and rv:toString() or tostring(rv))
+        error(rv)
     else
         local state = {
             g = scopes._g,
             s = def.scope or {},
             script_sid = def.script_sid,
             script_ctx = def.script_ctx,
-            v = { ["true"] = true, ["false"] = false, null = nil, errmsg = "", exception = nil, throwpoint = nil },
+            v = { ["true"] = true, ["false"] = false, errmsg = "" },
             funcs = def.funcs or Runtime._FUNCS or {},
             a = a_scope,
             l = l_scope,
@@ -138,7 +138,7 @@ local function call_vimfunc(name, ...)
             },
         })
         if ok == false and rv then
-            error(Error.IsError(rv) and rv:toString() or tostring(rv))
+            error(rv)
         end
         return rv
     end
@@ -2231,7 +2231,7 @@ function Builtins.eval(expr)
         script_ctx = state and state.script_ctx,
     })
     if not ok then
-        error(Error.IsError(rv) and rv:toString() or tostring(rv))
+        error(rv)
     end
     return rv
 end
@@ -4600,7 +4600,7 @@ function Builtins.map(lst, expr)
         for k, v in pairs(lst) do
             local rv = expr(k, v)
             if Error.IsError(rv) then
-                error(rv:toString())
+                error(rv)
             end
             lst[k] = rv
         end
@@ -4623,7 +4623,7 @@ function Builtins.map(lst, expr)
         if Error.IsError(rv) then
             scopes._v.val = prev_val
             scopes._v.key = prev_key
-            error(rv:toString())
+            error(rv)
         end
         lst[k] = rv
     end
