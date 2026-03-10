@@ -1120,11 +1120,12 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
             self.loaded = false
             BufAttach.detach(self.bufnr)
         elseif bufhidden == "delete" then
-            -- Behave like :bdelete when last window reference is gone.
             self.opts.buflisted = false
             if self.refcount <= 1 then
+                self.syntax_ctx = nil
+                self.lines = {}
+                self.loaded = false
                 BufAttach.detach(self.bufnr)
-                buffers[self.bufnr] = nil
             end
         elseif bufhidden == "wipe" then
             if self.refcount <= 1 then
