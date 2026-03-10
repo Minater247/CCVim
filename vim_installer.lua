@@ -823,7 +823,6 @@ local menu = {
 
     TUI.Components.option("Install CCVIM", openInstallMenu),
     TUI.Components.disabledOption("Add to universal path"),
-    TUI.Components.option("Update CCVIM", openInstallMenu),
 
     TUI.Components.separator(),
 
