@@ -23,7 +23,9 @@ return {
 
             local function reset_redraw()
                 need_redraw = false
-                what_redraw = {}
+                for k in pairs(what_redraw) do
+                    what_redraw[k] = nil
+                end
                 win.need_redraw = false
             end
 
