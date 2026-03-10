@@ -1233,7 +1233,7 @@ end
 function Command.execute_normal_keys(seq, opts)
     opts = opts or {}
     local remap = opts.remap ~= false
-    local policy = remap and POLICY_FULL or POLICY_CB_ONLY
+    local policy = remap and POLICY_FULL or POLICY_NOREMAP
     local lazy_block = options.get("lazyredraw")
     if lazy_block then
         lazyredraw_block = lazyredraw_block + 1
@@ -1612,6 +1612,10 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
         end
 
         if capture_counts then
+            if state.active and #state.seq > 0 then
+                reset_state()
+                return Command._handle_key_with_policy(code, policy, true)
+            end
             reset_state()
             Command.Log("emit_raw code=%s (no mapping, user input)", code:printable())
             Command.emit_raw({ code })
