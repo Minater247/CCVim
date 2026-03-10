@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  headless-nvim:
+  lua-editor:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,13 +25,8 @@ jobs:
       - name: Set up LuaRocks
         uses: leafo/gh-actions-luarocks@v4
 
-      - name: Install Neovim
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y neovim
-
       - name: Install test dependencies
         run: luarocks install luafilesystem
 
-      - name: Run headless_nvim parity suite
-        run: npm run test:headless_nvim
+      - name: Run lua_editor suite
+        run: npm test
