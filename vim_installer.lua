@@ -1,5 +1,4 @@
 local DEFAULT_BRANCH = "rewrite-2026"
-local APP_VERSION = "0.8"
 local INSTALLER_VERSION = "0.2"
 local COMPRESSED_URL = "https://minater247.github.io/CCVim/"
 local MANIFEST = "nvim.idx"
@@ -32,7 +31,9 @@ local function ensureInstallerDependency(relPath)
         return localPath
     end
 
-    local data, err = httpGet("https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. DEFAULT_BRANCH .. "/" .. relPath)
+    local data, err = httpGet(
+        "https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. DEFAULT_BRANCH .. "/" .. relPath
+    )
     if not data then
         error(("failed to download %s: %s"):format(relPath, tostring(err)))
     end

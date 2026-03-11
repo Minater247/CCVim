@@ -1548,7 +1548,6 @@ function Runtime.new(init_state, init_opts)
 
     local ScriptSourceMod = loadModule("lib.scriptsource")
     local Buffer = loadModule("layout.buffer")
-    local Window = loadModule("layout.window")
     local VimFn = loadModule("lib.luaapi.fn")
     local VimFs = loadModule("lib.luaapi.fs")
     local Tags = loadModule("lib.tags")
@@ -4613,7 +4612,7 @@ function Runtime.new(init_state, init_opts)
             local raw = strip(argstr)
             local vertical = (_current_command_modifier() == "vertical")
             local frame = target.frame
-            local current_size = 1
+            local current_size
             if frame then
                 current_size = vertical and frame.width or frame.height
             elseif vertical then

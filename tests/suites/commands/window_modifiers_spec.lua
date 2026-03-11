@@ -1,6 +1,6 @@
 return {
     id = "commands.window_modifiers",
-    description = "Ports documented :vertical and :horizontal command-modifier behavior for split-producing commands and :wincmd =.",
+    description = "Ports documented :vertical and :horizontal command-modifier behavior for split-producing commands and :wincmd =.", -- luacheck: ignore 631
 
     run = function(ctx)
         local backend = ctx.backend

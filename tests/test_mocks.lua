@@ -1608,7 +1608,7 @@ function MockEnv.setup(opts)
 
     local globals = default_globals(state, colors)
 
-    function math.clamp(value, min_value, max_value)
+    math.clamp = function(value, min_value, max_value) -- luacheck: ignore 122
         if value < min_value then
             return min_value
         end

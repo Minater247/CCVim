@@ -116,7 +116,11 @@ return {
         Assert.eq("wincmd j from top-right moves to the window below", result.down_from_top, result.ids.bottom_right)
         Assert.eq("wincmd k moves to the window above", result.up_from_bottom, result.ids.top_right)
         Assert.eq("wincmd h from top-right returns to top-left", result.left_from_top, result.ids.top_left)
-        Assert.eq("wincmd h from bottom-right returns to bottom-left", result.left_from_bottom_right, result.ids.bottom_left)
+        Assert.eq(
+            "wincmd h from bottom-right returns to bottom-left",
+            result.left_from_bottom_right,
+            result.ids.bottom_left
+        )
         Assert.eq("counted wincmd h traverses multiple windows", result.two_left, result.ids.leftmost)
         Assert.eq("counted wincmd l stops at the last window", result.three_right, result.ids.rightmost)
     end,

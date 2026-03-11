@@ -43,7 +43,7 @@ local function log(level, format, ...)
     handle.close()
 end
 
-function math.clamp(value, min_value, max_value)
+math.clamp = function(value, min_value, max_value) -- luacheck: ignore 122
     if value < min_value then
         return min_value
     end

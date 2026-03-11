@@ -1,6 +1,6 @@
 return {
     id = "commands.window_resize",
-    description = "Ports documented :resize and CTRL-W window-resize behavior, including absolute resize mappings and best-effort clamping.",
+    description = "Ports documented :resize and CTRL-W window-resize behavior, including absolute resize mappings and best-effort clamping.", -- luacheck: ignore 631
 
     run = function(ctx)
         local backend = ctx.backend
@@ -106,7 +106,11 @@ return {
             result
         )
 
-        Assert.eq("3 CTRL-W + increases split height by count", result.split_height_plus, result.split_height_before + 3)
+        Assert.eq(
+            "3 CTRL-W + increases split height by count",
+            result.split_height_plus,
+            result.split_height_before + 3
+        )
         Assert.eq("oversized CTRL-W - clamps at minimum height", result.split_height_min, 1)
         Assert.eq("5 CTRL-W _ sets absolute split height", result.split_height_abs, 5)
         Assert.truthy(
@@ -115,8 +119,16 @@ return {
             result
         )
 
-        Assert.eq("vertical resize does not shrink a single window width", result.single_resize_width, result.single_width_before)
-        Assert.eq("CTRL-W | is a no-op on a single full-width window", result.single_ctrlw_bar, result.single_width_before)
+        Assert.eq(
+            "vertical resize does not shrink a single window width",
+            result.single_resize_width,
+            result.single_width_before
+        )
+        Assert.eq(
+            "CTRL-W | is a no-op on a single full-width window",
+            result.single_ctrlw_bar,
+            result.single_width_before
+        )
 
         Assert.eq("3 CTRL-W > increases split width by count", result.split_width_plus, result.split_width_before + 3)
         Assert.eq("oversized CTRL-W < clamps at minimum width", result.split_width_min, 1)

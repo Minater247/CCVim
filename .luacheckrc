@@ -21,6 +21,7 @@ globals = {
     "bit32",
     "buffers",
     "ccvim_path",
+    "ccvimversion_str",
     "colors",
     "copcall",
     "coxpcall",
@@ -63,6 +64,7 @@ globals = {
 read_globals = {
     math = {
         fields = {
+            "clamp",
             "type",
         },
     },

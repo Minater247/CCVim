@@ -1,6 +1,6 @@
 return {
     id = "runtime.write_quit_parity",
-    description = "Ports fileformat-aware writes and last-window quit refusal when another hidden buffer is still modified.",
+    description = "Ports fileformat-aware writes and last-window quit refusal when another hidden buffer is still modified.", -- luacheck: ignore 631
 
     run = function(ctx)
         local backend = ctx.backend
