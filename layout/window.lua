@@ -85,6 +85,35 @@ function Window:new(buffer, refwin)
     return obj
 end
 
+function Window.SwitchBuffer(win, newbuf, opts)
+    opts = opts or {}
+    if win.buffer == newbuf then
+        return false
+    end
+
+    local oldbuf = win.buffer
+    if not opts.keepalt then
+        win.altbuf = oldbuf
+    end
+    if not opts.skip_leave then
+        Autocmd.Run("BufLeave", { bufnr = oldbuf.bufnr, bufname = oldbuf.name })
+    end
+    if opts.update_refcount then
+        oldbuf.refcount = math.max(0, (oldbuf.refcount or 0) - 1)
+        newbuf.refcount = (newbuf.refcount or 0) + 1
+    end
+
+    win.buffer = newbuf
+    Syntax.OnWindowBufferChanged(win)
+    Scopes.w.current_syntax = nil
+
+    if not opts.skip_enter then
+        Autocmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
+    end
+
+    return true
+end
+
 function Window:minwidth()
     local base = options.get("winminwidth")
 
@@ -2571,6 +2600,67 @@ local function cleanup_failed_split_window(win)
     end
 end
 
+local function current_window_anchor(win)
+    local frame = win.frame
+    if not frame then
+        return 1, 1
+    end
+
+    local local_y = win:cursorScreenRow() + 1
+    local _, text_x = win:textwidth()
+    local local_x
+
+    if win.opts.wrap then
+        local _, params = win:_wrap_params()
+        local _, col_in_row = win:_wrap_cursor_pos(params)
+        local_x = text_x + col_in_row - 1
+    else
+        local line = win.buffer:get_line(win.cursory, true) or ""
+        local visual_col = Tab.vcol_of_prefix(line, win.cursorx, Tab.get_tab_config(win.buffer))
+        if visual_col < 1 then
+            visual_col = 1
+        end
+        local_x = text_x + (visual_col - win.scrollx)
+    end
+
+    local_x = math.clamp(local_x, 1, frame.width)
+    local_y = math.clamp(local_y, 1, frame.height)
+
+    return local_x, local_y
+end
+
+local function directional_target_window(win, direction, count)
+    local tabp = tabpages[curtp]
+    local root = tabp and tabp.tree
+    local frame = win.frame
+    if not root or not frame then
+        return nil
+    end
+
+    local local_x, local_y = current_window_anchor(win)
+    local frame_x, frame_y = FrameTree.GetXY(frame)
+
+    local anchor
+    if direction == "left" or direction == "right" then
+        anchor = frame_y + local_y - 1
+    else
+        anchor = frame_x + local_x - 1
+    end
+
+    local current_frame = FrameTree.FindDirectionalFrame(root, frame, direction, anchor, count, function(candidate)
+        return candidate.window and candidate.window.focusable
+    end)
+
+    return current_frame and current_frame.window or nil
+end
+
+local function split_place_after(vertical)
+    if vertical then
+        return options.get("splitright")
+    end
+    return options.get("splitbelow")
+end
+
 -- Functions for moving around windows.
 function Window:wincmd(command, count, opts)
     opts = opts or {}
@@ -2578,26 +2668,36 @@ function Window:wincmd(command, count, opts)
 
     if command == "s" then
         local probe = tp:MakeSplitProbe(self)
-        if not tp:WinSplit(0, probe, false, { dry_run = true }) then
+        if not tp:WinSplit(0, probe, false, {
+            dry_run = true,
+            place_after = split_place_after(false),
+        }) then
             return Error(36)
         end
 
         -- TODO: set-width split
         local newwin = Window(self.buffer, self)
-        if not tp:WinSplit(0, newwin, false) then
+        if not tp:WinSplit(0, newwin, false, {
+            place_after = split_place_after(false),
+        }) then
             cleanup_failed_split_window(newwin)
             return Error(36)
         end
         enterWindow(newwin.winnr)
     elseif command == "v" then
         local probe = tp:MakeSplitProbe(self)
-        if not tp:WinSplit(0, probe, true, { dry_run = true }) then
+        if not tp:WinSplit(0, probe, true, {
+            dry_run = true,
+            place_after = split_place_after(true),
+        }) then
             return Error(36)
         end
 
         -- TODO: set-width split
         local newwin = Window(self.buffer, self)
-        if not tp:WinSplit(0, newwin, true) then
+        if not tp:WinSplit(0, newwin, true, {
+            place_after = split_place_after(true),
+        }) then
             cleanup_failed_split_window(newwin)
             return Error(36)
         end
@@ -2658,6 +2758,17 @@ function Window:wincmd(command, count, opts)
         if next then newi = next end
 
         enterWindow(tabwins[newi].winnr)
+    elseif command == "h" or command == "j" or command == "k" or command == "l" then
+        local direction = ({
+            h = "left",
+            j = "down",
+            k = "up",
+            l = "right",
+        })[command]
+        local target = directional_target_window(self, direction, count)
+        if target then
+            enterWindow(target.winnr)
+        end
     elseif command == "T" then
         local tabp = tabpages[curtp]
         if #tabp.windows <= 1 then

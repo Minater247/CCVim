@@ -1010,6 +1010,10 @@ Command.nmap_builtin_operator_with_motions(
         windows[curwin]:wincmd(motion_name, total)
     end,
     {
+        ["h"] = {K(keys.h)},
+        ["j"] = {K(keys.j)},
+        ["k"] = {K(keys.k)},
+        ["l"] = {K(keys.l)},
         ["s"] = {K(keys.s)},
         ["v"] = {K(keys.v)},
         ["w"] = {K(keys.w)},

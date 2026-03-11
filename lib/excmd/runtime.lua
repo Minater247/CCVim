@@ -12,6 +12,7 @@ local ScriptSource = loadModule("lib.scriptsource")
 local scopes = loadModule("lib.luaapi.scopes")
 local Builtins = loadModule("lib.luaapi.fn")
 local Utf8 = loadModule("lib.utf8")
+local Window = loadModule("layout.window")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -1636,27 +1637,6 @@ function Runtime.new(init_state, init_opts)
         return Syntax
     end
 
-    local function _buf_ctx_from(buf)
-        return { bufnr = buf.bufnr, bufname = buf.name }
-    end
-
-    local function _switch_current_buffer(win, newbuf, opts)
-        opts = opts or {}
-        if win.buffer == newbuf then return end
-        if not opts.keepalt then
-            win.altbuf = win.buffer
-        end
-        if not opts.skip_leave then
-            Autocmd.Run("BufLeave", _buf_ctx_from(win.buffer))
-        end
-        win.buffer = newbuf
-        _syntax().OnWindowBufferChanged(win)
-        scopes.w.current_syntax = nil
-        if not opts.skip_enter then
-            Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
-        end
-    end
-
     local function _resolve_find_name(raw)
         local target = strip(raw)
         if target == "" then
@@ -1700,7 +1680,10 @@ function Runtime.new(init_state, init_opts)
             return false
         end
         local probe = tabp:MakeSplitProbe(refwin)
-        return tabp:WinSplit(target_winnr, probe, vertical, { dry_run = true }) == true
+        return tabp:WinSplit(target_winnr, probe, vertical, {
+            dry_run = true,
+            place_after = vertical and options.get("splitright") or options.get("splitbelow"),
+        }) == true
     end
 
     local function _split_real(target_winnr, newwin, vertical)
@@ -1709,7 +1692,9 @@ function Runtime.new(init_state, init_opts)
             _cleanup_failed_split_window(newwin)
             return false
         end
-        local ok = tabp:WinSplit(target_winnr, newwin, vertical)
+        local ok = tabp:WinSplit(target_winnr, newwin, vertical, {
+            place_after = vertical and options.get("splitright") or options.get("splitbelow"),
+        })
         if not ok then
             _cleanup_failed_split_window(newwin)
             return false
@@ -1769,11 +1754,11 @@ function Runtime.new(init_state, init_opts)
             local newbuf = _buffer_mod()(true, false)
             newbuf.name = newname
             if newbuf.opts and newbuf.opts.buflisted then
-                Autocmd.Run("BufAdd", _buf_ctx_from(newbuf))
+                Autocmd.Run("BufAdd", { bufnr = newbuf.bufnr, bufname = newbuf.name })
             end
-            _switch_current_buffer(win, newbuf, { skip_enter = true })
+            Window.SwitchBuffer(win, newbuf, { skip_enter = true })
             newbuf:Load(true)
-            Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
+            Autocmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
         end
 
         win:cursorSet(1, 1)
@@ -4016,7 +4001,7 @@ function Runtime.new(init_state, init_opts)
             local ok = _filetype_enable_detection()
             if Error.IsError(ok) then return ok end
             local buf = windows[curwin].buffer
-            local ctx = _buf_ctx_from(buf)
+            local ctx = { bufnr = buf.bufnr, bufname = buf.name }
             Autocmd.Run("BufRead", ctx)
             Autocmd.Run("BufNewFile", ctx)
             if buf.name == "" then
@@ -4168,7 +4153,10 @@ function Runtime.new(init_state, init_opts)
         elseif cmd == "finish" then
             error(self:return_exc(nil))
         elseif cmd == "quit" then
-            Autocmd.Run("QuitPre", _buf_ctx_from(windows[curwin].buffer))
+            Autocmd.Run("QuitPre", {
+                bufnr = windows[curwin].buffer.bufnr,
+                bufname = windows[curwin].buffer.name,
+            })
             local q = tabpages[curtp]:close(windows[curwin], bang, nil, "autowriteall")
             if q ~= true then error(q) end
             return true
@@ -4791,7 +4779,7 @@ function Runtime.new(init_state, init_opts)
             if target_buf.loaded ~= true then
                 target_buf:Load(true)
             end
-            _switch_current_buffer(win, target_buf)
+            Window.SwitchBuffer(win, target_buf)
             target_buf.refcount = target_buf.refcount + 1
             win:cursorSet(1, 1)
             win:mark_redraw()
@@ -4965,7 +4953,7 @@ function Runtime.new(init_state, init_opts)
 
             local newbuf = _buffer_mod()(true, false)
             newbuf.name = ""
-            _switch_current_buffer(win, newbuf, { skip_enter = true })
+            Window.SwitchBuffer(win, newbuf, { skip_enter = true })
 
             local ff = Options.get("fileformat", win, newbuf)
             local ffs = _csv_first(Options.get("fileformats", win, curbuf))
@@ -4975,7 +4963,7 @@ function Runtime.new(init_state, init_opts)
             newbuf.opts.fileformat = ff
 
             newbuf:Load(true)
-            Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
+            Autocmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
             win:cursorSet(1, 1)
             win:mark_redraw()
             return true

@@ -1087,29 +1087,36 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
     self:undo_end()
 end
 
-local function _autowrite_enabled(kind)
-    if kind == "autowrite" then
-        return options.get("autowrite") or options.get("autowriteall")
-    elseif kind == "autowriteall" then
-        return options.get("autowriteall")
-    end
-    return false
-end
-
-local function _autowrite_blocked_buftype(buf)
+function Buffer.AutowriteBlockedBuftype(buf)
     local bt = options.get("buftype", nil, buf)
     return bt == "nowrite" or bt == "nofile" or bt == "terminal" or bt == "prompt"
+end
+
+local function _write_line_ending(buf)
+    local fileformat = options.get("fileformat", nil, buf)
+    if fileformat == "dos" then
+        return "\r\n"
+    elseif fileformat == "mac" then
+        return "\r"
+    end
+    return "\n"
 end
 
 function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     local bufhidden = options.get("bufhidden", nil, self)
     local hidden = options.get("hidden")
+    local autowrite_enabled = false
+    if autowrite_kind == "autowrite" then
+        autowrite_enabled = options.get("autowrite") or options.get("autowriteall")
+    elseif autowrite_kind == "autowriteall" then
+        autowrite_enabled = options.get("autowriteall")
+    end
 
     if
         not forceabandon
         and self.opts.modified
-        and _autowrite_enabled(autowrite_kind)
-        and not _autowrite_blocked_buftype(self)
+        and autowrite_enabled
+        and not Buffer.AutowriteBlockedBuftype(self)
     then
         local status = self:write(false)
         if status ~= true then
@@ -1153,7 +1160,6 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     return true
 end
 
--- TODO: several options affect write, such as line endings via fileformat
 function Buffer:write(force, newname)
     if not options.get("write") then
         return Error(142)
@@ -1198,12 +1204,13 @@ function Buffer:write(force, newname)
     end
 
     local writesz = 0
-    for i = 1, #self.lines - 1 do
-        f.write(self.lines[i] .. "\n")
-        writesz = writesz + #self.lines[i] + 1
+    local line_ending = _write_line_ending(self)
+    for i = 1, #self.lines do
+        local line = self.lines[i]
+        f.write(line)
+        f.write(line_ending)
+        writesz = writesz + #line + #line_ending
     end
-    f.write(self.lines[#self.lines])
-    writesz = writesz + #self.lines[#self.lines]
 
     f.close()
 

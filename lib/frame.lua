@@ -960,6 +960,82 @@ FrameTree.GetFrameAt = function(node, x, y)
     end
 end
 
+function FrameTree.AdjacentFrame(root, frame, direction, anchor)
+    if not root or not frame then
+        return nil
+    end
+
+    local x1, y1 = FrameTree.GetXY(frame)
+    local x2 = x1 + frame.width - 1
+    local y2 = y1 + frame.height - 1
+    local anchor_pos = math.floor(tonumber(anchor) or 1)
+    local probe_x, probe_y
+
+    if direction == "left" then
+        if x1 <= 1 then
+            return nil
+        end
+        probe_x = x1 - 1
+        probe_y = math.clamp(anchor_pos, 1, root.height)
+    elseif direction == "right" then
+        if x2 >= root.width then
+            return nil
+        end
+        probe_x = x2 + 1
+        probe_y = math.clamp(anchor_pos, 1, root.height)
+    elseif direction == "up" then
+        if y1 <= 1 then
+            return nil
+        end
+        probe_x = math.clamp(anchor_pos, 1, root.width)
+        probe_y = y1 - 1
+    elseif direction == "down" then
+        if y2 >= root.height then
+            return nil
+        end
+        probe_x = math.clamp(anchor_pos, 1, root.width)
+        probe_y = y2 + 1
+    else
+        return nil
+    end
+
+    local next_frame = FrameTree.GetFrameAt(root, probe_x, probe_y)
+    if next_frame == frame then
+        return nil
+    end
+
+    return next_frame
+end
+
+function FrameTree.FindDirectionalFrame(root, frame, direction, anchor, count, accept)
+    if not root or not frame then
+        return nil
+    end
+
+    local steps = math.max(1, math.floor(tonumber(count) or 1))
+    local current_frame = frame
+
+    for _ = 1, steps do
+        local probe = current_frame
+        local found
+
+        while true do
+            probe = FrameTree.AdjacentFrame(root, probe, direction, anchor)
+            if not probe then
+                return current_frame
+            end
+            if not accept or accept(probe) then
+                found = probe
+                break
+            end
+        end
+
+        current_frame = found
+    end
+
+    return current_frame
+end
+
 FrameTree.Close = function(node)
     if not node.parent then
         return false

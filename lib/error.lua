@@ -78,6 +78,7 @@ local errStrings = {
         return "String, List or Dictionary required for argument " .. tostring(params[1] or 1)
     end,
     [5002] = "Cannot find window number.",
+    [5070] = "Character number must not be less than zero",
     [5107] = function(params) return "Error loading lua " .. params[1] end,
     [5108] = function(params) return "Error executing lua " .. (params[1] or "[NULL]") end,
 }

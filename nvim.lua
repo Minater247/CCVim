@@ -43,6 +43,16 @@ local function log(level, format, ...)
     handle.close()
 end
 
+function math.clamp(value, min_value, max_value)
+    if value < min_value then
+        return min_value
+    end
+    if value > max_value then
+        return max_value
+    end
+    return value
+end
+
 local _V = {
     vimversion_maj = 0,
     vimversion_min = 11,

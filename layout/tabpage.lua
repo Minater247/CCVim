@@ -5,11 +5,13 @@ local curr_tabno = 1
 
 ---@class Window
 local Window = loadModule("layout.window")
+local Buffer = loadModule("layout.buffer")
 local FrameTree = loadModule("lib.frame")
 local Highlight = loadModule("lib.highlight")
 local Statusline = loadModule("lib.statusline")
 local Command = loadModule("lib.command")
 local CmdRead = loadModule("lib.excmd.cmdread")
+local Error = loadModule("lib.error")
 local AutoCmd = loadModule("lib.autocmd")
 local Event = loadModule("lib.event")
 local ExMsg = loadModule("lib.excmd.exmsg")
@@ -296,6 +298,54 @@ local function next_numeric_index(t, i)
     return wrap or first
 end
 
+local function _first_other_modified_buf(current_buf)
+    local first_bufnr
+    for bufnr, buf in pairs(buffers) do
+        if buf ~= current_buf and buf.opts.modified and (not first_bufnr or bufnr < first_bufnr) then
+            first_bufnr = bufnr
+        end
+    end
+    return first_bufnr and buffers[first_bufnr] or nil
+end
+
+local function _surface_halting_buffer(buf)
+    local win = windows[curwin]
+    Window.SwitchBuffer(win, buf, { update_refcount = true })
+    win:cursorSet(1, 1)
+    win:mark_redraw()
+end
+
+local function _prepare_halting_buffers(current_buf, force, autowrite_kind)
+    if force then
+        return true
+    end
+
+    local autowrite_enabled = false
+    if autowrite_kind == "autowrite" then
+        autowrite_enabled = options.get("autowrite") or options.get("autowriteall")
+    elseif autowrite_kind == "autowriteall" then
+        autowrite_enabled = options.get("autowriteall")
+    end
+
+    local buf = _first_other_modified_buf(current_buf)
+    while buf do
+        if autowrite_enabled and not Buffer.AutowriteBlockedBuftype(buf) then
+            local status = buf:write(false)
+            if status == true then
+                buf = _first_other_modified_buf(current_buf)
+            else
+                _surface_halting_buffer(buf)
+                return Error(37)
+            end
+        else
+            _surface_halting_buffer(buf)
+            return Error(37)
+        end
+    end
+
+    return true
+end
+
 -- Closes a window, giving its space to other frames.
 function Tabpage:close(window, force, frameonly, autowrite_kind)
     local halting
@@ -320,7 +370,12 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
         end
     end
 
-    -- TODO: Check whether *any* buffer is unchanged, not just the current, when halting
+    if halting and not frameonly then
+        local halt_status = _prepare_halting_buffers(window.buffer, force, autowrite_kind)
+        if halt_status ~= true then
+            return halt_status
+        end
+    end
 
     local idx = self:_win_local_index(window)
     if idx then

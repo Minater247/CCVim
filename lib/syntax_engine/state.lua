@@ -1,19 +1,9 @@
 local State = {}
 
-local function clamp_line(line)
-    if line < 1 then return 1 end
-    return line
-end
-
-local function clamp_synmaxcol(value)
-    if value < 0 then return 0 end
-    return value
-end
-
 function State.new_context(opts)
     return {
         syntax = opts.syntax,
-        synmaxcol = clamp_synmaxcol(opts.synmaxcol),
+        synmaxcol = math.max(opts.synmaxcol, 0),
         generation = 0,
         dirty_from = 1,
         checkpoints = {},
@@ -41,7 +31,7 @@ function State.ensure_context(buffer, syntax_name, synmaxcol)
 end
 
 function State.mark_dirty(ctx, line)
-    local ln = clamp_line(line)
+    local ln = math.max(line, 1)
     if ln < ctx.dirty_from then
         ctx.dirty_from = ln
     end
@@ -60,7 +50,7 @@ function State.set_syntax(ctx, syntax_name)
 end
 
 function State.set_synmaxcol(ctx, value)
-    ctx.synmaxcol = clamp_synmaxcol(value)
+    ctx.synmaxcol = math.max(value, 0)
     ctx.checkpoints = {}
     ctx.span_cache = {}
     return State.mark_dirty(ctx, 1)

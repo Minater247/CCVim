@@ -174,6 +174,46 @@ local function _trim(s)
     return tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
 end
 
+local function _nr_to_utf8(nr)
+    nr = math.floor(tonumber(nr) or 0)
+
+    if nr <= 0x7F then
+        return string.char(nr)
+    end
+
+    local count
+    if nr <= 0x7FF then
+        count = 2
+    elseif nr <= 0xFFFF then
+        count = 3
+    elseif nr <= 0x1FFFFF then
+        count = 4
+    elseif nr <= 0x3FFFFFF then
+        count = 5
+    else
+        count = 6
+    end
+
+    local lead = {
+        [2] = 0xC0,
+        [3] = 0xE0,
+        [4] = 0xF0,
+        [5] = 0xF8,
+        [6] = 0xFC,
+    }
+
+    local bytes = {}
+    local value = nr
+    for i = count, 2, -1 do
+        bytes[i] = 0x80 + (value % 0x40)
+        value = math.floor(value / 0x40)
+    end
+    bytes[1] = lead[count] + value
+
+    local unpack_fn = table.unpack or unpack
+    return string.char(unpack_fn(bytes))
+end
+
 local function _is_abs_or_explicit_rel(path)
     local p = tostring(path or "")
     if p == "" then return false end
@@ -4660,6 +4700,24 @@ function Builtins.strpart(str, start, len)
     end
     if ln <= 0 then return "" end
     return s:sub(from, from + ln - 1)
+end
+
+function Builtins.nr2char(expr, _utf8, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "nr2char"):toString())
+    end
+
+    local nr = tonumber(expr) or 0
+    if nr < 0 then
+        error(Error(5070):toString())
+    end
+
+    nr = math.floor(nr)
+    if nr == 0 then
+        return ""
+    end
+
+    return _nr_to_utf8(nr)
 end
 
 function Builtins.strchars(str, _skipcc, ...)

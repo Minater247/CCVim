@@ -57,12 +57,6 @@ local function profile_record(spec, matched, elapsed)
     end
 end
 
-local function clamp(value, lo, hi)
-    if value < lo then return lo end
-    if value > hi then return hi end
-    return value
-end
-
 local function is_whitespace_char(ch)
     return ch == " " or ch == "\t"
 end
@@ -191,8 +185,8 @@ local function parse_iskeyword(spec)
     end
 
     local function apply_range(lo, hi, remove)
-        lo = clamp(lo, 0, 255)
-        hi = clamp(hi, 0, 255)
+        lo = math.clamp(lo, 0, 255)
+        hi = math.clamp(hi, 0, 255)
         if lo > hi then lo, hi = hi, lo end
         for b = lo, hi do
             if remove then
@@ -620,10 +614,10 @@ local function normalize_match_span(line_len, s, e, offsets)
         hend = applied.he or mend
     end
 
-    mstart = clamp(mstart, 1, math.max(1, line_len))
-    mend = clamp(mend, 0, line_len)
-    hstart = clamp(hstart, 1, math.max(1, line_len))
-    hend = clamp(hend, 0, line_len)
+    mstart = math.clamp(mstart, 1, math.max(1, line_len))
+    mend = math.clamp(mend, 0, line_len)
+    hstart = math.clamp(hstart, 1, math.max(1, line_len))
+    hend = math.clamp(hend, 0, line_len)
 
     return mstart, mend, hstart, hend
 end
@@ -1061,7 +1055,7 @@ local function resolve_resync_start(plan, buffer, target_line)
         end
     end
 
-    return clamp(start, 1, math.max(1, target_line))
+    return math.clamp(start, 1, math.max(1, target_line))
 end
 
 local function nearest_checkpoint_line(ctx, line)
@@ -1097,8 +1091,8 @@ local function line_blit_from_spans(plan, line, spans)
     local assigned = 0
     for i = #spans, 1, -1 do
         local span = spans[i]
-        local s = clamp(span.s or 1, 1, len)
-        local e = clamp(span.e or len, 1, len)
+        local s = math.clamp(span.s or 1, 1, len)
+        local e = math.clamp(span.e or len, 1, len)
         if e >= s then
             for j = s, e do
                 if groups[j] == nil then
@@ -1210,8 +1204,8 @@ local function paint_match_contained_keywords(plan, item, line, lower_line, rang
         if not best then
             break
         end
-        local hs = clamp(best.hi_start, range_s, max_col)
-        local he = clamp(best.hi_end, 0, range_e)
+        local hs = math.clamp(best.hi_start, range_s, max_col)
+        local he = math.clamp(best.hi_end, 0, range_e)
         if he >= hs then
             spans[#spans + 1] = {
                 s = hs,
@@ -1261,8 +1255,8 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
             local group_id = inner.group_id
             local mgref = resolved_matchgroup_ref(plan, best.spec)
             if mgref then group_id = mgref end
-            local hs = clamp(best.hi_start, range_s, max_col)
-            local he = clamp(best.hi_end, 0, range_e)
+            local hs = math.clamp(best.hi_start, range_s, max_col)
+            local he = math.clamp(best.hi_end, 0, range_e)
             if he >= hs then
                 spans[#spans + 1] = {
                     s = hs,
@@ -1307,8 +1301,8 @@ local function paint_anchored_contained_start(plan, state, line, lower_line, sta
         local group_id = item.group_id
         local mgref = resolved_matchgroup_ref(plan, anchored.spec)
         if mgref then group_id = mgref end
-        local hs = clamp(anchored.hi_start, 1, max_col)
-        local he = clamp(anchored.hi_end, 0, max_col)
+        local hs = math.clamp(anchored.hi_start, 1, max_col)
+        local he = math.clamp(anchored.hi_end, 0, max_col)
         if he >= hs then
             spans[#spans + 1] = {
                 s = hs,
@@ -1324,8 +1318,8 @@ local function paint_anchored_contained_start(plan, state, line, lower_line, sta
     end
 
     if item and item.kind == "match" then
-        local rs = clamp(anchored.match_start, 1, max_col)
-        local re = clamp(anchored.match_end, 0, max_col)
+        local rs = math.clamp(anchored.match_start, 1, max_col)
+        local re = math.clamp(anchored.match_end, 0, max_col)
         if re >= rs then
             paint_match_contained_items(plan, item, line, lower_line, rs, re, max_col, spans)
         end
@@ -1359,8 +1353,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
             local group_id = popped.group_id
             local mgref = resolved_matchgroup_ref(plan, event.spec)
             if mgref then group_id = mgref end
-            local hs = clamp(event.hi_start, 1, max_col)
-            local he = clamp(event.hi_end, 0, max_col)
+            local hs = math.clamp(event.hi_start, 1, max_col)
+            local he = math.clamp(event.hi_end, 0, max_col)
             spans[#spans + 1] = {
                 s = hs, e = he, group_id = group_id,
                 conceal = popped.conceal,
@@ -1408,8 +1402,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                 local item = anchored.item
                 if item.kind == "keyword" or item.kind == "match" then
                     if not item.options.flags.transparent then
-                        local hs = clamp(anchored.hi_start, 1, max_col)
-                        local he = clamp(anchored.hi_end, 0, max_col)
+                        local hs = math.clamp(anchored.hi_start, 1, max_col)
+                        local he = math.clamp(anchored.hi_end, 0, max_col)
                         spans[#spans + 1] = {
                             s = hs, e = he, group_id = item.group_id,
                             conceal = item.options.flags.conceal or false,
@@ -1420,8 +1414,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         }
                     end
                     if item.kind == "match" then
-                        local rs = clamp(anchored.match_start, 1, max_col)
-                        local re = clamp(anchored.match_end, 0, max_col)
+                        local rs = math.clamp(anchored.match_start, 1, max_col)
+                        local re = math.clamp(anchored.match_end, 0, max_col)
                         if re >= rs then
                             paint_match_contained_items(plan, item, line, lower_line, rs, re, max_col, spans)
                         end
@@ -1466,8 +1460,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         local group_id = entry.group_id
                         local mgref = resolved_matchgroup_ref(plan, anchored.spec)
                         if mgref then group_id = mgref end
-                        local hs = clamp(anchored.hi_start, 1, max_col)
-                        local he = clamp(anchored.hi_end, 0, max_col)
+                        local hs = math.clamp(anchored.hi_start, 1, max_col)
+                        local he = math.clamp(anchored.hi_end, 0, max_col)
                         spans[#spans + 1] = {
                             s = hs, e = he, group_id = group_id,
                             conceal = entry.conceal,
@@ -1570,8 +1564,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     local group_id = entry.group_id
                     local mgref = resolved_matchgroup_ref(plan, event.spec)
                     if mgref then group_id = mgref end
-                    local hs = clamp(event.hi_start, 1, max_col)
-                    local he = clamp(event.hi_end, 0, max_col)
+                    local hs = math.clamp(event.hi_start, 1, max_col)
+                    local he = math.clamp(event.hi_end, 0, max_col)
                     spans[#spans + 1] = {
                         s = hs, e = he, group_id = group_id,
                         conceal = entry.conceal,
@@ -1603,8 +1597,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     local group_id = item.group_id
                     local mgref = resolved_matchgroup_ref(plan, event.spec)
                     if mgref then group_id = mgref end
-                    local hs = clamp(event.hi_start, 1, max_col)
-                    local he = clamp(event.hi_end, 0, max_col)
+                    local hs = math.clamp(event.hi_start, 1, max_col)
+                    local he = math.clamp(event.hi_end, 0, max_col)
                     spans[#spans + 1] = {
                         s = hs, e = he, group_id = group_id,
                         conceal = item.options.flags.conceal or false,
@@ -1615,8 +1609,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     }
                 end
                 if item.kind == "match" then
-                    local rs = clamp(event.match_start, 1, max_col)
-                    local re = clamp(event.match_end, 0, max_col)
+                    local rs = math.clamp(event.match_start, 1, max_col)
+                    local re = math.clamp(event.match_end, 0, max_col)
                     if re >= rs then
                         paint_match_contained_items(plan, item, line, lower_line, rs, re, max_col, spans)
                     end
