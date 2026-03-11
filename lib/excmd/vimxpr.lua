@@ -1161,8 +1161,8 @@ local function eval_node(node, vim9, env)
         local ok, rv = pcall(f, table.unpack(argv))
         VimFnBuiltins._pop_eval_scope()
         if not ok then
-            if (Error.IsError(rv)) then
-                rv = rv:toString()
+            if Error.IsError(rv) then
+                return rv
             end
             return Error(5108, tostring(rv))
         end

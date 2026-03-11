@@ -10,6 +10,12 @@ return {
             local loop_output = vim.fn.execute([[for i in range(1, 3) | echo "line" | endfor]], "")
             local bad_ok, bad_err = pcall(vim.fn.range, 2, 0)
             local zero_ok, zero_err = pcall(vim.fn.range, 1, 5, 0)
+            local function format_err(err)
+                if type(err) == "table" and type(err.toString) == "function" then
+                    return err:toString()
+                end
+                return tostring(err or "")
+            end
 
             return {
                 vim.fn.range(4),
@@ -19,9 +25,9 @@ return {
                 vim.fn.range(0),
                 loop_output,
                 bad_ok,
-                tostring(bad_err or ""),
+                format_err(bad_err),
                 zero_ok,
-                tostring(zero_err or ""),
+                format_err(zero_err),
             }
         ]=])
 
