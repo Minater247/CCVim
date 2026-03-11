@@ -2572,7 +2572,8 @@ local function cleanup_failed_split_window(win)
 end
 
 -- Functions for moving around windows.
-function Window:wincmd(command, count)
+function Window:wincmd(command, count, opts)
+    opts = opts or {}
     local tp = tabpages[curtp]
 
     if command == "s" then
@@ -2670,7 +2671,7 @@ function Window:wincmd(command, count)
 
         curtp = ntp.tabnr
     elseif command == "=" then
-        tabpages[curtp]:equalize()
+        tabpages[curtp]:equalize(opts.equalize_axis)
     elseif command == ">" then
         self:resizeWidth(count or 1)
     elseif command == "<" then

@@ -28,6 +28,8 @@ local COMMAND_WRAPPERS = {
     keepjumps = true,
     noautocmd = true,
     verbose = true,
+    vertical = true,
+    horizontal = true,
 }
 
 local function _expr_head_only_before_quote(head)

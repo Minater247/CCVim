@@ -988,6 +988,7 @@ local resolve_dispatch_name = Commands.resolve_dispatch_name
 
 function Runtime.new(init_state, init_opts)
     local ExMsg = loadModule("lib.excmd.exmsg")
+    local _with_cleared_command_modifiers
     local function _exmsg()
         return ExMsg
     end
@@ -1447,7 +1448,9 @@ function Runtime.new(init_state, init_opts)
         -- a leading '$' as an env-var and error on $'...'.
         local line, is_interp = expand_execute_dollar_single_quoted(s)
         if is_interp then
-            return self:exec_script(line)
+            return _with_cleared_command_modifiers(function()
+                return self:exec_script(line)
+            end)
         end
 
         local exprs = VimExpr.splitExpressions(s)
@@ -1464,7 +1467,9 @@ function Runtime.new(init_state, init_opts)
             parts[#parts + 1] = tostring(val)
         end
         line = table.concat(parts, " ")
-        return self:exec_script(line)
+        return _with_cleared_command_modifiers(function()
+            return self:exec_script(line)
+        end)
     end
 
     function rt:exec_verbose(level, body)
@@ -1710,6 +1715,44 @@ function Runtime.new(init_state, init_opts)
             return false
         end
         return true
+    end
+
+    local function _current_command_modifier()
+        local mods = rt._command_modifiers
+        if type(mods) ~= "table" or #mods == 0 then
+            return nil
+        end
+        return mods[#mods]
+    end
+
+    local function _with_command_modifier(modifier, fn)
+        rt._command_modifiers = rt._command_modifiers or {}
+        local stack = rt._command_modifiers
+        stack[#stack + 1] = modifier
+        local ok, rv = pcall(fn)
+        stack[#stack] = nil
+        if not ok then
+            error(rv)
+        end
+        return rv
+    end
+
+    _with_cleared_command_modifiers = function(fn)
+        local saved = rt._command_modifiers
+        rt._command_modifiers = nil
+        local ok, rv = pcall(fn)
+        rt._command_modifiers = saved
+        if not ok then
+            error(rv)
+        end
+        return rv
+    end
+
+    local function _split_orientation(default_vertical)
+        if _current_command_modifier() == "vertical" then
+            return true
+        end
+        return default_vertical
     end
 
     local function _edit_buffer_name(win, newname, bang)
@@ -4109,6 +4152,13 @@ function Runtime.new(init_state, init_opts)
             win.altbuf = saved_alt
             if not ok then error(rv) end
             return rv
+        elseif cmd == "vertical" or cmd == "horizontal" then
+            if argstr == "" then
+                error(Error(471))
+            end
+            return _with_command_modifier(cmd, function()
+                return self:exec_script(argstr)
+            end)
         elseif cmd == "wq" then
             local status = windows[curwin].buffer:write(bang, argstr)
             if status ~= true then error(status) end
@@ -4558,6 +4608,58 @@ function Runtime.new(init_state, init_opts)
             need_redraw = true
             lazyredraw_force = true
             return true
+        elseif cmd == "resize" then
+            local target = windows[curwin]
+            if cmdctx.count ~= nil then
+                local count = tonumber(cmdctx.count)
+                if not count or count < 1 then
+                    error(Error(16))
+                end
+                local target_win = tabpages[curtp].windows[count]
+                if not target_win then
+                    error(Error(16))
+                end
+                target = target_win
+            end
+
+            local raw = strip(argstr)
+            local vertical = (_current_command_modifier() == "vertical")
+            local frame = target.frame
+            local current_size = 1
+            if frame then
+                current_size = vertical and frame.width or frame.height
+            elseif vertical then
+                current_size = target.width or 1
+            else
+                current_size = target.height or 1
+            end
+
+            local delta
+            if raw == "" then
+                delta = 999999
+            else
+                local sign, digits = raw:match("^([+-]?)(%d+)$")
+                local num = tonumber(digits)
+                if not num then
+                    error(Error(474, argstr))
+                end
+                if sign == "+" then
+                    delta = num
+                elseif sign == "-" then
+                    delta = -num
+                else
+                    delta = num - current_size
+                end
+            end
+
+            local ok = vertical and target:resizeWidth(delta) or target:resizeHeight(delta)
+            if not ok and delta ~= 0 then
+                error(Error(36))
+            end
+
+            what_redraw["all"] = true
+            need_redraw = true
+            return true
         elseif cmd == "redir" then
             local spec, perr = _parse_redir_spec(argstr)
             if Error.IsError(perr) then error(perr) end
@@ -4887,14 +4989,15 @@ function Runtime.new(init_state, init_opts)
             local found, err = _resolve_find_name(argstr)
             if not found then error(err) end
             local refwin = windows[curwin]
-            if not _split_preflight(0, refwin, false) then
+            local split_vertical = _split_orientation(false)
+            if not _split_preflight(0, refwin, split_vertical) then
                 error(Error(36))
             end
             local targetbuf = _buffer_mod()(true, false)
             targetbuf.name = found
             targetbuf:Load(true)
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, false) then
+            if not _split_real(0, newwin, split_vertical) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
@@ -4920,14 +5023,15 @@ function Runtime.new(init_state, init_opts)
             local ok = _edit_buffer_name(curwin_obj, target_raw, bang)
             if Error.IsError(ok) then
                 if ok.code ~= 37 then error(ok) end
-                if not _split_preflight(0, curwin_obj, false) then
+                local split_vertical = _split_orientation(false)
+                if not _split_preflight(0, curwin_obj, split_vertical) then
                     error(Error(36))
                 end
                 local newbuf = _buffer_mod()(true, false)
                 newbuf.name = target_raw
                 newbuf:Load(true)
                 local newwin = _window_mod()(newbuf, curwin_obj)
-                if not _split_real(0, newwin, false) then
+                if not _split_real(0, newwin, split_vertical) then
                     error(Error(36))
                 end
                 enterWindow(newwin.winnr)
@@ -4937,7 +5041,8 @@ function Runtime.new(init_state, init_opts)
             return true
         elseif cmd == "split" then
             local refwin = windows[curwin]
-            if not _split_preflight(0, refwin, false) then
+            local split_vertical = _split_orientation(false)
+            if not _split_preflight(0, refwin, split_vertical) then
                 error(Error(36))
             end
 
@@ -4948,7 +5053,7 @@ function Runtime.new(init_state, init_opts)
                 targetbuf:Load(true)
             end
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, false) then
+            if not _split_real(0, newwin, split_vertical) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
@@ -4991,7 +5096,13 @@ function Runtime.new(init_state, init_opts)
                 end
             end
 
-            local rv = windows[curwin]:wincmd(key, count)
+            local opts = {}
+            local modifier = _current_command_modifier()
+            if key == "=" and (modifier == "vertical" or modifier == "horizontal") then
+                opts.equalize_axis = modifier
+            end
+
+            local rv = windows[curwin]:wincmd(key, count, opts)
             if Error.IsError(rv) then
                 error(rv)
             end
@@ -5214,7 +5325,8 @@ function Runtime.new(init_state, init_opts)
                     target_win = tabwin
                 end
             end
-            if not target_win and not _split_preflight(-1, nil, false) then
+            local split_vertical = _split_orientation(false)
+            if not target_win and not _split_preflight(-1, nil, split_vertical) then
                 error(Error(36))
             end
             local newbuf = _buffer_mod()(true, false)
@@ -5229,7 +5341,7 @@ function Runtime.new(init_state, init_opts)
                 target_win.buffer = newbuf
             else
                 target_win = _window_mod()(newbuf)
-                if not _split_real(-1, target_win, false) then
+                if not _split_real(-1, target_win, split_vertical) then
                     error(Error(36))
                 end
             end

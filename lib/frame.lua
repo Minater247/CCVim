@@ -746,9 +746,19 @@ end
 --- Attempt to equalize sizes throughout a subtree, best effort.
 --- Returns true if it made progress (or nothing needed), false if the split
 --- is infeasible even for minima (children minima exceed container).
-function FrameTree.Equalize(node)
+function FrameTree.Equalize(node, axis)
     if not node or not node.split_type then
         return true
+    end
+
+    if axis == "vertical" and node.split_type ~= "h" then
+        local ok_a = FrameTree.Equalize(node.children[1], axis)
+        local ok_b = FrameTree.Equalize(node.children[2], axis)
+        return ok_a and ok_b
+    elseif axis == "horizontal" and node.split_type ~= "v" then
+        local ok_a = FrameTree.Equalize(node.children[1], axis)
+        local ok_b = FrameTree.Equalize(node.children[2], axis)
+        return ok_a and ok_b
     end
 
     local function columns(nd)
@@ -786,7 +796,7 @@ function FrameTree.Equalize(node)
         local minA = subtree_min_width(a)
         local minB = subtree_min_width(b)
         if minA + minB > total then
-            FrameTree.Equalize(a); FrameTree.Equalize(b)
+            FrameTree.Equalize(a, axis); FrameTree.Equalize(b, axis)
             return false
         end
 
@@ -813,7 +823,7 @@ function FrameTree.Equalize(node)
             end
         end
 
-        FrameTree.Equalize(a); FrameTree.Equalize(b)
+        FrameTree.Equalize(a, axis); FrameTree.Equalize(b, axis)
         return true
     elseif node.split_type == "h" then
         local a, b = node.children[1], node.children[2]
@@ -822,7 +832,7 @@ function FrameTree.Equalize(node)
         local minA = subtree_min_height(a)
         local minB = subtree_min_height(b)
         if minA + minB > total then
-            FrameTree.Equalize(a); FrameTree.Equalize(b)
+            FrameTree.Equalize(a, axis); FrameTree.Equalize(b, axis)
             return false
         end
 
@@ -848,8 +858,8 @@ function FrameTree.Equalize(node)
             end
         end
 
-        FrameTree.Equalize(a)
-        FrameTree.Equalize(b)
+        FrameTree.Equalize(a, axis)
+        FrameTree.Equalize(b, axis)
         return true
     end
 

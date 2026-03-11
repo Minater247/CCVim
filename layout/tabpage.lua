@@ -90,8 +90,8 @@ function Tabpage:new(window)
     return obj
 end
 
-function Tabpage:equalize()
-    FrameTree.Equalize(self.tree)
+function Tabpage:equalize(axis)
+    FrameTree.Equalize(self.tree, axis)
 end
 
 local function clone_frame_tree(node, map)
