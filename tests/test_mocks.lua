@@ -8,7 +8,6 @@ local real_os_date = os.date
 local real_os_exit = os.exit
 local real_os_remove = os.remove
 local real_os_rename = os.rename
-local real_loadfile = loadfile
 local has_lfs, lfs = pcall(require, "lfs")
 if not has_lfs then
     error("test_mocks.lua requires LuaFileSystem (lfs)")
@@ -758,18 +757,36 @@ local function create_fs_api(state)
         return state.fs_root .. rel(path)
     end
 
+    local function repo_abs(path)
+        path = tostring(path or "")
+        if path == "" or path:sub(1, 1) ~= "/" then
+            return nil
+        end
+
+        local editor_path = normalize_path(path)
+        if editor_path == state.ccvim_root or editor_path:sub(1, #state.ccvim_root + 1) == state.ccvim_root .. "/" then
+            if lfs_attr(editor_path) ~= nil then
+                return editor_path
+            end
+            return nil
+        end
+
+        local candidate = state.ccvim_root
+        if editor_path ~= "/" then
+            candidate = normalize_path(state.ccvim_root .. "/" .. editor_path:sub(2))
+        end
+        return candidate
+    end
+
     local function path_attr(path)
         return lfs_attr(path)
     end
 
     local function host_runtime_attr(path)
         path = tostring(path or "")
-        local root = tostring(state.ccvim_root or "")
-        if root == "" or path == "" or path:sub(1, 1) ~= "/" then
-            return nil
-        end
-        if path == root or path:sub(1, #root + 1) == root .. "/" then
-            return path_attr(path)
+        local repo_path = repo_abs(path)
+        if repo_path then
+            return path_attr(repo_path)
         end
         return nil
     end
@@ -878,23 +895,34 @@ local function create_fs_api(state)
         if not fs.isDir(orig_path) then
             error("not a directory", 2)
         end
-        local target = abs(path)
+        local targets = {}
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
             if attr and attr.mode == "directory" then
-                target = orig_path
+                targets[#targets + 1] = orig_path
             end
         else
-            local attr = host_runtime_attr(orig_path)
+            local repo_target = repo_abs(orig_path)
+            local attr = repo_target and path_attr(repo_target)
             if attr and attr.mode == "directory" then
-                target = orig_path
+                targets[#targets + 1] = repo_target
             end
         end
 
+        local temp_target = abs(path)
+        local temp_attr = path_attr(temp_target)
+        if temp_attr and temp_attr.mode == "directory" then
+            targets[#targets + 1] = temp_target
+        end
+
+        local seen = {}
         local lines = {}
-        for name in lfs.dir(target) do
-            if name ~= "." and name ~= ".." then
-                lines[#lines + 1] = name
+        for i = 1, #targets do
+            for name in lfs.dir(targets[i]) do
+                if name ~= "." and name ~= ".." and not seen[name] then
+                    seen[name] = true
+                    lines[#lines + 1] = name
+                end
             end
         end
         table.sort(lines)
@@ -934,7 +962,12 @@ local function create_fs_api(state)
         if fs.isDir(path) then
             return 0
         end
-        local f = io.open(abs(path), "rb")
+        local target = abs(path)
+        local attr = host_runtime_attr(path)
+        if attr and attr.mode == "file" then
+            target = repo_abs(path)
+        end
+        local f = io.open(target, "rb")
         if not f then
             return 0
         end
@@ -965,21 +998,29 @@ local function create_fs_api(state)
         path = rel(path)
         mode = tostring(mode or "r")
 
-        -- Check if this is a real filesystem path (for vim runtime files)
         local use_real_path = false
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
             if attr and attr.mode == "file" then
                 use_real_path = true
             end
-        else
+        elseif mode == "r" or mode == "rb" then
             local attr = host_runtime_attr(orig_path)
             if attr and attr.mode == "file" then
                 use_real_path = true
             end
         end
 
-        local abs_path = use_real_path and orig_path or abs(path)
+        local abs_path
+        if use_real_path then
+            if orig_path:sub(1, 1) ~= "/" then
+                abs_path = orig_path
+            else
+                abs_path = repo_abs(orig_path)
+            end
+        else
+            abs_path = abs(path)
+        end
 
         local parent = fs.getDir(use_real_path and orig_path or path)
         if mode == "w" or mode == "a" or mode == "wb" or mode == "ab" then
@@ -1313,15 +1354,90 @@ local function default_globals(state, colors)
     local shell = create_shell_api(state)
     local keys = create_keys_api()
     local cc_os = create_os_api(state)
+    local function mounted_repo_path(path)
+        path = tostring(path or "")
+        if path == "" or path:sub(1, 1) ~= "/" then
+            return nil
+        end
+
+        local editor_path = normalize_path(path)
+        if editor_path == state.ccvim_root or editor_path:sub(1, #state.ccvim_root + 1) == state.ccvim_root .. "/" then
+            return editor_path
+        end
+
+        local candidate = state.ccvim_root
+        if editor_path ~= "/" then
+            candidate = normalize_path(state.ccvim_root .. "/" .. editor_path:sub(2))
+        end
+
+        if lfs_attr(candidate) ~= nil then
+            return candidate
+        end
+        return nil
+    end
+
     local function resolve_loadfile_path(path)
         path = tostring(path or "")
         if path == "" then
             return path
         end
+        local mounted = mounted_repo_path(path)
+        if mounted ~= nil then
+            return mounted
+        end
         if lfs_attr(path) ~= nil then
             return path
         end
         return state.fs.abs_path(path)
+    end
+
+    local function editor_chunk_path(path, resolved)
+        path = tostring(path or "")
+        resolved = tostring(resolved or "")
+
+        if path ~= "" and path:sub(1, 1) == "/" then
+            return normalize_path(path)
+        end
+
+        if resolved == state.ccvim_root then
+            return "/"
+        end
+        if resolved:sub(1, #state.ccvim_root + 1) == state.ccvim_root .. "/" then
+            return normalize_path(resolved:sub(#state.ccvim_root + 1))
+        end
+
+        if resolved == state.fs_root then
+            return "/"
+        end
+        if resolved:sub(1, #state.fs_root + 1) == state.fs_root .. "/" then
+            return normalize_path(resolved:sub(#state.fs_root + 1))
+        end
+
+        if path ~= "" then
+            if path:sub(1, 1) == "/" then
+                return normalize_path(path)
+            end
+            return normalize_path("/" .. path)
+        end
+
+        return normalize_path(resolved)
+    end
+
+    local function compile_virtual_file(path, mode, env)
+        local resolved = resolve_loadfile_path(path)
+        local file, err = io.open(resolved, "rb")
+        if not file then
+            return nil, err
+        end
+
+        local source = file:read("*a")
+        file:close()
+
+        local chunkname = "@" .. editor_chunk_path(path, resolved)
+        if env == nil then
+            return load(source, chunkname, mode or "bt")
+        end
+        return load(source, chunkname, mode or "bt", env)
     end
 
     local g = {
@@ -1413,17 +1529,10 @@ local function default_globals(state, colors)
             end,
         },
         loadfile = function(path, mode, env)
-            local resolved = resolve_loadfile_path(path)
-            if mode == nil and env == nil then
-                return real_loadfile(resolved)
-            end
-            if env == nil then
-                return real_loadfile(resolved, mode)
-            end
-            return real_loadfile(resolved, mode, env)
+            return compile_virtual_file(path, mode, env)
         end,
         dofile = function(path)
-            local chunk, err = real_loadfile(resolve_loadfile_path(path), "t", _G)
+            local chunk, err = compile_virtual_file(path, "t", _G)
             if not chunk then
                 error(err, 2)
             end

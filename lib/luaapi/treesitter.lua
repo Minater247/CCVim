@@ -18,6 +18,7 @@ local parser_by_buf = {}
 local query_overrides = {}
 
 local backend_by_lang = {}
+local filetypes_by_lang
 
 local function copy_list(src)
     local out = {}
@@ -70,6 +71,20 @@ local function backend_for_lang(lang)
     return backend_by_lang[lang] or backend_by_lang["*"]
 end
 
+local function has_explicit_backend(lang)
+    lang = tostring(lang or "")
+    return lang ~= "" and backend_by_lang[lang] ~= nil
+end
+
+local function has_registered_language(lang)
+    lang = tostring(lang or "")
+    return lang ~= "" and filetypes_by_lang[lang] ~= nil
+end
+
+local function parser_creation_error(bufnr, lang)
+    return string.format('Parser could not be created for buffer %s and language "%s"', bufnr, lang)
+end
+
 local language = {}
 
 local lang_by_filetype = {
@@ -81,7 +96,7 @@ local lang_by_filetype = {
     query = "query",
 }
 
-local filetypes_by_lang = {}
+filetypes_by_lang = {}
 
 local function register_mapping(lang, filetype)
     if type(lang) ~= "string" or lang == "" then
@@ -1477,17 +1492,26 @@ end
 
 function M.get_parser(bufnr, lang, opts)
     opts = opts or {}
+    local should_error = opts.error == nil or opts.error
     bufnr = resolve_bufnr(bufnr)
 
     local buf = get_buffer(bufnr)
     if not buf then
-        if opts.error == false then
+        if not should_error then
             return nil
         end
         error(("Invalid buffer id: %s"):format(tostring(bufnr)), 2)
     end
 
     local resolved_lang = resolve_lang(bufnr, lang)
+    if not has_explicit_backend(resolved_lang) and not has_registered_language(resolved_lang) then
+        local err_msg = parser_creation_error(bufnr, resolved_lang)
+        if not should_error then
+            return nil, err_msg
+        end
+        error(err_msg, 2)
+    end
+
     local parser = parser_by_buf[bufnr]
     if parser and parser:lang() == resolved_lang then
         return parser
@@ -1500,16 +1524,26 @@ end
 
 function M.start(bufnr, lang)
     bufnr = resolve_bufnr(bufnr)
-    local parser = M.get_parser(bufnr, lang, { error = false })
-    if not parser then
-        return nil
+
+    local resolved_lang = resolve_lang(bufnr, lang)
+    if not has_explicit_backend(resolved_lang) then
+        if has_registered_language(resolved_lang) then
+            return nil
+        end
+        error(parser_creation_error(bufnr, resolved_lang), 2)
     end
 
     if highlighter.active[bufnr] then
         highlighter.active[bufnr]:destroy()
     end
 
-    return highlighter.new(parser)
+    local parser = M.get_parser(bufnr, resolved_lang, { error = false })
+    if not parser then
+        return nil
+    end
+
+    highlighter.new(parser)
+    return nil
 end
 
 function M.stop(bufnr)
