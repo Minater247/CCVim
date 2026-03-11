@@ -1866,6 +1866,19 @@ function Builtins.setcmdline(str, pos)
     return CmdRead.setline(tostring(str or ""), tonumber(pos))
 end
 
+local VIMXPR_LIST_MT = { __vimxpr_kind = "list" }
+
+local function _mark_vim_list(tbl)
+    if type(tbl) ~= "table" then
+        return tbl
+    end
+    local mt = getmetatable(tbl)
+    if mt and mt.__vimxpr_kind == "list" then
+        return tbl
+    end
+    return setmetatable(tbl, VIMXPR_LIST_MT)
+end
+
 -- add(list, item): append item to list and return the list (mutates in place)
 function Builtins.add(lst, item, ...)
     if select('#', ...) > 0 then
@@ -1876,6 +1889,56 @@ function Builtins.add(lst, item, ...)
     end
     lst[#lst + 1] = item
     return lst
+end
+
+function Builtins.range(expr, max, stride, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "range"):toString())
+    end
+
+    local start
+    local stop
+    local step
+
+    if max == nil then
+        start = 0
+        stop = math.floor(tonumber(expr) or 0) - 1
+        step = 1
+    else
+        start = math.floor(tonumber(expr) or 0)
+        stop = math.floor(tonumber(max) or 0)
+        if stride == nil then
+            step = 1
+        else
+            step = math.floor(tonumber(stride) or 0)
+        end
+    end
+
+    if step == 0 then
+        error(Error(726):toString())
+    end
+
+    local out = {}
+    if step > 0 then
+        if start > stop then
+            if start == stop + 1 then
+                return _mark_vim_list(out)
+            end
+            error(Error(727):toString())
+        end
+    else
+        if start < stop then
+            if start == stop - 1 then
+                return _mark_vim_list(out)
+            end
+            error(Error(727):toString())
+        end
+    end
+
+    for i = start, stop, step do
+        out[#out + 1] = i
+    end
+    return _mark_vim_list(out)
 end
 
 -- strlen(x): return byte length of stringified value (ASCII OK)
@@ -1967,19 +2030,6 @@ local function _glob_matches_for_relative_expr(expr, matches)
         out[#out + 1] = rel
     end
     return out
-end
-
-local VIMXPR_LIST_MT = { __vimxpr_kind = "list" }
-
-local function _mark_vim_list(tbl)
-    if type(tbl) ~= "table" then
-        return tbl
-    end
-    local mt = getmetatable(tbl)
-    if mt and mt.__vimxpr_kind == "list" then
-        return tbl
-    end
-    return setmetatable(tbl, VIMXPR_LIST_MT)
 end
 
 local function _glob_return(matches, want_list)
@@ -4872,6 +4922,10 @@ function Builtins.execute(command, silent, ...)
     end)
     ExMsg.PopUISuppress()
     local output, last_err = ExMsg.EndCapture(cap)
+
+    if cap and cap.saw_full_line and output ~= "" and output:sub(1, 1) ~= "\n" then
+        output = "\n" .. output
+    end
 
     -- execute() returns captured text without a trailing line break.
     output = output:gsub("\n$", "")

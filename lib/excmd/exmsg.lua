@@ -131,7 +131,7 @@ end
 -- =====================================
 -- We avoid monkey-patching public functions (previous approach in api.lua)
 -- by maintaining an internal stack of active capture contexts. Each context:
---   { out = {"line1\n", ...}, partial = "pending_echon_text", last_err = nil }
+--   { out = {"line1\n", ...}, partial = "pending_echon_text", last_err = nil, saw_full_line = false }
 -- Error messages (hlgroup == "ErrorMsg") are NOT added to 'out'; only
 -- their last line is tracked via last_err, matching the former semantics.
 local capture_stack = {}
@@ -201,7 +201,7 @@ end
 
 -- Public: begin a capture; returns a handle (the capture table itself).
 function ExMsg.StartCapture()
-    local cap = { out = {}, partial = "", last_err = nil }
+    local cap = { out = {}, partial = "", last_err = nil, saw_full_line = false }
     capture_stack[#capture_stack + 1] = cap
     return cap
 end
@@ -289,6 +289,7 @@ end
 local function draw_more_page(snap_to_bottom)
     -- Ensure screenlines is up to date for whatever is in displaymessages.
     calculateScreenLines()
+    local cmdread_active = CmdRead.is_active()
 
     local max_lines = screen.height - 1 -- bottom row reserved for the status line
 
@@ -319,12 +320,16 @@ local function draw_more_page(snap_to_bottom)
 
     -- Status line
     term.setCursorPos(1, screen.height)
-    Highlight.SetFor("MoreMsg")
     term.clearLine()
-    if more_help_long then
-        term.write("-- More -- SPACE/d/j: screen/page/line down, b/u/k: up, q: quit")
+    if cmdread_active then
+        CmdRead.drawCmdline()
     else
-        term.write("-- More --")
+        Highlight.SetFor("MoreMsg")
+        if more_help_long then
+            term.write("-- More -- SPACE/d/j: screen/page/line down, b/u/k: up, q: quit")
+        else
+            term.write("-- More --")
+        end
     end
 end
 
@@ -439,6 +444,7 @@ local function draw_press_enter()
 
     local cmdheight = options.get("cmdheight")
     local offset = (#screenlines > cmdheight) and -1 or 0
+    local cmdread_active = CmdRead.is_active()
 
     -- Clear the area we're about to draw (bottom-aligned)
     Highlight.SetFor("Normal")
@@ -461,12 +467,19 @@ local function draw_press_enter()
     -- If this is a true press-enter case, paint the prompt + separator.
     if #screenlines > cmdheight then
         term.setCursorPos(1, screen.height)
-        Highlight.SetFor("Question")
-        term.write("Press ENTER or type command to continue")
+        term.clearLine()
+        if cmdread_active then
+            CmdRead.drawCmdline()
+        else
+            Highlight.SetFor("Question")
+            term.write("Press ENTER or type command to continue")
+        end
 
         term.setCursorPos(1, screen.height - #screenlines - 1)
         Highlight.SetFor("MsgSeparator")
         term.write(string.rep(" ", screen.width))
+    elseif cmdread_active then
+        CmdRead.drawCmdline()
     end
 
     -- May or may not work reliably to fix redraw. TODO: test this
@@ -495,10 +508,12 @@ local function draw_messages_and_prompt()
         -- Enter/maintain Press ENTER mode (logic only: state & handler)
         in_press_enter = true
 
-        local top = Command.override_emitter[#Command.override_emitter]
-        if top ~= readEnter then
-            table.insert(Command.override_emitter, readEnter)
-            table.insert(Command.emitter_names, "ExMsg.readEnter")
+        if not CmdRead.is_active() then
+            local top = Command.override_emitter[#Command.override_emitter]
+            if top ~= readEnter then
+                table.insert(Command.override_emitter, readEnter)
+                table.insert(Command.emitter_names, "ExMsg.readEnter")
+            end
         end
 
         -- Pure draw into the current target (front or back buffer)
@@ -561,6 +576,7 @@ local function emit(str, hlgroup, nonewline, flush, savetomsg)
                     else
                         capture_flush_partial(cap)
                         cap.out[#cap.out + 1] = str .. "\n"
+                        cap.saw_full_line = true
                     end
                 end
             end
@@ -587,6 +603,7 @@ local function emit(str, hlgroup, nonewline, flush, savetomsg)
                         else
                             capture_flush_partial(cap)
                             cap.out[#cap.out + 1] = str .. "\n"
+                            cap.saw_full_line = true
                         end
                     end
                 end
@@ -637,6 +654,7 @@ local function emit(str, hlgroup, nonewline, flush, savetomsg)
                     -- New full line; flush any pending partial first
                     capture_flush_partial(cap)
                     cap.out[#cap.out + 1] = str .. "\n"
+                    cap.saw_full_line = true
                 end
             end
         end
