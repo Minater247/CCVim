@@ -69,6 +69,7 @@ function Window:new(buffer, refwin)
         style     = nil,
 
         focusable = true,
+        statusline_click_zones = {},
     }, Window)
 
     windows[curr_winno] = obj
@@ -1831,29 +1832,34 @@ function Window:render(xoff, yoff)
     -- Statusline
     if dostatus and not self.floatpos then
         setPos(1, baseheight)
-        local spans = Statusline.Parse(options.get("statusline", self), self)
-        for s = 1, #spans do
-            Highlight.SetFor(spans[s][2])
-            term.write(spans[s][1])
+        local info = Statusline.RenderInfo(options.get("statusline", self), self)
+        self.statusline_click_zones = info.click_zones
+        for s = 1, #info.spans do
+            Highlight.SetFor(info.spans[s][2])
+            term.write(info.spans[s][1])
         end
         Highlight.SetFor("Normal")
     elseif has_sep and not self.floatpos then
+        self.statusline_click_zones = {}
         local fcs = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true })
         local hc = fcs.horiz or "-"
         Highlight.SetFor("VertSplit")
         setPos(1, baseheight)
         term.write(string.rep(hc, math.max(0, width)))
         Highlight.SetFor("Normal")
+    else
+        self.statusline_click_zones = {}
     end
 end
 
 function Window:drawStatus(xoff, yoff)
     term.setCursorPos(xoff, yoff + self.frame.height - 1)
 
-    local spans = Statusline.Parse(options.get("statusline", self), self)
-    for s = 1, #spans do
-        Highlight.SetFor(spans[s][2])
-        term.write(spans[s][1])
+    local info = Statusline.RenderInfo(options.get("statusline", self), self)
+    self.statusline_click_zones = info.click_zones
+    for s = 1, #info.spans do
+        Highlight.SetFor(info.spans[s][2])
+        term.write(info.spans[s][1])
     end
 
     Highlight.SetFor("Normal")
@@ -2572,19 +2578,59 @@ end
 
 function Window:resizeWidth(delta)
     if self.frame then
+        if not self.frame.parent then
+            return true
+        end
+        if delta < 0 then
+            local max_shrink = math.max(0, self.frame.width - self:minwidth())
+            if -delta > max_shrink then
+                delta = -max_shrink
+            end
+        end
         return FrameTree.ResizeWidth(self.frame, delta)
     elseif self.floatpos then
         self.floatpos.w = math.max(1, self.floatpos.w + delta)
+        return true
     end
     return false
 end
 
+local function current_tab_displayheight()
+    local height = screen.height - options.get("cmdheight")
+    local stal = options.get("showtabline")
+    if stal == 2 or (stal == 1 and #tabpages > 1) then
+        height = height - 1
+    end
+    if options.get("laststatus") == 3 then
+        height = height - 1
+    end
+    return math.max(1, height)
+end
+
 function Window:resizeHeight(delta)
     if self.frame then
+        if not self.frame.parent then
+            local tabp = tabpages[self.tabpagenr or curtp]
+            local root = tabp.tree
+
+            local max_height = current_tab_displayheight(tabp)
+            local target = math.max(self:minheight(), math.min(max_height, root.height + delta))
+            tabp._manual_root_height = target
+            if target == root.height then
+                return true
+            end
+            return FrameTree.RootResizeHeight(root, target - root.height)
+        end
+        if delta < 0 then
+            local max_shrink = math.max(0, self.frame.height - self:minheight())
+            if -delta > max_shrink then
+                delta = -max_shrink
+            end
+        end
         return FrameTree.ResizeHeight(self.frame, delta)
     end
     self.floatpos.h = math.max(1, self.floatpos.h + delta)
-    return false
+    return true
 end
 
 local function cleanup_failed_split_window(win)
@@ -2791,6 +2837,24 @@ function Window:wincmd(command, count, opts)
         self:resizeHeight(count or 1)
     elseif command == "-" then
         self:resizeHeight(count and -count or -1)
+    elseif command == "_" then
+        local current = (self.frame and self.frame.height) or (self.floatpos and self.floatpos.h)
+        if count then
+            self:resizeHeight(count - current)
+        elseif self.frame and not self.frame.parent then
+            local max_height = current_tab_displayheight(tabpages[curtp])
+            self:resizeHeight(max_height - current)
+        else
+            while self:resizeHeight(1) do end
+        end
+    elseif command == "|" then
+        if count then
+            self:resizeWidth(count - (self.frame and self.frame.width) or (self.floatpos and self.floatpos.w))
+        elseif self.frame and not self.frame.parent then
+            return
+        else
+            while self:resizeWidth(1) do end
+        end
     elseif command == "H" then
         -- TODO: Create functions to set up a mock tree and
         --       check if this works before committing to it

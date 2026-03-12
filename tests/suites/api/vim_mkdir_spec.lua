@@ -28,6 +28,9 @@ return {
                 if ok then
                     return { ok = true, value = rv }
                 end
+                if type(rv) == "table" and type(rv.toString) == "function" then
+                    return { ok = false, err = rv:toString() }
+                end
                 return { ok = false, err = tostring(rv) }
             end
 

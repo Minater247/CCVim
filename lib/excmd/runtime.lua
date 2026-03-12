@@ -4639,7 +4639,12 @@ function Runtime.new(init_state, init_opts)
                 end
             end
 
-            local ok = vertical and target:resizeWidth(delta) or target:resizeHeight(delta)
+            local ok
+            if frame and not frame.parent and vertical then
+                ok = true
+            else
+                ok = vertical and target:resizeWidth(delta) or target:resizeHeight(delta)
+            end
             if not ok and delta ~= 0 then
                 error(Error(36))
             end

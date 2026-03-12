@@ -7,6 +7,13 @@ return {
         local Assert = ctx.assert
 
         local result = Assert.eval_block(backend, "vim.call scenarios", [[
+            local function err_string(err)
+                if type(err) == "table" and type(err.toString) == "function" then
+                    return err:toString()
+                end
+                return tostring(err or "")
+            end
+
             local len_ok, len_value = pcall(vim.call, "len", { 1, 2, 3 })
             local getcwd_ok, getcwd_value = pcall(vim.call, "getcwd")
             local getcwd_nil_ok, getcwd_nil_err = pcall(vim.call, "getcwd", nil)
@@ -20,9 +27,9 @@ return {
                 type(getcwd_value),
                 tostring(getcwd_value or ""),
                 getcwd_nil_ok,
-                tostring(getcwd_nil_err or ""),
+                err_string(getcwd_nil_err),
                 numeric_ok,
-                tostring(numeric_err or ""),
+                err_string(numeric_err),
             }
         ]])
 

@@ -3604,6 +3604,62 @@ function Builtins.winnr(arg)
     end
 end
 
+function Builtins.tabpagenr(arg)
+    if arg == nil then
+        return curtp
+    elseif arg == "$" then
+        return #tabpages
+    elseif arg == "#" then
+        return 0
+    end
+
+    local nr = tonumber(arg)
+    if nr and tabpages[nr] then
+        return nr
+    end
+    return 0
+end
+
+function Builtins.tabpagewinnr(tabarg, arg)
+    local tabnr = tonumber(tabarg) or curtp
+    local tp = tabpages[tabnr]
+    if not tp then
+        return 0
+    end
+
+    if arg == "$" then
+        return #tp.windows
+    end
+
+    local target_winnr = tp.lastwin
+    if tabnr == curtp then
+        target_winnr = curwin
+    end
+    if target_winnr ~= nil then
+        for i = 1, #tp.windows do
+            if tp.windows[i].winnr == target_winnr then
+                return i
+            end
+        end
+    end
+
+    return (#tp.windows > 0) and 1 or 0
+end
+
+function Builtins.tabpagebuflist(arg)
+    local tabnr = tonumber(arg) or curtp
+    local tp = tabpages[tabnr]
+    if not tp then
+        return {}
+    end
+
+    local bufs = {}
+    for i = 1, #tp.windows do
+        bufs[#bufs + 1] = tp.windows[i].buffer.bufnr
+    end
+    return bufs
+end
+
 function Builtins.win_getid(winnr, tabnr)
     if winnr == nil or winnr == 0 then
         return curwin

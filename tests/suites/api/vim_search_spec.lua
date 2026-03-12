@@ -7,6 +7,13 @@ return {
         local Assert = ctx.assert
 
         local result = Assert.eval_block(backend, "vim.fn.search scenarios", [[
+            local function err_string(err)
+                if type(err) == "table" and type(err.toString) == "function" then
+                    return err:toString()
+                end
+                return tostring(err or "")
+            end
+
             local function set_lines(lines)
                 vim.cmd("enew!")
                 vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
@@ -98,9 +105,9 @@ return {
                 skip_fn,
                 pos_skip_fn,
                 skip_err_ok,
-                tostring(skip_err_msg),
+                err_string(skip_err_msg),
                 ok_extra,
-                tostring(err_extra),
+                err_string(err_extra),
             }
         ]])
 

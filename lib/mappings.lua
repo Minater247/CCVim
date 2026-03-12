@@ -1020,10 +1020,12 @@ Command.nmap_builtin_operator_with_motions(
         ["c-w"] = {K(keys.w, true)},
         ["T"] = {K(keys.t, false, true)},
         ["="] = {K(keys.equals)},
+        ["|"] = {K(keys.backslash, false, true)},
         [">"] = {K(keys.period, false, true)},
         ["<"] = {K(keys.comma, false, true)},
         ["+"] = {K(keys.equals, false, true)},
         ["-"] = {K(keys.minus)},
+        ["_"] = {K(keys.minus, false, true)},
     }
 )
 

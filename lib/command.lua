@@ -1470,6 +1470,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                     state.count_committed = true
                     state.count_tentative = false
                     reset_mapping_only()
+                    _clear_op_pending()
                     return Command._handle_key_with_policy(code, policy, true)
                 end
             end
@@ -1492,6 +1493,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                 state.count_committed = true
                 state.count_tentative = false
                 reset_mapping_only()
+                _clear_op_pending()
                 return Command._handle_key_with_policy(retry, policy, true)
             end
         end
@@ -1574,6 +1576,16 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                 end
             else
                 -- Non-digit broke the tentative mapping (e.g. "4g...").
+                local digits_only = seq_is_digit_only(state.seq)
+                if digits_only then
+                    promote_seq_digits_into_count()
+                    state.count_committed = (#state.count_codes > 0)
+                    state.count_tentative = false
+                    reset_mapping_only()
+                    _clear_op_pending()
+                    return Command._handle_key_with_policy(retry, policy, true)
+                end
+
                 if not had_count_before then
                     -- Promote the tentative leading digits into a committed count.
                     promote_seq_digits_into_count()
@@ -1596,6 +1608,7 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
                     -- restart mapping state but keep the (now committed) count,
                     -- and re-handle this non-digit as the first command key.
                     reset_mapping_only()
+                    _clear_op_pending()
                     return Command._handle_key_with_policy(retry, policy, true)
                 end
             end

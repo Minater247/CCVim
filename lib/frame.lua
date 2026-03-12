@@ -546,6 +546,34 @@ local function replace_in_parent(parent, old_child, new_child)
     new_child.parent = parent
 end
 
+local function clone_frame_tree(node, map)
+    local copy = {
+        parent = nil,
+        window = node.window,
+        width = node.width,
+        height = node.height,
+        split_type = node.split_type,
+    }
+    map[node] = copy
+
+    if node.children then
+        local left = clone_frame_tree(node.children[1], map)
+        local right = clone_frame_tree(node.children[2], map)
+        left.parent = copy
+        right.parent = copy
+        copy.children = { left, right }
+    end
+
+    return copy
+end
+
+local function root_for(node)
+    while node and node.parent do
+        node = node.parent
+    end
+    return node
+end
+
 local function subtree_min_width(node)
     if not node.split_type then
         return node.window:minwidth()
@@ -741,6 +769,80 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
     else
         return true, new_node
     end
+end
+
+local function ensure_split_space(frame, new_win, vertical)
+    local grew_for_split = false
+    if options.get("equalalways") and frame.window then
+        if vertical then
+            local needed_width = frame.window:minwidth() + new_win:minwidth()
+            if frame.width < needed_width then
+                if not FrameTree.ResizeWidth(frame, needed_width - frame.width) or frame.width < needed_width then
+                    return false
+                end
+                grew_for_split = true
+            end
+        else
+            local needed_height = frame.window:minheight() + new_win:minheight()
+            if frame.height < needed_height then
+                if not FrameTree.ResizeHeight(frame, needed_height - frame.height) or frame.height < needed_height then
+                    return false
+                end
+                grew_for_split = true
+            end
+        end
+    end
+
+    return true, grew_for_split
+end
+
+function FrameTree.CanSplit(root, node, new_win, vertical, opts)
+    opts = opts or {}
+    if not root or not node then
+        return false
+    end
+
+    local frame_map = {}
+    local root_clone = clone_frame_tree(root, frame_map)
+    local probe_frame = frame_map[node]
+    if not probe_frame then
+        return false
+    end
+
+    local probe_new_win = {
+        minwidth = function()
+            return new_win:minwidth()
+        end,
+        minheight = function()
+            return new_win:minheight()
+        end,
+    }
+
+    local ok = ensure_split_space(probe_frame, probe_new_win, vertical)
+    if not ok then
+        return false
+    end
+
+    local split_ok, split_anchor
+    if vertical then
+        split_ok, split_anchor = FrameTree.VerticalSplit(probe_frame, probe_new_win, opts.place_after == true)
+    else
+        split_ok, split_anchor = FrameTree.HorizontalSplit(probe_frame, probe_new_win, opts.place_after == true)
+    end
+    if not split_ok then
+        return false
+    end
+
+    local root_after = root_for(split_anchor or probe_frame or root_clone)
+    if not root_after then
+        return false
+    end
+
+    if opts.validate then
+        return opts.validate(root_after)
+    end
+
+    return true
 end
 
 --- Attempt to equalize sizes throughout a subtree, best effort.

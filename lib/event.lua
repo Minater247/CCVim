@@ -10,6 +10,7 @@ local ExMsg  = loadModule("lib.excmd.exmsg")
 local Error = loadModule("lib.error")
 local FrameTree = loadModule("lib.frame")
 local Autocmd = loadModule("lib.autocmd")
+local Fn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local TimerUtils = loadModule("lib.luaapi.timerutils")
 
@@ -150,6 +151,56 @@ local function target_window_at(x, y)
     return frame.window, frame, local_x, local_row
 end
 
+local function find_click_zone(zones, x)
+    for i = 1, #zones do
+        local zone = zones[i]
+        if x >= zone.start_col and x <= zone.end_col then
+            return zone
+        end
+    end
+    return nil
+end
+
+local function click_zone_at(x, y)
+    local tab = tabpages[curtp]
+
+    if y == 1 then
+        local stal = options.get("showtabline")
+        if stal == 2 or (stal == 1 and #tabpages > 1) then
+            local zone = find_click_zone(tab.tabline_click_zones, x)
+            if zone then
+                return zone, windows[curwin], nil, x, y
+            end
+        end
+    end
+
+    if options.get("laststatus") == 3 and y == (tab.winyoff + tab.tree.height + 1) then
+        local zone = find_click_zone(tab.global_statusline_click_zones, x)
+        if zone then
+            return zone, windows[curwin], nil, x, y
+        end
+    end
+
+    local local_y = y - tab.winyoff
+    if local_y < 1 then
+        return nil
+    end
+
+    local frame, local_x, local_row = FrameTree.FrameAtWithLocal(tab.tree, x, local_y)
+    if not frame or not frame.window then
+        return nil
+    end
+
+    if local_row == frame.height then
+        local zone = find_click_zone(frame.window.statusline_click_zones, local_x)
+        if zone then
+            return zone, frame.window, frame, local_x, local_row
+        end
+    end
+
+    return nil, frame.window, frame, local_x, local_row
+end
+
 local function focus_window(win)
     enterWindow(win.winnr)
 end
@@ -202,6 +253,118 @@ local function last_click_count(button)
         return prev.count
     end
     return 1
+end
+
+local function click_button_name(button)
+    if button == 1 then
+        return "l"
+    elseif button == 2 then
+        return "r"
+    elseif button == 3 then
+        return "m"
+    end
+    return ""
+end
+
+local function click_modifier_string()
+    local ctrld, shifted, alted = current_mod_flags()
+    local mods = {}
+    if shifted then
+        mods[#mods + 1] = "s"
+    end
+    if ctrld then
+        mods[#mods + 1] = "c"
+    end
+    if alted then
+        mods[#mods + 1] = "a"
+    end
+    return table.concat(mods)
+end
+
+local function switch_to_tab_from_click(tabnr)
+    local target = tonumber(tabnr)
+    if not target or not tabpages[target] then
+        return false
+    end
+
+    tabpages[curtp].lastwin = curwin
+    curtp = target
+    enterWindow(tabpages[curtp].lastwin or tabpages[curtp].windows[1].winnr)
+    what_redraw["all"] = true
+    need_redraw = true
+    return true
+end
+
+local function close_tab_from_click(tabnr)
+    local target = tonumber(tabnr)
+    if not target then
+        return false
+    end
+    if target == 999 then
+        target = curtp
+    end
+
+    local target_tab = tabpages[target]
+    if not target_tab then
+        return false
+    end
+
+    local prev_tab = curtp
+    local prev_win = curwin
+    local switched = false
+
+    if prev_tab ~= target then
+        tabpages[prev_tab].lastwin = prev_win
+        curtp = target
+        enterWindow(target_tab.lastwin or target_tab.windows[1].winnr)
+        switched = true
+    end
+
+    local ok = tabpages[curtp]:close(windows[curwin], false)
+    if ok ~= true then
+        if switched then
+            curtp = prev_tab
+            enterWindow(prev_win)
+        end
+        return false
+    end
+
+    if switched then
+        curtp = prev_tab
+        enterWindow(prev_win)
+    end
+
+    what_redraw["all"] = true
+    need_redraw = true
+    return true
+end
+
+local function dispatch_click_zone(zone, win, button, clicks)
+    if not zone then
+        return false
+    end
+
+    if zone.kind == "tab" then
+        if button == 1 then
+            return switch_to_tab_from_click(zone.tabnr)
+        elseif button == 3 then
+            return close_tab_from_click(zone.tabnr)
+        end
+        return false
+    elseif zone.kind == "close_tab" then
+        if button == 1 then
+            return close_tab_from_click(zone.tabnr)
+        end
+        return false
+    elseif zone.kind == "function" and type(zone.func) == "string" and zone.func ~= "" then
+        focus_window(win)
+        Fn._call(zone.func, zone.minwid or 0, clicks, click_button_name(button), click_modifier_string())
+        what_redraw["all"] = true
+        need_redraw = true
+        return true
+    end
+
+    return false
 end
 
 local function mouse_key_for_event(kind, button, clicks, direction)
@@ -270,14 +433,13 @@ local function handle_mouse_click(button, x, y)
         return
     end
 
-    local win, _, local_x, local_y = target_window_at(x, y)
+    local zone, win, _, local_x, local_y = click_zone_at(x, y)
     if not win then
         return
     end
 
     local clicks = click_count(button, x, y)
     mouse_down[button] = true
-    focus_window(win)
     set_mouse_vvars(win, button, x, y, clicks)
 
     local click_key = mouse_key_for_event("click", button, clicks, nil)
@@ -285,6 +447,12 @@ local function handle_mouse_click(button, x, y)
         need_redraw = true
         return
     end
+
+    if dispatch_click_zone(zone, win, button, clicks) then
+        return
+    end
+
+    focus_window(win)
 
     local model = options.get("mousemodel")
 

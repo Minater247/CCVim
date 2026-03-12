@@ -55,6 +55,56 @@ local function compute_layout_metrics()
     return displayheight, winyoff, global_statusline
 end
 
+local function tab_current_window(tp)
+    if tp.tabnr == curtp and windows[curwin].tabpagenr == tp.tabnr then
+        return windows[curwin]
+    end
+    if tp.lastwin and windows[tp.lastwin] and windows[tp.lastwin].tabpagenr == tp.tabnr then
+        return windows[tp.lastwin]
+    end
+    return tp.windows[1]
+end
+
+local function default_tab_label(tp)
+    local win = tab_current_window(tp)
+    local name = win.buffer.name
+    local tail = name:match("[^/\\]+$") or name
+    if tail == "" then
+        tail = "[No Name]"
+    end
+
+    local prefix = ""
+    if #tp.windows > 1 then
+        prefix = tostring(#tp.windows)
+    end
+    for i = 1, #tp.windows do
+        if tp.windows[i].buffer.opts.modified then
+            prefix = prefix .. "+"
+            break
+        end
+    end
+    if prefix ~= "" then
+        prefix = prefix .. " "
+    end
+
+    return " " .. prefix .. tail .. " "
+end
+
+local function default_tabline_format()
+    local parts = {}
+    for i = 1, #tabpages do
+        local hl = (i == curtp) and "TabLineSel" or "TabLine"
+        parts[#parts + 1] = ("%%#%s#%%%dT%s"):format(hl, i, default_tab_label(tabpages[i]))
+    end
+
+    parts[#parts + 1] = "%#TabLineFill#%T"
+    if #tabpages > 1 then
+        parts[#parts + 1] = "%=%#TabLine#%999Xclose%X"
+    end
+
+    return table.concat(parts)
+end
+
 ---@class TabOpts
 
 ---@class Tabpage
@@ -78,6 +128,9 @@ function Tabpage:new(window)
         tree = FrameTree.New(window, screen.width, displayheight),
         opts = {},
         winyoff = winyoff,
+        _manual_root_height = nil,
+        tabline_click_zones = {},
+        global_statusline_click_zones = {},
         -- Double-buffering state for the whole tabpage
         _backwin = nil,
         _parent = nil,
@@ -94,27 +147,6 @@ end
 
 function Tabpage:equalize(axis)
     FrameTree.Equalize(self.tree, axis)
-end
-
-local function clone_frame_tree(node, map)
-    local copy = {
-        parent = nil,
-        window = node.window,
-        width = node.width,
-        height = node.height,
-        split_type = node.split_type,
-    }
-    map[node] = copy
-
-    if node.children then
-        local left = clone_frame_tree(node.children[1], map)
-        local right = clone_frame_tree(node.children[2], map)
-        left.parent = copy
-        right.parent = copy
-        copy.children = { left, right }
-    end
-
-    return copy
 end
 
 local function resolve_split_target(self, target_winnr)
@@ -161,72 +193,28 @@ function Tabpage:MakeSplitProbe(refwin)
     return probe
 end
 
-function Tabpage:CanWinSplit(target_winnr, new_win, vertical)
+function Tabpage:CanWinSplit(target_winnr, new_win, vertical, opts)
     local frame = resolve_split_target(self, target_winnr)
     if not frame then
         return false
     end
 
-    local frame_map = {}
-    local root_clone = clone_frame_tree(self.tree, frame_map)
-    local probe_frame = frame_map[frame]
-    if not probe_frame then
-        return false
-    end
-
-    if options.get("equalalways") and probe_frame.window then
-        if vertical then
-            local needed_width = probe_frame.window:minwidth() + new_win:minwidth()
-            if probe_frame.width < needed_width then
-                local ok = FrameTree.ResizeWidth(probe_frame, needed_width - probe_frame.width)
-                if not ok or probe_frame.width < needed_width then
-                    return false
-                end
-            end
-        else
-            local needed_height = probe_frame.window:minheight() + new_win:minheight()
-            if probe_frame.height < needed_height then
-                local ok = FrameTree.ResizeHeight(probe_frame, needed_height - probe_frame.height)
-                if not ok or probe_frame.height < needed_height then
-                    return false
-                end
-            end
-        end
-    end
-
-    local ok, split_anchor
-    if vertical then
-        ok, split_anchor = FrameTree.VerticalSplit(probe_frame, new_win)
-    else
-        ok, split_anchor = FrameTree.HorizontalSplit(probe_frame, new_win)
-    end
-    if not ok then
-        return false
-    end
-
-    local root_after = split_anchor or probe_frame or root_clone
-    while root_after and root_after.parent do
-        root_after = root_after.parent
-    end
-    if not root_after then
-        return false
-    end
-
+    opts = opts or {}
     local laststatus = options.get("laststatus")
     local post_split_window_count = #self.windows + 1
 
-    local function has_text_capacity(node, yoff)
+    local function has_text_capacity(root_after, node, yoff)
         if node.split_type then
             if node.split_type == "h" then
-                if not has_text_capacity(node.children[1], yoff) then
+                if not has_text_capacity(root_after, node.children[1], yoff) then
                     return false
                 end
-                return has_text_capacity(node.children[2], yoff + node.children[1].height)
+                return has_text_capacity(root_after, node.children[2], yoff + node.children[1].height)
             end
-            if not has_text_capacity(node.children[1], yoff) then
+            if not has_text_capacity(root_after, node.children[1], yoff) then
                 return false
             end
-            return has_text_capacity(node.children[2], yoff)
+            return has_text_capacity(root_after, node.children[2], yoff)
         end
 
         local frame_bottom = yoff + node.height - 1
@@ -249,7 +237,12 @@ function Tabpage:CanWinSplit(target_winnr, new_win, vertical)
         return true
     end
 
-    return has_text_capacity(root_after, 1)
+    return FrameTree.CanSplit(self.tree, frame, new_win, vertical, {
+        place_after = opts.place_after,
+        validate = function(root_after)
+            return has_text_capacity(root_after, root_after, 1)
+        end,
+    })
 end
 
 -- Keep a full-screen screen buffer for this tabpage
@@ -448,6 +441,13 @@ end
 
 function Tabpage:updateFrameview()
     local displayheight, winyoff = compute_layout_metrics()
+    local target_height = displayheight
+
+    if #self.windows == 1 and self._manual_root_height ~= nil then
+        target_height = math.max(1, math.min(displayheight, self._manual_root_height))
+    else
+        self._manual_root_height = nil
+    end
 
     self.winyoff = winyoff
 
@@ -457,8 +457,8 @@ function Tabpage:updateFrameview()
         ok = FrameTree.RootResizeWidth(self.tree, screen.width - self.tree.width) and ok
     end
 
-    if self.tree.height ~= displayheight then
-        ok = FrameTree.RootResizeHeight(self.tree, displayheight - self.tree.height) and ok
+    if self.tree.height ~= target_height then
+        ok = FrameTree.RootResizeHeight(self.tree, target_height - self.tree.height) and ok
     end
 
     return ok
@@ -468,7 +468,7 @@ function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
     opts = opts or {}
 
     if opts.dry_run then
-        return self:CanWinSplit(target_winnr, new_win, vertical)
+        return self:CanWinSplit(target_winnr, new_win, vertical, opts)
     end
 
     local frame = resolve_split_target(self, target_winnr)
@@ -566,18 +566,24 @@ function Tabpage:render()
     local redraw_tabline = what_redraw["all"] or what_redraw["tabline"] or redraw_windows
     if redraw_tabline and (stal == 2 or (stal == 1 and #tabpages > 1)) then
         local tabline = options.get("tabline")
+        if tabline == "" then
+            tabline = default_tabline_format()
+        end
 
-        -- TODO: Use a proper default for the tabline string
-        tabline = (tabline == "") and "default tabline string" or tabline
-
-        -- TODO: proper parsing for the tabline
-        tabline = tabline:sub(1, screen.width)
+        local info = Statusline.RenderInfo(tabline, windows[curwin], screen.width, {
+            default_group = "TabLine",
+            fillchar = " ",
+        })
+        self.tabline_click_zones = info.click_zones
 
         term.setCursorPos(1, 1)
-        Highlight.SetFor("Tabline")
-        term.write(tabline)
-        Highlight.SetFor("TablineFill")
-        term.write(string.rep(" ", screen.width - #tabline))
+        for i = 1, #info.spans do
+            Highlight.SetFor(info.spans[i][2])
+            term.write(info.spans[i][1])
+        end
+        Highlight.SetFor("Normal")
+    else
+        self.tabline_click_zones = {}
     end
 
     local redraw_global_statusline = what_redraw["all"] or redraw_windows
@@ -585,11 +591,15 @@ function Tabpage:render()
     if redraw_global_statusline and options.get("laststatus") == 3 then
         term.setCursorPos(1, self.winyoff + self.tree.height + 1)
 
-        local spans = Statusline.Parse(options.get("statusline", windows[curwin]), windows[curwin], self.tree.width)
-        for i = 1, #spans do
-            Highlight.SetFor(spans[i][2])
-            term.write(spans[i][1])
+        local info = Statusline.RenderInfo(options.get("statusline", windows[curwin]), windows[curwin], self.tree.width)
+        self.global_statusline_click_zones = info.click_zones
+        for i = 1, #info.spans do
+            Highlight.SetFor(info.spans[i][2])
+            term.write(info.spans[i][1])
         end
+        Highlight.SetFor("Normal")
+    else
+        self.global_statusline_click_zones = {}
     end
 
     if PopupMenu.visible() then

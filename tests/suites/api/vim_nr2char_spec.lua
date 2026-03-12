@@ -7,6 +7,13 @@ return {
         local Assert = ctx.assert
 
         local result = Assert.eval_block(backend, "nr2char parity", [[
+            local function err_string(err)
+                if type(err) == "table" and type(err.toString) == "function" then
+                    return err:toString()
+                end
+                return tostring(err or "")
+            end
+
             local function bytes(s)
                 return { string.byte(s, 1, #s) }
             end
@@ -23,7 +30,7 @@ return {
                 unicode_utf8 = bytes(vim.fn.nr2char(300, true)),
                 extended = bytes(vim.fn.nr2char(0x110000)),
                 string_number = bytes(vim.fn.nr2char("0x41")),
-                negative = { ok_negative, tostring(err_negative or "") },
+                negative = { ok_negative, err_string(err_negative) },
             }
         ]])
 
