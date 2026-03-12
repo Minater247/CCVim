@@ -1041,7 +1041,7 @@ function Builtins.fnamemodify(fname, mods, R)
         ::continue::
     end
 
-    return out:gsub("//+", "/")
+    return (out:gsub("//+", "/"))
 end
 
 function Builtins.stdpath(type)

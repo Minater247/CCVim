@@ -2443,6 +2443,7 @@ function api.nvim_cmd(cmd, opts)
         lname = name:lower(),
         qargs = argstr,
         bang = not not cmd.bang,
+        structured = true,
         ws_args = ws_args,
         count = cmd.count,
         range = cmd.range,

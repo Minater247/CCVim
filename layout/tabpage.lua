@@ -67,7 +67,7 @@ end
 
 local function default_tab_label(tp)
     local win = tab_current_window(tp)
-    local name = win.buffer.name
+    local name = win.buffer.name or ""
     local tail = name:match("[^/\\]+$") or name
     if tail == "" then
         tail = "[No Name]"

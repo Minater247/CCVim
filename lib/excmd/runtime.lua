@@ -1548,6 +1548,7 @@ function Runtime.new(init_state, init_opts)
 
     local ScriptSourceMod = loadModule("lib.scriptsource")
     local Buffer = loadModule("layout.buffer")
+    local Tabpage = loadModule("layout.tabpage")
     local VimFn = loadModule("lib.luaapi.fn")
     local VimFs = loadModule("lib.luaapi.fs")
     local Tags = loadModule("lib.tags")
@@ -1570,6 +1571,10 @@ function Runtime.new(init_state, init_opts)
 
     local function _window_mod()
         return Window
+    end
+
+    local function _tabpage_mod()
+        return Tabpage
     end
 
     local function _vimfn()
@@ -1887,7 +1892,7 @@ function Runtime.new(init_state, init_opts)
         local raw_cmd, raw_l1, raw_l2, has_raw_range = _cursor_parse_head(cursor, win)
         local name = tostring((spec and (spec.dispatch or spec.lname or spec.name)) or raw_cmd or ""):lower()
         local cmd_spec = get_command_spec(name)
-        local addr_mode = cmd_spec and cmd_spec.addr
+        local addr_mode = cmd_spec and (((spec and spec.structured) and cmd_spec.structured_addr) or cmd_spec.addr)
         local ctx = {
             raw_cmd = raw_cmd,
             line1 = nil,
@@ -1978,6 +1983,56 @@ function Runtime.new(init_state, init_opts)
             return nil, Error(16)
         end
         return target, nil
+    end
+
+    local function _sorted_tabnrs()
+        local ids = {}
+        for tabnr, _ in pairs(tabpages) do
+            ids[#ids + 1] = tabnr
+        end
+        table.sort(ids)
+        return ids
+    end
+
+    local function _tab_switch_target(raw, step)
+        local ids = _sorted_tabnrs()
+        local text = strip(raw)
+        if text == "" then
+            local current_idx = 1
+            for i = 1, #ids do
+                if ids[i] == curtp then
+                    current_idx = i
+                    break
+                end
+            end
+            return ids[((current_idx - 1 + step) % #ids) + 1], nil
+        end
+
+        if text == "$" then
+            return ids[#ids], nil
+        end
+
+        local target = tonumber(text)
+        if not target or not tabpages[target] then
+            return nil, Error(475, text)
+        end
+        return target, nil
+    end
+
+    local function _switch_to_tab(target)
+        if target == curtp then
+            return true
+        end
+        if not tabpages[target] then
+            return Error(475, tostring(target))
+        end
+
+        tabpages[curtp].lastwin = curwin
+        curtp = target
+        enterWindow(tabpages[curtp].lastwin or tabpages[curtp].windows[1].winnr)
+        what_redraw["all"] = true
+        need_redraw = true
+        return true
     end
 
     local function _delete_suffix_mode(raw_cmd)
@@ -4760,8 +4815,16 @@ function Runtime.new(init_state, init_opts)
             return true
         elseif cmd == "buffer" then
             local args = split_ws(argstr)
-            if #args ~= 1 then error(Error(474, "Argument required")) end
             local target = args[1]
+            if target == nil and cmdctx.count ~= nil then
+                target = tostring(cmdctx.count)
+            end
+            if target == nil then
+                return true
+            end
+            if #args > 1 then
+                error(Error(474, "Argument required"))
+            end
             local win = windows[curwin]
             local curbuf = win.buffer
             local target_buf = nil
@@ -5000,6 +5063,73 @@ function Runtime.new(init_state, init_opts)
             if not found then error(err) end
             local rv = _edit_buffer_name(windows[curwin], found, bang)
             if rv ~= true then error(rv) end
+            return true
+        elseif cmd == "tabnew" or cmd == "tabedit" then
+            local refwin = windows[curwin]
+            local target_name = strip(argstr)
+            local newbuf = _buffer_mod()(true, false)
+            newbuf.name = target_name
+            if newbuf.opts and newbuf.opts.buflisted then
+                Autocmd.Run("BufAdd", { bufnr = newbuf.bufnr, bufname = newbuf.name })
+            end
+            if target_name ~= "" then
+                newbuf:Load(true)
+            else
+                local ff = Options.get("fileformat", refwin, newbuf)
+                local ffs = _csv_first(Options.get("fileformats", refwin, refwin.buffer))
+                if ffs ~= "" then
+                    ff = ffs
+                end
+                newbuf.opts.fileformat = ff
+                newbuf:Load(true)
+            end
+
+            local newwin = _window_mod()(newbuf, refwin)
+            tabpages[curtp].lastwin = curwin
+            _tabpage_mod()(newwin)
+            enterWindow(newwin.winnr)
+            newwin:cursorSet(1, 1)
+            newwin:mark_redraw()
+            what_redraw["all"] = true
+            need_redraw = true
+            return true
+        elseif cmd == "tabnext" then
+            local target, err = _tab_switch_target(argstr, 1)
+            if not target then error(err) end
+            local ok = _switch_to_tab(target)
+            if ok ~= true then error(ok) end
+            return true
+        elseif cmd == "tabprevious" then
+            local target, err = _tab_switch_target(argstr, -1)
+            if not target then error(err) end
+            local ok = _switch_to_tab(target)
+            if ok ~= true then error(ok) end
+            return true
+        elseif cmd == "tabclose" then
+            local text = strip(argstr)
+            local target = curtp
+            if text ~= "" then
+                if text == "$" then
+                    target = _sorted_tabnrs()[#_sorted_tabnrs()]
+                else
+                    target = tonumber(text)
+                end
+                if not target or not tabpages[target] then
+                    error(Error(475, text))
+                end
+            end
+            if _sorted_tabnrs()[2] == nil then
+                error(Error(784))
+            end
+
+            while tabpages[target] do
+                local tp = tabpages[target]
+                local win = tp.windows[1]
+                local ok = tp:close(win, bang, nil, "autowriteall")
+                if ok ~= true then
+                    error(ok)
+                end
+            end
             return true
         elseif cmd == "drop" then
             local args = split_ws(argstr)

@@ -2021,9 +2021,22 @@ function MockEnv.setup(opts)
     end
 
     if opts.bootstrap_default_editor ~= false and not globals.windows[1] then
-        local b = mock.create_buffer(1, "/tmp/current.txt", { "" }, { refcount = 1 })
-        local w = mock.create_window(1, b, { cursorx = 1, cursory = 1 })
-        mock.create_tabpage(1, { w }, {})
+        local Buffer = load_module("layout.buffer")
+        local Window = load_module("layout.window")
+        local Tabpage = load_module("layout.tabpage")
+
+        local b = Buffer(true, false, true)
+        b.bufnr = 1
+        globals.buffers[1] = b
+
+        local w = Window(b)
+        w.winnr = 1
+        globals.windows[1] = w
+
+        local tp = Tabpage(w)
+        tp.tabnr = 1
+        globals.tabpages[1] = tp
+
         globals.curwin = 1
         globals.curtp = 1
     end

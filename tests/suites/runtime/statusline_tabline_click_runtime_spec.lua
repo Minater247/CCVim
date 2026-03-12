@@ -39,7 +39,6 @@ return {
 
                 local win1 = G.windows[G.curwin]
                 local buf1 = win1.buffer
-                buf1.name = "/tmp/current.txt"
                 buf1.lines = { "one", "two", "three" }
                 buf1.loaded = true
                 buf1.refcount = 1
@@ -57,6 +56,15 @@ return {
                 G.tabpages[G.curtp]:render()
 
                 local default_row = row_text(1)
+                Assert.truthy(
+                    "default tabline renders [No Name] for unnamed current buffer",
+                    default_row:find("%[No Name%]", 1) ~= nil,
+                    default_row
+                )
+
+                buf1.name = "/tmp/current.txt"
+                G.tabpages[G.curtp]:render()
+                default_row = row_text(1)
                 Assert.truthy(
                     "default tabline renders current buffer tail",
                     default_row:find("current.txt", 1, true) ~= nil,
