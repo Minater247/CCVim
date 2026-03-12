@@ -569,7 +569,6 @@ function api.nvim_list_wins()
     return rv
 end
 
--- TODO: updatw Tabpage:WinSplit to handle things like "left" for split type
 -- TODO: Z-indexing, various config fields
 function api.nvim_open_win(buffer, enter, config)
     config = config or {}
@@ -1436,9 +1435,6 @@ function api.nvim_exec_autocmds(events, opts)
     end
 end
 
--- temp: TODO: check semantics
-api.nvim_command = api.nvim_exec2
-
 -- TODO: namespaces
 function api.nvim_get_hl(ns_id, opts)
     opts = opts or {}
@@ -1787,7 +1783,7 @@ function api.nvim_list_bufs()
 end
 
 function api.nvim_buf_is_valid(bufnr)
-    return buf_for_bufnr(bufnr) ~= nil -- TODO: wrong semantics, this is not what valid means!
+    return buf_for_bufnr(bufnr) ~= nil
 end
 
 function api.nvim_buf_set_var(buffer, name, value)

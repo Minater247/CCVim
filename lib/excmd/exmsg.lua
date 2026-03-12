@@ -482,7 +482,6 @@ local function draw_press_enter()
         CmdRead.drawCmdline()
     end
 
-    -- May or may not work reliably to fix redraw. TODO: test this
     what_redraw["commandline"] = false
 end
 

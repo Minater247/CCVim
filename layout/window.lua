@@ -2828,9 +2828,6 @@ function Window:wincmd(command, count, opts)
             while self:resizeWidth(1) do end
         end
     elseif command == "H" then
-        -- TODO: Create functions to set up a mock tree and
-        --       check if this works before committing to it
-
         local tabp = tabpages[curtp]
         local win = windows[curwin]
 
