@@ -53,9 +53,7 @@ Please try your config and see if it works! If anything behaves even slightly di
 If you want to help with development, contributions are welcomed! I will be working on documenting the code properly in the near future as the codebase begins to stabilize.
 
 ## Planned Projects
-- Improve syntax highlighting across more complex files - vimscript, markdown, latex
 - Rewrite of UI interfaces to allow ports to OpenComputers of native Lua
 - Implementation of an LSP for completion or tooling analysis
 - Integration with existing `git` repository handlers for ComputerCraft
-- Automatic palette generation on colorscheme load
 - Vimscript JIT output optimization
