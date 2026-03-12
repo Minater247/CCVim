@@ -43,6 +43,8 @@ return {
         assert_match("lookahead negative", R, "bar", "\\%(foo\\)\\@!bar", true, 1, 3)
         assert_match("lookbehind positive", R, "foobar", "\\%(foo\\)\\@<=bar", true, 4, 6)
         assert_match("lookbehind negative", R, "xxbar", "\\%(foo\\)\\@<!bar", true, 3, 5)
+        assert_match("counted lookbehind positive", R, "hi! link", "\\a\\@1<=!", true, 3, 3)
+        assert_match("counted lookbehind width", R, "end do label", "\\%(end\\s*do\\s\\+\\)\\@11<=label", true, 8, 12)
 
         assert_match("zs/ze span", R, "foobarqux", "foo\\zsbar\\zequx", true, 4, 6)
 

@@ -257,6 +257,29 @@ return {
             end
 
             do
+                local ctx_state = mk_ctx({
+                    "region Comment start=/./ end=/$/ contains=String,Structure",
+                    "match String /foo=/he=e-1 nextgroup=Structure contained",
+                    "match Structure /bar/ contained",
+                })
+                local buf = mk_buf({ "foo=bar" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("he=e-1 match still highlights body", fg_at(blit, 1), string_fg)
+                Assert.eq("he=e-1 leaves separator to container", fg_at(blit, 4), comment_fg)
+                Assert.eq("nextgroup after trimmed suffix still matches", fg_at(blit, 5), structure_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    'match Comment /\\s".*$/lc=1 extend',
+                    'region String start=/[^a-zA-Z>\\\\@]"/lc=1 end=/"/ keepend extend',
+                })
+                local buf = mk_buf({ 'foo " bar' })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("extend match beats same-start region", fg_at(blit, 5), comment_fg)
+            end
+
+            do
                 local ctx_state = mk_ctx({ "region Comment start=/\\/\\*/ end=/\\*\\//" })
                 local buf = mk_buf({ "/* one", "two */", "tail" })
 

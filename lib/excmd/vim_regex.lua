@@ -1263,24 +1263,39 @@ local function vm_tokenize(pat)
             end
 
             if e == "@" then
-                local e2 = peek(2)
+                local j = i + 2
+                local digits = ""
+                while j <= n do
+                    local dj = pat:sub(j, j)
+                    if not dj:match("%d") then
+                        break
+                    end
+                    digits = digits .. dj
+                    j = j + 1
+                end
+                local limit = (digits ~= "") and tonumber(digits) or nil
+                local e2 = pat:sub(j, j)
                 if e2 == "=" then
-                    add("LOOK", "ahead_pos")
-                    i = i + 3
+                    ntoks = ntoks + 1
+                    toks[ntoks] = { t = "LOOK", v = "ahead_pos", limit = limit }
+                    i = j + 1
                     goto cont
                 elseif e2 == "!" then
-                    add("LOOK", "ahead_neg")
-                    i = i + 3
+                    ntoks = ntoks + 1
+                    toks[ntoks] = { t = "LOOK", v = "ahead_neg", limit = limit }
+                    i = j + 1
                     goto cont
                 elseif e2 == "<" then
-                    local e3 = peek(3)
+                    local e3 = pat:sub(j + 1, j + 1)
                     if e3 == "=" then
-                        add("LOOK", "behind_pos")
-                        i = i + 4
+                        ntoks = ntoks + 1
+                        toks[ntoks] = { t = "LOOK", v = "behind_pos", limit = limit }
+                        i = j + 2
                         goto cont
                     elseif e3 == "!" then
-                        add("LOOK", "behind_neg")
-                        i = i + 4
+                        ntoks = ntoks + 1
+                        toks[ntoks] = { t = "LOOK", v = "behind_neg", limit = limit }
+                        i = j + 2
                         goto cont
                     end
                 end
@@ -1584,6 +1599,7 @@ local function vm_parse(tokens)
                 atom = {
                     kind = "LOOK",
                     look = t.v,
+                    limit = t.limit,
                     sub = atom,
                 }
             else
@@ -2044,10 +2060,13 @@ local function vm_make_matcher(ast, hints)
             return ok
         end
 
-        local function check_lookbehind(sub, st)
+        local function check_lookbehind(sub, st, limit)
             local mn, mx = vm_bounds(sub)
             if mn == nil then mn = 0 end
             local max_back = mx
+            if limit ~= nil then
+                max_back = limit
+            end
             if max_back == nil then
                 max_back = VM_LOOKBEHIND_MAX
             end
@@ -2260,9 +2279,9 @@ local function vm_make_matcher(ast, hints)
                 elseif node.look == "ahead_neg" then
                     passed = not check_lookahead(node.sub, st)
                 elseif node.look == "behind_pos" then
-                    passed = check_lookbehind(node.sub, st)
+                    passed = check_lookbehind(node.sub, st, node.limit)
                 else
-                    passed = not check_lookbehind(node.sub, st)
+                    passed = not check_lookbehind(node.sub, st, node.limit)
                 end
 
                 if passed then
@@ -2621,6 +2640,9 @@ local function pattern_needs_vm(pat)
         if pat:find(VM_TRIGGER_LITS[i], 1, true) then
             return true
         end
+    end
+    if pat:find("\\@%d+<=") or pat:find("\\@%d+<!") or pat:find("\\@%d+=") or pat:find("\\@%d+!") then
+        return true
     end
     return false
 end

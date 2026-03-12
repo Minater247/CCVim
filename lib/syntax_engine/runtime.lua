@@ -62,7 +62,7 @@ local function is_whitespace_char(ch)
 end
 
 local function is_blank_line(line)
-    return (line or ""):match("^%s*$") ~= nil
+    return line:match("^%s*$") ~= nil
 end
 
 local function buffer_line_count(buffer)
@@ -175,7 +175,7 @@ end
 
 local function normalize_case_prefix(pattern, default_ignore_case)
     local patt = tostring(pattern or "")
-    local ignore_case = default_ignore_case and true or false
+    local ignore_case = default_ignore_case
     local prefixes = {}
     local i = 1
 
@@ -265,7 +265,7 @@ end
 
 local function state_hash(state)
     local parts = {}
-    local stack = state.stack or {}
+    local stack = state.stack
     for i = 1, #stack do
         parts[#parts + 1] = stack[i].hash_token
     end
@@ -276,25 +276,27 @@ local function state_hash(state)
     return table.concat(parts, "|")
 end
 
-local function make_pending_next(bits, skipwhite, skipnl, skipempty)
+local function make_pending_next(bits, skipwhite, skipnl, skipempty, hidden_until)
     local p = {
         bits = bits,
-        skipwhite = skipwhite and true or false,
-        skipnl = skipnl and true or false,
-        skipempty = skipempty and true or false,
+        skipwhite = skipwhite,
+        skipnl = skipnl,
+        skipempty = skipempty,
+        hidden_until = hidden_until,
     }
-    p.hash_token = ("n.%s.%d.%d.%d"):format(
+    p.hash_token = ("n.%s.%d.%d.%d.%s"):format(
         tostring(bits),
         p.skipwhite and 1 or 0,
         p.skipnl and 1 or 0,
-        p.skipempty and 1 or 0
+        p.skipempty and 1 or 0,
+        tostring(hidden_until or "")
     )
     return p
 end
 
 local function clone_pending_next(p)
     if not p then return nil end
-    return make_pending_next(p.bits, p.skipwhite, p.skipnl, p.skipempty)
+    return make_pending_next(p.bits, p.skipwhite, p.skipnl, p.skipempty, p.hidden_until)
 end
 
 local function clone_state(state)
@@ -302,7 +304,7 @@ local function clone_state(state)
         stack = {},
         pending_next = clone_pending_next(state.pending_next),
     }
-    local stack = state.stack or {}
+    local stack = state.stack
     for i = 1, #stack do
         out.stack[i] = stack[i]
     end
@@ -376,7 +378,7 @@ local function build_compiled_spec(raw_pattern, ignore_case, attrs, matchgroup, 
         offsets = offsets,
         lc = lc,
         matchgroup = matchgroup,
-        excludenl = excludenl and true or false,
+        excludenl = excludenl,
         profile_key = profile and profile.key,
         profile_name = profile and profile.name,
     }
@@ -430,7 +432,7 @@ local function build_plan(ir)
         has_ignore_case = false,
         iskeyword = parse_iskeyword(ir.syntax_iskeyword),
         has_items = false,
-        sync = ir.sync or {},
+        sync = ir.sync,
         _sync_linecont = nil,
     }
 
@@ -446,7 +448,7 @@ local function build_plan(ir)
         bucket[#bucket + 1] = item
     end
 
-    for i = 1, #(ir.item_order or {}) do
+    for i = 1, #ir.item_order do
         local item_id = ir.item_order[i]
         local src = ir.items[item_id]
         if src then
@@ -455,9 +457,9 @@ local function build_plan(ir)
                 kind = src.kind,
                 group_id = src.group_id,
                 group_name = src.group,
-                ignore_case = src.ignore_case and true or false,
-                options = src.options or { flags = {}, attrs = {}, unknown = {} },
-                payload = src.payload or {},
+                ignore_case = src.ignore_case,
+                options = src.options,
+                payload = src.payload,
                 order = i,
             }
             if item.ignore_case then
@@ -465,7 +467,7 @@ local function build_plan(ir)
             end
 
             if item.kind == "keyword" then
-                local kw = tostring(item.payload.keyword or "")
+                local kw = tostring(item.payload.keyword)
                 item.keyword = kw
                 item.keyword_lower = kw:lower()
                 item.keyword_len = #kw
@@ -494,9 +496,9 @@ local function build_plan(ir)
                 item.end_specs = {}
                 item.needs_external_caps = false
 
-                local starts = item.payload.start or {}
+                local starts = item.payload.start
                 for s = 1, #starts do
-                    local spec = starts[s] or {}
+                    local spec = starts[s]
                     item.start_specs[#item.start_specs + 1] = build_compiled_spec(
                         spec.pattern,
                         item.ignore_case,
@@ -507,9 +509,9 @@ local function build_plan(ir)
                     )
                 end
 
-                local skips = item.payload.skip or {}
+                local skips = item.payload.skip
                 for s = 1, #skips do
-                    local spec = skips[s] or {}
+                    local spec = skips[s]
                     item.skip_specs[#item.skip_specs + 1] = build_compiled_spec(
                         spec.pattern,
                         item.ignore_case,
@@ -520,9 +522,9 @@ local function build_plan(ir)
                     )
                 end
 
-                local ends = item.payload["end"] or {}
+                local ends = item.payload["end"]
                 for s = 1, #ends do
-                    local spec = ends[s] or {}
+                    local spec = ends[s]
                     local built = build_compiled_spec(
                         spec.pattern,
                         item.ignore_case,
@@ -721,16 +723,29 @@ local function pick_earliest_event(current, candidate)
     end
 
     if nk and ck then
-        local ci = current.item and current.item.ignore_case or false
-        local ni = candidate.item and candidate.item.ignore_case or false
+        local ci = current.item.ignore_case
+        local ni = candidate.item.ignore_case
         if ci ~= ni then
             -- For equal-start keywords, case-sensitive wins over ignore-case.
             return (not ni) and candidate or current
         end
     end
 
-    local co = current.item and current.item.order or math.huge
-    local no = candidate.item and candidate.item.order or math.huge
+    local ce = current.item.options.flags.extend
+    local ne = candidate.item.options.flags.extend
+    if ce or ne then
+        local cr = current.raw_end or current.match_end or current.hi_end or 0
+        local nr = candidate.raw_end or candidate.match_end or candidate.hi_end or 0
+        if nr ~= cr then
+            return (nr > cr) and candidate or current
+        end
+    end
+    if ne ~= ce then
+        return ne and candidate or current
+    end
+
+    local co = current.item.order
+    local no = candidate.item.order
     -- For equal starts, later-defined items take precedence.
     if no > co then
         return candidate
@@ -815,7 +830,7 @@ local function non_keyword_candidates(plan, top, pending_next)
     for i = 1, #plan.non_keyword_order do
         local item_id = plan.non_keyword_order[i]
         local item = plan.items[item_id]
-        if item and container_allows(item, top) then
+        if container_allows(item, top) then
             out[#out + 1] = item_id
         end
     end
@@ -927,15 +942,10 @@ local function find_best_start_event(plan, state, line, lower_line, pos, anchore
     local candidate_ids = non_keyword_candidates(plan, top, pending_next)
     for i = #candidate_ids, 1, -1 do
         local item = plan.items[candidate_ids[i]]
-        if item then
-            if allows_by_nextgroup(item, pending_next) then
-                local candidate = find_match_or_region_event(item, line, lower_line, pos, anchored)
-                if candidate and candidate.match_start <= syn_limit then
-                    best = pick_earliest_event(best, candidate)
-                    if candidate.match_start == pos then
-                        return candidate
-                    end
-                end
+        if allows_by_nextgroup(item, pending_next) then
+            local candidate = find_match_or_region_event(item, line, lower_line, pos, anchored)
+            if candidate and candidate.match_start <= syn_limit then
+                best = pick_earliest_event(best, candidate)
             end
         end
     end
@@ -985,12 +995,12 @@ local function find_region_end_event(entry, line, lower_line, pos, syn_limit)
 
     local search_from = pos
     while search_from <= syn_limit do
-        local fin = earliest_in_specs(entry.end_specs or {}, search_from)
+        local fin = earliest_in_specs(entry.end_specs, search_from)
         if not fin then
             return nil
         end
 
-        local skip = earliest_in_specs(entry.skip_specs or {}, search_from)
+        local skip = earliest_in_specs(entry.skip_specs, search_from)
         if skip and skip.match_start <= fin.match_start then
             local nxt = math.max(skip.raw_end + 1, skip.match_end + 1, search_from + 1)
             if nxt <= search_from then
@@ -1009,7 +1019,7 @@ local function find_region_end_event(entry, line, lower_line, pos, syn_limit)
 end
 
 local function resolve_resync_start(plan, buffer, target_line)
-    local sync = plan.sync or {}
+    local sync = plan.sync
     if sync.fromstart then
         return 1
     end
@@ -1041,7 +1051,7 @@ local function resolve_resync_start(plan, buffer, target_line)
         start = probe
     end
 
-    local items = sync.items or {}
+    local items = sync.items
     if #items > 0 then
         local anchor = nil
         for ln = target_line, start, -1 do
@@ -1052,11 +1062,11 @@ local function resolve_resync_start(plan, buffer, target_line)
                 local patt = nil
                 if it.kind == "sync_match" then
                     patt = it.pattern
-                elseif it.kind == "sync_region" and it.patterns and it.patterns.start and it.patterns.start[1] then
+                elseif it.kind == "sync_region" and it.patterns.start[1] then
                     patt = it.patterns.start[1].pattern
                 end
                 if patt and patt ~= "" then
-                    local spec = build_compiled_spec(patt, false, it.options and it.options.attrs, nil, false)
+                    local spec = build_compiled_spec(patt, false, it.options.attrs, nil, false)
                     local ev = find_in_spec(text, low, 1, spec, false)
                     if ev then
                         if it.sync_point == "groupthere" then
@@ -1119,20 +1129,19 @@ local function line_blit_from_spans(plan, line, spans)
     end
 
     local groups = {}
-    local assigned = 0
-    for i = #spans, 1, -1 do
+    for i = 1, len do
+        groups[i] = nil
+    end
+
+    for i = 1, #spans do
         local span = spans[i]
-        local s = math.clamp(span.s or 1, 1, len)
-        local e = math.clamp(span.e or len, 1, len)
-        if e >= s then
+        local raw_s = span.s or 1
+        local raw_e = span.e or len
+        if raw_e >= raw_s then
+            local s = math.clamp(raw_s, 1, len)
+            local e = math.clamp(raw_e, 1, len)
             for j = s, e do
-                if groups[j] == nil then
-                    groups[j] = span.group_id
-                    assigned = assigned + 1
-                end
-            end
-            if assigned >= len then
-                break
+                groups[j] = span.group_id
             end
         end
     end
@@ -1307,23 +1316,41 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
 end
 
 local function region_start_has_span_marker(event)
-    local patt = event and event.spec and event.spec.pattern or ""
+    local patt = event.spec.pattern
     if patt:find("\\zs", 1, true) or patt:find("\\ze", 1, true) then
         return true
     end
     return false
 end
 
+local function event_resume_end(event)
+    local resume_end = event.match_end
+    local hi_end = event.hi_end
+    if hi_end and hi_end < resume_end then
+        resume_end = hi_end
+    end
+    return resume_end
+end
+
+local function event_hidden_suffix_end(event)
+    local match_end = event.match_end
+    local hi_end = event.hi_end or match_end
+    if hi_end < match_end then
+        return match_end
+    end
+    return nil
+end
+
 local function region_start_advance(event, cursor_pos)
     if region_start_has_span_marker(event) then
         return math.max(event.match_start + 1, cursor_pos + 1)
     end
-    return math.max(event.raw_end + 1, event.match_end + 1, cursor_pos + 1)
+    return math.max(event_resume_end(event) + 1, cursor_pos + 1)
 end
 
-local function paint_anchored_contained_start(plan, state, line, lower_line, start_pos, max_col, spans)
+local function paint_anchored_contained_start(plan, state, line, lower_line, start_pos, start_spec, max_col, spans)
     local top = state.stack[#state.stack]
-    if not top or top.transparent or not top.contains_bits then
+    if top.transparent or not top.contains_bits or get_matchgroup_name(start_spec) ~= nil then
         return nil
     end
 
@@ -1341,7 +1368,7 @@ local function paint_anchored_contained_start(plan, state, line, lower_line, sta
     end
 
     local item = anchored.item
-    if item and not item.options.flags.transparent then
+    if not item.options.flags.transparent then
         local group_id = item.group_id
         local mgref = resolved_matchgroup_ref(plan, anchored.spec)
         if mgref then group_id = mgref end
@@ -1361,7 +1388,7 @@ local function paint_anchored_contained_start(plan, state, line, lower_line, sta
         end
     end
 
-    if item and item.kind == "match" then
+    if item.kind == "match" then
         local rs = math.clamp(anchored.match_start, 1, max_col)
         local re = math.clamp(anchored.match_end, 0, max_col)
         if re >= rs then
@@ -1370,16 +1397,17 @@ local function paint_anchored_contained_start(plan, state, line, lower_line, sta
     end
 
     state.pending_next = nil
-    if item and item.options.nextgroup_bits then
+    if item.options.nextgroup_bits then
         state.pending_next = make_pending_next(
             item.options.nextgroup_bits,
             item.options.flags.skipwhite or false,
             item.options.flags.skipnl or false,
-            item.options.flags.skipempty or false
+            item.options.flags.skipempty or false,
+            event_hidden_suffix_end(anchored)
         )
     end
 
-    return math.max(anchored.match_end + 1, start_pos + 1)
+    return math.max(event_resume_end(anchored) + 1, start_pos + 1)
 end
 
 local function highlight_line(plan, state_in, line, syn_limit)
@@ -1419,19 +1447,20 @@ local function highlight_line(plan, state_in, line, syn_limit)
             }
         end
 
-        if popped.item and popped.item.options and popped.item.options.nextgroup_bits then
+        if popped.item.options.nextgroup_bits then
             state.pending_next = make_pending_next(
                 popped.item.options.nextgroup_bits,
                 popped.item.options.flags.skipwhite or false,
                 popped.item.options.flags.skipnl or false,
-                popped.item.options.flags.skipempty or false
+                popped.item.options.flags.skipempty or false,
+                event_hidden_suffix_end(event)
             )
         end
 
         -- Continue from the logical end of the item (offset-adjusted match end),
         -- not the raw regex end. This is required for me=/re= offsets and
         -- nextgroup hand-off at adjusted boundaries (e.g. Lua "if ... then").
-        local next_from = (event.match_end or cursor_pos) + 1
+        local next_from = event_resume_end(event) + 1
         if next_from < cursor_pos then
             next_from = cursor_pos
         end
@@ -1480,10 +1509,11 @@ local function highlight_line(plan, state_in, line, syn_limit)
                             item.options.nextgroup_bits,
                             item.options.flags.skipwhite or false,
                             item.options.flags.skipnl or false,
-                            item.options.flags.skipempty or false
+                            item.options.flags.skipempty or false,
+                            event_hidden_suffix_end(anchored)
                         )
                     end
-                    local nxt = math.max(anchored.match_end + 1, pos + 1)
+                    local nxt = math.max(event_resume_end(anchored) + 1, pos + 1)
                     pos = nxt
                     goto continue
                 else
@@ -1501,8 +1531,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         cchar = item.options.cchar,
                         fold = item.options.flags.fold or false,
                         display = item.options.flags.display or false,
-                        end_specs = item.end_specs or {},
-                        skip_specs = item.skip_specs or {},
+                        end_specs = item.end_specs,
+                        skip_specs = item.skip_specs,
                         ext_captures = anchored.ext_captures,
                         ext_key = ext_captures_key(anchored.ext_captures),
                     }
@@ -1532,6 +1562,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         line,
                         lower_line,
                         anchored.match_start,
+                        anchored.spec,
                         max_col,
                         spans
                     )
@@ -1542,6 +1573,13 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     end
                     goto continue
                 end
+            elseif pending.hidden_until and pos <= pending.hidden_until then
+                local gid = active_visible_group(state)
+                if gid then
+                    spans[#spans + 1] = { s = pos, e = pos, group_id = gid }
+                end
+                pos = pos + 1
+                goto continue
             else
                 state.pending_next = nil
             end
@@ -1602,8 +1640,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     cchar = item.options.cchar,
                     fold = item.options.flags.fold or false,
                     display = item.options.flags.display or false,
-                    end_specs = item.end_specs or {},
-                    skip_specs = item.skip_specs or {},
+                    end_specs = item.end_specs,
+                    skip_specs = item.skip_specs,
                     ext_captures = event.ext_captures,
                     ext_key = ext_captures_key(event.ext_captures),
                 }
@@ -1632,6 +1670,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     line,
                     lower_line,
                     event.match_start,
+                    event.spec,
                     max_col,
                     spans
                 )
@@ -1670,10 +1709,11 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         item.options.nextgroup_bits,
                         item.options.flags.skipwhite or false,
                         item.options.flags.skipnl or false,
-                        item.options.flags.skipempty or false
+                        item.options.flags.skipempty or false,
+                        event_hidden_suffix_end(event)
                     )
                 end
-                pos = math.max(event.match_end + 1, pos + 1)
+                pos = math.max(event_resume_end(event) + 1, pos + 1)
             end
         end
 
@@ -1685,7 +1725,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
     local eol_limit = max_col + 1
     while true do
         local top = state.stack[#state.stack]
-        if not top then
+        if top == nil then
             break
         end
         local end_ev = find_region_end_event(top, line, lower_line, eol_limit, eol_limit)
@@ -1697,12 +1737,13 @@ local function highlight_line(plan, state_in, line, syn_limit)
 
     while #state.stack > 0 and state.stack[#state.stack].oneline do
         local popped = table.remove(state.stack)
-        if popped and popped.item and popped.item.options and popped.item.options.nextgroup_bits then
+        if popped.item.options.nextgroup_bits then
             state.pending_next = make_pending_next(
                 popped.item.options.nextgroup_bits,
                 popped.item.options.flags.skipwhite or false,
                 popped.item.options.flags.skipnl or false,
-                popped.item.options.flags.skipempty or false
+                popped.item.options.flags.skipempty or false,
+                nil
             )
         end
     end
