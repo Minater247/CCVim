@@ -2743,7 +2743,11 @@ local function find_in_specs(hay, specs, start_pos)
         if spec.plain ~= nil then
             s, e = str_find(hay, spec.plain, from, true)
         else
-            s, e = str_find(hay, spec.pat, from)
+            if spec.pat:sub(1, 1) == "^" and from > 1 then
+                s, e = nil, nil
+            else
+                s, e = str_find(hay, spec.pat, from)
+            end
         end
         if s then
             if not best_s or s < best_s then
@@ -2893,6 +2897,9 @@ function R.find_compiled(text, compiled, case_sensitive, start_pos)
             if single.plain ~= nil then
                 return str_find(hay, single.plain, from, true)
             end
+            if single.pat:sub(1, 1) == "^" and from > 1 then
+                return nil, nil
+            end
             return str_find(hay, single.pat, from)
         end
         return find_in_specs(hay, get_specs(compiled), from)
@@ -2913,6 +2920,9 @@ function R.find_compiled(text, compiled, case_sensitive, start_pos)
     if f_single then
         if f_single.plain ~= nil then
             return str_find(lowered, f_single.plain, from, true)
+        end
+        if f_single.pat:sub(1, 1) == "^" and from > 1 then
+            return nil, nil
         end
         return str_find(lowered, f_single.pat, from)
     end

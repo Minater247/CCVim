@@ -363,7 +363,6 @@ local function parse_region_body(tokens, from_idx, options)
 
         if key == "matchgroup" then
             active_matchgroup = value
-            options.matchgroup = value
         elseif tok:lower() == "excludenl" then
             options.flags.excludenl = true
             pending_excludenl = true

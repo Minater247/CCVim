@@ -151,6 +151,13 @@ return {
             end
 
             do
+                local parsed = Parser.parse("region Comment start=/</ matchgroup=Error end=/>/ matchgroup=Structure end=/!/ ")
+                Assert.eq("region start before matchgroup keeps plain delimiter", parsed.patterns.start[1].matchgroup, nil)
+                Assert.eq("first region end captures first matchgroup", parsed.patterns["end"][1].matchgroup, "Error")
+                Assert.eq("second region end captures updated matchgroup", parsed.patterns["end"][2].matchgroup, "Structure")
+            end
+
+            do
                 local ctx_state = mk_ctx({ "match Comment +[ab+]+" })
                 local buf = mk_buf({ "+" })
                 local ok_blit, blit = pcall(Runtime.line_to_blit, ctx_state, buf, 1)
@@ -187,6 +194,33 @@ return {
                 Assert.eq("region start quote", fg_at(blit, 1), comment_fg)
                 Assert.eq("contained inside region", fg_at(blit, 2), string_fg)
                 Assert.eq("contained inside region tail", fg_at(blit, 6), string_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "region Comment start=/\\w/ end=/$/ contains=String",
+                    "match String /\\w\\+/ contained",
+                })
+                local buf = mk_buf({ "word" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("contained match can start at region start", fg_at(blit, 1), string_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({ "match String /\\cfoo/" })
+                local buf = mk_buf({ "FOO" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("inline \\c enables ignore-case", fg_at(blit, 1), string_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "case ignore",
+                    "match String /\\Cfoo/",
+                })
+                local buf = mk_buf({ "FOO" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("inline \\C restores case-sensitive match", fg_at(blit, 1), normal_fg)
             end
 
             do
@@ -305,6 +339,16 @@ return {
                 local blit = Runtime.line_to_blit(ctx_state, buf, 1)
                 Assert.eq("transparent plain start stays Normal", fg_at(blit, 1), normal_fg)
                 Assert.eq("transparent plain end stays Normal", fg_at(blit, 2), normal_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "region Comment start=/</ matchgroup=Error end=/>/",
+                })
+                local buf = mk_buf({ "<x>" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("late region matchgroup does not repaint start delimiter", fg_at(blit, 1), comment_fg)
+                Assert.eq("late region matchgroup still paints end delimiter", fg_at(blit, 3), error_fg)
             end
         end)
 

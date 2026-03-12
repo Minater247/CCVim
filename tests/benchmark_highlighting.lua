@@ -33,6 +33,27 @@ local function normalize_path(path)
     return (abs and "/" or "") .. table.concat(out, "/")
 end
 
+local function cwd()
+    local handle = io.popen("pwd", "r")
+    if not handle then
+        return "."
+    end
+    local out = handle:read("*l") or "."
+    handle:close()
+    return normalize_path(out)
+end
+
+local function absolute_path(path)
+    local p = tostring(path or "")
+    if p == "" then
+        return cwd()
+    end
+    if starts_with(p, "/") then
+        return normalize_path(p)
+    end
+    return normalize_path(cwd() .. "/" .. p)
+end
+
 local function dirname(path)
     local d = tostring(path or ""):match("^(.*)/[^/]*$")
     if d and d ~= "" then
@@ -105,7 +126,7 @@ end
 
 local function usage()
     io.write([[
-Usage: lua vim/benchmark_highlighting.lua [file] [options]
+Usage: lua tests/benchmark_highlighting.lua [file] [options]
 
 Options:
   --ft=<filetype>          Force filetype instead of nvim detection.
@@ -115,17 +136,17 @@ Options:
   --help                   Show this help.
 
 The default file is:
-  vim/runtime/pack/dist/opt/netrw/autoload/netrw.vim
+  runtime/pack/dist/opt/netrw/autoload/netrw.vim
 
 Examples:
-  lua vim/benchmark_highlighting.lua
-  lua vim/benchmark_highlighting.lua vim/runtime/pack/dist/opt/netrw/autoload/netrw.vim --ft=vim --runs=5
+  lua tests/benchmark_highlighting.lua
+  lua tests/benchmark_highlighting.lua runtime/pack/dist/opt/netrw/autoload/netrw.vim --ft=vim --runs=5
 ]])
 end
 
 local function parse_args(argv)
     local opts = {
-        file = "vim/runtime/pack/dist/opt/netrw/autoload/netrw.vim",
+        file = "runtime/pack/dist/opt/netrw/autoload/netrw.vim",
         file_set = false,
         ft = nil,
         runs = 3,
@@ -167,9 +188,9 @@ local function parse_args(argv)
     return opts
 end
 
-local SCRIPT_DIR = script_dir()
-local REPO_ROOT = SCRIPT_DIR:match("^(.*)/vim$") or "."
-local RUNTIME_ROOT = join(REPO_ROOT, "vim/runtime")
+local SCRIPT_DIR = absolute_path(script_dir())
+local REPO_ROOT = normalize_path(join(SCRIPT_DIR, ".."))
+local RUNTIME_ROOT = join(REPO_ROOT, "runtime")
 
 local function write_nvim_probe_script(path)
     local f, err = io.open(path, "w")
@@ -332,6 +353,17 @@ local function init_lua_engine_runtime()
     _G.LOG_ERROR = function() end
     _G.LOG_DEBUG = function() end
     _G.LOG_INTERNAL = function() end
+    if not math.clamp then
+        math.clamp = function(value, min_value, max_value)
+            if value < min_value then
+                return min_value
+            end
+            if value > max_value then
+                return max_value
+            end
+            return value
+        end
+    end
 
     local cache = {}
     function _G.loadModule(name, opts)

@@ -44,6 +44,27 @@ local function normalize_path(path)
     return (abs and "/" or "") .. table.concat(out, "/")
 end
 
+local function cwd()
+    local handle = io.popen("pwd", "r")
+    if not handle then
+        return "."
+    end
+    local out = handle:read("*l") or "."
+    handle:close()
+    return normalize_path(out)
+end
+
+local function absolute_path(path)
+    local p = tostring(path or "")
+    if p == "" then
+        return cwd()
+    end
+    if starts_with(p, "/") then
+        return normalize_path(p)
+    end
+    return normalize_path(cwd() .. "/" .. p)
+end
+
 local function dirname(path)
     local d = tostring(path or ""):match("^(.*)/[^/]*$")
     if d and d ~= "" then
@@ -153,7 +174,7 @@ Options:
   --help                   Show this help.
 
 Example:
-  lua vim/compare_highlighting.lua vim/runtime/ftplugin.vim --ft=vim --lines=7,16,21,23,30,31
+  lua tests/compare_highlighting.lua runtime/ftplugin.vim --ft=vim --lines=7,16,21,23,30,31
 ]])
 end
 
@@ -202,9 +223,9 @@ local function parse_args(argv)
     return opts
 end
 
-local SCRIPT_DIR = script_dir()
-local REPO_ROOT = SCRIPT_DIR:match("^(.*)/vim$") or "."
-local RUNTIME_ROOT = join(REPO_ROOT, "vim/runtime")
+local SCRIPT_DIR = absolute_path(script_dir())
+local REPO_ROOT = normalize_path(join(SCRIPT_DIR, ".."))
+local RUNTIME_ROOT = join(REPO_ROOT, "runtime")
 
 local function write_nvim_probe_script(path)
     local f, err = io.open(path, "w")
@@ -376,6 +397,17 @@ local function init_lua_engine_runtime()
     _G.LOG_ERROR = function() end
     _G.LOG_DEBUG = function() end
     _G.LOG_INTERNAL = function() end
+    if not math.clamp then
+        math.clamp = function(value, min_value, max_value)
+            if value < min_value then
+                return min_value
+            end
+            if value > max_value then
+                return max_value
+            end
+            return value
+        end
+    end
 
     local cache = {}
     function _G.loadModule(name, opts)

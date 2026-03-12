@@ -173,6 +173,35 @@ local function split_delim_pattern(raw)
     return s, nil
 end
 
+local function normalize_case_prefix(pattern, default_ignore_case)
+    local patt = tostring(pattern or "")
+    local ignore_case = default_ignore_case and true or false
+    local prefixes = {}
+    local i = 1
+
+    while i < #patt do
+        local mark = patt:sub(i, i + 1)
+        if mark == "\\c" then
+            ignore_case = true
+            i = i + 2
+        elseif mark == "\\C" then
+            ignore_case = false
+            i = i + 2
+        elseif mark == "\\m" or mark == "\\M" or mark == "\\v" or mark == "\\V" then
+            prefixes[#prefixes + 1] = mark
+            i = i + 2
+        else
+            break
+        end
+    end
+
+    if i > 1 then
+        patt = table.concat(prefixes) .. patt:sub(i)
+    end
+
+    return patt, ignore_case
+end
+
 local function parse_iskeyword(spec)
     local set = {}
     for b = string.byte("0"), string.byte("9") do set[b] = true end
@@ -333,6 +362,7 @@ end
 
 local function build_compiled_spec(raw_pattern, ignore_case, attrs, matchgroup, excludenl, profile)
     local patt, offs_from_patt = split_delim_pattern(raw_pattern)
+    patt, ignore_case = normalize_case_prefix(patt, ignore_case)
     local offs_from_attrs = offsets_from_attrs(attrs)
     local offsets = merge_offsets(offs_from_patt, offs_from_attrs)
     local lc = offsets and tonumber(offsets.lc) or 0
@@ -471,7 +501,7 @@ local function build_plan(ir)
                         spec.pattern,
                         item.ignore_case,
                         item.options.attrs,
-                        spec.matchgroup or item.options.matchgroup,
+                        spec.matchgroup,
                         spec.excludenl or false,
                         { key = ("item:%d:start:%d"):format(item.id, s), name = item.group_name }
                     )
@@ -484,7 +514,7 @@ local function build_plan(ir)
                         spec.pattern,
                         item.ignore_case,
                         item.options.attrs,
-                        spec.matchgroup or item.options.matchgroup,
+                        spec.matchgroup,
                         spec.excludenl or false,
                         { key = ("item:%d:skip:%d"):format(item.id, s), name = item.group_name }
                     )
@@ -497,7 +527,7 @@ local function build_plan(ir)
                         spec.pattern,
                         item.ignore_case,
                         item.options.attrs,
-                        spec.matchgroup or item.options.matchgroup,
+                        spec.matchgroup,
                         spec.excludenl or false,
                         { key = ("item:%d:end:%d"):format(item.id, s), name = item.group_name }
                     )
@@ -605,6 +635,7 @@ end
 local function normalize_match_span(line_len, s, e, offsets)
     local mstart, mend = s, e
     local hstart, hend = s, e
+    local max_start = line_len + 1
 
     if offsets then
         local applied = VimRegex.apply_syntax_offsets(s, e, offsets)
@@ -614,9 +645,9 @@ local function normalize_match_span(line_len, s, e, offsets)
         hend = applied.he or mend
     end
 
-    mstart = math.clamp(mstart, 1, math.max(1, line_len))
+    mstart = math.clamp(mstart, 1, math.max(1, max_start))
     mend = math.clamp(mend, 0, line_len)
-    hstart = math.clamp(hstart, 1, math.max(1, line_len))
+    hstart = math.clamp(hstart, 1, math.max(1, max_start))
     hend = math.clamp(hend, 0, line_len)
 
     return mstart, mend, hstart, hend
@@ -1204,7 +1235,7 @@ local function paint_match_contained_keywords(plan, item, line, lower_line, rang
         if not best then
             break
         end
-        local hs = math.clamp(best.hi_start, range_s, max_col)
+        local hs = math.clamp(best.hi_start, range_s, max_col + 1)
         local he = math.clamp(best.hi_end, 0, range_e)
         if he >= hs then
             spans[#spans + 1] = {
@@ -1255,7 +1286,7 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
             local group_id = inner.group_id
             local mgref = resolved_matchgroup_ref(plan, best.spec)
             if mgref then group_id = mgref end
-            local hs = math.clamp(best.hi_start, range_s, max_col)
+            local hs = math.clamp(best.hi_start, range_s, max_col + 1)
             local he = math.clamp(best.hi_end, 0, range_e)
             if he >= hs then
                 spans[#spans + 1] = {
@@ -1291,7 +1322,20 @@ local function region_start_advance(event, cursor_pos)
 end
 
 local function paint_anchored_contained_start(plan, state, line, lower_line, start_pos, max_col, spans)
-    local anchored = find_best_start_event(plan, state, line, lower_line, start_pos, true, max_col)
+    local top = state.stack[#state.stack]
+    if not top or top.transparent or not top.contains_bits then
+        return nil
+    end
+
+    local container_state = {
+        stack = { {
+            group_id = top.group_id,
+            contains_bits = top.contains_bits,
+        } },
+        pending_next = nil,
+    }
+
+    local anchored = find_best_start_event(plan, container_state, line, lower_line, start_pos, true, max_col)
     if not anchored or anchored.kind == "region" then
         return nil
     end
@@ -1301,7 +1345,7 @@ local function paint_anchored_contained_start(plan, state, line, lower_line, sta
         local group_id = item.group_id
         local mgref = resolved_matchgroup_ref(plan, anchored.spec)
         if mgref then group_id = mgref end
-        local hs = math.clamp(anchored.hi_start, 1, max_col)
+        local hs = math.clamp(anchored.hi_start, 1, max_col + 1)
         local he = math.clamp(anchored.hi_end, 0, max_col)
         if he >= hs then
             spans[#spans + 1] = {
@@ -1325,7 +1369,17 @@ local function paint_anchored_contained_start(plan, state, line, lower_line, sta
         end
     end
 
-    return math.max(anchored.raw_end + 1, anchored.match_end + 1, start_pos + 1)
+    state.pending_next = nil
+    if item and item.options.nextgroup_bits then
+        state.pending_next = make_pending_next(
+            item.options.nextgroup_bits,
+            item.options.flags.skipwhite or false,
+            item.options.flags.skipnl or false,
+            item.options.flags.skipempty or false
+        )
+    end
+
+    return math.max(anchored.match_end + 1, start_pos + 1)
 end
 
 local function highlight_line(plan, state_in, line, syn_limit)
@@ -1353,7 +1407,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
             local group_id = popped.group_id
             local mgref = resolved_matchgroup_ref(plan, event.spec)
             if mgref then group_id = mgref end
-            local hs = math.clamp(event.hi_start, 1, max_col)
+            local hs = math.clamp(event.hi_start, 1, max_col + 1)
             local he = math.clamp(event.hi_end, 0, max_col)
             spans[#spans + 1] = {
                 s = hs, e = he, group_id = group_id,
@@ -1402,7 +1456,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                 local item = anchored.item
                 if item.kind == "keyword" or item.kind == "match" then
                     if not item.options.flags.transparent then
-                        local hs = math.clamp(anchored.hi_start, 1, max_col)
+                        local hs = math.clamp(anchored.hi_start, 1, max_col + 1)
                         local he = math.clamp(anchored.hi_end, 0, max_col)
                         spans[#spans + 1] = {
                             s = hs, e = he, group_id = item.group_id,
@@ -1429,7 +1483,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                             item.options.flags.skipempty or false
                         )
                     end
-                    local nxt = math.max(anchored.raw_end + 1, anchored.match_end + 1, pos + 1)
+                    local nxt = math.max(anchored.match_end + 1, pos + 1)
                     pos = nxt
                     goto continue
                 else
@@ -1460,7 +1514,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         local group_id = entry.group_id
                         local mgref = resolved_matchgroup_ref(plan, anchored.spec)
                         if mgref then group_id = mgref end
-                        local hs = math.clamp(anchored.hi_start, 1, max_col)
+                        local hs = math.clamp(anchored.hi_start, 1, max_col + 1)
                         local he = math.clamp(anchored.hi_end, 0, max_col)
                         spans[#spans + 1] = {
                             s = hs, e = he, group_id = group_id,
@@ -1472,18 +1526,15 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         }
                     end
 
-                    local anchored_pos = nil
-                    if region_start_has_span_marker(anchored) then
-                        anchored_pos = paint_anchored_contained_start(
-                            plan,
-                            state,
-                            line,
-                            lower_line,
-                            anchored.match_start,
-                            max_col,
-                            spans
-                        )
-                    end
+                    local anchored_pos = paint_anchored_contained_start(
+                        plan,
+                        state,
+                        line,
+                        lower_line,
+                        anchored.match_start,
+                        max_col,
+                        spans
+                    )
                     if anchored_pos then
                         pos = anchored_pos
                     else
@@ -1564,7 +1615,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     local group_id = entry.group_id
                     local mgref = resolved_matchgroup_ref(plan, event.spec)
                     if mgref then group_id = mgref end
-                    local hs = math.clamp(event.hi_start, 1, max_col)
+                    local hs = math.clamp(event.hi_start, 1, max_col + 1)
                     local he = math.clamp(event.hi_end, 0, max_col)
                     spans[#spans + 1] = {
                         s = hs, e = he, group_id = group_id,
@@ -1575,18 +1626,15 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         display = entry.display,
                     }
                 end
-                local anchored_pos = nil
-                if region_start_has_span_marker(event) then
-                    anchored_pos = paint_anchored_contained_start(
-                        plan,
-                        state,
-                        line,
-                        lower_line,
-                        event.match_start,
-                        max_col,
-                        spans
-                    )
-                end
+                local anchored_pos = paint_anchored_contained_start(
+                    plan,
+                    state,
+                    line,
+                    lower_line,
+                    event.match_start,
+                    max_col,
+                    spans
+                )
                 if anchored_pos then
                     pos = anchored_pos
                 else
@@ -1597,7 +1645,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     local group_id = item.group_id
                     local mgref = resolved_matchgroup_ref(plan, event.spec)
                     if mgref then group_id = mgref end
-                    local hs = math.clamp(event.hi_start, 1, max_col)
+                    local hs = math.clamp(event.hi_start, 1, max_col + 1)
                     local he = math.clamp(event.hi_end, 0, max_col)
                     spans[#spans + 1] = {
                         s = hs, e = he, group_id = group_id,
@@ -1625,7 +1673,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         item.options.flags.skipempty or false
                     )
                 end
-                pos = math.max(event.raw_end + 1, event.match_end + 1, pos + 1)
+                pos = math.max(event.match_end + 1, pos + 1)
             end
         end
 

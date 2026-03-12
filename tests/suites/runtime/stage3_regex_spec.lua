@@ -56,6 +56,15 @@ return {
         assert_match("identifier classes i/I", R, "::cont::", "::\\I\\i*::", true, 1, 8)
         assert_match("alternation earliest branch position", R, "x .. +", "[+]\\|\\.\\{2,3}", true, 3, 4)
         assert_match("simple ignore-case", R, "token123", "\\<Token\\d\\+\\>", false, 1, 8)
+        do
+            local compiled, emsg = R.compile("^foo")
+            if not compiled then
+                error("FAIL compile bol anchor: " .. tostring(emsg))
+            end
+            local s, e = R.find_compiled("xxfoo", compiled, true, 3)
+            Assert.eq("bol anchor mid-search start", s, nil)
+            Assert.eq("bol anchor mid-search end", e, nil)
+        end
         assert_no_match("bclass percent literal", R, "if exists", "#\\d\\+\\|[#%]<\\>", true)
         assert_match("counted repeat open upper", R, "aab", "a\\{2,}", true, 1, 2)
         assert_match("help option pattern repeat", R, "'textwidth'", "'[a-z]\\{2,\\}'", true, 1, 11)
