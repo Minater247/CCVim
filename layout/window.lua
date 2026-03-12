@@ -442,6 +442,20 @@ local function _ensure_row_at(rows_t, rows_fg, rows_bg, row)
     rows_bg[row] = rows_bg[row] or {}
 end
 
+local function _place_cells_at(rows_t, rows_fg, rows_bg, row, col, cells_t, cells_fg, cells_bg, dfg, dbg, keep)
+    for c = 1, #cells_t do
+        local idx = col + c - 1
+        while #rows_t[row] < idx - 1 do
+            rows_t[row][#rows_t[row]+1] = " "
+            rows_fg[row][#rows_fg[row]+1] = dfg
+            rows_bg[row][#rows_bg[row]+1] = dbg
+        end
+        rows_t[row][idx] = cells_t[c]
+        rows_fg[row][idx] = cells_fg[c] or (keep and rows_fg[row][idx]) or dfg
+        rows_bg[row][idx] = cells_bg[c] or (keep and rows_bg[row][idx]) or dbg
+    end
+end
+
 local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, effects, line_str, text_w)
     if not effects then
         return rendered, blitLines
@@ -543,35 +557,22 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
                     table.insert(rows_bg[row], col, cells_bg[c] or default_bg)
                 end
             elseif vt.pos == "overlay" then
-                for c = 1, #cells_t do
-                    local idx = col + c - 1
-                    while #rows_t[row] < idx - 1 do
-                        rows_t[row][#rows_t[row] + 1] = " "
-                        rows_fg[row][#rows_fg[row] + 1] = default_fg
-                        rows_bg[row][#rows_bg[row] + 1] = default_bg
-                    end
-                    rows_t[row][idx] = cells_t[c]
-                    rows_fg[row][idx] = cells_fg[c] or rows_fg[row][idx] or default_fg
-                    rows_bg[row][idx] = cells_bg[c] or rows_bg[row][idx] or default_bg
-                end
+                _place_cells_at(
+                    rows_t,
+                    rows_fg,
+                    rows_bg,
+                    row, col,
+                    cells_t,
+                    cells_fg,
+                    cells_bg,
+                    default_fg,
+                    default_bg,
+                    true
+                )
             elseif vt.pos == "right_align" or vt.pos == "eol_right_align" then
                 local want_col = math.max(1, (text_w or 0) - #cells_t + 1)
-                if vt.pos == "eol_right_align" then
-                    col = math.max(col, want_col)
-                else
-                    col = want_col
-                end
-                for c = 1, #cells_t do
-                    local idx = col + c - 1
-                    while #rows_t[row] < idx - 1 do
-                        rows_t[row][#rows_t[row] + 1] = " "
-                        rows_fg[row][#rows_fg[row] + 1] = default_fg
-                        rows_bg[row][#rows_bg[row] + 1] = default_bg
-                    end
-                    rows_t[row][idx] = cells_t[c]
-                    rows_fg[row][idx] = cells_fg[c] or default_fg
-                    rows_bg[row][idx] = cells_bg[c] or default_bg
-                end
+                col = vt.pos == "eol_right_align" and math.max(col, want_col) or want_col
+                _place_cells_at(rows_t, rows_fg, rows_bg, row, col, cells_t, cells_fg, cells_bg, default_fg, default_bg)
             else
                 for c = 1, #cells_t do
                     rows_t[row][#rows_t[row] + 1] = cells_t[c]
@@ -583,21 +584,15 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
     end
 
     for i = #effects.virt_lines_above, 1, -1 do
-        local cells_t, cells_fg, cells_bg = _virt_text_cells(effects.virt_lines_above[i], default_fg, default_bg)
-        table.insert(rows_t, 1, cells_t)
-        table.insert(rows_fg, 1, cells_fg)
-        table.insert(rows_bg, 1, cells_bg)
+        local t, fg, bg = _virt_text_cells(effects.virt_lines_above[i], default_fg, default_bg)
+        table.insert(rows_t, 1, t); table.insert(rows_fg, 1, fg); table.insert(rows_bg, 1, bg)
     end
     for i = 1, #effects.virt_lines_below do
-        local cells_t, cells_fg, cells_bg = _virt_text_cells(effects.virt_lines_below[i], default_fg, default_bg)
-        rows_t[#rows_t + 1] = cells_t
-        rows_fg[#rows_fg + 1] = cells_fg
-        rows_bg[#rows_bg + 1] = cells_bg
+        local t, fg, bg = _virt_text_cells(effects.virt_lines_below[i], default_fg, default_bg)
+        rows_t[#rows_t+1] = t; rows_fg[#rows_fg+1] = fg; rows_bg[#rows_bg+1] = bg
     end
 
-    local out_rendered = {}
-    local out_fg = {}
-    local out_bg = {}
+    local out_rendered, out_fg, out_bg = {}, {}, {}
     for row = 1, #rows_t do
         out_rendered[row] = table.concat(rows_t[row] or {})
         out_fg[row] = table.concat(rows_fg[row] or {})
@@ -2598,7 +2593,7 @@ end
 local function current_tab_displayheight()
     local height = screen.height - options.get("cmdheight")
     local stal = options.get("showtabline")
-    if stal == 2 or (stal == 1 and #tabpages > 1) then
+    if stal == 2 or (stal == 1 and tabpages[curtp]:count_all() > 1) then
         height = height - 1
     end
     if options.get("laststatus") == 3 then
@@ -2712,38 +2707,15 @@ function Window:wincmd(command, count, opts)
     opts = opts or {}
     local tp = tabpages[curtp]
 
-    if command == "s" then
+    if command == "s" or command == "v" then
+        local vert = command == "v"
         local probe = tp:MakeSplitProbe(self)
-        if not tp:WinSplit(0, probe, false, {
-            dry_run = true,
-            place_after = split_place_after(false),
-        }) then
+        if not tp:WinSplit(0, probe, vert, {dry_run = true, place_after = split_place_after(vert)}) then
             return Error(36)
         end
-
         -- TODO: set-width split
         local newwin = Window(self.buffer, self)
-        if not tp:WinSplit(0, newwin, false, {
-            place_after = split_place_after(false),
-        }) then
-            cleanup_failed_split_window(newwin)
-            return Error(36)
-        end
-        enterWindow(newwin.winnr)
-    elseif command == "v" then
-        local probe = tp:MakeSplitProbe(self)
-        if not tp:WinSplit(0, probe, true, {
-            dry_run = true,
-            place_after = split_place_after(true),
-        }) then
-            return Error(36)
-        end
-
-        -- TODO: set-width split
-        local newwin = Window(self.buffer, self)
-        if not tp:WinSplit(0, newwin, true, {
-            place_after = split_place_after(true),
-        }) then
+        if not tp:WinSplit(0, newwin, vert, {place_after = split_place_after(vert)}) then
             cleanup_failed_split_window(newwin)
             return Error(36)
         end

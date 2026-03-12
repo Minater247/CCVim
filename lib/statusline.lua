@@ -269,16 +269,9 @@ local function parse_segment(fmt, window)
                     emit_hl(HL_POP, "")
                     i = j_after + 1
                 end
-            elseif nxtb == 84 then -- 'T'
+            elseif nxtb == 84 or nxtb == 88 then -- 'T'/'X'
                 if raw_minwid ~= nil then
-                    emit_click("start", { kind = "tab", tabnr = raw_minwid })
-                else
-                    emit_click("end")
-                end
-                i = j_after + 1
-            elseif nxtb == 88 then -- 'X'
-                if raw_minwid ~= nil then
-                    emit_click("start", { kind = "close_tab", tabnr = raw_minwid })
+                    emit_click("start", { kind = nxtb == 84 and "tab" or "close_tab", tabnr = raw_minwid })
                 else
                     emit_click("end")
                 end

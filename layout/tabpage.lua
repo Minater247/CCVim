@@ -18,6 +18,61 @@ local ExMsg = loadModule("lib.excmd.exmsg")
 local Decoration = loadModule("lib.decoration")
 local PopupMenu = loadModule("lib.popupmenu")
 
+local function all_tabpage_ids()
+    local ids = {}
+    for tabnr, _ in pairs(tabpages) do
+        ids[#ids + 1] = tabnr
+    end
+    table.sort(ids)
+    return ids
+end
+
+local function all_tabpage_count()
+    local count = 0
+    for _, _ in pairs(tabpages) do
+        count = count + 1
+    end
+    return count
+end
+
+local function all_tabpage_ordinal(ordinal)
+    local ids = all_tabpage_ids()
+    if ordinal < 1 then
+        ordinal = 1
+    elseif ordinal > #ids then
+        ordinal = #ids
+    end
+    return ids[ordinal]
+end
+
+local function all_tabpage_wrap_offset(current, offset)
+    local ids = all_tabpage_ids()
+    local current_idx = 1
+    for i = 1, #ids do
+        if ids[i] == current then
+            current_idx = i
+            break
+        end
+    end
+    return ids[((current_idx - 1 + offset) % #ids) + 1]
+end
+
+function Tabpage:all_ids()
+    return all_tabpage_ids()
+end
+
+function Tabpage:count_all()
+    return all_tabpage_count()
+end
+
+function Tabpage:ordinal_all(ordinal)
+    return all_tabpage_ordinal(ordinal)
+end
+
+function Tabpage:wrap_offset_all(current, offset)
+    return all_tabpage_wrap_offset(current, offset)
+end
+
 local function statusline_rows_for_frame(laststatus, window_count, frame_bottom, root_height)
     if frame_bottom < root_height then
         return 1
@@ -38,7 +93,7 @@ local function compute_layout_metrics()
     local winyoff = 0
     local displayheight = screen.height - options.get("cmdheight")
     local stal = options.get("showtabline")
-    if stal == 2 or (stal == 1 and #tabpages > 1) then
+    if stal == 2 or (stal == 1 and all_tabpage_count() > 1) then
         displayheight = displayheight - 1
         winyoff = winyoff + 1
     end
@@ -92,13 +147,15 @@ end
 
 local function default_tabline_format()
     local parts = {}
-    for i = 1, #tabpages do
-        local hl = (i == curtp) and "TabLineSel" or "TabLine"
-        parts[#parts + 1] = ("%%#%s#%%%dT%s"):format(hl, i, default_tab_label(tabpages[i]))
+    local tab_ids = all_tabpage_ids()
+    for i = 1, #tab_ids do
+        local tabnr = tab_ids[i]
+        local hl = (tabnr == curtp) and "TabLineSel" or "TabLine"
+        parts[#parts + 1] = ("%%#%s#%%%dT%s"):format(hl, tabnr, default_tab_label(tabpages[tabnr]))
     end
 
     parts[#parts + 1] = "%#TabLineFill#%T"
-    if #tabpages > 1 then
+    if #tab_ids > 1 then
         parts[#parts + 1] = "%=%#TabLine#%999Xclose%X"
     end
 
@@ -564,7 +621,7 @@ function Tabpage:render()
 
     local stal = options.get("showtabline")
     local redraw_tabline = what_redraw["all"] or what_redraw["tabline"] or redraw_windows
-    if redraw_tabline and (stal == 2 or (stal == 1 and #tabpages > 1)) then
+    if redraw_tabline and (stal == 2 or (stal == 1 and all_tabpage_count() > 1)) then
         local tabline = options.get("tabline")
         if tabline == "" then
             tabline = default_tabline_format()

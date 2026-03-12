@@ -142,7 +142,65 @@ endfunction
             end
         end
 
+        local function run_sparse_tabline_case()
+            local mock = MockEnv.setup({ bootstrap_default_editor = true })
+            local ok, err = pcall(function()
+                local Options = mock.loadModule("lib.options")
+                local Fn = mock.loadModule("lib.luaapi.fn")
+                local G = mock.globals()
+
+                local function row_text(y)
+                    local cells = mock.term_cells()[y]
+                    local chars = {}
+                    for x = 1, #cells do
+                        chars[x] = cells[x].ch
+                    end
+                    return table.concat(chars)
+                end
+
+                screen.width = 30
+                screen.height = 8
+
+                local win1 = G.windows[G.curwin]
+                win1.buffer.name = "/tmp/current.txt"
+                win1.buffer.loaded = true
+                win1.buffer.refcount = 1
+
+                local buf2 = mock.create_buffer(2, "/tmp/other.txt", { "alt" }, { refcount = 1 })
+                local win2 = mock.create_window(2, buf2, { cursorx = 1, cursory = 1 })
+                mock.create_tabpage(2, { win2 }, {})
+
+                Options.set("cmdheight", 1, false, nil, nil, true)
+                Options.set("showtabline", 2, false, nil, nil, true)
+                Options.set("tabline", "", false, nil, nil, true)
+
+                local close_ok = G.tabpages[1]:close(win1, false)
+                Assert.eq("closing first tab succeeds", close_ok, true)
+                Assert.eq("current tab moves to surviving sparse tab", G.curtp, 2)
+                Assert.eq("closed tab is removed", G.tabpages[1], nil)
+                Assert.eq("tab count reflects sparse storage", Fn.fn.tabpagenr("$"), 1)
+
+                G.tabpages[G.curtp]:render()
+                local default_row = row_text(1)
+                Assert.truthy(
+                    "surviving tabline renders remaining tab label",
+                    default_row:find("other.txt", 1, true) ~= nil,
+                    default_row
+                )
+                Assert.truthy(
+                    "surviving tabline omits close label for one remaining tab",
+                    default_row:find("close", 1, true) == nil,
+                    default_row
+                )
+            end)
+            mock.cleanup()
+            if not ok then
+                error(err)
+            end
+        end
+
         run_tabline_case()
+        run_sparse_tabline_case()
         run_statusline_case()
     end,
 }

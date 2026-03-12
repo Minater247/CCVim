@@ -1,6 +1,6 @@
 return {
     id = "api.vim_cmd_management",
-    description = "Ports structured vim.cmd buffer, window, and tabpage management commands against Neovim-visible behavior.",
+    description = "Ports structured vim.cmd buffer, window, and tabpage management commands against Neovim-visible behavior.", -- luacheck: ignore 631
 
     run = function(ctx)
         local backend = ctx.backend

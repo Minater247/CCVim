@@ -3608,7 +3608,7 @@ function Builtins.tabpagenr(arg)
     if arg == nil then
         return curtp
     elseif arg == "$" then
-        return #tabpages
+        return tabpages[curtp]:count_all()
     elseif arg == "#" then
         return 0
     end

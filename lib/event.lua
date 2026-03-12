@@ -166,7 +166,7 @@ local function click_zone_at(x, y)
 
     if y == 1 then
         local stal = options.get("showtabline")
-        if stal == 2 or (stal == 1 and #tabpages > 1) then
+        if stal == 2 or (stal == 1 and tab:count_all() > 1) then
             local zone = find_click_zone(tab.tabline_click_zones, x)
             if zone then
                 return zone, windows[curwin], nil, x, y
@@ -255,30 +255,12 @@ local function last_click_count(button)
     return 1
 end
 
-local function click_button_name(button)
-    if button == 1 then
-        return "l"
-    elseif button == 2 then
-        return "r"
-    elseif button == 3 then
-        return "m"
-    end
-    return ""
-end
+local _btn_names = {[1]="l", [2]="r", [3]="m"}
+local function click_button_name(button) return _btn_names[button] or "" end
 
 local function click_modifier_string()
-    local ctrld, shifted, alted = current_mod_flags()
-    local mods = {}
-    if shifted then
-        mods[#mods + 1] = "s"
-    end
-    if ctrld then
-        mods[#mods + 1] = "c"
-    end
-    if alted then
-        mods[#mods + 1] = "a"
-    end
-    return table.concat(mods)
+    local c, s, a = current_mod_flags()
+    return (s and "s" or "") .. (c and "c" or "") .. (a and "a" or "")
 end
 
 local function switch_to_tab_from_click(tabnr)

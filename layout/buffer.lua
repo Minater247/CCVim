@@ -68,6 +68,19 @@ local function _bytes_before_row(lines, row0)
     return total
 end
 
+local function _mk_bytes(start_row, start_byte, old_lines, old_byte, new_lines, new_byte)
+    local on, nn = #old_lines, #new_lines
+    return {
+        start_row = start_row, start_col = 0, start_byte = start_byte,
+        old_end_row = on > 0 and on - 1 or 0,
+        old_end_col = on > 0 and #(old_lines[on] or "") or 0,
+        old_end_byte = old_byte,
+        new_end_row = nn > 0 and nn - 1 or 0,
+        new_end_col = nn > 0 and #(new_lines[nn] or "") or 0,
+        new_end_byte = new_byte,
+    }
+end
+
 local function _text_sizes(text)
     text = text or ""
     if text == "" then
@@ -216,17 +229,7 @@ local function _notify_full_replace(buf, old_lines, new_lines)
         new_lastline = new_count,
         byte_count = old_byte,
         deleted_lines = old_lines,
-        bytes = {
-            start_row = 0,
-            start_col = 0,
-            start_byte = 0,
-            old_end_row = (old_count > 0) and (old_count - 1) or 0,
-            old_end_col = (old_count > 0) and #(old_lines[old_count] or "") or 0,
-            old_end_byte = old_byte,
-            new_end_row = (new_count > 0) and (new_count - 1) or 0,
-            new_end_col = (new_count > 0) and #(new_lines[new_count] or "") or 0,
-            new_end_byte = new_byte,
-        },
+        bytes = _mk_bytes(0, 0, old_lines, old_byte, new_lines, new_byte),
     })
 end
 
@@ -759,17 +762,7 @@ function Buffer:undo_line(win, noauto)
             new_lastline = target_line,
             byte_count = #old_line,
             deleted_text = old_line,
-            bytes = {
-                start_row = target_line - 1,
-                start_col = 0,
-                start_byte = start_byte,
-                old_end_row = 0,
-                old_end_col = #old_line,
-                old_end_byte = #old_line,
-                new_end_row = 0,
-                new_end_col = #new_line,
-                new_end_byte = #new_line,
-            },
+            bytes = _mk_bytes(target_line - 1, start_byte, {old_line}, #old_line, {new_line}, #new_line),
         })
         _run_textchanged(self, noauto)
 
@@ -852,17 +845,7 @@ function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
         new_lastline = ln,
         byte_count = #old_line,
         deleted_text = old_line,
-        bytes = {
-            start_row = ln - 1,
-            start_col = 0,
-            start_byte = start_byte,
-            old_end_row = 0,
-            old_end_col = #old_line,
-            old_end_byte = #old_line,
-            new_end_row = 0,
-            new_end_col = #new_line,
-            new_end_byte = #new_line,
-        },
+        bytes = _mk_bytes(ln - 1, start_byte, {old_line}, #old_line, {new_line}, #new_line),
     })
     _run_textchanged(self, noauto)
     self:undo_end()
@@ -884,17 +867,7 @@ function Buffer:insert_line(index, item, load_if_unloaded, noauto)
         new_lastline = idx,
         byte_count = 0,
         deleted_text = "",
-        bytes = {
-            start_row = idx - 1,
-            start_col = 0,
-            start_byte = start_byte,
-            old_end_row = 0,
-            old_end_col = 0,
-            old_end_byte = 0,
-            new_end_row = 0,
-            new_end_col = #new_line,
-            new_end_byte = #new_line,
-        },
+        bytes = _mk_bytes(idx - 1, start_byte, {}, 0, {new_line}, #new_line),
     })
     _run_textchanged(self, noauto)
     self:undo_end()
@@ -966,17 +939,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
             new_lastline = s - 1,
             byte_count = old_byte,
             deleted_text = table.concat(removed, "\n"),
-            bytes = {
-                start_row = s - 1,
-                start_col = 0,
-                start_byte = start_byte,
-                old_end_row = (#removed > 0) and (#removed - 1) or 0,
-                old_end_col = (#removed > 0) and #(removed[#removed] or "") or 0,
-                old_end_byte = old_byte,
-                new_end_row = 0,
-                new_end_col = 0,
-                new_end_byte = 0,
-            },
+            bytes = _mk_bytes(s - 1, start_byte, removed, old_byte, {}, 0),
         })
     end
     
@@ -1067,17 +1030,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
             new_lastline = s + m_insert,
             byte_count = old_byte,
             deleted_text = table.concat(removed_lines, "\n"),
-            bytes = {
-                start_row = s,
-                start_col = 0,
-                start_byte = start_byte,
-                old_end_row = (#removed_lines > 0) and (#removed_lines - 1) or 0,
-                old_end_col = (#removed_lines > 0) and #(removed_lines[#removed_lines] or "") or 0,
-                old_end_byte = old_byte,
-                new_end_row = (#inserted_lines > 0) and (#inserted_lines - 1) or 0,
-                new_end_col = (#inserted_lines > 0) and #(inserted_lines[#inserted_lines] or "") or 0,
-                new_end_byte = new_byte,
-            },
+            bytes = _mk_bytes(s, start_byte, removed_lines, old_byte, inserted_lines, new_byte),
         })
     end
 
