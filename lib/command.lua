@@ -5,6 +5,7 @@ local ExMsg                       = loadModule("lib.excmd.exmsg")
 local PopupMenu                   = loadModule("lib.popupmenu")
 local Key                         = loadModule("lib.key")
 local RegisterUtil                = loadModule("lib.registers")
+local Scopes                      = loadModule("lib.luaapi.scopes")
 
 local POLICY_FULL, POLICY_CB_ONLY, POLICY_NOREMAP = 1, 2, 3
 Command.POLICY_FULL = POLICY_FULL
@@ -492,6 +493,7 @@ end
 
 local function _clear_leaf(node)
     node.callback = nil
+    node.callback_takes_count = nil
     node.rhs_seq = nil
     node.recursive = nil
     node.operator_cb = nil
@@ -551,6 +553,7 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
         node = child
     end
     node.callback  = callback
+    node.callback_takes_count = false
     node.rhs_seq   = nil
     node.recursive = nil
     Command.Log(
@@ -574,6 +577,7 @@ local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
         node = child
     end
     node.callback  = callback
+    node.callback_takes_count = true
     node.rhs_seq   = nil
     node.recursive = nil
     Command.Log("map-builtin-callback mode=%s seq=%s cb=%s", mode_full, seq_tostring(seq_nums), tostring(callback))
@@ -1052,6 +1056,14 @@ local function _with_undo_block(fn)
     return rv
 end
 
+local function _set_v_count_context(count)
+    local current = count or 0
+    local vvars = Scopes._v
+    vvars.prevcount = vvars.count
+    vvars.count = current
+    vvars.count1 = (current ~= 0) and current or 1
+end
+
 execute_node = function(node)
     local cnt = (state.count_committed and state.count_value)
     Command.Log(
@@ -1063,14 +1075,19 @@ execute_node = function(node)
     )
 
     if node.callback then
+        _set_v_count_context(cnt)
         local rv = _with_undo_block(function()
-            return node.callback(cnt)
+            if node.callback_takes_count then
+                return node.callback(cnt)
+            end
+            return node.callback()
         end)
         if rv then ExMsg.echoerr(rv:toString()) end
         return
     end
 
     if node.rhs_seq and #node.rhs_seq > 0 then
+        _set_v_count_context(cnt)
         local rhs = node.rhs_seq
         cancel_ambiguous_timer()
         reset_mapping_only()
