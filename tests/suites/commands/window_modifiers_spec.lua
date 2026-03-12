@@ -368,8 +368,16 @@ return {
         Assert.eq("rightbelow vsplit stays relative to the current window", result[9].layout_ok, true)
         Assert.eq("leftabove vsplit stays relative to the current window", result[10].layout_ok, true)
         Assert.eq("vertical topleft split uses a root split", result[11].layout_ok, true)
-        Assert.eq("vertical topleft split gives the new window full height", result[11].new_height, result[11].left_height)
+        Assert.eq(
+            "vertical topleft split gives the new window full height",
+            result[11].new_height,
+            result[11].left_height
+        )
         Assert.eq("vertical botright split uses a root split", result[12].layout_ok, true)
-        Assert.eq("vertical botright split gives the new window full height", result[12].new_height, result[12].left_height)
+        Assert.eq(
+            "vertical botright split gives the new window full height",
+            result[12].new_height,
+            result[12].left_height
+        )
     end,
 }

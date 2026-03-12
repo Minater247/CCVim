@@ -5319,7 +5319,13 @@ function Runtime.new(init_state, init_opts)
             if Error.IsError(ok) then
                 if ok.code ~= 37 then error(ok) end
                 local split_opts = _split_command_options(0, false)
-                if not _split_preflight(split_opts.target_winnr, curwin_obj, split_opts.vertical, split_opts.place_after) then
+                if
+                    not _split_preflight(
+                        split_opts.target_winnr,
+                        curwin_obj,
+                        split_opts.vertical,
+                        split_opts.place_after)
+                then
                     error(Error(36))
                 end
                 local newbuf = _buffer_mod()(true, false)
@@ -5622,7 +5628,10 @@ function Runtime.new(init_state, init_opts)
                 end
             end
             local split_opts = _split_command_options(-1, false)
-            if not target_win and not _split_preflight(split_opts.target_winnr, nil, split_opts.vertical, split_opts.place_after) then
+            if
+                not target_win
+                and not _split_preflight(split_opts.target_winnr, nil, split_opts.vertical, split_opts.place_after)
+            then
                 error(Error(36))
             end
             local newbuf = _buffer_mod()(true, false)
@@ -5637,7 +5646,9 @@ function Runtime.new(init_state, init_opts)
                 target_win.buffer = newbuf
             else
                 target_win = _window_mod()(newbuf)
-                if not _split_real(split_opts.target_winnr, target_win, split_opts.vertical, split_opts.place_after) then
+                if
+                    not _split_real(split_opts.target_winnr, target_win, split_opts.vertical, split_opts.place_after)
+                then
                     error(Error(36))
                 end
             end

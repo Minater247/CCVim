@@ -260,7 +260,7 @@ local IMPORTANT_GROUPS = {
 }
 
 local WEIGHTS = {
-    occurrence = function(entry)
+    occurrence = function()
         return 1
     end,
     semantic = function(entry)
@@ -526,7 +526,7 @@ local function refine_swaps(items, centers, distance)
 end
 
 local SELECTORS = {
-    top_weight = function(items, wanted, distance)
+    top_weight = function(items, wanted)
         return top_weight_centers(items, wanted)
     end,
     greedy = function(items, wanted, distance)

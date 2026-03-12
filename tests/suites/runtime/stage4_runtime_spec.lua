@@ -151,10 +151,24 @@ return {
             end
 
             do
-                local parsed = Parser.parse("region Comment start=/</ matchgroup=Error end=/>/ matchgroup=Structure end=/!/ ")
-                Assert.eq("region start before matchgroup keeps plain delimiter", parsed.patterns.start[1].matchgroup, nil)
-                Assert.eq("first region end captures first matchgroup", parsed.patterns["end"][1].matchgroup, "Error")
-                Assert.eq("second region end captures updated matchgroup", parsed.patterns["end"][2].matchgroup, "Structure")
+                local parsed = Parser.parse(
+                    "region Comment start=/</ matchgroup=Error end=/>/ matchgroup=Structure end=/!/ "
+                )
+                Assert.eq(
+                    "region start before matchgroup keeps plain delimiter",
+                    parsed.patterns.start[1].matchgroup,
+                    nil
+                )
+                Assert.eq(
+                    "first region end captures first matchgroup",
+                    parsed.patterns["end"][1].matchgroup,
+                    "Error"
+                )
+                Assert.eq(
+                    "second region end captures updated matchgroup",
+                    parsed.patterns["end"][2].matchgroup,
+                    "Structure"
+                )
             end
 
             do
@@ -264,7 +278,11 @@ return {
                 })
                 local buf = mk_buf({ "[link]" })
                 local blit = Runtime.line_to_blit(ctx_state, buf, 1)
-                Assert.eq("zero-width nextgroup fallback still allows same-column top-level match", fg_at(blit, 1), string_fg)
+                Assert.eq(
+                    "zero-width nextgroup fallback still allows same-column top-level match",
+                    fg_at(blit, 1),
+                    string_fg
+                )
             end
 
             do

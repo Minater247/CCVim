@@ -871,7 +871,8 @@ local function keyword_context_buckets(plan, top, pending_next)
     return cs, ci, true
 end
 
-local function find_best_keyword_event(plan, top, pending_next, line, lower_line, pos, anchored, syn_limit, exclude_item_id, exclude_pos)
+local function find_best_keyword_event(plan, top, pending_next, line, lower_line, pos,
+                                       anchored, syn_limit, exclude_item_id, exclude_pos)
     local scan_end = math.min(#line, syn_limit)
     if pos > scan_end then
         return nil
@@ -930,7 +931,8 @@ local function find_best_keyword_event(plan, top, pending_next, line, lower_line
     return nil
 end
 
-local function find_best_start_event(plan, state, line, lower_line, pos, anchored, syn_limit, exclude_item_id, exclude_pos)
+local function find_best_start_event(plan, state, line, lower_line, pos,
+                                     anchored, syn_limit, exclude_item_id, exclude_pos)
     local best = nil
     local stack = state.stack
     local top = stack[#stack]
@@ -1521,7 +1523,11 @@ local function highlight_line(plan, state_in, line, syn_limit)
         -- Continue from the logical end of the item (offset-adjusted match end),
         -- not the raw regex end. This is required for me=/re= offsets and
         -- nextgroup hand-off at adjusted boundaries (e.g. Lua "if ... then").
-        local keep_same_col = same_column_nextgroup_handoff(event, cursor_pos, popped.item.options.nextgroup_bits ~= nil)
+        local keep_same_col = same_column_nextgroup_handoff(
+            event,
+            cursor_pos,
+            popped.item.options.nextgroup_bits ~= nil
+        )
         if keep_same_col then
             excluded_item_id = popped.item.id
             excluded_pos = cursor_pos

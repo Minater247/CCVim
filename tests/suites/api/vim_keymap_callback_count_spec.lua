@@ -1,6 +1,6 @@
 return {
     id = "api.vim_keymap_callback_count",
-    description = "Ports Neovim keymap callback count semantics: user callbacks read vim.v.count and vim.v.count1 instead of receiving count positionally.",
+    description = "Ports Neovim keymap callback count semantics: user callbacks read vim.v.count and vim.v.count1 instead of receiving count positionally.", -- luacheck: ignore 631
 
     run = function(ctx)
         local backend = ctx.backend
