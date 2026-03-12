@@ -57,3 +57,5 @@ If you want to help with development, contributions are welcomed! I will be work
 - Rewrite of UI interfaces to allow ports to OpenComputers of native Lua
 - Implementation of an LSP for completion or tooling analysis
 - Integration with existing `git` repository handlers for ComputerCraft
+- Automatic palette generation on colorscheme load
+- Vimscript JIT output optimization

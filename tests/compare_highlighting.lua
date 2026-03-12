@@ -509,6 +509,55 @@ local function normalize_syn_line(raw, include_vim9)
     return cmd
 end
 
+local function parse_runtime_include(raw)
+    local cmd = trim(raw)
+    local path = cmd:match("^runtime!?%s+(.+)$")
+    if not path or path == "" then
+        return nil
+    end
+    if path:find("[%*%?%[%]{}]") then
+        return nil
+    end
+    return trim(path)
+end
+
+local function parse_execute_syntax_line(raw, include_vim9, vars)
+    local cmd = trim(raw)
+    if not (starts_with(cmd, "exe ") or starts_with(cmd, "execute ")) then
+        return nil
+    end
+
+    local expr = trim(cmd:gsub("^execute?%s+", "", 1))
+    local parts = {}
+    local i = 1
+
+    while i <= #expr do
+        local ch = expr:sub(i, i)
+        if ch:match("%s") or ch == "." then
+            i = i + 1
+        elseif ch == "'" or ch == "\"" then
+            local j = i + 1
+            while j <= #expr and expr:sub(j, j) ~= ch do
+                j = j + 1
+            end
+            if j > #expr then
+                return nil
+            end
+            parts[#parts + 1] = expr:sub(i + 1, j - 1)
+            i = j + 1
+        else
+            local token = expr:match("^([%w_:]+)", i)
+            if not token then
+                return nil
+            end
+            parts[#parts + 1] = tostring(vars[token] or "")
+            i = i + #token
+        end
+    end
+
+    return normalize_syn_line(table.concat(parts), include_vim9)
+end
+
 local function resolve_include_path(current_file, include_file)
     local raw = trim(include_file or "")
     raw = raw:gsub("^['\"](.*)['\"]$", "%1")
@@ -729,7 +778,22 @@ local function load_syntax_commands(ft, opts)
 
             parse_assignment(raw)
 
+            local runtime_path = parse_runtime_include(raw)
+            if runtime_path then
+                local inc_path = resolve_include_path(resolved, runtime_path)
+                if inc_path then
+                    local nested = collect_file(inc_path, nil, force_contained)
+                    for g in pairs(nested) do
+                        groups[g] = true
+                    end
+                end
+                goto continue
+            end
+
             local payload = normalize_syn_line(raw, opts.include_vim9)
+            if not payload then
+                payload = parse_execute_syntax_line(raw, opts.include_vim9, vars)
+            end
             if payload then
                 local parsed = Parser.parse(payload)
                 if parsed.kind == "include" then

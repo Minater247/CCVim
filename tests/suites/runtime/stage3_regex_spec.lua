@@ -45,6 +45,8 @@ return {
         assert_match("lookbehind negative", R, "xxbar", "\\%(foo\\)\\@<!bar", true, 3, 5)
         assert_match("counted lookbehind positive", R, "hi! link", "\\a\\@1<=!", true, 3, 3)
         assert_match("counted lookbehind width", R, "end do label", "\\%(end\\s*do\\s\\+\\)\\@11<=label", true, 8, 12)
+        assert_match("vm escaped counted repeat branch", R, "- x", "\\%(\\t\\| \\{0,4\\}\\)[-*+]\\%(\\s\\+\\S\\)\\@=", true, 1, 1)
+        assert_match("vm counted repeat unescaped close", R, "&lt;", "&#\\=[0-9A-Za-z]\\{1,32};", true, 1, 4)
 
         assert_match("zs/ze span", R, "foobarqux", "foo\\zsbar\\zequx", true, 4, 6)
 

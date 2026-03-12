@@ -1033,9 +1033,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            min_s, max_s, m_all = src:match("^\\{%-(%d+),(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             min_s, max_s, m_all = src:match("^\\{%-(%d+),(%d+)}()")
             if min_s then
                 local q, emsg = vm_parse_quant_fields(min_s, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{%-(%d+),\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, nil, false)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)
@@ -1051,9 +1069,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            max_s, m_all = src:match("^\\{%-,(%d+)\\}()")
+            if max_s then
+                local q, emsg = vm_parse_quant_fields(0, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             max_s, m_all = src:match("^\\{%-,(%d+)}()")
             if max_s then
                 local q, emsg = vm_parse_quant_fields(0, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{%-(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, min_s, false)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)
@@ -1069,9 +1105,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            min_s, max_s, m_all = src:match("^\\{(%d+),(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             min_s, max_s, m_all = src:match("^\\{(%d+),(%d+)}()")
             if min_s then
                 local q, emsg = vm_parse_quant_fields(min_s, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{(%d+),\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, nil, true)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)
@@ -1087,9 +1141,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            max_s, m_all = src:match("^\\{,(%d+)\\}()")
+            if max_s then
+                local q, emsg = vm_parse_quant_fields(0, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             max_s, m_all = src:match("^\\{,(%d+)}()")
             if max_s then
                 local q, emsg = vm_parse_quant_fields(0, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, min_s, true)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)

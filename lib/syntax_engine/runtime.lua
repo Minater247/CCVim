@@ -871,7 +871,7 @@ local function keyword_context_buckets(plan, top, pending_next)
     return cs, ci, true
 end
 
-local function find_best_keyword_event(plan, top, pending_next, line, lower_line, pos, anchored, syn_limit)
+local function find_best_keyword_event(plan, top, pending_next, line, lower_line, pos, anchored, syn_limit, exclude_item_id, exclude_pos)
     local scan_end = math.min(#line, syn_limit)
     if pos > scan_end then
         return nil
@@ -890,7 +890,9 @@ local function find_best_keyword_event(plan, top, pending_next, line, lower_line
                 local kw = item.ignore_case and item.keyword_lower or item.keyword
                 local ok, e = keyword_matches_at(hay, kw, start_pos, item.keyword_len)
                 if ok then
-                    if keyword_boundary_ok(line, start_pos, e, plan.iskeyword) then
+                    if keyword_boundary_ok(line, start_pos, e, plan.iskeyword)
+                        and not (item.id == exclude_item_id and start_pos == exclude_pos)
+                    then
                         best = pick_earliest_event(best, {
                             kind = "keyword",
                             match_start = start_pos,
@@ -928,13 +930,24 @@ local function find_best_keyword_event(plan, top, pending_next, line, lower_line
     return nil
 end
 
-local function find_best_start_event(plan, state, line, lower_line, pos, anchored, syn_limit)
+local function find_best_start_event(plan, state, line, lower_line, pos, anchored, syn_limit, exclude_item_id, exclude_pos)
     local best = nil
     local stack = state.stack
     local top = stack[#stack]
     local pending_next = state.pending_next
 
-    local keyword_at_pos = find_best_keyword_event(plan, top, pending_next, line, lower_line, pos, true, pos)
+    local keyword_at_pos = find_best_keyword_event(
+        plan,
+        top,
+        pending_next,
+        line,
+        lower_line,
+        pos,
+        true,
+        pos,
+        exclude_item_id,
+        exclude_pos
+    )
     if keyword_at_pos then
         return keyword_at_pos
     end
@@ -944,7 +957,10 @@ local function find_best_start_event(plan, state, line, lower_line, pos, anchore
         local item = plan.items[candidate_ids[i]]
         if allows_by_nextgroup(item, pending_next) then
             local candidate = find_match_or_region_event(item, line, lower_line, pos, anchored)
-            if candidate and candidate.match_start <= syn_limit then
+            if candidate
+                and candidate.match_start <= syn_limit
+                and not (item.id == exclude_item_id and candidate.match_start == exclude_pos)
+            then
                 best = pick_earliest_event(best, candidate)
             end
         end
@@ -962,7 +978,9 @@ local function find_best_start_event(plan, state, line, lower_line, pos, anchore
         lower_line,
         pos,
         anchored,
-        keyword_limit
+        keyword_limit,
+        exclude_item_id,
+        exclude_pos
     )
     if keyword_best then
         best = pick_earliest_event(best, keyword_best)
@@ -1341,6 +1359,47 @@ local function event_hidden_suffix_end(event)
     return nil
 end
 
+local function same_column_nextgroup_handoff(event, cursor_pos, has_pending_next)
+    if not has_pending_next then
+        return false
+    end
+    return event_resume_end(event) + 1 <= cursor_pos
+end
+
+local function advance_after_item(event, cursor_pos, has_pending_next)
+    local next_from = event_resume_end(event) + 1
+    if same_column_nextgroup_handoff(event, cursor_pos, has_pending_next) then
+        return cursor_pos
+    end
+    if next_from < (cursor_pos + 1) then
+        next_from = cursor_pos + 1
+    end
+    return next_from
+end
+
+local function clip_event_before_region_end(event, end_ev)
+    local end_start = end_ev.match_start
+    local clipped_end = end_start - 1
+    if clipped_end < event.match_start then
+        return nil
+    end
+
+    local clipped = {}
+    for k, v in pairs(event) do
+        clipped[k] = v
+    end
+    if clipped.match_end > clipped_end then
+        clipped.match_end = clipped_end
+    end
+    if clipped.hi_end > clipped_end then
+        clipped.hi_end = clipped_end
+    end
+    if clipped.raw_end > clipped_end then
+        clipped.raw_end = clipped_end
+    end
+    return clipped
+end
+
 local function region_start_advance(event, cursor_pos)
     if region_start_has_span_marker(event) then
         return math.max(event.match_start + 1, cursor_pos + 1)
@@ -1424,6 +1483,8 @@ local function highlight_line(plan, state_in, line, syn_limit)
 
     local spans = {}
     local pos = 1
+    local excluded_item_id = nil
+    local excluded_pos = nil
 
     local function apply_end_event(event, cursor_pos)
         local popped = table.remove(state.stack)
@@ -1460,14 +1521,23 @@ local function highlight_line(plan, state_in, line, syn_limit)
         -- Continue from the logical end of the item (offset-adjusted match end),
         -- not the raw regex end. This is required for me=/re= offsets and
         -- nextgroup hand-off at adjusted boundaries (e.g. Lua "if ... then").
-        local next_from = event_resume_end(event) + 1
-        if next_from < cursor_pos then
-            next_from = cursor_pos
+        local keep_same_col = same_column_nextgroup_handoff(event, cursor_pos, popped.item.options.nextgroup_bits ~= nil)
+        if keep_same_col then
+            excluded_item_id = popped.item.id
+            excluded_pos = cursor_pos
+        else
+            excluded_item_id = nil
+            excluded_pos = nil
         end
-        return next_from
+        return advance_after_item(event, cursor_pos, popped.item.options.nextgroup_bits ~= nil)
     end
 
     while pos <= max_col do
+        if excluded_pos and excluded_pos ~= pos then
+            excluded_item_id = nil
+            excluded_pos = nil
+        end
+
         local pending = state.pending_next
         if pending then
             local ch = line:sub(pos, pos)
@@ -1480,7 +1550,17 @@ local function highlight_line(plan, state_in, line, syn_limit)
                 goto continue
             end
 
-            local anchored = find_best_start_event(plan, state, line, lower_line, pos, true, max_col)
+            local anchored = find_best_start_event(
+                plan,
+                state,
+                line,
+                lower_line,
+                pos,
+                true,
+                max_col,
+                excluded_item_id,
+                excluded_pos
+            )
             if anchored then
                 local item = anchored.item
                 if item.kind == "keyword" or item.kind == "match" then
@@ -1513,7 +1593,14 @@ local function highlight_line(plan, state_in, line, syn_limit)
                             event_hidden_suffix_end(anchored)
                         )
                     end
-                    local nxt = math.max(event_resume_end(anchored) + 1, pos + 1)
+                    if same_column_nextgroup_handoff(anchored, pos, item.options.nextgroup_bits ~= nil) then
+                        excluded_item_id = item.id
+                        excluded_pos = pos
+                    else
+                        excluded_item_id = nil
+                        excluded_pos = nil
+                    end
+                    local nxt = advance_after_item(anchored, pos, item.options.nextgroup_bits ~= nil)
                     pos = nxt
                     goto continue
                 else
@@ -1567,8 +1654,12 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         spans
                     )
                     if anchored_pos then
+                        excluded_item_id = nil
+                        excluded_pos = nil
                         pos = anchored_pos
                     else
+                        excluded_item_id = nil
+                        excluded_pos = nil
                         pos = region_start_advance(anchored, pos)
                     end
                     goto continue
@@ -1587,11 +1678,28 @@ local function highlight_line(plan, state_in, line, syn_limit)
 
         local top = state.stack[#state.stack]
         local end_ev = top and find_region_end_event(top, line, lower_line, pos, max_col)
-        local start_ev = find_best_start_event(plan, state, line, lower_line, pos, false, max_col)
+        local start_ev = find_best_start_event(
+            plan,
+            state,
+            line,
+            lower_line,
+            pos,
+            false,
+            max_col,
+            excluded_item_id,
+            excluded_pos
+        )
 
         local event
         if end_ev and start_ev then
-            if end_ev.match_start < start_ev.match_start then
+            if start_ev.kind ~= "region"
+                and start_ev.match_start < end_ev.match_start
+                and event_resume_end(start_ev) >= end_ev.match_start
+            then
+                start_ev = clip_event_before_region_end(start_ev, end_ev)
+            end
+
+            if not start_ev or end_ev.match_start < start_ev.match_start then
                 event = end_ev
             elseif end_ev.match_start > start_ev.match_start then
                 event = start_ev
@@ -1675,8 +1783,12 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     spans
                 )
                 if anchored_pos then
+                    excluded_item_id = nil
+                    excluded_pos = nil
                     pos = anchored_pos
                 else
+                    excluded_item_id = nil
+                    excluded_pos = nil
                     pos = region_start_advance(event, pos)
                 end
             else
@@ -1713,7 +1825,14 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         event_hidden_suffix_end(event)
                     )
                 end
-                pos = math.max(event_resume_end(event) + 1, pos + 1)
+                if same_column_nextgroup_handoff(event, pos, item.options.nextgroup_bits ~= nil) then
+                    excluded_item_id = item.id
+                    excluded_pos = pos
+                else
+                    excluded_item_id = nil
+                    excluded_pos = nil
+                end
+                pos = advance_after_item(event, pos, item.options.nextgroup_bits ~= nil)
             end
         end
 

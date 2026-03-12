@@ -258,6 +258,17 @@ return {
 
             do
                 local ctx_state = mk_ctx({
+                    "match Comment /^/ nextgroup=Structure",
+                    "match Structure /#/ contained",
+                    "match String /\\[[^\\]]\\+\\]/",
+                })
+                local buf = mk_buf({ "[link]" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("zero-width nextgroup fallback still allows same-column top-level match", fg_at(blit, 1), string_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
                     "region Comment start=/./ end=/$/ contains=String,Structure",
                     "match String /foo=/he=e-1 nextgroup=Structure contained",
                     "match Structure /bar/ contained",
