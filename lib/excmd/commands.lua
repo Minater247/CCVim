@@ -38,6 +38,7 @@ local COMMAND_SPECS = {
     { name = "syntax", min = 3, dispatch = true, no_bar_split = true },
     { name = "sign", min = 3, dispatch = true, no_bar_split = true },
     { name = "highlight", min = 2, dispatch = true },
+    { name = "colorscheme", min = 4, dispatch = true },
     { name = "runtime", min = 2, dispatch = true },
     { name = "augroup", min = 3, dispatch = true },
     { name = "source", min = 2, dispatch = true },

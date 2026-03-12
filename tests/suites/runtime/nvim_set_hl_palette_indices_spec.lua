@@ -37,6 +37,16 @@ return {
                 bg = 0x000000,
             })
 
+            vim.api.nvim_set_hl(0, "Normal", {
+                fg = colors.red,
+                bg = colors.blue,
+            })
+
+            vim.api.nvim_set_hl(0, "RegressionInheritNormal", {
+                fg = colors.white,
+                bg = "NONE",
+            })
+
             return {
                 pmenu_fg,
             }
@@ -45,6 +55,8 @@ return {
         local direct = Highlight.For("RegressionPaletteNumeric", 0, true)
         local inherited = Highlight.For("RegressionFromSynIDattr", 0, true)
         local rgb_for = Highlight.For("RegressionRgb", 0, true)
+        local inherit_raw = Highlight.For("RegressionInheritNormal", 0, true)
+        local inherit_for = Highlight.For("RegressionInheritNormal", 0)
         local colors = _G.colors
 
         Assert.eq("direct numeric fg preserves white", direct[1], colors.white)
@@ -56,5 +68,8 @@ return {
 
         Assert.eq("rgb fg maps to white palette for rendering", rgb_for[1], colors.white)
         Assert.eq("rgb bg maps to black palette for rendering", rgb_for[2], colors.black)
+
+        Assert.eq("raw NONE background remains unset", inherit_raw[2], nil)
+        Assert.eq("resolved NONE background inherits Normal bg", inherit_for[2], colors.blue)
     end,
 }

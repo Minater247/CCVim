@@ -604,6 +604,7 @@ function Tabpage:render()
     local backwin = self:_ensureBackBuffer()
     backwin.setVisible(false)
     local prevTerm = term.redirect(backwin)
+    Highlight.SetPalette(Highlight.GetPalette(), backwin)
     Decoration.begin_redraw()
     local redraw_windows = what_redraw["all"] or what_redraw["windows"]
 

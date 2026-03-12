@@ -1371,6 +1371,7 @@ function highlighter.new(parser)
         tree = parser,
         _bufnr = bufnr,
         _hl_cache = {},
+        _hl_version = Highlight.Version(),
     }
 
     function obj:_ensure_doc()
@@ -1379,6 +1380,12 @@ function highlighter.new(parser)
     end
 
     function obj:_resolve_blit_colors(capture, lang)
+        local version = Highlight.Version()
+        if self._hl_version ~= version then
+            self._hl_cache = {}
+            self._hl_version = version
+        end
+
         local key = lang .. "::" .. capture
         local cached = self._hl_cache[key]
         if cached then

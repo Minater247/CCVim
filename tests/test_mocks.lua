@@ -1502,7 +1502,10 @@ local function default_globals(state, colors)
                 }
                 for k, v in pairs(parent) do
                     if type(v) == "function" then
-                        win[k] = function(_, ...)
+                        win[k] = function(...)
+                            if select(1, ...) == win then
+                                return v(select(2, ...))
+                            end
                             return v(...)
                         end
                     end

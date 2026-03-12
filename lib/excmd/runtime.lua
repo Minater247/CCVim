@@ -25,6 +25,7 @@ local runtime_undo_batch_depth = 0
 local runtime_undo_batch_buffers = nil
 local runtime_undo_batch_active = false
 local runtime_undo_batch_pause_count = 0
+local colorscheme_load_depth = 0
 
 local function runtime_undo_batch_begin()
     runtime_undo_batch_buffers = {}
@@ -1623,6 +1624,86 @@ function Runtime.new(init_state, init_opts)
 
     local function _runtimepath()
         return RuntimePath
+    end
+
+    local function _colors_name_var()
+        local name = scopes._g and scopes._g.colors_name or nil
+        if type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+
+    local function _current_colorscheme_name()
+        return _colors_name_var() or "default"
+    end
+
+    local function _colorscheme_search_roots()
+        local roots = {}
+        local seen = {}
+        local rtp = _runtimepath()
+
+        local function append(list)
+            for i = 1, #list do
+                local path = list[i]
+                if not seen[path] then
+                    roots[#roots + 1] = path
+                    seen[path] = true
+                end
+            end
+        end
+
+        append(rtp.get_search_list())
+        append(rtp.get_opt_package_list())
+        return roots
+    end
+
+    local function _find_colorscheme_path(name)
+        local roots = _colorscheme_search_roots()
+        for _, ext in ipairs({ "vim", "lua" }) do
+            for i = 1, #roots do
+                local path = roots[i] .. "/colors/" .. name .. "." .. ext
+                if fs.exists(path) and not fs.isDir(path) then
+                    return path
+                end
+            end
+        end
+    end
+
+    local function _load_colorscheme(name)
+        if colorscheme_load_depth > 0 then
+            error(Error(474, "Cannot use :colorscheme recursively"))
+        end
+
+        local path = _find_colorscheme_path(name)
+        if not path then
+            error(Error(185, name))
+        end
+
+        colorscheme_load_depth = colorscheme_load_depth + 1
+        _highlight().ResetPalette()
+        _highlight().BeginPaletteTracking()
+
+        local ok, err = pcall(function()
+            Autocmd.Run("ColorSchemePre", { bufname = name, pattern = name })
+            local sourced, source_err = _scriptsource().source(path)
+            if not sourced then
+                error(source_err)
+            end
+            _highlight().CommitPaletteTracking()
+        end)
+
+        colorscheme_load_depth = colorscheme_load_depth - 1
+
+        if not ok then
+            _highlight().CancelPaletteTracking()
+            error(err)
+        end
+
+        local loaded_name = _colors_name_var() or name
+        Autocmd.Run("ColorScheme", { bufname = loaded_name, pattern = loaded_name })
+        what_redraw["all"] = true
+        need_redraw = true
+        return true
     end
 
     local function _pack()
@@ -4807,6 +4888,13 @@ function Runtime.new(init_state, init_opts)
                 end
             end
             return true
+        elseif cmd == "colorscheme" then
+            local name = strip(argstr)
+            if name == "" then
+                _exmsg().echo(_current_colorscheme_name())
+                return true
+            end
+            return _load_colorscheme(name)
         elseif cmd == "packadd" then
             local name = strip(argstr)
             if name == "" then error(Error(471)) end
@@ -5497,7 +5585,7 @@ function Runtime.new(init_state, init_opts)
                     if #args ~= 3 then error(Error(471)) end
                     local from, to = args[2], args[3]
                     if is_default and hl.HasGroup(from) then return true end
-                    local rv = hl.Link(from, to)
+                    local rv = hl.Link(from, to, nil, bang)
                     if Error.IsError(rv) then
                         if is_default and rv.code == 414 then return true end
                         error(rv)
@@ -5512,10 +5600,20 @@ function Runtime.new(init_state, init_opts)
                     end
                     for k, v in pairs(params) do
                         if k == "guifg" and v:match("^#%x%x%x%x%x%x$") then
-                            hl.SetGroupColor(args[1], "fg", tonumber("0x" .. v:sub(2)))
+                            hl.SetGroupColor(args[1], "fg", { rgb = tonumber("0x" .. v:sub(2)) })
                             changed = true
                         elseif k == "guibg" and v:match("^#%x%x%x%x%x%x$") then
-                            hl.SetGroupColor(args[1], "bg", tonumber("0x" .. v:sub(2)))
+                            hl.SetGroupColor(args[1], "bg", { rgb = tonumber("0x" .. v:sub(2)) })
+                            changed = true
+                        elseif k == "gui" or k == "cterm" then
+                            local reverse = false
+                            for attr in tostring(v):lower():gmatch("[^,]+") do
+                                local word = strip(attr)
+                                if word == "reverse" or word == "inverse" or word == "standout" then
+                                    reverse = true
+                                end
+                            end
+                            hl.SetGroupReverse(args[1], reverse)
                             changed = true
                         end
                     end

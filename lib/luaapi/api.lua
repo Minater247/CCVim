@@ -53,6 +53,14 @@ end
 
 local function api_color_value(raw_value, palette_value)
     if raw_value ~= nil then
+        if type(raw_value) == "table" then
+            if type(raw_value.rgb) == "number" then
+                return raw_value.rgb
+            end
+            if type(raw_value.palette) == "number" then
+                return raw_value.palette
+            end
+        end
         return raw_value
     end
     if palette_value ~= nil then

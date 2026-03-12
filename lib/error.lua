@@ -25,6 +25,7 @@ local errStrings = {
     [134] = "Cannot move a range of lines into itself",
     [142] = "File not written: Writing is disabled by 'write' option",
     [149] = function(params) return "Sorry, no help for " .. params[1] end,
+    [185] = function(params) return "Cannot find color scheme " .. "'" .. params[1] .. "'" end,
     [189] = function(params) return (params[1] or "File") .. " exists (add ! to override)" end,
     [191] = "Argument must be a letter or forward/backward quote",
     [212] = "Cannot open file for writing",

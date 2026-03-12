@@ -178,17 +178,19 @@ local function loadModule(module, opts)
     end
     return false
 end
+_V.loadModule = loadModule
 
 -- Populate v:version for Vimscript compatibility (major*100 + minor).
 -- Use a Vim-compatible value, not the NVIM version tuple, so runtime scripts
 -- that gate on Vim version (eg netrw) behave predictably.
 local Scopes = loadModule("lib.luaapi.scopes")
+local Highlight = loadModule("lib.highlight")
+local original_palette = Highlight.CapturePalette(term)
 Scopes._v.version = (_V.vimcompat_maj * 100) + _V.vimcompat_min
 Scopes._v.vim_did_init = 0
 local Error = loadModule("lib.error")
 local ScriptSource
 
-_V.loadModule = loadModule
 local VimFs = loadModule("lib.luaapi.fs")
 
 -- TEMP
@@ -502,6 +504,7 @@ local ok, err = xpcall(Event.RunLoop, function(e)
     return debug.traceback("A critical internal error occurred:\n" .. tostring(e), 2)
 end)
 
+Highlight.SetPalette(original_palette, term)
 term.setBackgroundColor(colors.black)
 term.setTextColor(colors.white)
 term.clear()

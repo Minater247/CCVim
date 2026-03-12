@@ -22,6 +22,7 @@ return {
             local Scopes = mock.loadModule("lib.luaapi.scopes")
             local Treesitter = mock.loadModule("lib.luaapi.treesitter")
             local Syntax = mock.loadModule("lib.syntax")
+            local Runtime = mock.loadModule("lib.excmd.runtime")
 
             local line = "local function foo(x) return x + 1 end -- doc"
             local buf = mock.create_buffer(1, "/tmp/test_ts.lua", { line }, { filetype = "lua", syntax = "" })
@@ -40,6 +41,14 @@ return {
                     return normal
                 end
                 return blits[lnum].fg:sub(col0 + 1, col0 + 1)
+            end
+
+            local function bg_at_col(blits, lnum, col0)
+                local normal = colors.toBlit(Highlight.For("Normal")[2])
+                if not blits or not blits[lnum] or not blits[lnum].bg then
+                    return normal
+                end
+                return blits[lnum].bg:sub(col0 + 1, col0 + 1)
             end
 
             local before = Syntax.LinesToBlit(buf, 1, 1, win)
@@ -71,11 +80,31 @@ return {
             Assert.eq("foo becomes function after start", fg_at_col(after_start, 1, foo_col), function_blit)
             Assert.truthy("start changed color from baseline", fg_at_col(after_start, 1, local_col) ~= before_local)
 
+            local ok_run, err_run = Runtime.run([[
+                colorscheme default
+                colorscheme elflord
+                colorscheme darkblue
+            ]])
+            Assert.eq("colorscheme sequence runs", ok_run, true, err_run)
+
+            local after_schemes = Syntax.LinesToBlit(buf, 1, 1, win)
+            local normal_bg = colors.toBlit(Highlight.For("Normal")[2])
+
+            Assert.eq(
+                "treesitter capture background follows Normal after repeated colorscheme loads",
+                bg_at_col(after_schemes, 1, local_col),
+                normal_bg
+            )
+
             Treesitter.stop(buf.bufnr)
             Assert.eq("highlighter inactive", Treesitter.highlighter.active[buf.bufnr], nil)
 
             local after_stop = Syntax.LinesToBlit(buf, 1, 1, win)
-            Assert.eq("local returns to baseline after stop", fg_at_col(after_stop, 1, local_col), before_local)
+            Assert.eq(
+                "local returns to current Normal after stop",
+                fg_at_col(after_stop, 1, local_col),
+                colors.toBlit(Highlight.For("Normal")[1])
+            )
         end)
 
         mock.cleanup()
