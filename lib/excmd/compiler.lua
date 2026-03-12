@@ -28,6 +28,12 @@ local COMMAND_WRAPPERS = {
     keepjumps = true,
     noautocmd = true,
     verbose = true,
+    leftabove = true,
+    aboveleft = true,
+    rightbelow = true,
+    belowright = true,
+    topleft = true,
+    botright = true,
     vertical = true,
     horizontal = true,
 }

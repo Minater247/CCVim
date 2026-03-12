@@ -1759,7 +1759,7 @@ function Runtime.new(init_state, init_opts)
         buf.refcount = math.max(0, buf.refcount - 1)
     end
 
-    local function _split_preflight(target_winnr, refwin, vertical)
+    local function _split_preflight(target_winnr, refwin, vertical, place_after)
         local tabp = tabpages[curtp]
         if not tabp then
             return false
@@ -1767,18 +1767,18 @@ function Runtime.new(init_state, init_opts)
         local probe = tabp:MakeSplitProbe(refwin)
         return tabp:WinSplit(target_winnr, probe, vertical, {
             dry_run = true,
-            place_after = vertical and options.get("splitright") or options.get("splitbelow"),
+            place_after = place_after,
         }) == true
     end
 
-    local function _split_real(target_winnr, newwin, vertical)
+    local function _split_real(target_winnr, newwin, vertical, place_after)
         local tabp = tabpages[curtp]
         if not tabp then
             _cleanup_failed_split_window(newwin)
             return false
         end
         local ok = tabp:WinSplit(target_winnr, newwin, vertical, {
-            place_after = vertical and options.get("splitright") or options.get("splitbelow"),
+            place_after = place_after,
         })
         if not ok then
             _cleanup_failed_split_window(newwin)
@@ -1787,18 +1787,60 @@ function Runtime.new(init_state, init_opts)
         return true
     end
 
-    local function _current_command_modifier()
-        local mods = rt._command_modifiers
-        if type(mods) ~= "table" or #mods == 0 then
+    -- See runtime/doc/windows.txt for the documented split helper modifiers.
+    local COMMAND_MODIFIER_SPECS = {
+        vertical = {
+            split_orientation = "vertical",
+            equalize_axis = "vertical",
+        },
+        horizontal = {
+            equalize_axis = "horizontal",
+        },
+        leftabove = {
+            split_location = "aboveleft",
+        },
+        aboveleft = {
+            split_location = "aboveleft",
+        },
+        rightbelow = {
+            split_location = "belowright",
+        },
+        belowright = {
+            split_location = "belowright",
+        },
+        topleft = {
+            split_location = "topleft",
+        },
+        botright = {
+            split_location = "botright",
+        },
+    }
+
+    local function _current_command_modifiers()
+        local stack = rt._command_modifiers
+        if type(stack) ~= "table" or #stack == 0 then
             return nil
         end
-        return mods[#mods]
+        local merged = {}
+        for i = 1, #stack do
+            local modifier = stack[i]
+            if modifier.split_orientation then
+                merged.split_orientation = modifier.split_orientation
+            end
+            if modifier.equalize_axis then
+                merged.equalize_axis = modifier.equalize_axis
+            end
+            if modifier.split_location then
+                merged.split_location = modifier.split_location
+            end
+        end
+        return merged
     end
 
     local function _with_command_modifier(modifier, fn)
         rt._command_modifiers = rt._command_modifiers or {}
         local stack = rt._command_modifiers
-        stack[#stack + 1] = modifier
+        stack[#stack + 1] = COMMAND_MODIFIER_SPECS[modifier]
         local ok, rv = pcall(fn)
         stack[#stack] = nil
         if not ok then
@@ -1819,10 +1861,53 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _split_orientation(default_vertical)
-        if _current_command_modifier() == "vertical" then
+        local mods = _current_command_modifiers()
+        if mods and mods.split_orientation == "vertical" then
             return true
         end
         return default_vertical
+    end
+
+    local function _current_equalize_axis()
+        local mods = _current_command_modifiers()
+        if mods then
+            return mods.equalize_axis
+        end
+    end
+
+    local function _split_place_after(vertical)
+        local mods = _current_command_modifiers()
+        if mods then
+            if mods.split_location == "aboveleft" or mods.split_location == "topleft" then
+                return false
+            end
+            if mods.split_location == "belowright" or mods.split_location == "botright" then
+                return true
+            end
+        end
+        return vertical and options.get("splitright") or options.get("splitbelow")
+    end
+
+    local function _split_target_winnr(default_target_winnr)
+        local mods = _current_command_modifiers()
+        if mods then
+            if mods.split_location == "aboveleft" or mods.split_location == "belowright" then
+                return 0
+            end
+            if mods.split_location == "topleft" or mods.split_location == "botright" then
+                return -1
+            end
+        end
+        return default_target_winnr
+    end
+
+    local function _split_command_options(default_target_winnr, default_vertical)
+        local vertical = _split_orientation(default_vertical)
+        return {
+            vertical = vertical,
+            target_winnr = _split_target_winnr(default_target_winnr),
+            place_after = _split_place_after(vertical),
+        }
     end
 
     local function _edit_buffer_name(win, newname, bang)
@@ -4272,7 +4357,7 @@ function Runtime.new(init_state, init_opts)
             win.altbuf = saved_alt
             if not ok then error(rv) end
             return rv
-        elseif cmd == "vertical" or cmd == "horizontal" then
+        elseif COMMAND_MODIFIER_SPECS[cmd] then
             if argstr == "" then
                 error(Error(471))
             end
@@ -4746,7 +4831,7 @@ function Runtime.new(init_state, init_opts)
             end
 
             local raw = strip(argstr)
-            local vertical = (_current_command_modifier() == "vertical")
+            local vertical = (_current_equalize_axis() == "vertical")
             local frame = target.frame
             local current_size
             if frame then
@@ -5132,15 +5217,15 @@ function Runtime.new(init_state, init_opts)
             local found, err = _resolve_find_name(argstr)
             if not found then error(err) end
             local refwin = windows[curwin]
-            local split_vertical = _split_orientation(false)
-            if not _split_preflight(0, refwin, split_vertical) then
+            local split_opts = _split_command_options(0, false)
+            if not _split_preflight(split_opts.target_winnr, refwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             local targetbuf = _buffer_mod()(true, false)
             targetbuf.name = found
             targetbuf:Load(true)
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, split_vertical) then
+            if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
@@ -5233,15 +5318,15 @@ function Runtime.new(init_state, init_opts)
             local ok = _edit_buffer_name(curwin_obj, target_raw, bang)
             if Error.IsError(ok) then
                 if ok.code ~= 37 then error(ok) end
-                local split_vertical = _split_orientation(false)
-                if not _split_preflight(0, curwin_obj, split_vertical) then
+                local split_opts = _split_command_options(0, false)
+                if not _split_preflight(split_opts.target_winnr, curwin_obj, split_opts.vertical, split_opts.place_after) then
                     error(Error(36))
                 end
                 local newbuf = _buffer_mod()(true, false)
                 newbuf.name = target_raw
                 newbuf:Load(true)
                 local newwin = _window_mod()(newbuf, curwin_obj)
-                if not _split_real(0, newwin, split_vertical) then
+                if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                     error(Error(36))
                 end
                 enterWindow(newwin.winnr)
@@ -5251,8 +5336,8 @@ function Runtime.new(init_state, init_opts)
             return true
         elseif cmd == "split" then
             local refwin = windows[curwin]
-            local split_vertical = _split_orientation(false)
-            if not _split_preflight(0, refwin, split_vertical) then
+            local split_opts = _split_command_options(0, false)
+            if not _split_preflight(split_opts.target_winnr, refwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
 
@@ -5263,14 +5348,15 @@ function Runtime.new(init_state, init_opts)
                 targetbuf:Load(true)
             end
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, split_vertical) then
+            if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
             return true
         elseif cmd == "vsplit" then
             local refwin = windows[curwin]
-            if not _split_preflight(0, refwin, true) then
+            local split_opts = _split_command_options(0, true)
+            if not _split_preflight(split_opts.target_winnr, refwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
 
@@ -5281,7 +5367,7 @@ function Runtime.new(init_state, init_opts)
                 targetbuf:Load(true)
             end
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, true) then
+            if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
@@ -5307,9 +5393,9 @@ function Runtime.new(init_state, init_opts)
             end
 
             local opts = {}
-            local modifier = _current_command_modifier()
-            if key == "=" and (modifier == "vertical" or modifier == "horizontal") then
-                opts.equalize_axis = modifier
+            local equalize_axis = _current_equalize_axis()
+            if key == "=" and equalize_axis then
+                opts.equalize_axis = equalize_axis
             end
 
             local rv = windows[curwin]:wincmd(key, count, opts)
@@ -5535,8 +5621,8 @@ function Runtime.new(init_state, init_opts)
                     target_win = tabwin
                 end
             end
-            local split_vertical = _split_orientation(false)
-            if not target_win and not _split_preflight(-1, nil, split_vertical) then
+            local split_opts = _split_command_options(-1, false)
+            if not target_win and not _split_preflight(split_opts.target_winnr, nil, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             local newbuf = _buffer_mod()(true, false)
@@ -5551,7 +5637,7 @@ function Runtime.new(init_state, init_opts)
                 target_win.buffer = newbuf
             else
                 target_win = _window_mod()(newbuf)
-                if not _split_real(-1, target_win, split_vertical) then
+                if not _split_real(split_opts.target_winnr, target_win, split_opts.vertical, split_opts.place_after) then
                     error(Error(36))
                 end
             end
