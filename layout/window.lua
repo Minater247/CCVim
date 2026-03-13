@@ -166,17 +166,25 @@ local function parse_signcolumn(spec)
 end
 
 local function _format_sign_text(text)
-    return Utf8.format_sign_text(text)
-end
-
-local function _iter_extmarks(buf, visitor)
-    Decoration.iter_extmarks(buf, visitor)
+    local width = 2
+    local out = {}
+    Utf8.each_codepoint(text, function(cp)
+        if #out >= width then
+            return
+        end
+        local ch = screen.normalize_codepoint(cp)
+        out[#out + 1] = ch
+    end)
+    while #out < width do
+        out[#out + 1] = " "
+    end
+    return table.concat(out, "", 1, width)
 end
 
 local function _extmark_max_signs_per_line(buf)
     local by_line = {}
     local max = 0
-    _iter_extmarks(buf, function(_, _, mark)
+    Decoration.iter_extmarks(buf, function(_, _, mark)
         local opts = mark.opts or {}
         if opts.sign_text ~= nil and not opts.invalid then
             local lnum = (mark.line or 0) + 1
@@ -196,7 +204,7 @@ local function _extmark_decorations_for_line(buf, lnum)
     local numhl, numhl_prio = nil, -math.huge
     local linehl, linehl_prio = nil, -math.huge
 
-    _iter_extmarks(buf, function(ns, id, mark)
+    Decoration.iter_extmarks(buf, function(ns, id, mark)
         if (mark.line or 0) ~= line0 then
             return
         end
@@ -243,27 +251,20 @@ end
 
 local function _to_char_array(s)
     local out = {}
-    for i = 1, #s do
-        out[i] = s:sub(i, i)
-    end
-    return out
-end
-
-local function _to_blit_array(s, n, fill)
-    local out = {}
-    for i = 1, n do
-        local ch = s:sub(i, i)
-        out[i] = (ch ~= "") and ch or fill
-    end
-    return out
-end
-
-local function _ascii_cells(text)
-    local out = {}
-    Utf8.each_codepoint(tostring(text or ""), function(cp)
-        out[#out + 1] = Utf8.ascii_cell_for_codepoint(cp)
+    Utf8.each_codepoint(s, function(cp)
+        out[#out + 1] = Utf8.char_for_codepoint(cp)
     end)
     return out
+end
+
+local function _display_cells(text)
+    local out, swap = {}, {}
+    Utf8.each_codepoint(text, function(cp)
+        local ch, swapped = screen.normalize_codepoint(cp)
+        out[#out + 1] = ch
+        swap[#swap + 1] = swapped == true
+    end)
+    return out, swap
 end
 
 local function _resolve_hl_group_name(hl)
@@ -283,7 +284,7 @@ local function _resolve_hl_group_name(hl)
 end
 
 local function _virt_text_cells(chunks, default_hl)
-    local text_cells, hl_cells = {}, {}
+    local text_cells, hl_cells, swap_cells = {}, {}, {}
     local list = (type(chunks) == "table") and chunks or {}
 
     for i = 1, #list do
@@ -297,7 +298,7 @@ local function _virt_text_cells(chunks, default_hl)
             text = tostring(chunk or "")
         end
 
-        local cells = _ascii_cells(text)
+        local cells, swaps = _display_cells(text)
         local hl_id = default_hl
         if hl_group then
             hl_id = Highlight.GetId(hl_group)
@@ -306,10 +307,11 @@ local function _virt_text_cells(chunks, default_hl)
         for c = 1, #cells do
             text_cells[#text_cells + 1] = cells[c]
             hl_cells[#hl_cells + 1] = hl_id
+            swap_cells[#swap_cells + 1] = swaps[c]
         end
     end
 
-    return text_cells, hl_cells
+    return text_cells, hl_cells, swap_cells
 end
 
 local function _extmark_text_effects_for_line(buf, lnum, line_str)
@@ -323,7 +325,7 @@ local function _extmark_text_effects_for_line(buf, lnum, line_str)
     }
     local has_effect = false
 
-    _iter_extmarks(buf, function(ns, id, mark)
+    Decoration.iter_extmarks(buf, function(ns, id, mark)
         local opts = mark.opts or {}
         if opts.invalid then
             return
@@ -437,15 +439,17 @@ local function _ensure_row_at(rows_t, rows_hl, row)
     rows_hl[row] = rows_hl[row] or {}
 end
 
-local function _place_cells_at(rows_t, rows_hl, row, col, cells_t, cells_hl, default_hl, keep)
+local function _place_cells_at(rows_t, rows_hl, rows_swap, row, col, cells_t, cells_hl, cells_swap, default_hl, keep)
     for c = 1, #cells_t do
         local idx = col + c - 1
         while #rows_t[row] < idx - 1 do
             rows_t[row][#rows_t[row]+1] = " "
             rows_hl[row][#rows_hl[row]+1] = default_hl
+            rows_swap[row][#rows_swap[row]+1] = false
         end
         rows_t[row][idx] = cells_t[c]
         rows_hl[row][idx] = cells_hl[c] or (keep and rows_hl[row][idx]) or default_hl
+        rows_swap[row][idx] = cells_swap[c] or false
     end
 end
 
@@ -456,15 +460,18 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
 
     local default_hl = Highlight.GetId("Normal")
 
-    local rows_t, rows_hl = {}, {}
+    local rows_t, rows_hl, rows_swap = {}, {}, {}
     local row_count = math.max(1, #rendered)
     for row = 1, row_count do
         local row_text = rendered[row] or ""
         rows_t[row] = _to_char_array(row_text)
         local hl_line = (blitLines and blitLines.hl and blitLines.hl[row]) or {}
+        local swap_line = (blitLines and blitLines.swap and blitLines.swap[row]) or {}
         rows_hl[row] = {}
+        rows_swap[row] = {}
         for i = 1, #rows_t[row] do
             rows_hl[row][i] = hl_line[i] or default_hl
+            rows_swap[row][i] = swap_line[i] or false
         end
     end
 
@@ -506,7 +513,7 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
     local line_bytes = #line_str
     for i = 1, #effects.virt_text do
         local vt = effects.virt_text[i]
-        local cells_t, cells_hl = _virt_text_cells(vt.chunks, default_hl)
+        local cells_t, cells_hl, cells_swap = _virt_text_cells(vt.chunks, default_hl)
         if #cells_t > 0 then
             local row, col
 
@@ -537,54 +544,62 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
             end
 
             _ensure_row_at(rows_t, rows_hl, row)
+            rows_swap[row] = rows_swap[row] or {}
 
             if vt.pos == "inline" then
                 col = math.max(1, col)
                 for c = #cells_t, 1, -1 do
                     table.insert(rows_t[row], col, cells_t[c])
                     table.insert(rows_hl[row], col, cells_hl[c] or default_hl)
+                    table.insert(rows_swap[row], col, cells_swap[c] or false)
                 end
             elseif vt.pos == "overlay" then
                 _place_cells_at(
                     rows_t,
                     rows_hl,
+                    rows_swap,
                     row, col,
                     cells_t,
                     cells_hl,
+                    cells_swap,
                     default_hl,
                     true
                 )
             elseif vt.pos == "right_align" or vt.pos == "eol_right_align" then
                 local want_col = math.max(1, (text_w or 0) - #cells_t + 1)
                 col = vt.pos == "eol_right_align" and math.max(col, want_col) or want_col
-                _place_cells_at(rows_t, rows_hl, row, col, cells_t, cells_hl, default_hl)
+                _place_cells_at(rows_t, rows_hl, rows_swap, row, col, cells_t, cells_hl, cells_swap, default_hl)
             else
                 for c = 1, #cells_t do
                     rows_t[row][#rows_t[row] + 1] = cells_t[c]
                     rows_hl[row][#rows_hl[row] + 1] = cells_hl[c] or default_hl
+                    rows_swap[row][#rows_swap[row] + 1] = cells_swap[c] or false
                 end
             end
         end
     end
 
     for i = #effects.virt_lines_above, 1, -1 do
-        local t, hl = _virt_text_cells(effects.virt_lines_above[i], default_hl)
+        local t, hl, swap = _virt_text_cells(effects.virt_lines_above[i], default_hl)
         table.insert(rows_t, 1, t)
         table.insert(rows_hl, 1, hl)
+        table.insert(rows_swap, 1, swap)
     end
     for i = 1, #effects.virt_lines_below do
-        local t, hl = _virt_text_cells(effects.virt_lines_below[i], default_hl)
+        local t, hl, swap = _virt_text_cells(effects.virt_lines_below[i], default_hl)
         rows_t[#rows_t+1] = t
         rows_hl[#rows_hl+1] = hl
+        rows_swap[#rows_swap+1] = swap
     end
 
-    local out_rendered, out_hl = {}, {}
+    local out_rendered, out_hl, out_swap = {}, {}, {}
     for row = 1, #rows_t do
         out_rendered[row] = table.concat(rows_t[row] or {})
         out_hl[row] = rows_hl[row] or {}
+        out_swap[row] = rows_swap[row] or {}
     end
 
-    return out_rendered, { hl = out_hl }
+    return out_rendered, { hl = out_hl, swap = out_swap }
 end
 
 -- Map a desired visual column to a character column.
@@ -1623,7 +1638,7 @@ function Window:render(xoff, yoff)
             elseif self.opts.wrap and (vimmode == "insert") then
                 if self.cursorx == (Utf8.len(line_str) + 1) then
                     local last = rendered[#rendered] or ""
-                    if (text_w > 0) and (#last == text_w) then
+                    if (text_w > 0) and (Utf8.len(last) == text_w) then
                         cursor_virtual = true
                     end
                 end
@@ -1683,33 +1698,40 @@ function Window:render(xoff, yoff)
             local x1 = hscroll
             local x2 = hscroll + math.max(0, text_w) - 1
             if x2 < x1 then x2 = x1 - 1 end
-            local vis_text = (x2 >= x1) and text:sub(x1, x2) or ""
+            local vis_text = (x2 >= x1) and Utf8.sub(text, x1, x2) or ""
+            local vis_len = Utf8.len(vis_text)
 
             local hl_slice
+            local swap_slice
             if have_hl then
                 local hl_line = blitLines.hl[j] or {}
+                local swap_line = blitLines.swap and blitLines.swap[j] or {}
                 hl_slice = {}
+                swap_slice = {}
                 if x2 >= x1 then
                     for idx = x1, x2 do
                         hl_slice[#hl_slice + 1] = hl_line[idx]
+                        swap_slice[#swap_slice + 1] = swap_line[idx] or false
                     end
                 end
             end
 
             if linehl and text_w > 0 then
-                if #vis_text < text_w then
-                    local missing = text_w - #vis_text
+                if vis_len < text_w then
+                    local missing = text_w - vis_len
                     vis_text = vis_text .. string.rep(" ", missing)
+                    vis_len = vis_len + missing
                     if have_hl then
                         local normal_hl = Highlight.GetId("Normal")
                         for _ = 1, missing do
                             hl_slice[#hl_slice + 1] = normal_hl
+                            swap_slice[#swap_slice + 1] = false
                         end
                     end
                 end
                 if have_hl then
                     local row_hl = Highlight.GetId(linehl)
-                    for idx = 1, #vis_text do
+                    for idx = 1, vis_len do
                         hl_slice[idx] = row_hl
                     end
                 end
@@ -1719,9 +1741,9 @@ function Window:render(xoff, yoff)
             if text_w > 0 then
                 setPos(text_x, 1 + visual_y)
                 local wraps_to_next = self.opts.wrap and j < #rendered and visual_y + 1 < max_rows
-                if have_hl and #hl_slice == #vis_text then
-                    ScreenDraw.put_hl_text(draw_y - 1, draw_x - 1, vis_text, hl_slice, wraps_to_next)
-                    draw_x = draw_x + #vis_text
+                if have_hl and #hl_slice == vis_len then
+                    ScreenDraw.put_hl_text(draw_y - 1, draw_x - 1, vis_text, hl_slice, wraps_to_next, swap_slice)
+                    draw_x = draw_x + vis_len
                 else
                     if linehl then
                         setGroup(linehl)
@@ -1729,8 +1751,8 @@ function Window:render(xoff, yoff)
                         setGroup("Normal")
                     end
                     writeText(vis_text)
-                    if linehl and #vis_text < text_w then
-                        writeText(string.rep(" ", text_w - #vis_text))
+                    if linehl and vis_len < text_w then
+                        writeText(string.rep(" ", text_w - vis_len))
                     end
                     setGroup("Normal")
                 end
@@ -1748,7 +1770,7 @@ function Window:render(xoff, yoff)
                 local cx_abs = cursorPos.column       -- 1-based in wrapped piece
                 local cx_vis = cx_abs - (hscroll - 1) -- 1-based in visible slice
 
-                if cx_vis >= 1 and cx_vis <= math.max(1, math.min(text_w, #vis_text + 1)) then
+                if cx_vis >= 1 and cx_vis <= math.max(1, math.min(text_w, vis_len + 1)) then
                     local screen_x = text_x + (cx_vis - 1)
                     local screen_y = 1 + visual_y
                     local ch = cursorPos.ch or " "
@@ -1806,9 +1828,9 @@ function Window:render(xoff, yoff)
                     local x1 = hscroll
                     local x2 = hscroll + math.max(0, text_w) - 1
                     if x2 < x1 then x2 = x1 - 1 end
-                    local vis_text = (x2 >= x1) and row_str:sub(x1, x2) or ""
-                    if cx_vis >= 1 and cx_vis <= #vis_text then
-                        ch = vis_text:sub(cx_vis, cx_vis)
+                    local vis_text = (x2 >= x1) and Utf8.sub(row_str, x1, x2) or ""
+                    if cx_vis >= 1 and cx_vis <= Utf8.len(vis_text) then
+                        ch = Utf8.char_at(vis_text, cx_vis)
                     else
                         ch = " "
                     end

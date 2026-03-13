@@ -1741,6 +1741,33 @@ function MockEnv.setup(opts)
         local hl_cache = {}
         local next_hl_id = 1
         local default_attrs = { fg = nil, bg = nil, foreground = nil, background = nil }
+        local normalize_map = {
+            [0x2713] = { char = "v" },
+            [0x2714] = { char = "v" },
+            [0x2611] = { char = "v" },
+            [0x2715] = { char = "x" },
+            [0x2717] = { char = "x" },
+            [0x2718] = { char = "x" },
+            [0x00D7] = { char = "x" },
+            [0x2191] = { char = "\x18" },
+            [0x2193] = { char = "\x19" },
+            [0x2190] = { char = "\x1b" },
+            [0x2192] = { char = "\x1a" },
+            [0xE0B0] = { char = string.char(0x97), swap = true },
+            [0xE0B2] = { char = string.char(0x94) },
+            [0xE0B4] = { char = string.char(0x88) },
+            [0xE0B6] = { char = string.char(0x84) },
+            [0xE0B8] = { char = string.char(0x8B), swap = true },
+            [0xE0BA] = { char = string.char(0x87), swap = true },
+            [0x2518] = { char = "/" },
+            [0x2500] = { char = "-" },
+            [0x2514] = { char = "\\" },
+            [0x2502] = { char = "|" },
+            [0x2510] = { char = "\\" },
+            [0x250C] = { char = "/" },
+            [0x2019] = { char = "'" },
+            [0x201C] = { char = "\"" },
+        }
 
         local function pack_rgb(r, g, b)
             return r * 65536 + g * 256 + b
@@ -1854,6 +1881,17 @@ function MockEnv.setup(opts)
 
         function globals.screen.get_palette_slot(slot)
             return palette_rgb(slot)
+        end
+
+        function globals.screen.normalize_codepoint(cp)
+            if cp >= 32 and cp <= 127 then
+                return string.char(cp), false
+            end
+            local replacement = normalize_map[cp]
+            if replacement then
+                return replacement.char, replacement.swap == true
+            end
+            return "?", false
         end
 
         function globals.screen.set_palette_slot(slot, r, g, b)

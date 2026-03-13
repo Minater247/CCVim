@@ -276,7 +276,7 @@ local function calculateScreenLines()
             { hl = triad[2] }
         )
         for j = 1, #new_lines do
-            screenlines[#screenlines + 1] = { new_lines[j], new_blits.hl[j], j < #new_lines }
+            screenlines[#screenlines + 1] = { new_lines[j], new_blits.hl[j], j < #new_lines, new_blits.swap and new_blits.swap[j] }
         end
     end
 
@@ -312,7 +312,7 @@ local function draw_more_page(snap_to_bottom)
     for i = 1, visible do
         local triad = screenlines[more_top + i - 1]
         local y = (screen.height - 1) - visible + i
-        ScreenDraw.put_hl_text(y - 1, 0, triad[1], triad[2], triad[3])
+        ScreenDraw.put_hl_text(y - 1, 0, triad[1], triad[2], triad[3], triad[4])
     end
 
     -- Status line
@@ -458,7 +458,7 @@ local function draw_press_enter()
     -- Draw the message lines, bottom-up
     for i = 1, #screenlines do
         local triad = screenlines[#screenlines - i + 1]
-        ScreenDraw.put_hl_text(screen.height - i + offset, 0, triad[1], triad[2], triad[3])
+        ScreenDraw.put_hl_text(screen.height - i + offset, 0, triad[1], triad[2], triad[3], triad[4])
     end
 
     -- If this is a true press-enter case, paint the prompt + separator.

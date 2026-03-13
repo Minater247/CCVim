@@ -526,7 +526,19 @@ end
 
 function Sign.get_sign_text(sign)
     local def = defined_signs[sign.name] or {}
-    return Utf8.format_sign_text(def.text)
+    local width = 2
+    local out = {}
+    Utf8.each_codepoint(tostring(def.text or ""), function(cp)
+        if #out >= width then
+            return
+        end
+        local ch = screen.normalize_codepoint(cp)
+        out[#out + 1] = ch
+    end)
+    while #out < width do
+        out[#out + 1] = " "
+    end
+    return table.concat(out, "", 1, width)
 end
 
 function Sign.get_sign_texthl(sign, cursorline_active)

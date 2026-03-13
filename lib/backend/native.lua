@@ -13,6 +13,7 @@
 
 local Native = {}
 local uv = require("luv")
+local Utf8 = loadModule("lib.utf8")
 
 -- =========================================================================
 -- Helpers
@@ -460,6 +461,10 @@ function Native.default_colors_set(rgb_fg, rgb_bg, rgb_sp, _cterm_fg, _cterm_bg)
     _default_bg_cterm = _cterm_bg
 end
 
+function Native.normalize_codepoint(cp)
+    return Utf8.char_for_codepoint(cp), false
+end
+
 function Native.grid_line(grid, row, col, cells, wrap)
     if not _grid_current[row] then return end
     local cx = col
@@ -470,6 +475,7 @@ function Native.grid_line(grid, row, col, cells, wrap)
         local ch     = cell[1]
         local hl_id  = cell[2]
         local rep    = cell[3] or 1
+        local swap   = cell[4] == true
 
         if hl_id ~= nil then
             if hl_id == 0 then
@@ -486,11 +492,17 @@ function Native.grid_line(grid, row, col, cells, wrap)
             end
         end
 
+        local cell_fg = last_fg
+        local cell_bg = last_bg
+        if swap then
+            cell_fg, cell_bg = cell_bg, cell_fg
+        end
+
         for _ = 1, rep do
             if cx >= 0 and cx < _w then
                 local slot = _grid_current[row]
                 if slot then
-                    slot[cx] = {ch == "" and " " or ch, last_fg, last_bg}
+                    slot[cx] = {ch == "" and " " or ch, cell_fg, cell_bg}
                 end
             end
             cx = cx + 1

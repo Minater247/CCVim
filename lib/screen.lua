@@ -7,7 +7,7 @@
     hl_define, grid_line, grid_cursor_goto, grid_clear, size,
     color_depth, supports_palette, set_palette_slot, get_palette_slot,
     capture_palette, reset, pull_event, start_timer, cancel_timer,
-    get_epoch, keys, fs.
+    get_epoch, keys, fs, normalize_codepoint.
 ]]
 
 local Screen = {}
@@ -260,7 +260,7 @@ end
 --- Emit a line of cells to the grid.
 --- grid: integer (1 = global screen)
 --- row, col: 0-indexed
---- cells: array of { char, hl_id, repeat_count }
+--- cells: array of { char, hl_id, repeat_count, swap_colors? }
 ---   hl_id nil = inherit previous cell's hl_id
 function Screen.grid_line(grid, row, col, cells, wrap)
     _backend.grid_line(grid, row, col, cells, wrap or false)
@@ -323,6 +323,10 @@ end
 --- Query current RGB of a palette slot (0-15).
 function Screen.get_palette_slot(slot)
     return _backend.get_palette_slot(slot)
+end
+
+function Screen.normalize_codepoint(cp)
+    return _backend.normalize_codepoint(cp)
 end
 
 return Screen

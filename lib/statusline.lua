@@ -599,7 +599,7 @@ local function drop_left_visible(chunks, n_drop)
                 remain = remain - L
                 -- drop entire text chunk
             else
-                out[#out + 1] = { kind = ck.kind, s = s:sub(remain + 1) }
+                out[#out + 1] = { kind = ck.kind, s = Utf8.sub(s, remain + 1) }
                 remain = 0
             end
         else
@@ -648,8 +648,8 @@ end
 local function ensure_left_trunc_indicator(chunks, width)
     -- Force the first visible char to be '<'
     for _, ck in ipairs(chunks) do
-        if (ck.kind == "text" or ck.kind == "group") and #ck.s > 0 then
-            ck.s = "<" .. ck.s:sub(2)
+        if (ck.kind == "text" or ck.kind == "group") and Utf8.len(ck.s) > 0 then
+            ck.s = "<" .. Utf8.sub(ck.s, 2)
             return chunks
         end
     end
@@ -669,17 +669,6 @@ local function concat_chunk_arrays(...)
     return out
 end
 
-local function to_ascii_cells(s)
-    if not s or s == "" then
-        return ""
-    end
-    local out = {}
-    Utf8.each_codepoint(s, function(cp)
-        out[#out + 1] = Utf8.ascii_cell_for_codepoint(cp)
-    end)
-    return table.concat(out)
-end
-
 -- Turn final chunk stream (no truncmarks) into { {text, group}, ... }
 local function chunks_to_render(chunks, default_group)
     local spans = {}
@@ -692,7 +681,7 @@ local function chunks_to_render(chunks, default_group)
     local function flush()
         if #buf > 0 then
             spans[#spans + 1] = { buf, cur }
-            col = col + #buf
+            col = col + Utf8.len(buf)
             buf = ""
         end
     end
@@ -749,7 +738,7 @@ local function chunks_to_render(chunks, default_group)
             end
         elseif ck.kind == "text" or ck.kind == "group" then
             if #ck.s > 0 then
-                buf = buf .. to_ascii_cells(ck.s)
+                buf = buf .. ck.s
             end
         end
         -- truncmark ignored

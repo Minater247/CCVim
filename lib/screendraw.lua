@@ -16,8 +16,9 @@ local function pack_rgb(r, g, b)
 end
 
 local function append_text_cells(cells, text, hl_id)
-    Utf8.each_codepoint(tostring(text or ""), function(cp)
-        cells[#cells + 1] = { Utf8.ascii_cell_for_codepoint(cp), hl_id, 1 }
+    Utf8.each_codepoint(text, function(cp)
+        local ch, swap = screen.normalize_codepoint(cp)
+        cells[#cells + 1] = { ch, hl_id, 1, swap }
     end)
 end
 
@@ -74,7 +75,7 @@ function ScreenDraw.put_blit(row, col, text, fg, bg, wrap)
     local cells = {}
     for i = 1, len do
         cells[#cells + 1] = {
-            Utf8.ascii_cell_for_codepoint(text:byte(i)),
+            Utf8.char_for_codepoint(text:byte(i)),
             blit_hl_id(fg:sub(i, i), bg:sub(i, i)),
             1,
         }
@@ -82,16 +83,18 @@ function ScreenDraw.put_blit(row, col, text, fg, bg, wrap)
     screen.grid_line(1, row, col, cells, wrap)
 end
 
-function ScreenDraw.put_hl_text(row, col, text, hl_line, wrap)
-    text = tostring(text or "")
+function ScreenDraw.put_hl_text(row, col, text, hl_line, wrap, swap_line)
     local cells = {}
-    for i = 1, #text do
+    local cell_idx = 0
+    Utf8.each_codepoint(text, function(cp)
+        cell_idx = cell_idx + 1
         cells[#cells + 1] = {
-            Utf8.ascii_cell_for_codepoint(text:byte(i)),
-            hl_line and hl_line[i] or nil,
+            Utf8.char_for_codepoint(cp),
+            hl_line and hl_line[cell_idx] or nil,
             1,
+            swap_line and swap_line[cell_idx] or false,
         }
-    end
+    end)
     if #cells > 0 then
         screen.grid_line(1, row, col, cells, wrap)
     end

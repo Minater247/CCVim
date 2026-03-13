@@ -10,6 +10,35 @@
 ]]
 
 local CC = {}
+local Utf8 = loadModule("lib.utf8")
+
+local UTF_REPLACEMENTS = {
+    [0x2713] = { char = "v" },
+    [0x2714] = { char = "v" },
+    [0x2611] = { char = "v" },
+    [0x2715] = { char = "x" },
+    [0x2717] = { char = "x" },
+    [0x2718] = { char = "x" },
+    [0x00D7] = { char = "x" },
+    [0x2191] = { char = "\x18" },
+    [0x2193] = { char = "\x19" },
+    [0x2190] = { char = "\x1b" },
+    [0x2192] = { char = "\x1a" },
+    [0xE0B0] = { char = string.char(0x97), swap = true },
+    [0xE0B2] = { char = string.char(0x94) },
+    [0xE0B4] = { char = string.char(0x88) },
+    [0xE0B6] = { char = string.char(0x84) },
+    [0xE0B8] = { char = string.char(0x8B), swap = true },
+    [0xE0BA] = { char = string.char(0x87), swap = true },
+    [0x2518] = { char = "/" },
+    [0x2500] = { char = "-" },
+    [0x2514] = { char = "\\" },
+    [0x2502] = { char = "|" },
+    [0x2510] = { char = "\\" },
+    [0x250C] = { char = "/" },
+    [0x2019] = { char = "'" },
+    [0x201C] = { char = "\"" },
+}
 
 -- =========================================================================
 -- Default CC palette (factory RGB for each slot 0-15)
@@ -69,6 +98,19 @@ local function ensure_grid_state(grid, w, h)
     end
     _grids[grid] = state
     return state
+end
+
+function CC.normalize_codepoint(cp)
+    if cp >= 32 and cp <= 127 then
+        return Utf8.char_for_codepoint(cp), false
+    end
+
+    local replacement = UTF_REPLACEMENTS[cp]
+    if replacement then
+        return replacement.char, replacement.swap == true
+    end
+
+    return "?", false
 end
 
 local function render_row_range(state, row, left, right)
@@ -447,6 +489,7 @@ function CC.grid_line(grid, row, col, cells, wrap)
         local ch     = cell[1]
         local hl_id  = cell[2]
         local rep    = cell[3] or 1
+        local swap   = cell[4] == true
 
         if hl_id ~= nil then
             if hl_id == 0 then
@@ -472,17 +515,23 @@ function CC.grid_line(grid, row, col, cells, wrap)
             end
         end
 
+        local cell_fg_slot = last_fg_slot
+        local cell_bg_slot = last_bg_slot
+        if swap then
+            cell_fg_slot, cell_bg_slot = cell_bg_slot, cell_fg_slot
+        end
+
         for offset = 0, rep - 1 do
             if state.rows[row] and state.rows[row][col + offset] then
-                state.rows[row][col + offset] = { ch, last_fg_slot, last_bg_slot }
+                state.rows[row][col + offset] = { ch, cell_fg_slot, cell_bg_slot }
             end
         end
 
         if grid == 1 and _backwin then
             _backwin.setCursorPos(cx, cy)
             local text   = string.rep(ch == "" and " " or ch, rep)
-            local fg_str = string.rep(SLOT_HEX[last_fg_slot], rep)
-            local bg_str = string.rep(SLOT_HEX[last_bg_slot], rep)
+            local fg_str = string.rep(SLOT_HEX[cell_fg_slot], rep)
+            local bg_str = string.rep(SLOT_HEX[cell_bg_slot], rep)
             _backwin.blit(text, fg_str, bg_str)
         end
 
