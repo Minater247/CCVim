@@ -276,6 +276,8 @@ local _V = {
     -- end
 }
 _V.vimversion_str = _V.vimversion_maj .. "." .. _V.vimversion_min .. "." .. _V.vimversion_pat
+_V.LOG_DEBUG = function(format, ...) log("DEBUG", format, ...) end
+_V.LOG_ERROR = function(format, ...) log("ERROR", format, ...) end
 
 local function loadModule(module, opts)
     opts = opts or {}
@@ -355,6 +357,9 @@ local function loadModule(module, opts)
     return false
 end
 _V.loadModule = loadModule
+if _backend.on_load_module_ready then
+    _backend.on_load_module_ready(_V)
+end
 
 local Screen = loadModule("lib.screen", { immediate = true })
 Screen.init(_backend)
@@ -381,10 +386,6 @@ local Error = loadModule("lib.error")
 local ScriptSource
 
 local VimFs = loadModule("lib.luaapi.fs")
-
--- TEMP
-_V.LOG_DEBUG = function(format, ...) log("DEBUG", format, ...) end
-_V.LOG_ERROR = function(format, ...) log("ERROR", format, ...) end
 
 _V.LOG_INTERNAL_ENABLE = {
     autocmd = false,

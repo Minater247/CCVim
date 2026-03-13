@@ -13,20 +13,21 @@ return {
 
             do
                 local CC = dofile(root .. "/lib/backend/cc.lua")
+                CC.on_load_module_ready(mock.globals())
                 local left, left_swap = CC.normalize_codepoint(0xE0B2)
                 local right, right_swap = CC.normalize_codepoint(0xE0B0)
                 local round_right, round_right_swap = CC.normalize_codepoint(0xE0B4)
                 local round_left, round_left_swap = CC.normalize_codepoint(0xE0B6)
-                local full_right, full_right_swap = CC.normalize_codepoint(0xE0BA)
-                local full_left, full_left_swap = CC.normalize_codepoint(0xE0B8)
+                local full_right, full_right_swap = CC.normalize_codepoint(0xE0B8)
+                local full_left, full_left_swap = CC.normalize_codepoint(0xE0BA)
 
-                Assert.eq("cc left separator glyph", left, string.char(0x94))
-                Assert.eq("cc left separator swap", left_swap, false)
-                Assert.eq("cc right separator glyph", right, string.char(0x97))
-                Assert.eq("cc right separator swap", right_swap, true)
-                Assert.eq("cc rounded right thin glyph", round_right, string.char(0x88))
+                Assert.eq("cc left separator glyph", left, string.char(0x97))
+                Assert.eq("cc left separator swap", left_swap, true)
+                Assert.eq("cc right separator glyph", right, string.char(0x94))
+                Assert.eq("cc right separator swap", right_swap, false)
+                Assert.eq("cc rounded right thin glyph", round_right, string.char(0x84))
                 Assert.eq("cc rounded right thin swap", round_right_swap, false)
-                Assert.eq("cc rounded left thin glyph", round_left, string.char(0x84))
+                Assert.eq("cc rounded left thin glyph", round_left, string.char(0x88))
                 Assert.eq("cc rounded left thin swap", round_left_swap, false)
                 Assert.eq("cc full slanted right glyph", full_right, string.char(0x87))
                 Assert.eq("cc full slanted right swap", full_right_swap, true)
@@ -37,9 +38,9 @@ return {
                 CC.hl_define(1, { foreground = 0xF0F0F0, background = 0x111111 })
                 CC.begin_frame()
                 CC.grid_line(1, 0, 0, {
-                    { right, 1, 1, true },
-                    { full_right, 1, 1, true },
-                    { full_left, 1, 1, true },
+                    { left, 1, 1, left_swap },
+                    { full_right, 1, 1, full_right_swap },
+                    { full_left, 1, 1, full_left_swap },
                 }, false)
                 CC.end_frame()
 
@@ -59,6 +60,7 @@ return {
                 local saved_term = term
                 term = nil
                 local Native = dofile(root .. "/lib/backend/native.lua")
+                Native.on_load_module_ready(mock.globals())
                 term = saved_term
 
                 local checkmark, swap = Native.normalize_codepoint(0x2713)

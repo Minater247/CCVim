@@ -10,7 +10,8 @@
 ]]
 
 local CC = {}
-local Utf8 = loadModule("lib.utf8")
+local Utf8
+local RuntimeScope
 
 local UTF_REPLACEMENTS = {
     [0x2713] = { char = "v" },
@@ -24,12 +25,12 @@ local UTF_REPLACEMENTS = {
     [0x2193] = { char = "\x19" },
     [0x2190] = { char = "\x1b" },
     [0x2192] = { char = "\x1a" },
-    [0xE0B0] = { char = string.char(0x97), swap = true },
-    [0xE0B2] = { char = string.char(0x94) },
-    [0xE0B4] = { char = string.char(0x88) },
-    [0xE0B6] = { char = string.char(0x84) },
-    [0xE0B8] = { char = string.char(0x8B), swap = true },
-    [0xE0BA] = { char = string.char(0x87), swap = true },
+    [0xE0B0] = { char = string.char(0x94) },
+    [0xE0B2] = { char = string.char(0x97), swap = true },
+    [0xE0B4] = { char = string.char(0x84) },
+    [0xE0B6] = { char = string.char(0x88) },
+    [0xE0B8] = { char = string.char(0x87), swap = true },
+    [0xE0BA] = { char = string.char(0x8B), swap = true },
     [0x2518] = { char = "/" },
     [0x2500] = { char = "-" },
     [0x2514] = { char = "\\" },
@@ -110,7 +111,13 @@ function CC.normalize_codepoint(cp)
         return replacement.char, replacement.swap == true
     end
 
+    RuntimeScope.LOG_DEBUG("UNKNOWN CC CODEPOINT: 0x%X", cp)
     return "?", false
+end
+
+function CC.on_load_module_ready(scope)
+    RuntimeScope = scope
+    Utf8 = scope.loadModule("lib.utf8")
 end
 
 local function render_row_range(state, row, left, right)

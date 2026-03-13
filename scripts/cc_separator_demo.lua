@@ -1,10 +1,10 @@
 local entries = {
-    { label = "thin rounded left  (U+E0B6 -> 0x84)", byte = 0x84, swap = false, facing = "left" },
-    { label = "thin rounded right (U+E0B4 -> 0x88)", byte = 0x88, swap = false, facing = "right" },
-    { label = "thin slanted left  (U+E0B2 -> 0x94)", byte = 0x94, swap = false, facing = "left" },
-    { label = "thin slanted right (U+E0B0 -> 0x97, swap)", byte = 0x97, swap = true, facing = "right" },
-    { label = "full slanted left  (U+E0B8 -> 0x8B, swap)", byte = 0x8B, swap = true, facing = "left" },
-    { label = "full slanted right (U+E0BA -> 0x87, swap)", byte = 0x87, swap = true, facing = "right" },
+    { label = "thin rounded left  (U+E0B6 -> 0x88)", byte = 0x88, swap = false, facing = "left" },
+    { label = "thin rounded right (U+E0B4 -> 0x84)", byte = 0x84, swap = false, facing = "right" },
+    { label = "thin slanted left  (U+E0B2 -> 0x97, swap)", byte = 0x97, swap = true, facing = "left" },
+    { label = "thin slanted right (U+E0B0 -> 0x94)", byte = 0x94, swap = false, facing = "right" },
+    { label = "full slanted left  (U+E0BA -> 0x8B, swap)", byte = 0x8B, swap = true, facing = "left" },
+    { label = "full slanted right (U+E0B8 -> 0x87, swap)", byte = 0x87, swap = true, facing = "right" },
 }
 
 local bg = colors.black
@@ -21,7 +21,7 @@ local function draw_transition(y, entry)
     local width = select(1, term.getSize())
     local left_color = color_a
     local right_color = color_b
-    if entry.facing == "right" then
+    if entry.facing == "left" then
         left_color, right_color = right_color, left_color
     end
 
@@ -75,4 +75,4 @@ end
 
 term.setCursorPos(1, 3 + (#entries * 2))
 term.setTextColor(colors.lightGray)
-term.write("Right-facing samples swap the side colors to keep the aligned side matching.")
+term.write("Left-facing samples swap the side colors to keep the aligned side matching.")

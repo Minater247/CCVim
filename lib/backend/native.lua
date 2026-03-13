@@ -13,7 +13,7 @@
 
 local Native = {}
 local uv = require("luv")
-local Utf8 = loadModule("lib.utf8")
+local Utf8
 
 -- =========================================================================
 -- Helpers
@@ -463,6 +463,10 @@ end
 
 function Native.normalize_codepoint(cp)
     return Utf8.char_for_codepoint(cp), false
+end
+
+function Native.on_load_module_ready(scope)
+    Utf8 = scope.loadModule("lib.utf8")
 end
 
 function Native.grid_line(grid, row, col, cells, wrap)
