@@ -1736,6 +1736,340 @@ function MockEnv.setup(opts)
         height = state.term.height,
     }
 
+    do
+        local hl_by_id = {}
+        local hl_cache = {}
+        local next_hl_id = 1
+        local default_attrs = { fg = nil, bg = nil, foreground = nil, background = nil }
+
+        local function pack_rgb(r, g, b)
+            return r * 65536 + g * 256 + b
+        end
+
+        local function unpack_rgb(rgb)
+            return math.floor(rgb / 65536) % 256, math.floor(rgb / 256) % 256, rgb % 256
+        end
+
+        local function palette_rgb(slot)
+            local key = string.format("%x", slot)
+            local rgb = state.term.palette[key] or { 0, 0, 0 }
+            return math.floor(rgb[1] * 255 + 0.5), math.floor(rgb[2] * 255 + 0.5), math.floor(rgb[3] * 255 + 0.5)
+        end
+
+        local function rgb_dist(a, b)
+            local ar, ag, ab = unpack_rgb(a)
+            local br, bg, bb = unpack_rgb(b)
+            local dr = ar - br
+            local dg = ag - bg
+            local db = ab - bb
+            return dr * dr + dg * dg + db * db
+        end
+
+        local function nearest_slot(rgb)
+            local best_slot = 0
+            local best_dist = math.huge
+            for slot = 0, 15 do
+                local pr, pg, pb = palette_rgb(slot)
+                local dist = rgb_dist(rgb, pack_rgb(pr, pg, pb))
+                if dist < best_dist then
+                    best_slot = slot
+                    best_dist = dist
+                end
+            end
+            return string.format("%x", best_slot)
+        end
+
+        local function normalize_hl_attrs(attrs)
+            attrs = attrs or {}
+            local fg = attrs.foreground
+            if fg == nil then fg = attrs.fg end
+            local bg = attrs.background
+            if bg == nil then bg = attrs.bg end
+            return {
+                fg = fg,
+                bg = bg,
+                foreground = fg,
+                background = bg,
+                special = attrs.special,
+                reverse = not not attrs.reverse,
+                italic = not not attrs.italic,
+                bold = not not attrs.bold,
+                strikethrough = not not attrs.strikethrough,
+                underline = not not attrs.underline,
+                undercurl = not not attrs.undercurl,
+                underdouble = not not attrs.underdouble,
+                underdotted = not not attrs.underdotted,
+                underdashed = not not attrs.underdashed,
+                altfont = attrs.altfont,
+                blend = attrs.blend,
+                url = attrs.url,
+                cterm_foreground = attrs.cterm_foreground,
+                cterm_background = attrs.cterm_background,
+            }
+        end
+
+        local function hl_key(attrs)
+            attrs = normalize_hl_attrs(attrs)
+            return table.concat({
+                tostring(attrs.foreground or -1),
+                tostring(attrs.background or -1),
+                tostring(attrs.special or -1),
+                attrs.bold and "B" or "",
+                attrs.italic and "I" or "",
+                attrs.underline and "U" or "",
+                attrs.undercurl and "C" or "",
+                attrs.underdouble and "D" or "",
+                attrs.underdotted and "O" or "",
+                attrs.underdashed and "A" or "",
+                attrs.strikethrough and "S" or "",
+                attrs.reverse and "R" or "",
+                attrs.altfont and ("F" .. tostring(attrs.altfont)) or "",
+                attrs.blend and ("L" .. tostring(attrs.blend)) or "",
+                attrs.url and ("@" .. attrs.url) or "",
+                tostring(attrs.cterm_foreground or -1),
+                tostring(attrs.cterm_background or -1),
+            }, ":")
+        end
+
+        function globals.screen.begin_frame()
+        end
+
+        function globals.screen.end_frame()
+        end
+
+        function globals.screen.flush()
+        end
+
+        function globals.screen.get_size()
+            return globals.screen.width, globals.screen.height
+        end
+
+        function globals.screen.color_depth()
+            return "16"
+        end
+
+        function globals.screen.supports_palette()
+            return true
+        end
+
+        function globals.screen.get_palette_slot(slot)
+            return palette_rgb(slot)
+        end
+
+        function globals.screen.set_palette_slot(slot, r, g, b)
+            state.term.palette[string.format("%x", slot)] = {
+                (tonumber(r) or 0) / 255,
+                (tonumber(g) or 0) / 255,
+                (tonumber(b) or 0) / 255,
+            }
+        end
+
+        function globals.screen.hl_define(id, attrs)
+            local normalized = normalize_hl_attrs(attrs)
+            hl_by_id[id] = normalized
+            hl_cache[hl_key(normalized)] = id
+        end
+
+        function globals.screen.hl_id_for(attrs)
+            local normalized = normalize_hl_attrs(attrs)
+            local key = hl_key(normalized)
+            local id = hl_cache[key]
+            if id then
+                return id
+            end
+            id = next_hl_id
+            next_hl_id = next_hl_id + 1
+            globals.screen.hl_define(id, normalized)
+            return id
+        end
+
+        function globals.screen.hl_attrs(id)
+            return hl_by_id[id]
+        end
+
+        function globals.screen.default_colors_set(rgb_fg, rgb_bg, rgb_sp, cterm_fg, cterm_bg)
+            default_attrs = {
+                fg = rgb_fg,
+                bg = rgb_bg,
+                foreground = rgb_fg,
+                background = rgb_bg,
+                special = rgb_sp,
+                cterm_foreground = cterm_fg,
+                cterm_background = cterm_bg,
+            }
+            hl_by_id[0] = default_attrs
+        end
+
+        function globals.screen.hl_attr_define(id, rgb_attr, cterm_attr, info)
+            globals.screen.hl_define(id, {
+                fg = rgb_attr and rgb_attr.foreground,
+                bg = rgb_attr and rgb_attr.background,
+                foreground = rgb_attr and rgb_attr.foreground,
+                background = rgb_attr and rgb_attr.background,
+                special = rgb_attr and rgb_attr.special,
+                reverse = rgb_attr and rgb_attr.reverse,
+                italic = rgb_attr and rgb_attr.italic,
+                bold = rgb_attr and rgb_attr.bold,
+                strikethrough = rgb_attr and rgb_attr.strikethrough,
+                underline = rgb_attr and rgb_attr.underline,
+                cterm_foreground = cterm_attr and cterm_attr.foreground,
+                cterm_background = cterm_attr and cterm_attr.background,
+                info = info,
+            })
+        end
+
+        function globals.screen.hl_group_set(name, id)
+            state.screen_groups = state.screen_groups or {}
+            state.screen_groups[name] = id
+        end
+
+        function globals.screen.grid_line(_grid, row, col, cells, _wrap)
+            local x = col + 1
+            local y = row + 1
+            local current = default_attrs
+
+            for i = 1, #cells do
+                local cell = cells[i]
+                if cell[2] ~= nil then
+                    current = hl_by_id[cell[2]] or default_attrs
+                end
+
+                local fg = "0"
+                local bg = "f"
+                if current then
+                    local fg_rgb = current.foreground or current.fg
+                    local bg_rgb = current.background or current.bg
+                    if fg_rgb then
+                        fg = nearest_slot(fg_rgb)
+                    end
+                    if bg_rgb then
+                        bg = nearest_slot(bg_rgb)
+                    end
+                    if current.reverse then
+                        fg, bg = bg, fg
+                    end
+                end
+
+                local rep = cell[3] or 1
+                globals.term.setCursorPos(x, y)
+                globals.term.blit(string.rep(cell[1], rep), string.rep(fg, rep), string.rep(bg, rep))
+                x = x + rep
+            end
+        end
+
+        function globals.screen.grid_cursor_goto(_grid, row, col)
+            state.term.cy = row + 1
+            state.term.cx = col + 1
+        end
+
+        function globals.screen.grid_clear(_grid)
+            globals.term.clear()
+        end
+
+        function globals.screen.grid_resize(_grid, w, h)
+            globals.screen.width = w
+            globals.screen.height = h
+            state.term.width = w
+            state.term.height = h
+            state.term.reset()
+        end
+
+        function globals.screen.grid_destroy(_grid)
+        end
+
+        function globals.screen.grid_scroll(_grid, _top, _bot, _left, _right, _rows, _cols)
+        end
+    end
+
+    globals.backend = {
+        begin_frame = function()
+        end,
+        end_frame = function()
+        end,
+        flush = function()
+        end,
+        hl_define = function(id, attrs)
+            globals.screen.hl_define(id, attrs)
+        end,
+        default_colors_set = function(rgb_fg, rgb_bg, rgb_sp, cterm_fg, cterm_bg)
+            globals.screen.default_colors_set(rgb_fg, rgb_bg, rgb_sp, cterm_fg, cterm_bg)
+        end,
+        grid_line = function(grid, row, col, cells, wrap)
+            globals.screen.grid_line(grid, row, col, cells, wrap)
+        end,
+        grid_cursor_goto = function(grid, row, col)
+            globals.screen.grid_cursor_goto(grid, row, col)
+        end,
+        grid_clear = function(grid)
+            globals.screen.grid_clear(grid)
+        end,
+        grid_destroy = function(grid)
+            globals.screen.grid_destroy(grid)
+        end,
+        grid_resize = function(grid, w, h)
+            globals.screen.grid_resize(grid, w, h)
+        end,
+        grid_scroll = function(grid, top, bot, left, right, rows, cols)
+            globals.screen.grid_scroll(grid, top, bot, left, right, rows, cols)
+        end,
+        size = function()
+            return globals.term.getSize()
+        end,
+        color_depth = function()
+            return "16"
+        end,
+        supports_palette = function()
+            return true
+        end,
+        set_palette_slot = function(slot, r, g, b)
+            globals.screen.set_palette_slot(slot, r, g, b)
+        end,
+        get_palette_slot = function(slot)
+            return globals.screen.get_palette_slot(slot)
+        end,
+        capture_palette = function()
+            local out = {}
+            for slot = 0, 15 do
+                local r, g, b = globals.screen.get_palette_slot(slot)
+                out[slot] = { r, g, b }
+            end
+            return out
+        end,
+        reset = function()
+            globals.term.clear()
+            globals.term.setCursorPos(1, 1)
+        end,
+        pull_event = function(filter)
+            while true do
+                local ev = { globals.os.pullEvent(filter) }
+                if ev[1] == "mouse_scroll" then
+                    local delta = tonumber(ev[2]) or 0
+                    if delta > 0 then
+                        ev[2] = "down"
+                        return table.unpack(ev)
+                    end
+                    if delta < 0 then
+                        ev[2] = "up"
+                        return table.unpack(ev)
+                    end
+                else
+                    return table.unpack(ev)
+                end
+            end
+        end,
+        start_timer = function(time)
+            return globals.os.startTimer(time)
+        end,
+        cancel_timer = function(id)
+            return globals.os.cancelTimer(id)
+        end,
+        get_epoch = function()
+            return globals.os.epoch("utc")
+        end,
+        keys = globals.keys,
+        fs = globals.fs,
+    }
+
     globals.windows = {}
     globals.tabpages = { { opts = {} } }
     globals.buffers = {}

@@ -51,12 +51,14 @@ end
 -- Glyph building (two tight inner variants to avoid hot-path branches)
 -- ============
 
--- Build glyphs (flat arrays) and optional glyph colors from a blit pair.
+-- Build glyphs (flat arrays) and optional glyph colors from a blit pair or
+-- highlight-id array.
 -- Returns:
 --   gch[]     : array of single-char strings (rendered glyphs)
 --   issp[]    : parallel array of booleans (true if space)
 --   gfg[]?    : parallel array of fg blit chars (present if want_blit)
 --   gbg[]?    : parallel array of bg blit chars (present if want_blit)
+--   ghl[]?    : parallel array of hl ids (present if want_hl)
 --   target    : 1-based glyph index of first display cell for bytepos (or nil)
 --   n         : #gch
 
@@ -109,7 +111,7 @@ local function build_glyphs_with_map_noblit(s, bytepos, cfg, listcfg)
             push(Utf8.ascii_cell_for_codepoint(cp), i)
         end
     end)
-    return gch, issp, nil, nil, target, #gch, gsrc
+    return gch, issp, nil, nil, nil, target, #gch, gsrc
 end
 
 local function build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listcfg)
@@ -168,12 +170,71 @@ local function build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listc
             push(Utf8.ascii_cell_for_codepoint(cp), i, f, b)
         end
     end)
-    return gch, issp, gfg, gbg, target, #gch, gsrc
+    return gch, issp, gfg, gbg, nil, target, #gch, gsrc
 end
 
-local function build_glyphs_with_map(s, bytepos, cfg, blitfg, blitbg, want_blit, listcfg)
+local function build_glyphs_with_map_hl(s, bytepos, cfg, hlline, listcfg)
+    local gch, issp, ghl, gsrc = {}, {}, {}, {}
+    local target = nil
+    local col = 0
+    local list_space = listcfg and listcfg.space
+    local tab_head = listcfg and listcfg.tab_head
+    local tab_fill = listcfg and listcfg.tab_fill or tab_head
+
+    local function push(ch, src_i, hl)
+        local k = #gch + 1
+        if ch == " " and list_space then
+            gch[k] = list_space
+        else
+            gch[k] = ch
+        end
+        issp[k] = (ch == " ")
+        ghl[k] = hl
+        gsrc[k] = src_i
+        if bytepos and src_i == bytepos and not target then target = k end
+        col = col + 1
+    end
+
+    each_char_with_byte(s, function(i, cp)
+        local hl = hlline and hlline[i]
+        if cp == 9 then
+            local stop = Tab.next_display_tabstop(col, cfg)
+            local n = stop - col
+            if n <= 0 then n = 1 end
+            local k0 = #gch
+            for k = 1, n do
+                local idx = k0 + k
+                if tab_head then
+                    if k == 1 then
+                        gch[idx] = tab_head
+                    else
+                        gch[idx] = tab_fill or tab_head
+                    end
+                else
+                    gch[idx] = " "
+                end
+                issp[idx] = true
+                ghl[idx] = hl
+                gsrc[idx] = i
+            end
+            if bytepos and i == bytepos and not target then target = k0 + 1 end
+            col = col + n
+        elseif cp < 32 or cp == 127 then
+            local second = (cp == 127) and "?" or s_char(cp + 64)
+            push("^", i, hl)
+            push(second, i, hl)
+        else
+            push(Utf8.ascii_cell_for_codepoint(cp), i, hl)
+        end
+    end)
+    return gch, issp, nil, nil, ghl, target, #gch, gsrc
+end
+
+local function build_glyphs_with_map(s, bytepos, cfg, blitfg, blitbg, hlline, want_blit, want_hl, listcfg)
     if want_blit then
         return build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listcfg)
+    elseif want_hl then
+        return build_glyphs_with_map_hl(s, bytepos, cfg, hlline, listcfg)
     else
         return build_glyphs_with_map_noblit(s, bytepos, cfg, listcfg)
     end
@@ -181,11 +242,17 @@ end
 
 -- Emit glyphs i..j to rv[ri]; if colors requested, emit to rbfg[ri]/rbbg[ri].
 -- Returns next ri and (maybe) mapped_col if target in [i..j].
-local function emit_line_from_glyphs(rv, rbfg, rbbg, ri, gch, gfg, gbg, i, j, want_pos, target_idx, want_blit)
+local function emit_line_from_glyphs(rv, rbfg, rbbg, rbhl, ri, gch, gfg, gbg, ghl, i, j, want_pos, target_idx, want_blit, want_hl)
     rv[ri] = t_concat(gch, "", i, j)
     if want_blit then
         rbfg[ri] = t_concat(gfg, "", i, j)
         rbbg[ri] = t_concat(gbg, "", i, j)
+    elseif want_hl then
+        local out = {}
+        for k = i, j do
+            out[#out + 1] = ghl[k]
+        end
+        rbhl[ri] = out
     end
     local mapped_col = nil
     if want_pos and target_idx and target_idx >= i and target_idx <= j then
@@ -203,20 +270,27 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
 
     -- Normalize blit inputs
     local blitfg, blitbg
+    local hlline
     if type(blit_pair) == "table" then
         blitfg = blit_pair.fg or blit_pair[1]
         blitbg = blit_pair.bg or blit_pair[2]
+        hlline = blit_pair.hl
     end
     local want_blit = (type(blitfg) == "string")
                    and (type(blitbg) == "string")
+    local want_hl = type(hlline) == "table"
 
     -- Only allocate blit output tables if needed
-    local rbfg, rbbg = nil, nil
-    if want_blit then rbfg, rbbg = {}, {} end
+    local rbfg, rbbg, rbhl = nil, nil, nil
+    if want_blit then
+        rbfg, rbbg = {}, {}
+    elseif want_hl then
+        rbhl = {}
+    end
 
     -- Build glyph arrays (+colors if requested)
-    local gch, issp, gfg, gbg, target_idx, total_cols, gsrc =
-        build_glyphs_with_map(str, bytepos, params.tabcfg, blitfg, blitbg, want_blit, params.listcfg)
+    local gch, issp, gfg, gbg, ghl, target_idx, total_cols, gsrc =
+        build_glyphs_with_map(str, bytepos, params.tabcfg, blitfg, blitbg, hlline, want_blit, want_hl, params.listcfg)
 
     local want_pos = (bytepos ~= nil)
 
@@ -248,7 +322,23 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
         local line_idx = ri
         local mapped_col_local
         ri, mapped_col_local =
-            emit_line_from_glyphs(rv, rbfg, rbbg, ri, gch, gfg, gbg, i, j, want_pos, target_idx, want_blit)
+            emit_line_from_glyphs(
+                rv,
+                rbfg,
+                rbbg,
+                rbhl,
+                ri,
+                gch,
+                gfg,
+                gbg,
+                ghl,
+                i,
+                j,
+                want_pos,
+                target_idx,
+                want_blit,
+                want_hl
+            )
         if ranges then
             ranges[line_idx] = { i = i, j = j }
         end
@@ -266,12 +356,12 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
             if wl > 0 and (not target_idx) then
                 local line_len = (rv[1] and #rv[1]) or 0
                 if line_len > 0 and col == line_len + 1 and line_len == wl then
-                    return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(2, 1), ranges, gsrc
+                    return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl }), finish_pos(2, 1), ranges, gsrc
                 end
             end
-            return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(1, col), ranges, gsrc
+            return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl }), finish_pos(1, col), ranges, gsrc
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg }), nil, ranges, gsrc
+        return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl }), nil, ranges, gsrc
     end
 
     local i, n = 1, #gch
@@ -338,9 +428,9 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
                 mapped_ch_explicit = " "
             end
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(mapped_line, mapped_col), ranges, gsrc
+        return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl }), finish_pos(mapped_line, mapped_col), ranges, gsrc
     else
-        return rv, (want_blit and { fg = rbfg, bg = rbbg }), nil, ranges, gsrc
+        return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl }), nil, ranges, gsrc
     end
 end
 

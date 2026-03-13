@@ -98,13 +98,17 @@ return {
             Assert.eq("popup model still runs MenuPopup", autocmd_calls[#autocmd_calls].event, "MenuPopup")
 
             local scroll_before = #scroll_calls
-            Event.ProcessEvent({ "mouse_scroll", 1, 12, 2 })
+            Event.ProcessEvent({ "mouse_scroll", "down", 12, 2 })
             Assert.eq("scroll down uses mousescroll amount", scroll_calls[scroll_before + 1].dy, 3)
 
             Event.ProcessEvent({ "key", keys.leftShift })
-            Event.ProcessEvent({ "mouse_scroll", -1, 12, 2 })
+            Event.ProcessEvent({ "mouse_scroll", "up", 12, 2 })
             Assert.eq("shift+scroll uses page amount", scroll_calls[#scroll_calls].dy, -5)
             Event.ProcessEvent({ "key_up", keys.leftShift })
+
+            local scroll_before_horizontal = #scroll_calls
+            Event.ProcessEvent({ "mouse_scroll", "right", 12, 2 })
+            Assert.eq("horizontal scroll uses hor amount", scroll_calls[scroll_before_horizontal + 1].dx, 6)
 
             Options.set("mouse", "", false, win, buf, true)
             local cursor_before_disabled = #cursor_calls

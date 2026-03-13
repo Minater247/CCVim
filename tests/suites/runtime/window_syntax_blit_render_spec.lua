@@ -42,8 +42,11 @@ return {
                 for ln = first_line, last_line do
                     if ln == 1 then
                         out[ln] = {
-                            fg = "012",
-                            bg = "fff",
+                            hl = {
+                                screen.hl_id_for({ fg = 0xF0F0F0, bg = 0x111111 }),
+                                screen.hl_id_for({ fg = 0xF2B233, bg = 0x111111 }),
+                                screen.hl_id_for({ fg = 0xE57FD8, bg = 0x111111 }),
+                            },
                         }
                     end
                 end

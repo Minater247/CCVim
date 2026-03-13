@@ -1340,24 +1340,21 @@ local function resolve_capture_hl_group(capture, lang)
     return nil
 end
 
-local function copy_blit_chars(line, base, normal_fg, normal_bg)
+local function copy_hl_chars(line, base, normal_hl)
     local len = #line
-    local fg_chars = {}
-    local bg_chars = {}
+    local hl_chars = {}
 
-    if base and type(base.fg) == "string" and #base.fg == len and type(base.bg) == "string" and #base.bg == len then
+    if base and type(base.hl) == "table" and #base.hl == len then
         for i = 1, len do
-            fg_chars[i] = base.fg:sub(i, i)
-            bg_chars[i] = base.bg:sub(i, i)
+            hl_chars[i] = base.hl[i]
         end
     else
         for i = 1, len do
-            fg_chars[i] = normal_fg
-            bg_chars[i] = normal_bg
+            hl_chars[i] = normal_hl
         end
     end
 
-    return fg_chars, bg_chars
+    return hl_chars
 end
 
 local highlighter = {
@@ -1379,7 +1376,7 @@ function highlighter.new(parser)
         return self.tree:get_doc()
     end
 
-    function obj:_resolve_blit_colors(capture, lang)
+    function obj:_resolve_highlight(capture, lang)
         local version = Highlight.Version()
         if self._hl_version ~= version then
             self._hl_cache = {}
@@ -1389,29 +1386,25 @@ function highlighter.new(parser)
         local key = lang .. "::" .. capture
         local cached = self._hl_cache[key]
         if cached then
-            return cached[1], cached[2]
+            return cached
         end
 
         local group = resolve_capture_hl_group(capture, lang)
         if not group then
-            self._hl_cache[key] = { false, false }
-            return false, false
+            self._hl_cache[key] = false
+            return false
         end
 
-        local hl = Highlight.For(group)
-        local fg = hl[1] and colors.toBlit(hl[1]) or false
-        local bg = hl[2] and colors.toBlit(hl[2]) or false
-        self._hl_cache[key] = { fg, bg }
-        return fg, bg
+        local hl_id = Highlight.GetId(group)
+        self._hl_cache[key] = hl_id
+        return hl_id
     end
 
     function obj:build_blits(buffer, first_line, last_line, base)
         local doc = self:_ensure_doc()
         local lang = self.tree:lang()
 
-        local normal = Highlight.For("Normal")
-        local normal_fg = colors.toBlit(normal[1])
-        local normal_bg = colors.toBlit(normal[2])
+        local normal_hl = Highlight.GetId("Normal")
 
         local out = base or {}
 
@@ -1422,26 +1415,24 @@ function highlighter.new(parser)
 
             if spans and len > 0 then
                 local entry = out[lnum]
-                local fg_chars, bg_chars = copy_blit_chars(line, entry, normal_fg, normal_bg)
+                local hl_chars = copy_hl_chars(line, entry, normal_hl)
 
                 for si = 1, #spans do
                     local span = spans[si]
                     local s = math.max(1, math.min(len, span.start_col + 1))
                     local e = math.max(0, math.min(len, span.end_col))
                     if e >= s then
-                        local fg, bg = self:_resolve_blit_colors(span.capture, lang)
-                        if fg or bg then
+                        local hl_id = self:_resolve_highlight(span.capture, lang)
+                        if hl_id then
                             for c = s, e do
-                                if fg then fg_chars[c] = fg end
-                                if bg then bg_chars[c] = bg end
+                                hl_chars[c] = hl_id
                             end
                         end
                     end
                 end
 
                 out[lnum] = {
-                    fg = table.concat(fg_chars),
-                    bg = table.concat(bg_chars),
+                    hl = hl_chars,
                 }
             end
         end

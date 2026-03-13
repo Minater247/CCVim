@@ -6,6 +6,7 @@ local TexRen = loadModule("lib.texren")
 local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
 local CmdRead = loadModule("lib.excmd.cmdread")
+local ScreenDraw = loadModule("lib.screendraw")
 
 --[[
 Array of messages. Each line is {hlgroup, str}.
@@ -31,7 +32,7 @@ local current_hl = "Normal"
 --[[
 The lines to display for the messages.
 {
-    {str, fgblit, bgblit},
+    {str, hl},
     ...
 }
 ]]
@@ -232,24 +233,23 @@ local function renderdisplay()
         local line = displaymessages[i]
 
         local str_parts = {}
-        local fg_parts = {}
-        local bg_parts = {}
+        local hl_parts = {}
 
         for _, pair in ipairs(line) do
-            local hl = Highlight.For(pair[1])
+            local hl_id = Highlight.GetId(pair[1])
             local text = tostring(pair[2] or "")
             local len = #text
             if len > 0 then
                 str_parts[#str_parts + 1] = text
-                fg_parts[#fg_parts + 1] = string.rep(colors.toBlit(hl[1]), len)
-                bg_parts[#bg_parts + 1] = string.rep(colors.toBlit(hl[2]), len)
+                for j = 1, len do
+                    hl_parts[#hl_parts + 1] = hl_id
+                end
             end
         end
 
         blitmessages[#blitmessages + 1] = {
             table.concat(str_parts),
-            table.concat(fg_parts),
-            table.concat(bg_parts)
+            hl_parts,
         }
     end
 end
@@ -273,10 +273,10 @@ local function calculateScreenLines()
                 tabcfg = tabcfg -- TODO: not probably how that's done
             },
             nil,
-            { triad[2], triad[3] }
+            { hl = triad[2] }
         )
         for j = 1, #new_lines do
-            screenlines[#screenlines + 1] = { new_lines[j], new_blits.fg[j], new_blits.bg[j] }
+            screenlines[#screenlines + 1] = { new_lines[j], new_blits.hl[j], j < #new_lines }
         end
     end
 
@@ -303,10 +303,8 @@ local function draw_more_page(snap_to_bottom)
     if more_top > max_start then more_top = max_start end
 
     -- Clear the message area (all but the bottom status line)
-    Highlight.SetFor("Normal")
     for i = 1, max_lines do
-        term.setCursorPos(1, screen.height - i)
-        term.clearLine()
+        ScreenDraw.clear_line(screen.height - i - 1, "Normal")
     end
 
     -- Draw visible slice bottom-aligned above the status line
@@ -314,21 +312,23 @@ local function draw_more_page(snap_to_bottom)
     for i = 1, visible do
         local triad = screenlines[more_top + i - 1]
         local y = (screen.height - 1) - visible + i
-        term.setCursorPos(1, y)
-        term.blit(triad[1], triad[2], triad[3])
+        ScreenDraw.put_hl_text(y - 1, 0, triad[1], triad[2], triad[3])
     end
 
     -- Status line
-    term.setCursorPos(1, screen.height)
-    term.clearLine()
+    ScreenDraw.clear_line(screen.height - 1, "Normal")
     if cmdread_active then
         CmdRead.drawCmdline()
     else
-        Highlight.SetFor("MoreMsg")
         if more_help_long then
-            term.write("-- More -- SPACE/d/j: screen/page/line down, b/u/k: up, q: quit")
+            ScreenDraw.put_text(
+                screen.height - 1,
+                0,
+                "-- More -- SPACE/d/j: screen/page/line down, b/u/k: up, q: quit",
+                "MoreMsg"
+            )
         else
-            term.write("-- More --")
+            ScreenDraw.put_text(screen.height - 1, 0, "-- More --", "MoreMsg")
         end
     end
 end
@@ -447,37 +447,30 @@ local function draw_press_enter()
     local cmdread_active = CmdRead.is_active()
 
     -- Clear the area we're about to draw (bottom-aligned)
-    Highlight.SetFor("Normal")
     local toclear = #screenlines
     if #screenlines > cmdheight then
         toclear = toclear + 1
     end
     for i = 1, toclear do
-        term.setCursorPos(1, screen.height - i + 1 + offset)
-        term.clearLine()
+        ScreenDraw.clear_line(screen.height - i + offset, "Normal")
     end
 
     -- Draw the message lines, bottom-up
     for i = 1, #screenlines do
-        term.setCursorPos(1, screen.height - i + 1 + offset)
         local triad = screenlines[#screenlines - i + 1]
-        term.blit(triad[1], triad[2], triad[3])
+        ScreenDraw.put_hl_text(screen.height - i + offset, 0, triad[1], triad[2], triad[3])
     end
 
     -- If this is a true press-enter case, paint the prompt + separator.
     if #screenlines > cmdheight then
-        term.setCursorPos(1, screen.height)
-        term.clearLine()
+        ScreenDraw.clear_line(screen.height - 1, "Normal")
         if cmdread_active then
             CmdRead.drawCmdline()
         else
-            Highlight.SetFor("Question")
-            term.write("Press ENTER or type command to continue")
+            ScreenDraw.put_text(screen.height - 1, 0, "Press ENTER or type command to continue", "Question")
         end
 
-        term.setCursorPos(1, screen.height - #screenlines - 1)
-        Highlight.SetFor("MsgSeparator")
-        term.write(string.rep(" ", screen.width))
+        ScreenDraw.fill(screen.height - #screenlines - 2, 0, screen.width, "MsgSeparator")
     elseif cmdread_active then
         CmdRead.drawCmdline()
     end

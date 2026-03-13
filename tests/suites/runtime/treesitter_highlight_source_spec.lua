@@ -35,24 +35,24 @@ return {
             local foo_col = assert(string.find(line, "foo", 1, true)) - 1
             local return_col = assert(string.find(line, "return", 1, true)) - 1
 
-            local function fg_at_col(blits, lnum, col0)
-                local normal = colors.toBlit(Highlight.For("Normal")[1])
-                if not blits or not blits[lnum] or not blits[lnum].fg then
+            local function hl_at_col(blits, lnum, col0)
+                local normal = Highlight.GetId("Normal")
+                if not blits or not blits[lnum] or not blits[lnum].hl then
                     return normal
                 end
-                return blits[lnum].fg:sub(col0 + 1, col0 + 1)
+                return blits[lnum].hl[col0 + 1]
             end
 
             local function bg_at_col(blits, lnum, col0)
-                local normal = colors.toBlit(Highlight.For("Normal")[2])
-                if not blits or not blits[lnum] or not blits[lnum].bg then
-                    return normal
+                local attrs = screen.hl_attrs(hl_at_col(blits, lnum, col0)) or {}
+                if attrs.bg ~= nil then
+                    return attrs.bg
                 end
-                return blits[lnum].bg:sub(col0 + 1, col0 + 1)
+                return Highlight.For("Normal")[2]
             end
 
             local before = Syntax.LinesToBlit(buf, 1, 1, win)
-            local before_local = fg_at_col(before, 1, local_col)
+            local before_local = hl_at_col(before, 1, local_col)
 
             Treesitter.start(buf.bufnr, "lua")
             Assert.eq("b:ts_highlight enabled", Scopes._b_by_buf[buf.bufnr].ts_highlight, 1)
@@ -73,12 +73,12 @@ return {
             Assert.truthy("capture id > 0", type(c_local.id) == "number" and c_local.id > 0)
 
             local after_start = Syntax.LinesToBlit(buf, 1, 1, win)
-            local keyword_blit = colors.toBlit(Highlight.For("Keyword")[1])
-            local function_blit = colors.toBlit(Highlight.For("Function")[1])
+            local keyword_hl = Highlight.GetId("Keyword")
+            local function_hl = Highlight.GetId("Function")
 
-            Assert.eq("local becomes keyword after start", fg_at_col(after_start, 1, local_col), keyword_blit)
-            Assert.eq("foo becomes function after start", fg_at_col(after_start, 1, foo_col), function_blit)
-            Assert.truthy("start changed color from baseline", fg_at_col(after_start, 1, local_col) ~= before_local)
+            Assert.eq("local becomes keyword after start", hl_at_col(after_start, 1, local_col), keyword_hl)
+            Assert.eq("foo becomes function after start", hl_at_col(after_start, 1, foo_col), function_hl)
+            Assert.truthy("start changed color from baseline", hl_at_col(after_start, 1, local_col) ~= before_local)
 
             local ok_run, err_run = Runtime.run([[
                 colorscheme default
@@ -88,7 +88,7 @@ return {
             Assert.eq("colorscheme sequence runs", ok_run, true, err_run)
 
             local after_schemes = Syntax.LinesToBlit(buf, 1, 1, win)
-            local normal_bg = colors.toBlit(Highlight.For("Normal")[2])
+            local normal_bg = Highlight.For("Normal")[2]
 
             Assert.eq(
                 "treesitter capture background follows Normal after repeated colorscheme loads",
@@ -102,8 +102,8 @@ return {
             local after_stop = Syntax.LinesToBlit(buf, 1, 1, win)
             Assert.eq(
                 "local returns to current Normal after stop",
-                fg_at_col(after_stop, 1, local_col),
-                colors.toBlit(Highlight.For("Normal")[1])
+                hl_at_col(after_stop, 1, local_col),
+                Highlight.GetId("Normal")
             )
         end)
 

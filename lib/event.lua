@@ -14,15 +14,22 @@ local Fn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local TimerUtils = loadModule("lib.luaapi.timerutils")
 
+local function current_backend()
+    return rawget(_ENV, "backend")
+        or rawget(_G, "backend")
+        or rawget(_ENV, "backend_proxy")
+        or rawget(_ENV, "backend_ref")
+end
+
 function Event.StartTimer(time, callback)
-    local id = os.startTimer(time)
+    local id = current_backend().start_timer(time)
     timers[id] = callback
     return id
 end
 
 function Event.CancelTimer(id)
     if not id then return end
-    os.cancelTimer(id)
+    current_backend().cancel_timer(id)
     timers[id] = nil
 end
 
@@ -114,7 +121,7 @@ local function parse_mousescroll_amount(axis)
 end
 
 local function click_count(button, x, y)
-    local now = os.epoch("utc")
+    local now = current_backend().get_epoch()
     local max_gap = math.max(0, math.floor(options.get("mousetime")))
 
     local count = 1
@@ -237,7 +244,19 @@ local mouse_kind_suffixes = {
 
 local function mouse_notation_name(kind, button, clicks, direction)
     if kind == "scroll" then
-        return direction == -1 and "ScrollWheelUp" or "ScrollWheelDown"
+        if direction == "up" then
+            return "ScrollWheelUp"
+        end
+        if direction == "down" then
+            return "ScrollWheelDown"
+        end
+        if direction == "left" then
+            return "ScrollWheelLeft"
+        end
+        if direction == "right" then
+            return "ScrollWheelRight"
+        end
+        error("Unknown mouse scroll direction: " .. tostring(direction))
     end
 
     local name = mouse_button_names[button] .. mouse_kind_suffixes[kind]
@@ -512,9 +531,6 @@ local function handle_mouse_scroll(direction, x, y)
     if not mouse_enabled_for_current_mode() then
         return
     end
-    if direction ~= -1 and direction ~= 1 then
-        return
-    end
 
     local win = target_window_at(x, y)
     if not win then
@@ -530,17 +546,26 @@ local function handle_mouse_scroll(direction, x, y)
         return
     end
 
-    local amount
-    if shift_is_held() then
-        amount = win:textheight()
+    if direction == "up" or direction == "down" then
+        local amount
+        if shift_is_held() then
+            amount = win:textheight()
+        else
+            amount = parse_mousescroll_amount("ver")
+        end
+        if amount < 1 then
+            return
+        end
+        win:scroll(0, direction == "up" and -amount or amount)
+    elseif direction == "left" or direction == "right" then
+        local amount = parse_mousescroll_amount("hor")
+        if amount < 1 then
+            return
+        end
+        win:scroll(direction == "left" and -amount or amount, 0)
     else
-        amount = parse_mousescroll_amount("ver")
+        error("Unknown mouse scroll direction: " .. tostring(direction))
     end
-    if amount < 1 then
-        return
-    end
-
-    win:scroll(0, direction * amount)
     need_redraw = true
 end
 
@@ -583,7 +608,10 @@ function Event.ProcessEvent(ev)
             end)
         end
     elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
-        local w, h = term.getSize()
+        local w, h = current_backend().size()
+        if type(ev[2]) == "number" and type(ev[3]) == "number" then
+            w, h = ev[2], ev[3]
+        end
         local ok, err = apply_terminal_resize(w, h, ev[1])
         if not ok and err then
             local msg
@@ -600,7 +628,7 @@ function Event.ProcessEvent(ev)
 end
 
 function Event.PullAndProcess(filter)
-    local e1, e2, e3, e4, e5, e6 = os.pullEvent(filter)
+    local e1, e2, e3, e4, e5, e6 = current_backend().pull_event(filter)
     Event.ProcessEvent({ e1, e2, e3, e4, e5, e6 })
     return true
 end

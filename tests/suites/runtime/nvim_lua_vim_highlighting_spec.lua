@@ -69,14 +69,15 @@ return {
 
             local function assert_fg_range(label, blit, s, e, want)
                 for col = s, e do
-                    Assert.eq(label .. " col " .. tostring(col), blit.fg:sub(col, col), want)
+                    local attrs = screen.hl_attrs(blit.hl[col]) or {}
+                    Assert.eq(label .. " col " .. tostring(col), attrs.fg, want)
                 end
             end
 
             local source_lines = read_lines("nvim.lua")
             local target_line, token_start, token_end = find_luaapi_in_nvim(source_lines)
             local buf = mk_buf(source_lines)
-            local error_fg = colors.toBlit(Highlight.For("Error")[1])
+            local error_fg = Highlight.For("Error")[1]
 
             do
                 local ctx_state = mk_ctx({

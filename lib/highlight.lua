@@ -1,54 +1,46 @@
 --[[
-    Handles text highlighting and color management.
+    Handles text highlighting and palette management.
 ]]
 
 local Highlight = {}
 
 local AliasTable = loadModule("lib.aliastable")
 local Error = loadModule("lib.error")
+
 local HL_VERSION = 1
 
-local PALETTE_ORDER = {
-    colors.white,
-    colors.orange,
-    colors.magenta,
-    colors.lightBlue,
-    colors.yellow,
-    colors.lime,
-    colors.pink,
-    colors.gray,
-    colors.lightGray,
-    colors.cyan,
-    colors.purple,
-    colors.blue,
-    colors.brown,
-    colors.green,
-    colors.red,
-    colors.black,
-}
-
-local function bump_version()
-    HL_VERSION = HL_VERSION + 1
-end
-
---- The actual color palette used for the screen terminal.
-local palette = {}
-for i = 1, #PALETTE_ORDER do
-    local slot = PALETTE_ORDER[i]
-    palette[slot] = colors.packRGB(term.getPaletteColor(slot))
-end
-
-local DEFAULT_SLOT_RGB = {}
-for i = 1, #PALETTE_ORDER do
-    local slot = PALETTE_ORDER[i]
-    DEFAULT_SLOT_RGB[slot] = palette[slot]
-end
-
 local ROOT_SLOT_RGB = {}
-for i = 1, #PALETTE_ORDER do
-    local slot = PALETTE_ORDER[i]
-    ROOT_SLOT_RGB[slot] = palette[slot]
+for slot = 0, 15 do
+    local r, g, b = screen.get_palette_slot(slot)
+    ROOT_SLOT_RGB[slot] = r * 65536 + g * 256 + b
 end
+
+local palette = {}
+for slot = 0, 15 do
+    palette[slot] = ROOT_SLOT_RGB[slot]
+end
+
+local ROOT_FOREGROUND = ROOT_SLOT_RGB[0]
+local ROOT_BACKGROUND = ROOT_SLOT_RGB[15]
+
+local RGB = {
+    white = 0xF0F0F0,
+    orange = 0xF2B233,
+    magenta = 0xE57FD8,
+    lightBlue = 0x99B2F2,
+    yellow = 0xDEDE6C,
+    lime = 0x7FCC19,
+    pink = 0xF2B2CC,
+    gray = 0x4C4C4C,
+    lightGray = 0x999999,
+    cyan = 0x4C99B2,
+    purple = 0xB266E5,
+    blue = 0x3366CC,
+    brown = 0x7F664C,
+    green = 0x57A64E,
+    red = 0xCC4C4C,
+    black = 0x111111,
+}
 
 local IMPORTANT_GROUP_WEIGHTS = {
     Normal = 8,
@@ -83,35 +75,116 @@ local IMPORTANT_GROUP_WEIGHTS = {
     Title = 2,
 }
 
+local OKLAB_CACHE = {}
+local tracked_palette_usage = nil
+
+local HL_ID, ID_NAME, NEXT_HL_ID = {}, {}, 1
+
+local function bump_version()
+    HL_VERSION = HL_VERSION + 1
+end
+
 local function copy_palette(src)
     local out = {}
-    for i = 1, #PALETTE_ORDER do
-        local slot = PALETTE_ORDER[i]
+    for slot = 0, 15 do
         out[slot] = src[slot]
     end
     return out
 end
 
---- Calculates the distance between two colors.
----@param color1 number The hexadecimal representation of the first color.
----@param color2 number The hex representation of the second color.
----@return number . The distance between the two colors.
-local OKLAB_CACHE = {}
+local function pack_rgb(r, g, b)
+    return r * 65536 + g * 256 + b
+end
+
+local function unpack_rgb(rgb)
+    return math.floor(rgb / 65536) % 256, math.floor(rgb / 256) % 256, rgb % 256
+end
+
+local function slot_from_palette_mask(mask)
+    if type(mask) ~= "number" or mask <= 0 then
+        return nil
+    end
+
+    local slot = 0
+    local value = mask
+    while value > 1 and value % 2 == 0 do
+        value = value / 2
+        slot = slot + 1
+    end
+    if value == 1 and slot <= 15 then
+        return slot
+    end
+end
+
+local function is_palette_ref(val)
+    return type(val) == "table" and type(val.palette) == "number"
+end
+
+local function is_rgb_ref(val)
+    return type(val) == "table" and type(val.rgb) == "number"
+end
+
+local function raw_color_ref(val)
+    if val == nil then
+        return nil
+    end
+    if is_rgb_ref(val) or is_palette_ref(val) then
+        return val
+    end
+
+    local slot = slot_from_palette_mask(val)
+    if slot ~= nil then
+        return { palette = val }
+    end
+    return { rgb = val }
+end
+
+local function color_value_to_rgb(val)
+    if val == nil then
+        return nil
+    end
+    if is_rgb_ref(val) then
+        return val.rgb
+    end
+    if is_palette_ref(val) then
+        local slot = slot_from_palette_mask(val.palette)
+        return slot and palette[slot] or nil
+    end
+
+    local slot = slot_from_palette_mask(val)
+    if slot ~= nil then
+        return palette[slot]
+    end
+    return val
+end
+
+local function record_palette_usage(val)
+    if tracked_palette_usage == nil then
+        return
+    end
+
+    local rgb = color_value_to_rgb(val)
+    if rgb == nil then
+        return
+    end
+    tracked_palette_usage[rgb] = (tracked_palette_usage[rgb] or 0) + 1
+end
 
 local function srgb_to_linear(channel)
+    channel = channel / 255
     if channel <= 0.04045 then
         return channel / 12.92
     end
     return ((channel + 0.055) / 1.055) ^ 2.4
 end
 
-local function colorToOKLab(rgb)
+local function color_to_oklab(rgb)
     local cached = OKLAB_CACHE[rgb]
     if cached then
         return cached[1], cached[2], cached[3]
     end
 
-    local r8, g8, b8 = colors.unpackRGB(rgb)
+    local r8, g8, b8 = unpack_rgb(rgb)
     local r = srgb_to_linear(r8)
     local g = srgb_to_linear(g8)
     local b = srgb_to_linear(b8)
@@ -133,90 +206,36 @@ local function colorToOKLab(rgb)
     return out[1], out[2], out[3]
 end
 
-local function colorDistance(color1, color2)
-    local l1, a1, b1 = colorToOKLab(color1)
-    local l2, a2, b2 = colorToOKLab(color2)
-
+local function color_distance(color1, color2)
+    local l1, a1, b1 = color_to_oklab(color1)
+    local l2, a2, b2 = color_to_oklab(color2)
     local dl = l1 - l2
     local da = a1 - a2
     local db = b1 - b2
-
     return math.sqrt(dl * dl + da * da + db * db)
 end
 
-local function colorLuminance(rgb)
-    local r, g, b = colors.unpackRGB(rgb)
+local function color_luminance(rgb)
+    local r, g, b = unpack_rgb(rgb)
     return 0.30 * r + 0.59 * g + 0.11 * b
 end
 
-local function is_palette_index(val)
-    return type(val) == "number" and palette[val] ~= nil
-end
-
-local function is_palette_ref(val)
-    return type(val) == "table" and type(val.palette) == "number"
-end
-
-local function is_rgb_ref(val)
-    return type(val) == "table" and type(val.rgb) == "number"
-end
-
-local function palette_ref(slot)
-    return { palette = slot }
-end
-
-local function rgb_ref(rgb)
-    return { rgb = rgb }
-end
-
-local function raw_color_ref(val)
-    if val == nil then
-        return nil
+local function invalidate_blit_cache()
+    local ok, ScreenDraw = pcall(loadModule, "lib.screendraw")
+    if ok and type(ScreenDraw) == "table" and ScreenDraw.invalidate_blit_cache then
+        ScreenDraw.invalidate_blit_cache()
     end
-    if is_palette_ref(val) or is_rgb_ref(val) then
-        return val
-    end
-    if is_palette_index(val) then
-        return palette_ref(val)
-    end
-    return rgb_ref(val)
-end
-
-local function color_value_to_rgb(val)
-    if val == nil then
-        return nil
-    end
-    if is_rgb_ref(val) then
-        return val.rgb
-    end
-    if is_palette_ref(val) then
-        return palette[val.palette]
-    end
-    if is_palette_index(val) then
-        return palette[val]
-    end
-    return val
-end
-
-local tracked_palette_usage = nil
-
-local function record_palette_usage(rgb)
-    rgb = color_value_to_rgb(rgb)
-    if tracked_palette_usage == nil or type(rgb) ~= "number" then
-        return
-    end
-    tracked_palette_usage[rgb] = (tracked_palette_usage[rgb] or 0) + 1
 end
 
 local function make_group(fg, bg, reverse)
     local group = {}
     if fg ~= nil then
         group[1] = fg
-        group._raw_fg = rgb_ref(ROOT_SLOT_RGB[fg])
+        group._raw_fg = { rgb = fg }
     end
     if bg ~= nil then
         group[2] = bg
-        group._raw_bg = rgb_ref(ROOT_SLOT_RGB[bg])
+        group._raw_bg = { rgb = bg }
     end
     if reverse then
         group[3] = -1
@@ -224,119 +243,111 @@ local function make_group(fg, bg, reverse)
     return group
 end
 
--- Highlight groups. Items are {fg, bg}. If fg is -1, it reverses the default colors.
--- Namespaced highlight tables. Index = ns_id + 1.
--- Namespace 0 (index 1) is the global namespace containing the default groups.
 local function create_default_namespace()
     local hlgroups = AliasTable()
-    hlgroups.SpecialKey = make_group(colors.cyan)
+    hlgroups.SpecialKey = make_group(RGB.cyan)
     hlgroups._:link("EndOfBuffer", "NonText")
-    hlgroups.NonText = make_group(colors.blue)
-    hlgroups.Directory = make_group(colors.cyan)
-    hlgroups.ErrorMsg = make_group(colors.red)
+    hlgroups.NonText = make_group(RGB.blue)
+    hlgroups.Directory = make_group(RGB.cyan)
+    hlgroups.ErrorMsg = make_group(RGB.red)
     hlgroups.IncSearch = make_group(nil, nil, true)
-    hlgroups.Search = make_group(colors.black, colors.yellow)
-    hlgroups.MoreMsg = make_group(colors.green)
-    hlgroups.LineNr = make_group(colors.lightGray)
-    hlgroups.CursorLineNr = make_group(colors.yellow)
-    hlgroups.Question = make_group(colors.lime)
+    hlgroups.Search = make_group(RGB.black, RGB.yellow)
+    hlgroups.MoreMsg = make_group(RGB.green)
+    hlgroups.LineNr = make_group(RGB.lightGray)
+    hlgroups.CursorLineNr = make_group(RGB.yellow)
+    hlgroups.Question = make_group(RGB.lime)
     hlgroups.StatusLine = make_group(nil, nil, true)
-    hlgroups.StatusLineNC = make_group(nil, colors.gray)
+    hlgroups.StatusLineNC = make_group(nil, RGB.gray)
     hlgroups._:link("WinSeparator", "Normal")
     hlgroups._:link("VertSplit", "WinSeparator")
-    hlgroups.Title = make_group(colors.magenta)
+    hlgroups.Title = make_group(RGB.magenta)
     hlgroups.Visual = make_group(nil, nil, true)
     hlgroups._:link("VisualNOS", "Visual")
-    hlgroups.WarningMsg = make_group(colors.red)
-    hlgroups.WildMenu = make_group(colors.black, colors.yellow)
-    hlgroups.Folded = make_group(colors.cyan, colors.gray)
-    hlgroups.FoldColumn = make_group(colors.cyan, colors.lightGray)
-    hlgroups.DiffAdd = make_group(nil, colors.blue)
-    hlgroups.DiffChange = make_group(nil, colors.purple)
-    hlgroups.DiffDelete = make_group(colors.blue, colors.cyan)
-    hlgroups.DiffText = make_group(nil, colors.red)
-    hlgroups.SignColumn = make_group(colors.cyan, colors.gray)
+    hlgroups.WarningMsg = make_group(RGB.red)
+    hlgroups.WildMenu = make_group(RGB.black, RGB.yellow)
+    hlgroups.Folded = make_group(RGB.cyan, RGB.gray)
+    hlgroups.FoldColumn = make_group(RGB.cyan, RGB.lightGray)
+    hlgroups.DiffAdd = make_group(nil, RGB.blue)
+    hlgroups.DiffChange = make_group(nil, RGB.purple)
+    hlgroups.DiffDelete = make_group(RGB.blue, RGB.cyan)
+    hlgroups.DiffText = make_group(nil, RGB.red)
+    hlgroups.SignColumn = make_group(RGB.cyan, RGB.gray)
     hlgroups._:link("CursorLineSign", "SignColumn")
-    hlgroups.SpellBad = make_group(colors.gray, colors.red)
-    hlgroups.SpellCap = make_group(colors.gray, colors.blue)
-    hlgroups.SpellRare = make_group(colors.gray, colors.magenta)
-    hlgroups.SpellLocal = make_group(colors.gray, colors.cyan)
-    hlgroups.Pmenu = make_group(nil, colors.magenta)
-    hlgroups.PmenuSel = make_group(nil, colors.gray)
-    hlgroups.PMenuSbar = make_group(nil, colors.lightGray)
-    hlgroups.PmenuThumb = make_group(nil, colors.white)
+    hlgroups.SpellBad = make_group(RGB.gray, RGB.red)
+    hlgroups.SpellCap = make_group(RGB.gray, RGB.blue)
+    hlgroups.SpellRare = make_group(RGB.gray, RGB.magenta)
+    hlgroups.SpellLocal = make_group(RGB.gray, RGB.cyan)
+    hlgroups.Pmenu = make_group(nil, RGB.magenta)
+    hlgroups.PmenuSel = make_group(nil, RGB.gray)
+    hlgroups.PMenuSbar = make_group(nil, RGB.lightGray)
+    hlgroups.PmenuThumb = make_group(nil, RGB.white)
     hlgroups._:link("Tabline", "StatusLineNC")
     hlgroups._:link("TablineFill", "Tabline")
-    hlgroups.CursorColumn = make_group(nil, colors.lightGray)
-    hlgroups.CursorLine = make_group(nil, colors.lightGray)
-    hlgroups.ColorColumn = make_group(nil, colors.red)
+    hlgroups.CursorColumn = make_group(nil, RGB.lightGray)
+    hlgroups.CursorLine = make_group(nil, RGB.lightGray)
+    hlgroups.ColorColumn = make_group(nil, RGB.red)
     hlgroups.Cursor = make_group(nil, nil, true)
     hlgroups.lCursor = make_group(nil, nil, true)
-    hlgroups.MatchParen = make_group(nil, colors.cyan)
-    hlgroups.Comment = make_group(colors.green)
-    hlgroups.Constant = make_group(colors.red)
+    hlgroups.MatchParen = make_group(nil, RGB.cyan)
+    hlgroups.Comment = make_group(RGB.green)
+    hlgroups.Constant = make_group(RGB.red)
     hlgroups._:link("String", "Constant")
     hlgroups._:link("Character", "Constant")
-    hlgroups.Number = make_group(colors.lime)
-    hlgroups.Boolean = make_group(colors.blue)
+    hlgroups.Number = make_group(RGB.lime)
+    hlgroups.Boolean = make_group(RGB.blue)
     hlgroups._:link("Float", "Number")
-    hlgroups.Identifier = make_group(colors.lightBlue)
-    hlgroups.Function = make_group(colors.yellow)
-    hlgroups.Statement = make_group(colors.white)
+    hlgroups.Identifier = make_group(RGB.lightBlue)
+    hlgroups.Function = make_group(RGB.yellow)
+    hlgroups.Statement = make_group(RGB.white)
     hlgroups._:link("Conditional", "Statement")
     hlgroups._:link("Repeat", "Statement")
     hlgroups._:link("Label", "Statement")
     hlgroups._:link("Operator", "Statement")
-    hlgroups.Keyword = make_group(colors.purple)
+    hlgroups.Keyword = make_group(RGB.purple)
     hlgroups._:link("Exception", "Statement")
-    hlgroups.PreProc = make_group(colors.pink)
+    hlgroups.PreProc = make_group(RGB.pink)
     hlgroups._:link("Include", "PreProc")
     hlgroups._:link("Define", "PreProc")
     hlgroups._:link("Macro", "PreProc")
     hlgroups._:link("PreCondit", "PreProc")
-    hlgroups.Type = make_group(colors.lime)
+    hlgroups.Type = make_group(RGB.lime)
     hlgroups._:link("StorageClass", "Type")
     hlgroups._:link("Structure", "Type")
     hlgroups._:link("Typedef", "Type")
-    hlgroups.Special = make_group(colors.orange)
+    hlgroups.Special = make_group(RGB.orange)
     hlgroups._:link("SpecialChar", "Special")
     hlgroups._:link("Tag", "Special")
     hlgroups._:link("Delimiter", "Normal")
     hlgroups._:link("SpecialComment", "Special")
     hlgroups._:link("Debug", "Special")
-    hlgroups.Underlined = make_group(colors.purple)
-    hlgroups.Ignore = make_group(colors.black)
-    hlgroups.Error = make_group(colors.white, colors.red)
-    hlgroups.Todo = make_group(colors.black, colors.yellow)
-    hlgroups.Field = make_group(colors.green)
+    hlgroups.Underlined = make_group(RGB.purple)
+    hlgroups.Ignore = make_group(RGB.black)
+    hlgroups.Error = make_group(RGB.white, RGB.red)
+    hlgroups.Todo = make_group(RGB.black, RGB.yellow)
+    hlgroups.Field = make_group(RGB.green)
     hlgroups._:link("MsgArea", "Normal")
     hlgroups._:link("MsgSeparator", "StatusLine")
-    hlgroups.Normal = make_group(colors.white, colors.black)
-    hlgroups.Nil = make_group(colors.blue)
+    hlgroups.Normal = make_group(RGB.white, RGB.black)
+    hlgroups.Nil = make_group(RGB.blue)
     return hlgroups
 end
 
 local hlns = { create_default_namespace() }
 
--- Convenience accessor (creates namespace table lazily).
 local function ns_table(ns)
     ns = ns or 0
     local idx = ns + 1
-    local t = hlns[idx]
-    if not t then
-        t = AliasTable()
-        hlns[idx] = t
+    local tbl = hlns[idx]
+    if not tbl then
+        tbl = AliasTable()
+        hlns[idx] = tbl
     end
-    return t, ns, idx
+    return tbl, ns, idx
 end
-
-local ROOT_BACKGROUND = colors.black
-local ROOT_FOREGROUND = colors.white
 
 local function resolved_normal_colors(ns)
     local tbl = ns_table(ns)
     local stored = tbl.Normal
-
     if (not stored or #stored == 0) and ns and ns ~= 0 then
         stored = hlns[1].Normal
     end
@@ -346,27 +357,34 @@ local function resolved_normal_colors(ns)
     local bg = stored[2]
     if fg == nil then fg = ROOT_FOREGROUND end
     if bg == nil then bg = ROOT_BACKGROUND end
-
     if stored[3] == -1 then
         fg, bg = bg, fg
     end
-
     return fg, bg
 end
 
-function Highlight.For(name, ns, nodefault)
-    -- Fetch the stored (raw) definition without modifying it.
+local function resolved_normal_cterm_colors(ns)
+    local tbl = ns_table(ns)
+    local stored = tbl.Normal
+    if (not stored or #stored == 0) and ns and ns ~= 0 then
+        stored = hlns[1].Normal
+    end
+    stored = stored or {}
+    return stored._cterm_fg, stored._cterm_bg
+end
+
+local function resolved_group_colors(name, ns, nodefault)
     local tbl = ns_table(ns)
     local stored = tbl[name]
-
     if (not stored or #stored == 0) and ns and ns ~= 0 then
-        -- Fallback to global namespace if missing/cleared in this namespace
         stored = hlns[1][name]
     end
     stored = stored or {}
-    local reverse = (stored[3] == -1)
+
     local fg = stored[1]
     local bg = stored[2]
+    local cterm_fg = stored._cterm_fg
+    local cterm_bg = stored._cterm_bg
 
     if not nodefault then
         if name == "Normal" then
@@ -376,21 +394,59 @@ function Highlight.For(name, ns, nodefault)
             local normal_fg, normal_bg = resolved_normal_colors(ns)
             if fg == nil then fg = normal_fg end
             if bg == nil then bg = normal_bg end
+
+            local normal_cterm_fg, normal_cterm_bg = resolved_normal_cterm_colors(ns)
+            if cterm_fg == nil then cterm_fg = normal_cterm_fg end
+            if cterm_bg == nil then cterm_bg = normal_cterm_bg end
         end
     end
 
-    if reverse then
+    if stored[3] == -1 then
         fg, bg = bg, fg
+        cterm_fg, cterm_bg = cterm_bg, cterm_fg
     end
 
+    return fg, bg, cterm_fg, cterm_bg
+end
+
+local function sync_default_colors()
+    local fg, bg, cterm_fg, cterm_bg = resolved_group_colors("Normal", 0, false)
+    screen.default_colors_set(fg, bg, nil, cterm_fg, cterm_bg)
+end
+
+sync_default_colors()
+
+function Highlight.For(name, ns, nodefault)
+    local fg, bg = resolved_group_colors(name, ns, nodefault)
     return { fg, bg }
 end
 
-function Highlight.SetFor(name, ns)
-    local hl = Highlight.For(name, ns)
+function Highlight.AttrsFor(name, ns, nodefault)
+    local fg, bg, cterm_fg, cterm_bg = resolved_group_colors(name, ns, nodefault)
+    return {
+        fg = fg,
+        bg = bg,
+        cterm_fg = cterm_fg,
+        cterm_bg = cterm_bg,
+    }
+end
 
-    term.setTextColor(hl[1])
-    term.setBackgroundColor(hl[2])
+function Highlight.GetId(name, ns)
+    local fg, bg, cterm_fg, cterm_bg = resolved_group_colors(name, ns, false)
+    local id = screen.hl_id_for({
+        fg = fg,
+        bg = bg,
+        cterm_foreground = cterm_fg,
+        cterm_background = cterm_bg,
+    })
+    if (ns or 0) == 0 then
+        screen.hl_group_set(name, id)
+    end
+    return id
+end
+
+function Highlight.SetFor(name, ns)
+    return Highlight.GetId(name, ns)
 end
 
 function Highlight.RawFor(name, ns)
@@ -414,6 +470,9 @@ function Highlight.Link(name, target, ns, force)
     end
     tbl._:link(name, target)
     bump_version()
+    if (ns or 0) == 0 and name == "Normal" then
+        sync_default_colors()
+    end
 end
 
 function Highlight.Clear(name, ns)
@@ -425,16 +484,26 @@ function Highlight.Clear(name, ns)
             hlns[idx] = AliasTable()
         end
         bump_version()
+        if namespace == 0 then
+            sync_default_colors()
+        end
         return
     end
-    if tbl._:hasLinkKey(name) then tbl._:unlink(name) end
+    if tbl._:hasLinkKey(name) then
+        tbl._:unlink(name)
+    end
     tbl[name] = {}
     bump_version()
+    if namespace == 0 and name == "Normal" then
+        sync_default_colors()
+    end
 end
 
 function Highlight.HasGroup(name, ns)
     local tbl = ns_table(ns)
-    if tbl._:hasKey(name) then return true end
+    if tbl._:hasKey(name) then
+        return true
+    end
     if ns and ns ~= 0 then
         return hlns[1]._:hasKey(name)
     end
@@ -471,7 +540,6 @@ function Highlight.ListingSuffix(name, ns)
     if (raw == nil or #raw == 0) and ns and ns ~= 0 then
         raw = hlns[1][name]
     end
-
     if raw == nil then
         return ""
     end
@@ -481,50 +549,31 @@ function Highlight.ListingSuffix(name, ns)
     return ""
 end
 
-local function findClosestColor(val)
-    if is_palette_ref(val) then
-        return val.palette
-    end
-    if is_rgb_ref(val) then
-        val = val.rgb
-    elseif is_palette_index(val) then
-        return val
-    end
-
-    local closest = math.huge
-    local colorKey
-    for k, v in pairs(palette) do
-        local dist = colorDistance(v, val)
-        if dist < closest then
-            closest = dist
-            colorKey = k
-        end
-    end
-    return colorKey
-end
-
 function Highlight.SetGroupColor(name, which, val, ns)
-    local color = findClosestColor(val)
+    local rgb = color_value_to_rgb(val)
     local raw = raw_color_ref(val)
-
     local tbl = ns_table(ns)
     if tbl._:hasLinkKey(name) then
         tbl._:unlink(name)
     end
     local hl = tbl._:hasConcreteKey(name) and tbl[name] or {}
+
     if which == "fg" then
-        hl[1] = color
+        hl[1] = rgb
         hl._raw_fg = raw
-        record_palette_usage(raw)
     elseif which == "bg" then
-        hl[2] = color
+        hl[2] = rgb
         hl._raw_bg = raw
-        record_palette_usage(raw)
     else
         error("Unknown/unhandled color location: " .. which)
     end
+
+    record_palette_usage(val)
     tbl[name] = hl
     bump_version()
+    if (ns or 0) == 0 and name == "Normal" then
+        sync_default_colors()
+    end
 end
 
 function Highlight.SetGroupReverse(name, reverse, ns)
@@ -533,16 +582,14 @@ function Highlight.SetGroupReverse(name, reverse, ns)
         tbl._:unlink(name)
     end
     local hl = tbl._:hasConcreteKey(name) and tbl[name] or {}
-    if reverse then
-        hl[3] = -1
-    else
-        hl[3] = nil
-    end
+    hl[3] = reverse and -1 or nil
     tbl[name] = hl
     bump_version()
+    if (ns or 0) == 0 and name == "Normal" then
+        sync_default_colors()
+    end
 end
 
--- Follows api from nvim_set_hl
 function Highlight.SetHL(ns, name, val)
     if val.link then
         Highlight.Link(name, val.link, ns)
@@ -553,41 +600,45 @@ function Highlight.SetHL(ns, name, val)
     local newval = {}
 
     if val.fg == "fg" then
-        local hlfor = Highlight.For("Normal")
-        if not hlfor[1] then
-            error("Normal not defined")
-        end
-        newval[1] = hlfor[1]
+        local normal = Highlight.For("Normal")
         local normal_raw = Highlight.RawFor("Normal")
-        newval._raw_fg = (normal_raw and normal_raw._raw_fg) or raw_color_ref(newval[1])
+        newval[1] = normal[1]
+        newval._raw_fg = (normal_raw and normal_raw._raw_fg) or { rgb = normal[1] }
         record_palette_usage(newval._raw_fg)
     elseif val.fg ~= nil then
-        newval[1] = findClosestColor(val.fg)
+        newval[1] = color_value_to_rgb(val.fg)
         newval._raw_fg = raw_color_ref(val.fg)
-        record_palette_usage(newval._raw_fg)
+        record_palette_usage(val.fg)
     end
 
     if val.bg == "bg" then
-        local hlfor = Highlight.For("Normal")
-        if not hlfor[2] then
-            error("Normal not defined")
-        end
-        newval[2] = hlfor[2]
+        local normal = Highlight.For("Normal")
         local normal_raw = Highlight.RawFor("Normal")
-        newval._raw_bg = (normal_raw and normal_raw._raw_bg) or raw_color_ref(newval[2])
+        newval[2] = normal[2]
+        newval._raw_bg = (normal_raw and normal_raw._raw_bg) or { rgb = normal[2] }
         record_palette_usage(newval._raw_bg)
     elseif val.bg ~= nil then
-        newval[2] = findClosestColor(val.bg)
+        newval[2] = color_value_to_rgb(val.bg)
         newval._raw_bg = raw_color_ref(val.bg)
-        record_palette_usage(newval._raw_bg)
+        record_palette_usage(val.bg)
     end
 
     if val.reverse then
         newval[3] = -1
     end
 
+    if val.cterm_fg ~= nil then
+        newval._cterm_fg = val.cterm_fg
+    end
+    if val.cterm_bg ~= nil then
+        newval._cterm_bg = val.cterm_bg
+    end
+
     tbl[name] = newval
     bump_version()
+    if (ns or 0) == 0 and name == "Normal" then
+        sync_default_colors()
+    end
 end
 
 function Highlight.GetLink(name, ns)
@@ -630,7 +681,7 @@ local function palette_cost(items, centers)
         local item = items[i]
         local best = math.huge
         for j = 1, #centers do
-            local dist = colorDistance(item.rgb, centers[j])
+            local dist = color_distance(item.rgb, centers[j])
             if dist < best then
                 best = dist
             end
@@ -740,9 +791,9 @@ local function assign_palette_slots(centers)
             return nil
         end
         local best_idx = 1
-        local best_luma = colorLuminance(remaining[1])
+        local best_luma = color_luminance(remaining[1])
         for i = 2, #remaining do
-            local luma = colorLuminance(remaining[i])
+            local luma = color_luminance(remaining[i])
             local better = want_darkest and luma < best_luma or luma > best_luma
             if better then
                 best_idx = i
@@ -752,20 +803,19 @@ local function assign_palette_slots(centers)
         return table.remove(remaining, best_idx)
     end
 
-    slot_colors[colors.black] = take_extreme(true) or DEFAULT_SLOT_RGB[colors.black]
-    slot_colors[colors.white] = take_extreme(false) or DEFAULT_SLOT_RGB[colors.white]
+    slot_colors[15] = take_extreme(true) or ROOT_SLOT_RGB[15]
+    slot_colors[0] = take_extreme(false) or ROOT_SLOT_RGB[0]
 
-    for i = 1, #PALETTE_ORDER do
-        local slot = PALETTE_ORDER[i]
+    for slot = 0, 15 do
         if slot_colors[slot] == nil then
             if #remaining == 0 then
-                slot_colors[slot] = DEFAULT_SLOT_RGB[slot]
+                slot_colors[slot] = ROOT_SLOT_RGB[slot]
             else
                 local best_idx, best_dist = 1, math.huge
-                for j = 1, #remaining do
-                    local dist = colorDistance(DEFAULT_SLOT_RGB[slot], remaining[j])
+                for i = 1, #remaining do
+                    local dist = color_distance(ROOT_SLOT_RGB[slot], remaining[i])
                     if dist < best_dist then
-                        best_idx = j
+                        best_idx = i
                         best_dist = dist
                     end
                 end
@@ -784,8 +834,8 @@ local function fallback_palette_entries()
         if tbl then
             for name, raw in pairs(tbl) do
                 if type(name) == "string" and type(raw) == "table" and #raw > 0 then
-                    local fg = color_value_to_rgb(raw._raw_fg) or (raw[1] and palette[raw[1]] or nil)
-                    local bg = color_value_to_rgb(raw._raw_bg) or (raw[2] and palette[raw[2]] or nil)
+                    local fg = raw[1] or color_value_to_rgb(raw._raw_fg)
+                    local bg = raw[2] or color_value_to_rgb(raw._raw_bg)
                     if fg ~= nil then
                         entries[#entries + 1] = { group = name, role = "fg", rgb = fg }
                     end
@@ -799,35 +849,11 @@ local function fallback_palette_entries()
     return entries
 end
 
-local function remap_namespace(tbl, old_palette)
-    for name, raw in pairs(tbl) do
-        if type(name) == "string" and type(raw) == "table" and #raw > 0 then
-            local fg = raw._raw_fg
-            local bg = raw._raw_bg
-            if fg == nil and raw[1] ~= nil then
-                fg = old_palette[raw[1]]
-            end
-            if bg == nil and raw[2] ~= nil then
-                bg = old_palette[raw[2]]
-            end
-            if fg ~= nil then
-                raw._raw_fg = fg
-                raw[1] = findClosestColor(fg)
-            end
-            if bg ~= nil then
-                raw._raw_bg = bg
-                raw[2] = findClosestColor(bg)
-            end
-        end
-    end
-end
-
-function Highlight.CapturePalette(target)
-    target = target or term
+function Highlight.CapturePalette()
     local captured = {}
-    for i = 1, #PALETTE_ORDER do
-        local slot = PALETTE_ORDER[i]
-        captured[slot] = colors.packRGB(target.getPaletteColor(slot))
+    for slot = 0, 15 do
+        local r, g, b = screen.get_palette_slot(slot)
+        captured[slot] = pack_rgb(r, g, b)
     end
     return captured
 end
@@ -840,21 +866,21 @@ function Highlight.BeginPaletteTracking()
     tracked_palette_usage = {}
 end
 
-function Highlight.SetPalette(next_palette, target)
-    target = target or term
-    for i = 1, #PALETTE_ORDER do
-        local slot = PALETTE_ORDER[i]
-        local r, g, b = colors.unpackRGB(next_palette[slot])
-        target.setPaletteColor(slot, r, g, b)
+function Highlight.SetPalette(next_palette)
+    for slot = 0, 15 do
+        local rgb = next_palette[slot]
+        if rgb ~= nil then
+            local r, g, b = unpack_rgb(rgb)
+            screen.set_palette_slot(slot, r, g, b)
+            palette[slot] = rgb
+        end
     end
+    invalidate_blit_cache()
 end
 
-function Highlight.ResetPalette(target)
-    for i = 1, #PALETTE_ORDER do
-        local slot = PALETTE_ORDER[i]
-        palette[slot] = ROOT_SLOT_RGB[slot]
-    end
-    Highlight.SetPalette(palette, target)
+function Highlight.ResetPalette()
+    palette = copy_palette(ROOT_SLOT_RGB)
+    Highlight.SetPalette(palette)
 end
 
 function Highlight.CancelPaletteTracking()
@@ -869,29 +895,16 @@ function Highlight.CommitPaletteTracking()
     end
 
     local items = usage_items(entries)
-    local centers = seeded_centers(items, #PALETTE_ORDER)
+    local centers = seeded_centers(items, 16)
     centers = refine_centers(items, centers)
     local slot_colors = assign_palette_slots(centers)
-    local old_palette = copy_palette(palette)
 
-    for i = 1, #PALETTE_ORDER do
-        local slot = PALETTE_ORDER[i]
-        local rgb = slot_colors[slot]
-        palette[slot] = rgb
+    for slot = 0, 15 do
+        palette[slot] = slot_colors[slot]
     end
     Highlight.SetPalette(palette)
-
-    for i = 1, #hlns do
-        if hlns[i] then
-            remap_namespace(hlns[i], old_palette)
-        end
-    end
-
-    bump_version()
     return true
 end
-
-local HL_ID, ID_NAME, NEXT_HL_ID = {}, {}, 1
 
 function Highlight.IdByName(name)
     local id = HL_ID[name]

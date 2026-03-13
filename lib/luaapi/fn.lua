@@ -1137,16 +1137,24 @@ local function _hl_color_hex(color)
     if color == nil then
         return ""
     end
-    local ok, r, g, b = pcall(term.getPaletteColor, color)
-    if not ok or type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+    if type(color) ~= "number" then
         return ""
     end
-    if r <= 1 and g <= 1 and b <= 1 then
-        r = r * 255
-        g = g * 255
-        b = b * 255
+    if color > 0xFFFFFF then
+        local slot = 0
+        while slot < 16 do
+            if color == (2 ^ slot) then
+                local r, g, b = screen.get_palette_slot(slot)
+                return string.format("#%02x%02x%02x", r, g, b)
+            end
+            slot = slot + 1
+        end
+        return ""
     end
-    return string.format("#%02x%02x%02x", math.floor(r + 0.5), math.floor(g + 0.5), math.floor(b + 0.5))
+    local r = math.floor(color / 65536) % 256
+    local g = math.floor(color / 256) % 256
+    local b = color % 256
+    return string.format("#%02x%02x%02x", r, g, b)
 end
 
 function Builtins.hlID(name, ...)
@@ -1238,21 +1246,40 @@ function Builtins.synIDattr(syn_id, what, _mode, ...)
         return name
     end
 
-    local hl = Highlight.For(name)
-    local fg = hl[1]
-    local bg = hl[2]
+    local mode = tostring(_mode or ""):lower()
+    local use_gui
+    if mode == "gui" then
+        use_gui = true
+    elseif mode == "cterm" then
+        use_gui = false
+    else
+        use_gui = options.get("termguicolors")
+    end
 
+    local hl = Highlight.AttrsFor(name)
     if attr == "fg" or attr == "foreground" then
-        return fg or ""
+        if use_gui then
+            return _hl_color_hex(hl.fg)
+        end
+        return hl.cterm_fg ~= nil and tostring(hl.cterm_fg) or ""
     end
     if attr == "bg" or attr == "background" then
-        return bg or ""
+        if use_gui then
+            return _hl_color_hex(hl.bg)
+        end
+        return hl.cterm_bg ~= nil and tostring(hl.cterm_bg) or ""
     end
     if attr == "fg#" then
-        return _hl_color_hex(fg)
+        if use_gui then
+            return _hl_color_hex(hl.fg)
+        end
+        return hl.cterm_fg ~= nil and tostring(hl.cterm_fg) or ""
     end
     if attr == "bg#" then
-        return _hl_color_hex(bg)
+        if use_gui then
+            return _hl_color_hex(hl.bg)
+        end
+        return hl.cterm_bg ~= nil and tostring(hl.cterm_bg) or ""
     end
     if attr == "sp#" then
         return ""

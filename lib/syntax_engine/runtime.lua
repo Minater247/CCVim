@@ -578,7 +578,7 @@ local function ensure_plan(ctx)
     return plan
 end
 
-local function get_group_blit(plan, group_ref)
+local function get_group_hl(plan, group_ref)
     local cache_key = 0
     if type(group_ref) == "number" then
         cache_key = group_ref
@@ -588,7 +588,7 @@ local function get_group_blit(plan, group_ref)
 
     local cached = plan.group_blit_cache[cache_key]
     if cached then
-        return cached[1], cached[2]
+        return cached
     end
 
     local name = "Normal"
@@ -601,11 +601,9 @@ local function get_group_blit(plan, group_ref)
         name = group_ref
     end
 
-    local hl = Highlight.For(name)
-    local fg = colors.toBlit(hl[1])
-    local bg = colors.toBlit(hl[2])
-    plan.group_blit_cache[cache_key] = { fg, bg }
-    return fg, bg
+    local hl_id = Highlight.GetId(name)
+    plan.group_blit_cache[cache_key] = hl_id
+    return hl_id
 end
 
 local function active_visible_group(state)
@@ -1145,7 +1143,7 @@ end
 local function line_blit_from_spans(plan, line, spans)
     local len = #line
     if len == 0 then
-        return "", ""
+        return {}
     end
 
     local groups = {}
@@ -1166,30 +1164,31 @@ local function line_blit_from_spans(plan, line, spans)
         end
     end
 
-    local fg_parts = {}
-    local bg_parts = {}
+    local hl = {}
 
     local run_gid = groups[1]
     local run_start = 1
     for i = 2, len do
         local gid = groups[i]
         if gid ~= run_gid then
-            local fg, bg = get_group_blit(plan, run_gid)
+            local hl_id = get_group_hl(plan, run_gid)
             local count = i - run_start
-            fg_parts[#fg_parts + 1] = string.rep(fg, count)
-            bg_parts[#bg_parts + 1] = string.rep(bg, count)
+            for j = 1, count do
+                hl[#hl + 1] = hl_id
+            end
             run_gid = gid
             run_start = i
         end
     end
     do
-        local fg, bg = get_group_blit(plan, run_gid)
+        local hl_id = get_group_hl(plan, run_gid)
         local count = len - run_start + 1
-        fg_parts[#fg_parts + 1] = string.rep(fg, count)
-        bg_parts[#bg_parts + 1] = string.rep(bg, count)
+        for j = 1, count do
+            hl[#hl + 1] = hl_id
+        end
     end
 
-    return table.concat(fg_parts), table.concat(bg_parts)
+    return hl
 end
 
 local function ensure_highlight_version(ctx, plan)
@@ -1201,8 +1200,7 @@ local function ensure_highlight_version(ctx, plan)
     ctx._hl_version = version
     plan.group_blit_cache = {}
     for _, entry in pairs(ctx.span_cache) do
-        entry.blit_fg = nil
-        entry.blit_bg = nil
+        entry.blit_hl = nil
         entry.blit_hl_version = nil
     end
 end
@@ -1989,14 +1987,13 @@ local function line_blit_cached(ctx, plan, buffer, line)
     if not cache or cache.line_text ~= current_text then
         return nil
     end
-    if cache.blit_hl_version == ctx._hl_version and cache.blit_fg and cache.blit_bg then
-        return { fg = cache.blit_fg, bg = cache.blit_bg }
+    if cache.blit_hl_version == ctx._hl_version and cache.blit_hl then
+        return { hl = cache.blit_hl }
     end
-    local fg, bg = line_blit_from_spans(plan, current_text, cache.spans)
-    cache.blit_fg = fg
-    cache.blit_bg = bg
+    local hl = line_blit_from_spans(plan, current_text, cache.spans)
+    cache.blit_hl = hl
     cache.blit_hl_version = ctx._hl_version
-    return { fg = fg, bg = bg }
+    return { hl = hl }
 end
 
 function Runtime.line_to_blit(ctx, buffer, line)

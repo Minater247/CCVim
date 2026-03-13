@@ -671,18 +671,13 @@ do
   })
 
   -- Only do the following when the TUI is attached
-  -- MTODO: nvim_list_uis requires an improved UI stack
-  -- local tty = nil
-  -- for _, ui in ipairs(vim.api.nvim_list_uis()) do
-  --   if ui.chan == 1 and ui.stdout_tty then
-  --     tty = ui
-  --     break
-  --   end
-  -- end
-
-  tty = {
-    rgb = false;
-  }
+  local tty = nil
+  for _, ui in ipairs(vim.api.nvim_list_uis()) do
+    if ui.chan == 1 and ui.stdout_tty then
+      tty = ui
+      break
+    end
+  end
 
   if tty then
     local group = vim.api.nvim_create_augroup('nvim.tty', {})

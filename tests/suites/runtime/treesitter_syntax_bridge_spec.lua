@@ -20,27 +20,27 @@ return {
             curtp = 1
             curwin = 1
 
-            local function fg_char(blits)
-                local normal = colors.toBlit(Highlight.For("Normal")[1])
-                if not blits or not blits[1] or not blits[1].fg then
+            local function hl_at_start(blits)
+                local normal = Highlight.GetId("Normal")
+                if not blits or not blits[1] or not blits[1].hl then
                     return normal
                 end
-                return blits[1].fg:sub(1, 1)
+                return blits[1].hl[1]
             end
 
-            local normal_char = colors.toBlit(Highlight.For("Normal")[1])
-            local keyword_char = colors.toBlit(Highlight.For("Keyword")[1])
+            local normal_hl = Highlight.GetId("Normal")
+            local keyword_hl = Highlight.GetId("Keyword")
 
             local before = Syntax.LinesToBlit(buf, 1, 1, win)
-            Assert.eq("before start is normal", fg_char(before), normal_char)
+            Assert.eq("before start is normal", hl_at_start(before), normal_hl)
 
             Treesitter.start(buf.bufnr, "lua")
             local with_ts = Syntax.LinesToBlit(buf, 1, 1, win)
-            Assert.eq("after start is keyword", fg_char(with_ts), keyword_char)
+            Assert.eq("after start is keyword", hl_at_start(with_ts), keyword_hl)
 
             Treesitter.stop(buf.bufnr)
             local after_stop = Syntax.LinesToBlit(buf, 1, 1, win)
-            Assert.eq("after stop returns to normal", fg_char(after_stop), normal_char)
+            Assert.eq("after stop returns to normal", hl_at_start(after_stop), normal_hl)
         end)
 
         mock.cleanup()

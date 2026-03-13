@@ -1,6 +1,6 @@
 return {
     id = "runtime.colorscheme_darkblue",
-    description = "Loads the bundled darkblue colorscheme, keeps forced links, and reapplies the palette to the render back buffer.", -- luacheck: ignore 631
+    description = "Loads the bundled darkblue colorscheme, keeps forced links, and renders using the resolved RGB highlights.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
 
     run = function(ctx)
@@ -8,16 +8,13 @@ return {
         local Assert = ctx.assert
 
         local result = Assert.eval_block(backend, "darkblue colorscheme load", [[
-            local colors = _G.colors
             local Highlight = loadModule("lib.highlight")
             local Options = loadModule("lib.options")
             local FrameTree = loadModule("lib.frame")
 
             local function actual_group_color(name, which)
                 local hl = Highlight.For(name, 0, true)
-                local slot = which == "fg" and hl[1] or hl[2]
-                local r, g, b = term.getPaletteColor(slot)
-                return colors.packRGB(r, g, b)
+                return which == "fg" and hl[1] or hl[2]
             end
 
             screen.width = 16
@@ -38,17 +35,9 @@ return {
             buf.loaded = true
 
             vim.cmd.colorscheme("darkblue")
-            local apply_targets = {}
-            local old_set_palette = Highlight.SetPalette
-            Highlight.SetPalette = function(next_palette, target)
-                apply_targets[#apply_targets + 1] = target
-                return old_set_palette(next_palette, target)
-            end
             tabpages[curtp]:render()
-            Highlight.SetPalette = old_set_palette
 
             local normal = Highlight.For("Normal", 0, true)
-            local backwin = tabpages[curtp]._backwin
             local _, text_x = win:textwidth()
             local frame_x, frame_y = FrameTree.GetXY(win.frame)
             return {
@@ -58,16 +47,18 @@ return {
                 actual_group_color("Normal", "bg"),
                 actual_group_color("StatusLine", "fg"),
                 actual_group_color("StatusLine", "bg"),
-                apply_targets[#apply_targets] == backwin,
                 frame_x,
                 frame_y,
                 text_x,
-                colors.toBlit(normal[2]),
+                normal[2],
             }
         ]])
 
         local cells = backend.mock.term_cells()
-        local blank_bg = cells[result[9]][result[8] + result[10] + 2].bg
+        local blank_bg = cells[result[8]][result[7] + result[9] + 2].bg
+        local globals = backend.mock.globals()
+        local blank_r, blank_g, blank_b = globals.term.getPaletteColor(globals.colors.fromBlit(blank_bg))
+        local blank_bg_rgb = globals.colors.packRGB(blank_r, blank_g, blank_b)
 
         Assert.eq("darkblue becomes active", result[1], "darkblue")
         Assert.truthy(
@@ -83,7 +74,6 @@ return {
         Assert.eq("darkblue Normal background stays deep blue", result[4], 0x000040)
         Assert.eq("darkblue StatusLine foreground stays deep blue", result[5], 0x000040)
         Assert.eq("darkblue StatusLine background stays light gray", result[6], 0xC0C0C0)
-        Assert.eq("tabpage render reapplies palette to back buffer", result[7], true)
-        Assert.eq("rendered blank area uses Normal background", blank_bg, result[11])
+        Assert.eq("rendered blank area uses Normal background", blank_bg_rgb, result[10])
     end,
 }

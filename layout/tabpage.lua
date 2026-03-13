@@ -17,6 +17,7 @@ local Event = loadModule("lib.event")
 local ExMsg = loadModule("lib.excmd.exmsg")
 local Decoration = loadModule("lib.decoration")
 local PopupMenu = loadModule("lib.popupmenu")
+local ScreenDraw = loadModule("lib.screendraw")
 
 local function all_tabpage_ids()
     local ids = {}
@@ -188,9 +189,6 @@ function Tabpage:new(window)
         _manual_root_height = nil,
         tabline_click_zones = {},
         global_statusline_click_zones = {},
-        -- Double-buffering state for the whole tabpage
-        _backwin = nil,
-        _parent = nil,
     }, Tabpage)
 
     window.tabpagenr = curr_tabno
@@ -300,33 +298,6 @@ function Tabpage:CanWinSplit(target_winnr, new_win, vertical, opts)
             return has_text_capacity(root_after, root_after, 1)
         end,
     })
-end
-
--- Keep a full-screen screen buffer for this tabpage
-function Tabpage:_ensureBackBuffer()
-    local parent = term.current()
-    if self._parent ~= parent then
-        self._parent = parent
-        self._backwin = nil
-    end
-
-    local w = screen.width
-    local h = screen.height
-    local win = self._backwin
-    if win then
-        if win.reposition then
-            win.reposition(1, 1, w, h)
-        else
-            win = nil
-        end
-    end
-
-    if not win then
-        win = window.create(parent, 1, 1, w, h, false) -- invisible while drawing
-        self._backwin = win
-    end
-
-    return win
 end
 
 function Tabpage:_win_local_index(window)
@@ -601,10 +572,7 @@ local lastcmd = ""
 function Tabpage:render()
     self:updateFrameview()
 
-    local backwin = self:_ensureBackBuffer()
-    backwin.setVisible(false)
-    local prevTerm = term.redirect(backwin)
-    Highlight.SetPalette(Highlight.GetPalette(), backwin)
+    screen.begin_frame()
     Decoration.begin_redraw()
     local redraw_windows = what_redraw["all"] or what_redraw["windows"]
 
@@ -634,12 +602,7 @@ function Tabpage:render()
         })
         self.tabline_click_zones = info.click_zones
 
-        term.setCursorPos(1, 1)
-        for i = 1, #info.spans do
-            Highlight.SetFor(info.spans[i][2])
-            term.write(info.spans[i][1])
-        end
-        Highlight.SetFor("Normal")
+        ScreenDraw.put_spans(0, 0, info.spans)
     else
         self.tabline_click_zones = {}
     end
@@ -647,15 +610,9 @@ function Tabpage:render()
     local redraw_global_statusline = what_redraw["all"] or redraw_windows
         or what_redraw["statusline"] or what_redraw["winbar"]
     if redraw_global_statusline and options.get("laststatus") == 3 then
-        term.setCursorPos(1, self.winyoff + self.tree.height + 1)
-
         local info = Statusline.RenderInfo(options.get("statusline", windows[curwin]), windows[curwin], self.tree.width)
         self.global_statusline_click_zones = info.click_zones
-        for i = 1, #info.spans do
-            Highlight.SetFor(info.spans[i][2])
-            term.write(info.spans[i][1])
-        end
-        Highlight.SetFor("Normal")
+        ScreenDraw.put_spans(self.winyoff + self.tree.height, 0, info.spans)
     else
         self.global_statusline_click_zones = {}
     end
@@ -668,18 +625,15 @@ function Tabpage:render()
     local overlay_active = ExMsg.IsOverlayActive and ExMsg.IsOverlayActive() or false
 
     if not overlay_active and (what_redraw["commandline"] or what_redraw["all"] or (pendingprnt ~= lastcmd)) then
-        Highlight.SetFor("MsgArea")
         local cmdheight = options.get("cmdheight")
         for i = 1, cmdheight do
-            term.setCursorPos(1, screen.height - cmdheight + i)
-            term.clearLine()
+            ScreenDraw.clear_line(screen.height - cmdheight + i - 1, "MsgArea")
         end
 
         if options.get("showcmd") and cmdheight > 0 then
             local scl = options.get("showcmdloc")
             if scl == "last" then
-                term.setCursorPos(screen.width - #pendingprnt + 1, screen.height - cmdheight + 1)
-                term.write(pendingprnt)
+                ScreenDraw.put_text(screen.height - cmdheight, screen.width - #pendingprnt, pendingprnt, "MsgArea")
             else
                 -- TODO: handle showcmd other than on last line
                 error("Unhandled showcmdloc: " .. scl)
@@ -687,10 +641,8 @@ function Tabpage:render()
         end
 
         if options.get("showtabline") and cmdheight > 0 then
-            Highlight.SetFor("ModeMsg")
-            term.setCursorPos(1, screen.height)
             if vimmode == "insert" then
-                term.write("-- INSERT --")
+                ScreenDraw.put_text(screen.height - 1, 0, "-- INSERT --", "ModeMsg")
             elseif vimmode ~= "normal" then
                 error("Unknown mode!")
             end
@@ -709,8 +661,7 @@ function Tabpage:render()
     end
 
     Decoration.end_redraw()
-    term.redirect(prevTerm)
-    backwin.setVisible(true)
+    screen.end_frame()
 end
 
 -- Transforms screen (not tree) coordinates into a frame

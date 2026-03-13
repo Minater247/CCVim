@@ -3,6 +3,7 @@ local PopupMenu = {}
 local AutoCmd = loadModule("lib.autocmd")
 local Highlight = loadModule("lib.highlight")
 local FrameTree = loadModule("lib.frame")
+local ScreenDraw = loadModule("lib.screendraw")
 local scopes = loadModule("lib.luaapi.scopes")
 local Utf8 = loadModule("lib.utf8")
 
@@ -560,9 +561,7 @@ function PopupMenu.render()
             text = text .. string.rep(" ", content_w - tlen)
         end
 
-        term.setCursorPos(col1, row1 + i - 1)
-        Highlight.SetFor(hl)
-        term.write(text)
+        ScreenDraw.put_text(row1 + i - 2, col1 - 1, text, hl)
 
         if state.scrollbar then
             local sb_hl = "PMenuSbar"
@@ -570,13 +569,9 @@ function PopupMenu.render()
                 sb_hl = "Pmenu"
             end
             local in_thumb = (i - 1) >= thumb_top and (i - 1) < (thumb_top + thumb_h)
-            term.setCursorPos(col1 + content_w, row1 + i - 1)
-            Highlight.SetFor(in_thumb and "PmenuThumb" or sb_hl)
-            term.write(" ")
+            ScreenDraw.put_text(row1 + i - 2, col1 + content_w - 1, " ", in_thumb and "PmenuThumb" or sb_hl)
         end
     end
-
-    Highlight.SetFor("Normal")
 end
 
 return PopupMenu

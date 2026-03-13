@@ -47,19 +47,21 @@ return {
             end
 
             local function fg_at(blit, idx)
-                return blit.fg:sub(idx, idx)
+                local attrs = screen.hl_attrs(blit.hl[idx]) or {}
+                return attrs.fg
             end
 
             local function bg_at(blit, idx)
-                return blit.bg:sub(idx, idx)
+                local attrs = screen.hl_attrs(blit.hl[idx]) or {}
+                return attrs.bg
             end
 
-            local normal_fg = colors.toBlit(Highlight.For("Normal")[1])
-            local string_fg = colors.toBlit(Highlight.For("String")[1])
-            local comment_fg = colors.toBlit(Highlight.For("Comment")[1])
-            local structure_fg = colors.toBlit(Highlight.For("Structure")[1])
-            local error_fg = colors.toBlit(Highlight.For("Error")[1])
-            local error_bg = colors.toBlit(Highlight.For("Error")[2])
+            local normal_fg = Highlight.For("Normal")[1]
+            local string_fg = Highlight.For("String")[1]
+            local comment_fg = Highlight.For("Comment")[1]
+            local structure_fg = Highlight.For("Structure")[1]
+            local error_fg = Highlight.For("Error")[1]
+            local error_bg = Highlight.For("Error")[2]
 
             do
                 local ctx_state = mk_ctx({ "keyword String test" })

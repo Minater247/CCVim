@@ -9,6 +9,7 @@ Scopes._v.completed_item = {}
 Scopes._v.count = 0
 Scopes._v.count1 = 1
 Scopes._v.prevcount = 0
+Scopes._v.stderr = 2
 Scopes._v["true"] = true
 Scopes._v["false"] = false
 Scopes._b_by_buf = {}

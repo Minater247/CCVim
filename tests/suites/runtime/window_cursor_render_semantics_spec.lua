@@ -49,37 +49,32 @@ return {
 
             local function render_cursor_count(win)
                 local cursor_writes = 0
-                local current_hl = nil
                 local frame_x, frame_y = FrameTree.GetXY(win.frame)
+                local cursor_id = Highlight.GetId("Cursor")
+                local text_x = select(2, win:textwidth())
+                local target_row = frame_y
+                local target_col = frame_x + text_x - 2
 
-                local old_setfor = Highlight.SetFor
-                local old_write = term.write
-                local old_blit = term.blit
+                local old_grid_line = screen.grid_line
 
-                Highlight.SetFor = function(group)
-                    current_hl = group
-                    return old_setfor(group)
-                end
-                term.write = function(text)
-                    if current_hl == "Cursor" then
-                        cursor_writes = cursor_writes + #tostring(text or "")
+                screen.grid_line = function(grid, row, col, cells)
+                    local cx = col
+                    for i = 1, #cells do
+                        local cell = cells[i]
+                        local rep = cell[3] or 1
+                        if row == target_row and cell[2] == cursor_id and target_col >= cx and target_col < (cx + rep) then
+                            cursor_writes = cursor_writes + (cell[3] or 1)
+                        end
+                        cx = cx + rep
                     end
-                    return old_write(text)
-                end
-                term.blit = function(text, fg, bg)
-                    if current_hl == "Cursor" then
-                        cursor_writes = cursor_writes + #tostring(text or "")
-                    end
-                    return old_blit(text, fg, bg)
+                    return old_grid_line(grid, row, col, cells)
                 end
 
                 local render_ok, render_err = pcall(function()
                     win:render(frame_x, frame_y)
                 end)
 
-                Highlight.SetFor = old_setfor
-                term.write = old_write
-                term.blit = old_blit
+                screen.grid_line = old_grid_line
 
                 Assert.eq("render succeeds", render_ok, true)
                 if not render_ok then

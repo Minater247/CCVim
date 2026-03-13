@@ -35,6 +35,182 @@ if not ccvim_path then
     return
 end
 
+if not os.epoch then
+    os.epoch = function(_)
+        return math.floor(os.time() * 1000)
+    end
+end
+
+if not bit32 then
+    local ok_bit32, compat = pcall(require, "bit32")
+    if not ok_bit32 then
+        local ok_bit, bit = pcall(require, "bit")
+        if ok_bit and bit then
+            compat = {
+                band = bit.band,
+                bor = bit.bor,
+                bxor = bit.bxor,
+                bnot = bit.bnot,
+                lshift = bit.lshift,
+                rshift = bit.rshift,
+                arshift = bit.arshift or bit.rshift,
+            }
+        else
+            local MOD = 4294967296
+            local floor = math.floor
+
+            local function to_u32(n)
+                n = tonumber(n) or 0
+                n = n % MOD
+                if n < 0 then
+                    n = n + MOD
+                end
+                return n
+            end
+
+            local function band2(a, b)
+                a = to_u32(a)
+                b = to_u32(b)
+                local res = 0
+                local bitv = 1
+                for _ = 1, 32 do
+                    local abit = a % 2
+                    local bbit = b % 2
+                    if abit == 1 and bbit == 1 then
+                        res = res + bitv
+                    end
+                    a = floor(a / 2)
+                    b = floor(b / 2)
+                    bitv = bitv * 2
+                end
+                return res
+            end
+
+            local function bor2(a, b)
+                a = to_u32(a)
+                b = to_u32(b)
+                local res = 0
+                local bitv = 1
+                for _ = 1, 32 do
+                    local abit = a % 2
+                    local bbit = b % 2
+                    if abit == 1 or bbit == 1 then
+                        res = res + bitv
+                    end
+                    a = floor(a / 2)
+                    b = floor(b / 2)
+                    bitv = bitv * 2
+                end
+                return res
+            end
+
+            local function bxor2(a, b)
+                a = to_u32(a)
+                b = to_u32(b)
+                local res = 0
+                local bitv = 1
+                for _ = 1, 32 do
+                    local abit = a % 2
+                    local bbit = b % 2
+                    if abit ~= bbit then
+                        res = res + bitv
+                    end
+                    a = floor(a / 2)
+                    b = floor(b / 2)
+                    bitv = bitv * 2
+                end
+                return res
+            end
+
+            local function fold_binary(op, a, b, ...)
+                local res = op(a, b)
+                for i = 1, select("#", ...) do
+                    res = op(res, select(i, ...))
+                end
+                return res
+            end
+
+            compat = {
+                band = function(a, b, ...)
+                    if b == nil then
+                        return to_u32(a)
+                    end
+                    return fold_binary(band2, a, b, ...)
+                end,
+                bor = function(a, b, ...)
+                    if b == nil then
+                        return to_u32(a)
+                    end
+                    return fold_binary(bor2, a, b, ...)
+                end,
+                bxor = function(a, b, ...)
+                    if b == nil then
+                        return to_u32(a)
+                    end
+                    return fold_binary(bxor2, a, b, ...)
+                end,
+                bnot = function(a)
+                    return MOD - 1 - to_u32(a)
+                end,
+                lshift = function(a, n)
+                    a = to_u32(a)
+                    n = tonumber(n) or 0
+                    if n <= 0 then
+                        return a
+                    end
+                    if n >= 32 then
+                        return 0
+                    end
+                    return (a * (2 ^ n)) % MOD
+                end,
+                rshift = function(a, n)
+                    a = to_u32(a)
+                    n = tonumber(n) or 0
+                    if n <= 0 then
+                        return a
+                    end
+                    if n >= 32 then
+                        return 0
+                    end
+                    return floor(a / (2 ^ n))
+                end,
+                arshift = function(a, n)
+                    a = to_u32(a)
+                    n = tonumber(n) or 0
+                    if n <= 0 then
+                        return a
+                    end
+                    if n >= 32 then
+                        return a >= 2147483648 and (MOD - 1) or 0
+                    end
+                    local shifted = floor(a / (2 ^ n))
+                    if a < 2147483648 then
+                        return shifted
+                    end
+                    local fill = 0
+                    local bitv = 2147483648
+                    for _ = 1, n do
+                        fill = fill + bitv
+                        bitv = bitv / 2
+                    end
+                    return shifted + fill
+                end,
+            }
+        end
+    end
+    bit32 = compat
+end
+
+if not textutils then
+    textutils = { serialize = tostring }
+end
+
+local _is_cc = (type(term) == "table" and term.getSize ~= nil)
+local _backend = dofile(ccvim_path .. "/lib/backend/" .. (_is_cc and "cc" or "native") .. ".lua")
+if not fs then
+    fs = _backend.fs
+end
+
 local function log(level, format, ...)
     local handle = fs.open(ccvim_path .. "/logfile.txt", "a")
     handle.write("[" .. os.date() .. "] " .. (level and ("(" .. level .. ") ") or "") .. (
@@ -180,12 +356,25 @@ local function loadModule(module, opts)
 end
 _V.loadModule = loadModule
 
+local Screen = loadModule("lib.screen", { immediate = true })
+Screen.init(_backend)
+_V.screen = Screen
+_V.keys = _backend.keys
+_V.fs = _backend.fs
+_V.backend = _backend
+
+local w, h = Screen.get_size()
+_V.screen_size = {
+    width = w,
+    height = h,
+}
+
 -- Populate v:version for Vimscript compatibility (major*100 + minor).
 -- Use a Vim-compatible value, not the NVIM version tuple, so runtime scripts
 -- that gate on Vim version (eg netrw) behave predictably.
 local Scopes = loadModule("lib.luaapi.scopes")
 local Highlight = loadModule("lib.highlight")
-local original_palette = Highlight.CapturePalette(term)
+local original_palette = _backend.capture_palette()
 Scopes._v.version = (_V.vimcompat_maj * 100) + _V.vimcompat_min
 Scopes._v.vim_did_init = 0
 local Error = loadModule("lib.error")
@@ -218,12 +407,6 @@ _V.LOG_INTERNAL = function(sector, format, ...)
         log("internal." .. sector, format, ...)
     end
 end
-
-local w, h = term.getSize()
-_V.screen = {
-    width = w,
-    height = h,
-}
 
 local startupstart = os.epoch("utc")
 local startuptime_buf = {}
@@ -504,11 +687,7 @@ local ok, err = xpcall(Event.RunLoop, function(e)
     return debug.traceback("A critical internal error occurred:\n" .. tostring(e), 2)
 end)
 
-Highlight.SetPalette(original_palette, term)
-term.setBackgroundColor(colors.black)
-term.setTextColor(colors.white)
-term.clear()
-term.setCursorPos(1, 1)
+_backend.reset(original_palette)
 
 if not ok then
     _V.LOG_DEBUG(err)

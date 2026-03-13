@@ -74,6 +74,7 @@ return {
             local release_hits = 0
             local wheel_up_hits = 0
             local shifted_wheel_down_hits = 0
+            local wheel_right_hits = 0
 
             Command.clear_mappings({
                 "normal",
@@ -107,6 +108,9 @@ return {
             Command.map_callback("normal", Key.strtoseq("<S-ScrollWheelDown>"), function()
                 shifted_wheel_down_hits = shifted_wheel_down_hits + 1
             end)
+            Command.map_callback("normal", Key.strtoseq("<ScrollWheelRight>"), function()
+                wheel_right_hits = wheel_right_hits + 1
+            end)
 
             Event.ProcessEvent({ "mouse_click", 1, 8, 3 })
             Assert.eq("left click mapping executed", left_hits, 1)
@@ -125,15 +129,19 @@ return {
             Event.ProcessEvent({ "mouse_up", 1, 9, 3 })
             Assert.eq("left release mapping executed", release_hits, 1)
 
-            Event.ProcessEvent({ "mouse_scroll", -1, 8, 3 })
+            Event.ProcessEvent({ "mouse_scroll", "up", 8, 3 })
             Assert.eq("scroll-up mapping executed", wheel_up_hits, 1)
             Assert.eq("mapped scroll-up suppresses default scroll", scroll_calls, 0)
 
             Event.ProcessEvent({ "key", keys.leftShift })
-            Event.ProcessEvent({ "mouse_scroll", 1, 8, 3 })
+            Event.ProcessEvent({ "mouse_scroll", "down", 8, 3 })
             Event.ProcessEvent({ "key_up", keys.leftShift })
             Assert.eq("shifted scroll-down mapping executed", shifted_wheel_down_hits, 1)
             Assert.eq("mapped shifted scroll suppresses default scroll", scroll_calls, 0)
+
+            Event.ProcessEvent({ "mouse_scroll", "right", 8, 3 })
+            Assert.eq("scroll-right mapping executed", wheel_right_hits, 1)
+            Assert.eq("mapped horizontal scroll suppresses default scroll", scroll_calls, 0)
 
             local emitted = Key.replace_termcodes("<LeftMouse>", true, true)
             Command.execute_normal_keys(Key.strtoseq(emitted), { remap = true })

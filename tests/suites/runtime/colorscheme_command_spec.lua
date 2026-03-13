@@ -1,6 +1,6 @@
 return {
     id = "runtime.colorscheme_command",
-    description = "Loads :colorscheme files through runtimepath search, fires ColorScheme events, and rebuilds the 16-color palette from tracked scheme colors.", -- luacheck: ignore 631
+    description = "Loads :colorscheme files through runtimepath search and preserves highlight RGB values across reloads.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
 
     run = function(ctx)
@@ -31,7 +31,6 @@ return {
         }, "\n"))
 
         local result = Assert.eval_block(backend, "colorscheme command scenarios", string.format([=[
-            local colors = _G.colors
             local Highlight = loadModule("lib.highlight")
             local events = {}
 
@@ -41,9 +40,7 @@ return {
 
             local function actual_group_color(name, which)
                 local hl = Highlight.For(name, 0, true)
-                local slot = which == "fg" and hl[1] or hl[2]
-                local r, g, b = term.getPaletteColor(slot)
-                return colors.packRGB(r, g, b)
+                return which == "fg" and hl[1] or hl[2]
             end
 
             vim.api.nvim_create_autocmd("ColorSchemePre", {
@@ -114,14 +111,11 @@ return {
         ]], "E185")
 
         local replay = Assert.eval_block(backend, "colorscheme reload resets root palette", [[
-            local colors = _G.colors
             local Highlight = loadModule("lib.highlight")
 
             local function actual_group_color(name, which)
                 local hl = Highlight.For(name, 0, true)
-                local slot = which == "fg" and hl[1] or hl[2]
-                local r, g, b = term.getPaletteColor(slot)
-                return colors.packRGB(r, g, b)
+                return which == "fg" and hl[1] or hl[2]
             end
 
             local function snapshot()

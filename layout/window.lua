@@ -19,6 +19,7 @@ local VimExpr = loadModule("lib.excmd.vimxpr")
 local VimFn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local CmdRead = loadModule("lib.excmd.cmdread")
+local ScreenDraw = loadModule("lib.screendraw")
 
 local curr_winno = 1
 
@@ -281,8 +282,8 @@ local function _resolve_hl_group_name(hl)
     return nil
 end
 
-local function _virt_text_cells(chunks, default_fg, default_bg)
-    local text_cells, fg_cells, bg_cells = {}, {}, {}
+local function _virt_text_cells(chunks, default_hl)
+    local text_cells, hl_cells = {}, {}
     local list = (type(chunks) == "table") and chunks or {}
 
     for i = 1, #list do
@@ -297,22 +298,18 @@ local function _virt_text_cells(chunks, default_fg, default_bg)
         end
 
         local cells = _ascii_cells(text)
-        local fg = default_fg
-        local bg = default_bg
+        local hl_id = default_hl
         if hl_group then
-            local hl = Highlight.For(hl_group)
-            fg = colors.toBlit(hl[1])
-            bg = colors.toBlit(hl[2])
+            hl_id = Highlight.GetId(hl_group)
         end
 
         for c = 1, #cells do
             text_cells[#text_cells + 1] = cells[c]
-            fg_cells[#fg_cells + 1] = fg
-            bg_cells[#bg_cells + 1] = bg
+            hl_cells[#hl_cells + 1] = hl_id
         end
     end
 
-    return text_cells, fg_cells, bg_cells
+    return text_cells, hl_cells
 end
 
 local function _extmark_text_effects_for_line(buf, lnum, line_str)
@@ -431,28 +428,24 @@ local function _extmark_text_effects_for_line(buf, lnum, line_str)
     return out
 end
 
-local function _ensure_row_at(rows_t, rows_fg, rows_bg, row)
+local function _ensure_row_at(rows_t, rows_hl, row)
     while #rows_t < row do
         rows_t[#rows_t + 1] = {}
-        rows_fg[#rows_fg + 1] = {}
-        rows_bg[#rows_bg + 1] = {}
+        rows_hl[#rows_hl + 1] = {}
     end
     rows_t[row] = rows_t[row] or {}
-    rows_fg[row] = rows_fg[row] or {}
-    rows_bg[row] = rows_bg[row] or {}
+    rows_hl[row] = rows_hl[row] or {}
 end
 
-local function _place_cells_at(rows_t, rows_fg, rows_bg, row, col, cells_t, cells_fg, cells_bg, dfg, dbg, keep)
+local function _place_cells_at(rows_t, rows_hl, row, col, cells_t, cells_hl, default_hl, keep)
     for c = 1, #cells_t do
         local idx = col + c - 1
         while #rows_t[row] < idx - 1 do
             rows_t[row][#rows_t[row]+1] = " "
-            rows_fg[row][#rows_fg[row]+1] = dfg
-            rows_bg[row][#rows_bg[row]+1] = dbg
+            rows_hl[row][#rows_hl[row]+1] = default_hl
         end
         rows_t[row][idx] = cells_t[c]
-        rows_fg[row][idx] = cells_fg[c] or (keep and rows_fg[row][idx]) or dfg
-        rows_bg[row][idx] = cells_bg[c] or (keep and rows_bg[row][idx]) or dbg
+        rows_hl[row][idx] = cells_hl[c] or (keep and rows_hl[row][idx]) or default_hl
     end
 end
 
@@ -461,19 +454,18 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
         return rendered, blitLines
     end
 
-    local normal = Highlight.For("Normal")
-    local default_fg = colors.toBlit(normal[1])
-    local default_bg = colors.toBlit(normal[2])
+    local default_hl = Highlight.GetId("Normal")
 
-    local rows_t, rows_fg, rows_bg = {}, {}, {}
+    local rows_t, rows_hl = {}, {}
     local row_count = math.max(1, #rendered)
     for row = 1, row_count do
         local row_text = rendered[row] or ""
         rows_t[row] = _to_char_array(row_text)
-        local fg_line = (blitLines and blitLines.fg and blitLines.fg[row]) or ""
-        local bg_line = (blitLines and blitLines.bg and blitLines.bg[row]) or ""
-        rows_fg[row] = _to_blit_array(fg_line, #rows_t[row], default_fg)
-        rows_bg[row] = _to_blit_array(bg_line, #rows_t[row], default_bg)
+        local hl_line = (blitLines and blitLines.hl and blitLines.hl[row]) or {}
+        rows_hl[row] = {}
+        for i = 1, #rows_t[row] do
+            rows_hl[row][i] = hl_line[i] or default_hl
+        end
     end
 
     local byte_to_pos = {}
@@ -493,9 +485,7 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
 
     for i = 1, #effects.hl_ranges do
         local hr = effects.hl_ranges[i]
-        local hl = Highlight.For(hr.hl_group)
-        local hl_fg = colors.toBlit(hl[1])
-        local hl_bg = colors.toBlit(hl[2])
+        local hl_id = Highlight.GetId(hr.hl_group)
 
         if ranges and gsrc then
             for row = 1, #ranges do
@@ -505,8 +495,7 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
                         local bidx = gsrc[k]
                         if bidx and bidx >= hr.start_byte and bidx < hr.end_byte_excl then
                             local col = k - rr.i + 1
-                            rows_fg[row][col] = hl_fg
-                            rows_bg[row][col] = hl_bg
+                            rows_hl[row][col] = hl_id
                         end
                     end
                 end
@@ -517,7 +506,7 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
     local line_bytes = #line_str
     for i = 1, #effects.virt_text do
         local vt = effects.virt_text[i]
-        local cells_t, cells_fg, cells_bg = _virt_text_cells(vt.chunks, default_fg, default_bg)
+        local cells_t, cells_hl = _virt_text_cells(vt.chunks, default_hl)
         if #cells_t > 0 then
             local row, col
 
@@ -547,59 +536,55 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
                 end
             end
 
-            _ensure_row_at(rows_t, rows_fg, rows_bg, row, default_fg, default_bg)
+            _ensure_row_at(rows_t, rows_hl, row)
 
             if vt.pos == "inline" then
                 col = math.max(1, col)
                 for c = #cells_t, 1, -1 do
                     table.insert(rows_t[row], col, cells_t[c])
-                    table.insert(rows_fg[row], col, cells_fg[c] or default_fg)
-                    table.insert(rows_bg[row], col, cells_bg[c] or default_bg)
+                    table.insert(rows_hl[row], col, cells_hl[c] or default_hl)
                 end
             elseif vt.pos == "overlay" then
                 _place_cells_at(
                     rows_t,
-                    rows_fg,
-                    rows_bg,
+                    rows_hl,
                     row, col,
                     cells_t,
-                    cells_fg,
-                    cells_bg,
-                    default_fg,
-                    default_bg,
+                    cells_hl,
+                    default_hl,
                     true
                 )
             elseif vt.pos == "right_align" or vt.pos == "eol_right_align" then
                 local want_col = math.max(1, (text_w or 0) - #cells_t + 1)
                 col = vt.pos == "eol_right_align" and math.max(col, want_col) or want_col
-                _place_cells_at(rows_t, rows_fg, rows_bg, row, col, cells_t, cells_fg, cells_bg, default_fg, default_bg)
+                _place_cells_at(rows_t, rows_hl, row, col, cells_t, cells_hl, default_hl)
             else
                 for c = 1, #cells_t do
                     rows_t[row][#rows_t[row] + 1] = cells_t[c]
-                    rows_fg[row][#rows_fg[row] + 1] = cells_fg[c] or default_fg
-                    rows_bg[row][#rows_bg[row] + 1] = cells_bg[c] or default_bg
+                    rows_hl[row][#rows_hl[row] + 1] = cells_hl[c] or default_hl
                 end
             end
         end
     end
 
     for i = #effects.virt_lines_above, 1, -1 do
-        local t, fg, bg = _virt_text_cells(effects.virt_lines_above[i], default_fg, default_bg)
-        table.insert(rows_t, 1, t); table.insert(rows_fg, 1, fg); table.insert(rows_bg, 1, bg)
+        local t, hl = _virt_text_cells(effects.virt_lines_above[i], default_hl)
+        table.insert(rows_t, 1, t)
+        table.insert(rows_hl, 1, hl)
     end
     for i = 1, #effects.virt_lines_below do
-        local t, fg, bg = _virt_text_cells(effects.virt_lines_below[i], default_fg, default_bg)
-        rows_t[#rows_t+1] = t; rows_fg[#rows_fg+1] = fg; rows_bg[#rows_bg+1] = bg
+        local t, hl = _virt_text_cells(effects.virt_lines_below[i], default_hl)
+        rows_t[#rows_t+1] = t
+        rows_hl[#rows_hl+1] = hl
     end
 
-    local out_rendered, out_fg, out_bg = {}, {}, {}
+    local out_rendered, out_hl = {}, {}
     for row = 1, #rows_t do
         out_rendered[row] = table.concat(rows_t[row] or {})
-        out_fg[row] = table.concat(rows_fg[row] or {})
-        out_bg[row] = table.concat(rows_bg[row] or {})
+        out_hl[row] = rows_hl[row] or {}
     end
 
-    return out_rendered, { fg = out_fg, bg = out_bg }
+    return out_rendered, { hl = out_hl }
 end
 
 -- Map a desired visual column to a character column.
@@ -1379,28 +1364,47 @@ function Window:render(xoff, yoff)
     end
     baseheight = height
 
+    local draw_x = 1
+    local draw_y = 1
+    local active_group = "Normal"
+
     local function setPos(rx, ry)
         local ax = (xoff or 1) + rx - 1
         local ay = (yoff or 1) + ry - 1
-        term.setCursorPos(ax, ay)
+        draw_x = ax
+        draw_y = ay
+    end
+
+    local function setGroup(group)
+        active_group = group
+    end
+
+    local function writeText(text)
+        ScreenDraw.put_text(draw_y - 1, draw_x - 1, text, active_group)
+        draw_x = draw_x + Utf8.len(text)
+    end
+
+    local function writeBlit(text, fg, bg)
+        ScreenDraw.put_blit(draw_y - 1, draw_x - 1, text, fg, bg)
+        draw_x = draw_x + #text
     end
 
     -- Clear this window's drawable region first
-    Highlight.SetFor("Normal")
+    setGroup("Normal")
     for i = 1, height do
         setPos(1, i)
-        term.write(string.rep(" ", width))
+        writeText(string.rep(" ", width))
     end
 
     local has_sep = self:hasHorizontalSeparator()
     local dostatus = self:hasLocalStatusline()
     if frame and FrameTree.IsLeftChild(frame) then
-        Highlight.SetFor("VertSplit")
+        setGroup("VertSplit")
         local fc = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).vert or "|"
         local split_rows = height - (has_sep and 1 or 0)
         for i = 1, split_rows do
             setPos(width, i)
-            term.write(fc)
+            writeText(fc)
         end
         width = width - 1
     end
@@ -1447,15 +1451,15 @@ function Window:render(xoff, yoff)
             if sig then
                 local txt = sign_entry_text(sig)
                 local hl = sign_entry_hl(sig, cursorline_active) or base_hl
-                Highlight.SetFor(hl)
-                term.write(txt)
+                setGroup(hl)
+                writeText(txt)
                 idx = idx + 1
             else
-                Highlight.SetFor(base_hl)
-                term.write("  ")
+                setGroup(base_hl)
+                writeText("  ")
             end
         end
-        Highlight.SetFor("Normal")
+        setGroup("Normal")
     end
 
     local function draw_gutter(row_y, label, iscursor, needs_right, numhl, sign_text, sign_hl)
@@ -1472,7 +1476,7 @@ function Window:render(xoff, yoff)
         else
             hlgroup = "LineNr"
         end
-        Highlight.SetFor(hlgroup)
+        setGroup(hlgroup)
 
         local s   = sign_text or label or ""
         local len = #s
@@ -1503,8 +1507,8 @@ function Window:render(xoff, yoff)
             end
         end
 
-        term.write(s)
-        Highlight.SetFor("Normal")
+        writeText(s)
+        setGroup("Normal")
     end
 
     -- Horizontal scroll (1-based)
@@ -1610,7 +1614,7 @@ function Window:render(xoff, yoff)
             )
         end
 
-        local have_blit = blitLines and blitLines.fg and blitLines.bg
+        local have_hl = blitLines and blitLines.hl
 
         local cursor_virtual = false
         if show_cursor and iscursor_line and cursorPos then
@@ -1681,35 +1685,32 @@ function Window:render(xoff, yoff)
             if x2 < x1 then x2 = x1 - 1 end
             local vis_text = (x2 >= x1) and text:sub(x1, x2) or ""
 
-            local fg_slice, bg_slice
-            if have_blit then
-                local fg_line = blitLines.fg[j] or ""
-                local bg_line = blitLines.bg[j] or ""
-                fg_slice = (x2 >= x1) and fg_line:sub(x1, x2) or ""
-                bg_slice = (x2 >= x1) and bg_line:sub(x1, x2) or ""
+            local hl_slice
+            if have_hl then
+                local hl_line = blitLines.hl[j] or {}
+                hl_slice = {}
+                if x2 >= x1 then
+                    for idx = x1, x2 do
+                        hl_slice[#hl_slice + 1] = hl_line[idx]
+                    end
+                end
             end
 
             if linehl and text_w > 0 then
                 if #vis_text < text_w then
                     local missing = text_w - #vis_text
                     vis_text = vis_text .. string.rep(" ", missing)
-                    if have_blit then
-                        local normal_hl = Highlight.For("Normal")
-                        local pad_fg = colors.toBlit(normal_hl[1])
-                        local pad_bg = colors.toBlit(normal_hl[2])
-                        fg_slice = (fg_slice or "") .. string.rep(pad_fg, missing)
-                        bg_slice = (bg_slice or "") .. string.rep(pad_bg, missing)
+                    if have_hl then
+                        local normal_hl = Highlight.GetId("Normal")
+                        for _ = 1, missing do
+                            hl_slice[#hl_slice + 1] = normal_hl
+                        end
                     end
                 end
-                local row_hl = Highlight.For(linehl)
-                local fg_col = row_hl[1]
-                local bg_col = row_hl[2]
-                if have_blit then
-                    if fg_col then
-                        fg_slice = string.rep(colors.toBlit(fg_col), #vis_text)
-                    end
-                    if bg_col then
-                        bg_slice = string.rep(colors.toBlit(bg_col), #vis_text)
+                if have_hl then
+                    local row_hl = Highlight.GetId(linehl)
+                    for idx = 1, #vis_text do
+                        hl_slice[idx] = row_hl
                     end
                 end
             end
@@ -1717,19 +1718,21 @@ function Window:render(xoff, yoff)
             -- Draw text/blit
             if text_w > 0 then
                 setPos(text_x, 1 + visual_y)
-                if have_blit and #fg_slice == #vis_text and #bg_slice == #vis_text then
-                    term.blit(vis_text, fg_slice, bg_slice)
+                local wraps_to_next = self.opts.wrap and j < #rendered and visual_y + 1 < max_rows
+                if have_hl and #hl_slice == #vis_text then
+                    ScreenDraw.put_hl_text(draw_y - 1, draw_x - 1, vis_text, hl_slice, wraps_to_next)
+                    draw_x = draw_x + #vis_text
                 else
                     if linehl then
-                        Highlight.SetFor(linehl)
+                        setGroup(linehl)
                     else
-                        Highlight.SetFor("Normal")
+                        setGroup("Normal")
                     end
-                    term.write(vis_text)
+                    writeText(vis_text)
                     if linehl and #vis_text < text_w then
-                        term.write(string.rep(" ", text_w - #vis_text))
+                        writeText(string.rep(" ", text_w - #vis_text))
                     end
-                    Highlight.SetFor("Normal")
+                    setGroup("Normal")
                 end
             end
 
@@ -1750,9 +1753,9 @@ function Window:render(xoff, yoff)
                     local screen_y = 1 + visual_y
                     local ch = cursorPos.ch or " "
                     setPos(screen_x, screen_y)
-                    Highlight.SetFor("Cursor")
-                    term.write(ch)
-                    Highlight.SetFor("Normal")
+                    setGroup("Cursor")
+                    writeText(ch)
+                    setGroup("Normal")
                 end
             end
 
@@ -1778,9 +1781,9 @@ function Window:render(xoff, yoff)
         end
         if text_w > 0 then
             setPos(text_x, 1 + visual_y)
-            Highlight.SetFor("EndOfBuffer")
-            term.write(options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).eob or "~")
-            Highlight.SetFor("Normal")
+            setGroup("EndOfBuffer")
+            writeText(options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).eob or "~")
+            setGroup("Normal")
         end
         visual_y = visual_y + 1
     end
@@ -1813,9 +1816,9 @@ function Window:render(xoff, yoff)
                 local screen_x = text_x + (cx_vis - 1)
                 local screen_y = 1 + row_offset
                 setPos(screen_x, screen_y)
-                Highlight.SetFor("Cursor")
-                term.write(ch)
-                Highlight.SetFor("Normal")
+                setGroup("Cursor")
+                writeText(ch)
+                setGroup("Normal")
             end
         end
     end
@@ -1829,35 +1832,25 @@ function Window:render(xoff, yoff)
         setPos(1, baseheight)
         local info = Statusline.RenderInfo(options.get("statusline", self), self)
         self.statusline_click_zones = info.click_zones
-        for s = 1, #info.spans do
-            Highlight.SetFor(info.spans[s][2])
-            term.write(info.spans[s][1])
-        end
-        Highlight.SetFor("Normal")
+        ScreenDraw.put_spans(draw_y - 1, draw_x - 1, info.spans)
+        setGroup("Normal")
     elseif has_sep and not self.floatpos then
         self.statusline_click_zones = {}
         local fcs = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true })
         local hc = fcs.horiz or "-"
-        Highlight.SetFor("VertSplit")
+        setGroup("VertSplit")
         setPos(1, baseheight)
-        term.write(string.rep(hc, math.max(0, width)))
-        Highlight.SetFor("Normal")
+        writeText(string.rep(hc, math.max(0, width)))
+        setGroup("Normal")
     else
         self.statusline_click_zones = {}
     end
 end
 
 function Window:drawStatus(xoff, yoff)
-    term.setCursorPos(xoff, yoff + self.frame.height - 1)
-
     local info = Statusline.RenderInfo(options.get("statusline", self), self)
     self.statusline_click_zones = info.click_zones
-    for s = 1, #info.spans do
-        Highlight.SetFor(info.spans[s][2])
-        term.write(info.spans[s][1])
-    end
-
-    Highlight.SetFor("Normal")
+    ScreenDraw.put_spans(yoff + self.frame.height - 2, xoff - 1, info.spans)
 end
 
 function Window:matchPairs()

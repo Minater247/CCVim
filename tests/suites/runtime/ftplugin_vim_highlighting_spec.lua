@@ -352,14 +352,25 @@ return {
                 Highlight.SetHL(0, "vimHiAttrib", { fg = colors.yellow })
                 Highlight.SetHL(0, "vimCmdSep", { fg = colors.lime })
                 local blit = Runtime.line_to_blit(ctx_state, hi_none_buf, 1)
-                local cterm_none_fg = blit.fg:sub(48, 55)
+                local cterm_none_fg = {}
+                for col = 48, 55 do
+                    local attrs = screen.hl_attrs(blit.hl[col]) or {}
+                    cterm_none_fg[#cterm_none_fg + 1] = attrs.fg
+                end
                 Assert.eq("cterm NONE final cell group", g[55], "vimHiAttrib")
-                Assert.eq(
+                Assert.table_eq(
                     "cterm NONE blit tail matches palette-backed groups",
                     cterm_none_fg,
-                    string.rep(colors.toBlit(colors.orange), 3)
-                        .. colors.toBlit(colors.magenta)
-                        .. string.rep(colors.toBlit(colors.yellow), 4)
+                    {
+                        Highlight.For("vimHiCTerm")[1],
+                        Highlight.For("vimHiCTerm")[1],
+                        Highlight.For("vimHiCTerm")[1],
+                        Highlight.For("vimHiKeyList")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                    }
                 )
             end
 
