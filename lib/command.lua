@@ -6,6 +6,7 @@ local PopupMenu                   = loadModule("lib.popupmenu")
 local Key                         = loadModule("lib.key")
 local RegisterUtil                = loadModule("lib.registers")
 local Scopes                      = loadModule("lib.luaapi.scopes")
+local Error                       = loadModule("lib.error")
 
 local POLICY_FULL, POLICY_CB_ONLY, POLICY_NOREMAP = 1, 2, 3
 Command.POLICY_FULL = POLICY_FULL
@@ -1082,7 +1083,7 @@ execute_node = function(node)
             end
             return node.callback()
         end)
-        if rv then ExMsg.echoerr(rv:toString()) end
+        if rv and Error.IsError(rv) then ExMsg.echoerr(rv:toString()) end
         return
     end
 
