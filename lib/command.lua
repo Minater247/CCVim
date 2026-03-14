@@ -6,6 +6,7 @@ local PopupMenu                   = loadModule("lib.popupmenu")
 local Key                         = loadModule("lib.key")
 local RegisterUtil                = loadModule("lib.registers")
 local Scopes                      = loadModule("lib.luaapi.scopes")
+local VimExpr                     = loadModule("lib.excmd.vimxpr")
 local Error                       = loadModule("lib.error")
 
 local POLICY_FULL, POLICY_CB_ONLY, POLICY_NOREMAP = 1, 2, 3
@@ -412,23 +413,31 @@ local function _composite_node(buf_node, glob_node)
     if not glob_node then return buf_node end
 
     local composite = { children = {} }
-    local buf_has_leaf = (buf_node.callback ~= nil) or (buf_node.rhs_seq ~= nil)
+    local buf_has_leaf = (buf_node.callback ~= nil) or (buf_node.rhs_seq ~= nil) or (buf_node.expr_rhs ~= nil)
         or (buf_node.operator_cb ~= nil) or (buf_node.motion_root ~= nil)
-    local glob_has_leaf = (glob_node.callback ~= nil) or (glob_node.rhs_seq ~= nil)
+    local glob_has_leaf = (glob_node.callback ~= nil) or (glob_node.rhs_seq ~= nil) or (glob_node.expr_rhs ~= nil)
         or (glob_node.operator_cb ~= nil) or (glob_node.motion_root ~= nil)
 
     if buf_has_leaf then
         composite.callback    = buf_node.callback
         composite.rhs_seq     = buf_node.rhs_seq
+        composite.expr        = buf_node.expr
+        composite.expr_rhs    = buf_node.expr_rhs
+        composite.replace_keycodes = buf_node.replace_keycodes
         composite.recursive   = buf_node.recursive
         composite.operator_cb = buf_node.operator_cb
         composite.motion_root = buf_node.motion_root
+        composite.map_meta    = buf_node.map_meta
     else
         composite.callback    = glob_node.callback
         composite.rhs_seq     = glob_node.rhs_seq
+        composite.expr        = glob_node.expr
+        composite.expr_rhs    = glob_node.expr_rhs
+        composite.replace_keycodes = glob_node.replace_keycodes
         composite.recursive   = glob_node.recursive
         composite.operator_cb = glob_node.operator_cb
         composite.motion_root = glob_node.motion_root
+        composite.map_meta    = glob_node.map_meta
     end
 
     local keys = {}
@@ -470,9 +479,9 @@ local function composite_root_for_mode(mode_full)
 end
 
 local function _get_user_insert_root(mode_full, opts)
-    if opts and opts.buffer then
+    if opts.buffer then
         return ensure_buffer_local_root(opts.buffer, mode_full)
-    elseif opts and opts.buffer_local then
+    elseif opts.buffer_local then
         local buf = windows[curwin].buffer
         return ensure_buffer_local_root(buf, mode_full)
     else
@@ -496,6 +505,9 @@ local function _clear_leaf(node)
     node.callback = nil
     node.callback_takes_count = nil
     node.rhs_seq = nil
+    node.expr = nil
+    node.expr_rhs = nil
+    node.replace_keycodes = nil
     node.recursive = nil
     node.operator_cb = nil
     node.motion_root = nil
@@ -505,6 +517,7 @@ end
 local function _node_is_empty(node)
     return (not node.callback)
         and (not node.rhs_seq)
+        and (not node.expr_rhs)
         and (not node.operator_cb)
         and (not node.motion_root)
         and (not node_has_children(node))
@@ -544,6 +557,11 @@ end
 
 local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
     local node = _get_user_insert_root(mode_full, opts)
+    local is_buffer_local = (opts.buffer ~= nil) or opts.buffer_local
+    local scope_suffix = ""
+    if is_buffer_local then
+        scope_suffix = " [buf-local]"
+    end
     for i = 1, #seq_nums do
         local k = seq_nums[i]
         local child = node.children[k.numeric]
@@ -556,13 +574,22 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
     node.callback  = callback
     node.callback_takes_count = false
     node.rhs_seq   = nil
+    node.expr_rhs  = nil
     node.recursive = nil
+    node.map_meta  = opts.map_meta
+    if opts.expr == true then
+        node.expr = true
+        node.replace_keycodes = opts.replace_keycodes ~= false
+    else
+        node.expr = nil
+        node.replace_keycodes = nil
+    end
     Command.Log(
         "map-callback  mode=%s seq=%s cb=%s%s",
         mode_full,
         seq_tostring(seq_nums),
         tostring(callback),
-        opts and " [buf-local]" or ""
+        scope_suffix
     )
 end
 
@@ -586,6 +613,11 @@ end
 
 local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts)
     local node = _get_user_insert_root(mode_full, opts)
+    local is_buffer_local = (opts.buffer ~= nil) or opts.buffer_local
+    local scope_suffix = ""
+    if is_buffer_local then
+        scope_suffix = " [buf-local]"
+    end
     for i = 1, #seq_nums do
         local k = seq_nums[i]
         local child = node.children[k.numeric]
@@ -596,17 +628,34 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
         node = child
     end
     node.callback  = nil
-    node.rhs_seq   = normalize_seq(rhs_seq)
+    if opts.expr == true then
+        node.expr = true
+        node.expr_rhs = opts.expr_rhs
+        node.rhs_seq = nil
+        node.replace_keycodes = opts.replace_keycodes ~= false
+    else
+        node.expr = nil
+        node.expr_rhs = nil
+        node.rhs_seq = normalize_seq(rhs_seq)
+        node.replace_keycodes = nil
+    end
     node.recursive = recursive ~= false
-    node.map_meta  = opts and opts.map_meta or nil
+    node.map_meta  = opts.map_meta
+
+    local rhs_log
+    if node.expr then
+        rhs_log = node.expr_rhs
+    else
+        rhs_log = seq_tostring(node.rhs_seq)
+    end
 
     Command.Log(
         "map-keys      mode=%s lhs=%s rhs=%s recursive=%s%s",
         mode_full,
         seq_tostring(seq_nums),
-        seq_tostring(node.rhs_seq),
+        rhs_log,
         tostring(node.recursive),
-        opts and " [buf-local]" or ""
+        scope_suffix
     )
 end
 
@@ -638,6 +687,7 @@ function Command.map_builtin_callback(modes, lhs_seq, callback)
 end
 
 function Command.remap_keys(modes, lhs_seq, rhs_seq, opts)
+    opts = opts or {}
     local lhs = normalize_seq(lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
         insert_keys_mapping(m, lhs, rhs_seq, true, opts)
@@ -645,6 +695,7 @@ function Command.remap_keys(modes, lhs_seq, rhs_seq, opts)
 end
 
 function Command.noremap_keys(modes, lhs_seq, rhs_seq, opts)
+    opts = opts or {}
     local lhs = normalize_seq(lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
         insert_keys_mapping(m, lhs, rhs_seq, false, opts)
@@ -682,8 +733,8 @@ end
 local function _subtree_has_rhs(node, needle)
     if not node then return false end
 
-    if node.rhs_seq then
-        local rhs = _rhs_seq_to_text(node.rhs_seq)
+    if node.rhs_seq or node.expr_rhs ~= nil then
+        local rhs = node.expr_rhs or _rhs_seq_to_text(node.rhs_seq)
         if rhs:find(needle, 1, true) then
             return true
         end
@@ -713,7 +764,13 @@ function Command.has_map_to(modes, what)
 end
 
 local function _node_rhs(node)
-    if not node or not node.rhs_seq then
+    if not node then
+        return nil
+    end
+    if node.expr_rhs ~= nil then
+        return node.expr_rhs
+    end
+    if not node.rhs_seq then
         return nil
     end
     if #node.rhs_seq == 0 then
@@ -784,7 +841,7 @@ local function _node_has_mapping(node)
     if not node then
         return false
     end
-    if node.callback ~= nil or node.rhs_seq ~= nil or node.operator_cb ~= nil then
+    if node.callback ~= nil or node.rhs_seq ~= nil or node.expr_rhs ~= nil or node.operator_cb ~= nil then
         return true
     end
     return node_has_children(node)
@@ -836,18 +893,22 @@ function Command.maparg(modes, lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
         local local_root = buf.local_mappings and buf.local_mappings[m]
         local local_node = _lookup_node_in_root(local_root, lhs_seq)
-        if
-            local_node
-            and (local_node.callback ~= nil or local_node.rhs_seq ~= nil or local_node.operator_cb ~= nil)
-        then
+        if local_node and (
+            local_node.callback ~= nil
+            or local_node.rhs_seq ~= nil
+            or local_node.expr_rhs ~= nil
+            or local_node.operator_cb ~= nil
+        ) then
             return local_node, true
         end
 
         local global_node = _lookup_node_in_root(user_global_mappings[m], lhs_seq)
-        if
-            global_node
-            and (global_node.callback ~= nil or global_node.rhs_seq ~= nil or global_node.operator_cb ~= nil)
-        then
+        if global_node and (
+            global_node.callback ~= nil
+            or global_node.rhs_seq ~= nil
+            or global_node.expr_rhs ~= nil
+            or global_node.operator_cb ~= nil
+        ) then
             return global_node, false
         end
     end
@@ -856,7 +917,13 @@ function Command.maparg(modes, lhs_seq)
 end
 
 function Command.mapping_to_string(node)
-    if not node or not node.rhs_seq then
+    if not node then
+        return ""
+    end
+    if node.expr_rhs ~= nil then
+        return node.expr_rhs
+    end
+    if not node.rhs_seq then
         return ""
     end
     local meta = node.map_meta or {}
@@ -864,7 +931,7 @@ function Command.mapping_to_string(node)
 end
 
 function Command.mapping_to_dict(node, is_buffer_local, lhs_seq)
-    if not node or not node.rhs_seq then
+    if not node or (not node.rhs_seq and node.expr_rhs == nil) then
         return {}
     end
 
@@ -876,7 +943,7 @@ function Command.mapping_to_dict(node, is_buffer_local, lhs_seq)
 
     return {
         lhs = meta.expanded_lhs or _seq_to_map_text(lhs_seq),
-        rhs = meta.raw_rhs or _seq_to_map_text(node.rhs_seq),
+        rhs = meta.raw_rhs or node.expr_rhs or _seq_to_map_text(node.rhs_seq),
         sid = sid,
         buffer = is_buffer_local and 1 or 0,
         noremap = (node.recursive == false) and 1 or 0,
@@ -1065,6 +1132,34 @@ local function _set_v_count_context(count)
     vvars.count1 = (current ~= 0) and current or 1
 end
 
+local function _expr_result_to_text(rv)
+    local t = type(rv)
+    if t == "string" then
+        return rv
+    end
+    if t == "number" then
+        return tostring(rv)
+    end
+    return ""
+end
+
+local function _vim_expr_result_to_text(rv)
+    local t = type(rv)
+    if t == "string" then
+        return rv
+    end
+    if t == "number" then
+        return tostring(rv)
+    end
+    if t == "boolean" then
+        return rv and "v:true" or "v:false"
+    end
+    if t == "nil" then
+        return "v:null"
+    end
+    return tostring(rv)
+end
+
 execute_node = function(node)
     local cnt = (state.count_committed and state.count_value)
     Command.Log(
@@ -1077,13 +1172,75 @@ execute_node = function(node)
 
     if node.callback then
         _set_v_count_context(cnt)
-        local rv = _with_undo_block(function()
+        local rv
+        if node.expr then
+            local policy = node.recursive and POLICY_FULL or POLICY_NOREMAP
+            cancel_ambiguous_timer()
+            reset_mapping_only()
+            _with_undo_block(function()
+                if node.callback_takes_count then
+                    rv = node.callback(cnt)
+                else
+                    rv = node.callback()
+                end
+                if rv and Error.IsError(rv) then
+                    ExMsg.echoerr(rv:toString())
+                    return
+                end
+
+                local text = _expr_result_to_text(rv)
+                if text == "" then
+                    return
+                end
+
+                if node.replace_keycodes == false then
+                    text = text:gsub("<", "<lt>")
+                end
+
+                local seq = Key.strtoseq(text)
+                if #seq > 0 then
+                    Command._feed_seq_with_policy(seq, policy)
+                end
+            end)
+            return
+        end
+
+        rv = _with_undo_block(function()
             if node.callback_takes_count then
                 return node.callback(cnt)
             end
             return node.callback()
         end)
         if rv and Error.IsError(rv) then ExMsg.echoerr(rv:toString()) end
+        return
+    end
+
+    if node.expr_rhs ~= nil then
+        _set_v_count_context(cnt)
+        local policy = node.recursive and POLICY_FULL or POLICY_NOREMAP
+        cancel_ambiguous_timer()
+        reset_mapping_only()
+        _with_undo_block(function()
+            local rv = VimExpr.evaluate(node.expr_rhs)
+            if rv and Error.IsError(rv) then
+                ExMsg.echoerr(rv:toString())
+                return
+            end
+
+            local text = _vim_expr_result_to_text(rv)
+            if text == "" then
+                return
+            end
+
+            if node.replace_keycodes == false then
+                text = text:gsub("<", "<lt>")
+            end
+
+            local seq = Key.strtoseq(text)
+            if #seq > 0 then
+                Command._feed_seq_with_policy(seq, policy)
+            end
+        end)
         return
     end
 
@@ -1664,7 +1821,8 @@ function Command._handle_key_with_policy(code, policy, capture_counts)
     -- Leaves under policy
     local at_leaf_cb          = next_node.callback ~= nil
     local at_leaf_keys        = (policy == POLICY_FULL) and (next_node.rhs_seq ~= nil) or false
-    local at_leaf             = at_leaf_cb or at_leaf_keys or (next_node.operator_cb ~= nil)
+    local at_leaf_expr        = (policy == POLICY_FULL) and (next_node.expr_rhs ~= nil) or false
+    local at_leaf             = at_leaf_cb or at_leaf_keys or at_leaf_expr or (next_node.operator_cb ~= nil)
     local has_more            = node_has_children(next_node)
 
     if at_leaf then

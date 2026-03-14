@@ -910,7 +910,23 @@ function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
 
     if opts.callback then
         local cb = ScriptSource.wrap(nil, opts.callback)
-        Command.map_callback(mode, lhs, cb, { buffer = buf })
+        Command.map_callback(mode, lhs, cb, {
+            buffer = buf,
+            expr = opts.expr == true,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        })
+    elseif opts.expr then
+        local map_opts = {
+            buffer = buf,
+            expr = true,
+            expr_rhs = rhs_text,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        }
+        if opts.noremap then
+            Command.noremap_keys(mode, lhs, nil, map_opts)
+        else
+            Command.remap_keys(mode, lhs, nil, map_opts)
+        end
     else
         rhs = Key.strtoseq(rhs_text)
         if opts.noremap then
@@ -931,7 +947,21 @@ function api.nvim_set_keymap(mode, lhs, rhs, opts)
 
     if opts.callback then
         local cb = ScriptSource.wrap(nil, opts.callback)
-        Command.map_callback(mode, lhs, cb)
+        Command.map_callback(mode, lhs, cb, {
+            expr = opts.expr == true,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        })
+    elseif opts.expr then
+        local map_opts = {
+            expr = true,
+            expr_rhs = rhs_text,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        }
+        if opts.noremap then
+            Command.noremap_keys(mode, lhs, nil, map_opts)
+        else
+            Command.remap_keys(mode, lhs, nil, map_opts)
+        end
     else
         rhs = Key.strtoseq(rhs_text)
         if opts.noremap then

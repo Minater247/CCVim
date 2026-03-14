@@ -3193,9 +3193,14 @@ function Runtime.new(init_state, init_opts)
 
     local function _map_command_opts(opts, map_meta)
         local out = map_meta and { map_meta = map_meta } or nil
-        if opts and opts.buffer then
+        if opts.buffer then
             out = out or {}
             out.buffer_local = true
+        end
+        if opts.expr then
+            out = out or {}
+            out.expr = true
+            out.replace_keycodes = true
         end
         return out
     end
@@ -3376,8 +3381,6 @@ function Runtime.new(init_state, init_opts)
 
         local lhs_seq, lerr = _strtoseq_tolerant(lhs_expanded)
         if Error.IsError(lerr) then return lerr end
-        local rhs_seq, rerr = _strtoseq_tolerant(rhs_expanded)
-        if Error.IsError(rerr) then return rerr end
 
         local map_opts = _map_command_opts(parsed.opts, {
             raw_lhs = parsed.lhs,
@@ -3386,6 +3389,14 @@ function Runtime.new(init_state, init_opts)
             expanded_rhs = rhs_expanded,
             sid = script_sid_for_state(rt.state),
         })
+        local rhs_seq = nil
+        if not parsed.opts.expr then
+            local rerr
+            rhs_seq, rerr = _strtoseq_tolerant(rhs_expanded)
+            if Error.IsError(rerr) then return rerr end
+        else
+            map_opts.expr_rhs = rhs_expanded
+        end
         if spec.recursive then
             CommandMod.remap_keys(modes, lhs_seq, rhs_seq, map_opts)
         else
