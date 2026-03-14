@@ -5268,7 +5268,7 @@ function Runtime.new(init_state, init_opts)
                 newbuf:Load(true)
             end
 
-            local newwin = _window_mod()(newbuf, refwin)
+            local newwin = _window_mod()(newbuf)
             tabpages[curtp].lastwin = curwin
             _tabpage_mod()(newwin)
             enterWindow(newwin.winnr)

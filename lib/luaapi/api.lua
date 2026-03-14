@@ -1120,6 +1120,10 @@ end
 
 function api.nvim_set_option_value(name, value, opts)
     opts = opts or {}
+    local scope = opts.scope
+    if scope == nil and opts.buf ~= nil then
+        scope = "local"
+    end
 
     local win, buf
     if opts.win ~= nil then
@@ -1133,7 +1137,7 @@ function api.nvim_set_option_value(name, value, opts)
         buf = win.buffer
     end
 
-    return options.set(name, value, opts.scope == "local", win, buf, opts.scope == "global")
+    return options.set(name, value, scope == "local", win, buf, scope == "global")
 end
 
 api.nvim_set_option = api.nvim_set_option_value
@@ -1141,6 +1145,10 @@ api.nvim_set_option = api.nvim_set_option_value
 -- TODO: opts.filetype
 function api.nvim_get_option_value(name, opts)
     opts = opts or {}
+    local scope = opts.scope
+    if scope == nil and opts.buf ~= nil then
+        scope = "local"
+    end
 
     local win, buf
     if opts.win ~= nil then
@@ -1154,7 +1162,7 @@ function api.nvim_get_option_value(name, opts)
         buf = win.buffer
     end
 
-    return options.get(name, win, buf, opts.scope == "local", opts.scope == "global")
+    return options.get(name, win, buf, scope == "local", scope == "global")
 end
 
 function api.nvim_get_option_info2(name, opts)

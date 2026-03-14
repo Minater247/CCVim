@@ -20,6 +20,7 @@ local VimFn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local CmdRead = loadModule("lib.excmd.cmdread")
 local ScreenDraw = loadModule("lib.screendraw")
+local Options = loadModule("lib.options")
 
 local curr_winno = 1
 
@@ -49,11 +50,12 @@ local curr_winno = 1
 ---@param buffer Buffer A buffer to initialize the window with, if one is ready.
 ---@param refwin Window A window to reference when setting up a new window. Used for window splitting.
 function Window:new(buffer, refwin)
+    local opts = Options.new_object_local_opts("win")
     local obj = setmetatable({
         winnr     = curr_winno,
         buffer    = buffer or Buffer(true, false, true),
         altbuf    = refwin and refwin.altbuf,
-        opts      = {},
+        opts      = opts,
         scrollx   = refwin and refwin.scrollx or 1,
         scrolly   = refwin and { refwin.scrolly[1], refwin.scrolly[2] } or { 1, 0 },
         cursorx   = refwin and refwin.cursorx or 1,

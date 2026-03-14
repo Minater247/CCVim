@@ -9,6 +9,7 @@ local Syntax = loadModule("lib.syntax")
 local Utf8 = loadModule("lib.utf8")
 local BufAttach = loadModule("lib.bufattach")
 local Sign = loadModule("lib.sign")
+local Options = loadModule("lib.options")
 
 local curr_bufno = 1
 
@@ -272,13 +273,13 @@ end
 ---@param loaded boolean|nil Whether this buffer should start loaded.
 function Buffer:new(listed, scratch, loaded)
     local is_loaded = (loaded ~= false)
+    local opts = Options.new_object_local_opts("buf")
+    opts.buflisted = listed or false
+    opts.modified = false
     local obj = setmetatable({
         scratch = scratch or false,
         bufnr = curr_bufno,
-        opts = {
-            buflisted = listed or false,
-            modified  = false
-        },
+        opts = opts,
         state = "hidden",
         lines = is_loaded and { "" } or {},
         loaded = is_loaded,

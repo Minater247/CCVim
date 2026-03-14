@@ -18,6 +18,7 @@ local ExMsg = loadModule("lib.excmd.exmsg")
 local Decoration = loadModule("lib.decoration")
 local PopupMenu = loadModule("lib.popupmenu")
 local ScreenDraw = loadModule("lib.screendraw")
+local Options = loadModule("lib.options")
 
 local function all_tabpage_ids()
     local ids = {}
@@ -184,7 +185,7 @@ function Tabpage:new(window)
         tabnr = curr_tabno,
         windows = { window },
         tree = FrameTree.New(window, screen.width, displayheight),
-        opts = {},
+        opts = Options.new_object_local_opts("tab"),
         winyoff = winyoff,
         _manual_root_height = nil,
         tabline_click_zones = {},

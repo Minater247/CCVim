@@ -781,6 +781,24 @@ end
 
 local global_opts = {}
 
+function Options.new_object_local_opts(scope)
+    local out = {}
+    for name, def in pairs(opt_defs) do
+        local loc = def[1]
+        local value = global_opts[name]
+        if value ~= nil then
+            if scope == "buf" and loc == "ltb" then
+                out[name] = value
+            elseif scope == "win" and loc == "ltw" then
+                out[name] = value
+            elseif scope == "tab" and loc == "ltt" then
+                out[name] = value
+            end
+        end
+    end
+    return out
+end
+
 local function first2(a, b)
     if a ~= nil then return a else return b end
 end
@@ -793,6 +811,17 @@ local function first3(a, b, c)
     else
         return c
     end
+end
+
+local function unset_global_local_value(name)
+    local typ = option_type(name)
+    if typ == "string" or typ == "stringfunc" then
+        return ""
+    end
+    if typ == "number" then
+        return -123456
+    end
+    return nil
 end
 
 local getters = {
@@ -824,13 +853,13 @@ local local_getters = {
         return first2(global_opts[n], option_default(n))
     end,
     got = function(n)
-        return first2(tabpages[curtp].opts[n], option_default(n))
+        return first3(tabpages[curtp].opts[n], global_opts[n], option_default(n))
     end,
     gow = function(n, win)
-        return first2(win.opts[n], option_default(n))
+        return first2(win.opts[n], unset_global_local_value(n))
     end,
     gob = function(n, _, buf)
-        return first2(buf.opts[n], option_default(n))
+        return first2(buf.opts[n], unset_global_local_value(n))
     end,
     ltw = function(n, win)
         return first2(win.opts[n], option_default(n))
