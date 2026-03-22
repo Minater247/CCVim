@@ -10,6 +10,7 @@
 ]]
 
 local CC = {}
+CC.kind = "cc"
 local Utf8
 local RuntimeScope
 
@@ -118,6 +119,17 @@ end
 function CC.on_load_module_ready(scope)
     RuntimeScope = scope
     Utf8 = scope.loadModule("lib.utf8")
+end
+
+local function shell_path_to_abs(path)
+    path = tostring(path or "")
+    if path == "" then
+        return "/"
+    end
+    if path:sub(1, 1) ~= "/" then
+        return "/" .. path
+    end
+    return path
 end
 
 local function render_row_range(state, row, left, right)
@@ -695,6 +707,27 @@ end
 
 function CC.get_epoch()
     return os.epoch("utc")
+end
+
+function CC.cwd()
+    return shell_path_to_abs(shell.dir())
+end
+
+function CC.chdir(path)
+    local dir = tostring(path)
+    if dir == "/" then
+        shell.setDir("")
+        return
+    end
+    shell.setDir(dir:sub(2))
+end
+
+function CC.resolve_path(path)
+    return shell_path_to_abs(shell.resolve(path))
+end
+
+function CC.running_program()
+    return shell.getRunningProgram()
 end
 
 CC.keys = keys

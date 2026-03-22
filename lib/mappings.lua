@@ -8,6 +8,7 @@ local Syntax = loadModule("lib.syntax")
 local CmdRead = loadModule("lib.excmd.cmdread")
 local ExMsg = loadModule("lib.excmd.exmsg")
 local Utf8 = loadModule("lib.utf8")
+local Backend = loadModule("lib.backend")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 
@@ -817,7 +818,13 @@ Command.nmap_builtin_operator_with_motions(
 
 -- Insert mode mappings
 local function _set_normal() setMode("normal") end
-Command.imap_builtin_callback({ K(keys.tab, true) }, _set_normal)
+local insert_mode_exit_lhs
+if Backend.current().kind == "cc" then
+    insert_mode_exit_lhs = { K(keys.tab, true) }
+else
+    insert_mode_exit_lhs = { K(keys.leftBracket, true) }
+end
+Command.imap_builtin_callback(insert_mode_exit_lhs, _set_normal)
 Command.imap_builtin_callback({ K(keys.c, true) }, _set_normal)
 
 

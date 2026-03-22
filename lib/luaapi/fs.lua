@@ -1,5 +1,6 @@
 local VimFs = {}
 
+local Backend = loadModule("lib.backend")
 local EnvVars = loadModule("lib.envvars")
 
 local function _startswith(s, prefix)
@@ -50,13 +51,7 @@ local function _expand_home(path)
 end
 
 local function _shell_cwd()
-    local cwd = tostring(shell.dir() or "")
-    if cwd == "" then
-        cwd = "/"
-    elseif not _startswith(cwd, "/") then
-        cwd = "/" .. cwd
-    end
-    return VimFs.normalize(cwd, { expand_env = false, _fast = true })
+    return VimFs.normalize(Backend.cwd(), { expand_env = false, _fast = true })
 end
 
 --- Normalize a path per :help vim.fs.normalize() (POSIX behavior only).
@@ -107,7 +102,7 @@ function VimFs.normalize(path, opts)
     return path
 end
 
---- Make a path absolute against the current shell directory.
+--- Make a path absolute against the current directory.
 --- This helper is used internally by modules that need absolute paths.
 ---
 --- @param path string

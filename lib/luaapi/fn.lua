@@ -2,6 +2,7 @@
 
 local Builtins   = {}
 
+local Backend = loadModule("lib.backend")
 local Error      = loadModule("lib.error")
 local Highlight  = loadModule("lib.highlight")
 local Syntax = loadModule("lib.syntax")
@@ -2777,7 +2778,7 @@ function Builtins.chdir(path)
         error(Error(474, target))
     end
 
-    shell.setDir(abs:sub(2))
+    Backend.chdir(abs)
     return 0
 end
 

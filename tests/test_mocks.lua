@@ -2020,6 +2020,7 @@ function MockEnv.setup(opts)
     end
 
     globals.backend = {
+        kind = "cc",
         begin_frame = function()
         end,
         end_frame = function()
@@ -2103,6 +2104,30 @@ function MockEnv.setup(opts)
         end,
         get_epoch = function()
             return globals.os.epoch("utc")
+        end,
+        cwd = function()
+            local dir = globals.shell.dir()
+            if dir == "" then
+                return "/"
+            end
+            if dir:sub(1, 1) ~= "/" then
+                return "/" .. dir
+            end
+            return dir
+        end,
+        chdir = function(path)
+            local dir = tostring(path)
+            if dir == "/" then
+                globals.shell.setDir("")
+                return
+            end
+            globals.shell.setDir(dir:sub(2))
+        end,
+        resolve_path = function(path)
+            return globals.shell.resolve(path)
+        end,
+        running_program = function()
+            return tostring((arg and arg[0]) or "")
         end,
         keys = globals.keys,
         fs = globals.fs,

@@ -1,5 +1,6 @@
 local loop = {}
 
+local Backend = loadModule("lib.backend")
 local Event = loadModule("lib.event")
 local FakeUserdata = loadModule("lib.luaapi.fakeuserdata")
 local VimFs = loadModule("lib.luaapi.fs")
@@ -246,7 +247,7 @@ function loop.fs_closedir(handle, callback)
 end
 
 function loop.cwd()
-    return "/" .. shell.dir()
+    return Backend.cwd()
 end
 
 function loop.fs_open(path, mode, permission, callback)

@@ -576,7 +576,14 @@ function Event.ProcessEvent(ev)
         if is_modifier(k) then
             mods_down[k] = true
         elseif not ignored_keys[k] then
-            local c, s, a = current_mod_flags()
+            local c, s, a
+            if ev[4] ~= nil or ev[5] ~= nil then
+                c = ev[3] == true
+                s = ev[4] == true
+                a = ev[5] == true
+            else
+                c, s, a = current_mod_flags()
+            end
             local key = Key:new(k, c, s, a)
             local keystr = Key.to_termcode_string(key)
             local discard = OnKey.dispatch(keystr, keystr)

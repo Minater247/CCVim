@@ -39,7 +39,7 @@ function Filesystem.ExpandWildcards(path)
     -- Returns a list (table) of absolute paths matching the pattern.
     -- Examples:
     --   ExpandWildcards("/foo/*.vim") -> {"/foo/a.vim", "/foo/b.vim", ...}
-    --   ExpandWildcards("foo/bar?.lua") -> matches under current shell dir
+    --   ExpandWildcards("foo/bar?.lua") -> matches under cwd
     -- Notes:
     --   - Supports '*', '?', '[...]', and '**' (zero-or-more directories).
     --   - Supports simple/nested brace expansion: "{a,b}".

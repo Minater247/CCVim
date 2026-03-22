@@ -83,8 +83,8 @@ local function parseVersionFile(text)
 end
 
 local function resolveInstallerFile(relPath)
-    local program = shell.getRunningProgram()
-
+    local source = debug.getinfo(1, "S").source
+    local program = source:sub(1, 1) == "@" and source:sub(2) or ((arg and arg[0]) or "")
     local dir = fs.getDir(program)
     if dir and dir ~= "" then
         return fs.combine(dir, relPath)

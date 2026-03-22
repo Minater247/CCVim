@@ -21,7 +21,7 @@ do
     if source and source:sub(1,1) == "@" then
         ccvim_path = dirname(source:sub(2))
     else
-        local prog = (arg and arg[0]) or (shell and shell.getRunningProgram and shell.getRunningProgram())
+        local prog = arg and arg[0]
         if prog and prog ~= "" then
             ccvim_path = dirname(prog)
         else
@@ -38,6 +38,12 @@ end
 if not os.epoch then
     os.epoch = function(_)
         return math.floor(os.time() * 1000)
+    end
+end
+
+if not loadstring then
+    loadstring = function(str, chunkname)
+        return load(str, chunkname)
     end
 end
 
@@ -205,8 +211,22 @@ if not textutils then
     textutils = { serialize = tostring }
 end
 
+local function load_local_chunk(path)
+    local chunk, err = loadfile(path, "t", _ENV)
+    if not chunk and setfenv then
+        chunk, err = loadfile(path)
+        if chunk then
+            setfenv(chunk, _ENV)
+        end
+    end
+    if not chunk then
+        error(err)
+    end
+    return chunk
+end
+
 local _is_cc = (type(term) == "table" and term.getSize ~= nil)
-local _backend = dofile(ccvim_path .. "/lib/backend/" .. (_is_cc and "cc" or "native") .. ".lua")
+local _backend = load_local_chunk(ccvim_path .. "/lib/backend/" .. (_is_cc and "cc" or "native") .. ".lua")()
 if not fs then
     fs = _backend.fs
 end

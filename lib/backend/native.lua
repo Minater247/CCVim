@@ -12,6 +12,7 @@
 ]]
 
 local Native = {}
+Native.kind = "native"
 local uv = require("luv")
 local Utf8
 
@@ -257,6 +258,33 @@ local function emit_sgr_reset()
     _cur_bg_hl = nil
 end
 
+local _terminal_ui_active = false
+
+local function disable_mouse_reporting()
+    write("\27[?1000l\27[?1006l\27[?1003l")
+end
+
+local function enter_terminal_ui()
+    if _terminal_ui_active then
+        return
+    end
+    write(esc("?1049h") .. esc("2J") .. esc("H"))
+    flush()
+    _terminal_ui_active = true
+end
+
+local function leave_terminal_ui()
+    if not _terminal_ui_active then
+        return
+    end
+    emit_sgr_reset()
+    write(esc("?25h"))
+    disable_mouse_reporting()
+    write(esc("?1049l"))
+    flush()
+    _terminal_ui_active = false
+end
+
 local function cterm_token(idx)
     return -idx - 1
 end
@@ -387,8 +415,7 @@ end
 -- =========================================================================
 
 function Native.begin_frame()
-    -- Snapshot current → back for diffing in end_frame
-    -- (We'll do this lazily: just keep _grid_current as working buffer)
+    enter_terminal_ui()
 end
 
 function Native.end_frame()
@@ -602,10 +629,17 @@ function Native.capture_palette()
     return out
 end
 
+local close_stdin_reader
+local set_raw_mode
+
 function Native.reset(original_palette)
-    write(esc("0m") .. esc("2J") .. esc("H"))
-    flush()
-    os.execute("stty sane 2>/dev/null")
+    if _raw_mode_active then
+        set_raw_mode(false)
+    else
+        close_stdin_reader()
+        os.execute("stty sane 2>/dev/null")
+    end
+    leave_terminal_ui()
 end
 
 -- =========================================================================
@@ -677,6 +711,71 @@ for _, d in ipairs({"one","two","three","four","five","six","seven","eight","nin
     local digits = {"1","2","3","4","5","6","7","8","9","0"}
     local idx = ({one=1,two=2,three=3,four=4,five=5,six=6,seven=7,eight=8,nine=9,zero=10})[d]
     _char_to_key[digits[idx]] = d
+end
+
+local ASCII_KEYMAP = {
+    [" "] = { key = "space" },
+    ["-"] = { key = "minus" },
+    ["_"] = { key = "minus", shift = true },
+    ["="] = { key = "equals" },
+    ["+"] = { key = "equals", shift = true },
+    ["["] = { key = "leftBracket" },
+    ["{"] = { key = "leftBracket", shift = true },
+    ["]"] = { key = "rightBracket" },
+    ["}"] = { key = "rightBracket", shift = true },
+    [";"] = { key = "semicolon" },
+    [":"] = { key = "semicolon", shift = true },
+    ["'"] = { key = "apostrophe" },
+    ["\""] = { key = "apostrophe", shift = true },
+    ["`"] = { key = "grave" },
+    ["~"] = { key = "grave", shift = true },
+    ["\\"] = { key = "backslash" },
+    ["|"] = { key = "backslash", shift = true },
+    [","] = { key = "comma" },
+    ["<"] = { key = "comma", shift = true },
+    ["."] = { key = "period" },
+    [">"] = { key = "period", shift = true },
+    ["/"] = { key = "slash" },
+    ["?"] = { key = "slash", shift = true },
+    ["!"] = { key = "one", shift = true },
+    ["@"] = { key = "two", shift = true },
+    ["#"] = { key = "three", shift = true },
+    ["$"] = { key = "four", shift = true },
+    ["%"] = { key = "five", shift = true },
+    ["^"] = { key = "six", shift = true },
+    ["&"] = { key = "seven", shift = true },
+    ["*"] = { key = "eight", shift = true },
+    ["("] = { key = "nine", shift = true },
+    [")"] = { key = "zero", shift = true },
+}
+
+local function key_event(key_name, shift, ctrl, alt)
+    local code = Native.keys[key_name]
+    if code == nil then
+        return nil
+    end
+    return {"key", code, ctrl == true, shift == true, alt == true}
+end
+
+local function printable_ascii_event(ch)
+    local entry = ASCII_KEYMAP[ch]
+    if entry then
+        return key_event(entry.key, entry.shift, false, false)
+    end
+
+    if ch:match("%l") then
+        return key_event(ch, false, false, false)
+    end
+    if ch:match("%u") then
+        return key_event(ch:lower(), true, false, false)
+    end
+
+    local digit_name = _char_to_key[ch]
+    if digit_name then
+        return key_event(digit_name, false, false, false)
+    end
+
+    return nil
 end
 
 -- ANSI escape → {key_name, shift, ctrl}
@@ -763,7 +862,7 @@ local function ensure_stdin_reader()
     end))
 end
 
-local function close_stdin_reader()
+close_stdin_reader = function()
     if not _stdin_tty then
         return
     end
@@ -813,8 +912,9 @@ end
 
 local _raw_mode_active = false
 
-local function set_raw_mode(on)
+set_raw_mode = function(on)
     if on then
+        enter_terminal_ui()
         os.execute("stty raw -echo 2>/dev/null")
         -- Enable SGR mouse reporting
         write("\27[?1000h\27[?1006h\27[?1003h")
@@ -822,7 +922,7 @@ local function set_raw_mode(on)
         ensure_stdin_reader()
         _raw_mode_active = true
     else
-        write("\27[?1000l\27[?1006l\27[?1003l")
+        disable_mouse_reporting()
         flush()
         os.execute("stty sane 2>/dev/null")
         close_stdin_reader()
@@ -877,7 +977,7 @@ local function parse_escape(c)
         -- Known escape sequences
         local mapped = ANSI_KEYS[seq]
         if mapped then
-            return {"key", mapped[1], mapped[2], mapped[3]}
+            return key_event(mapped[1], mapped[2], mapped[3], false)
         end
 
         -- term_resize: \27[8;rows;colst (some terminals send this)
@@ -942,28 +1042,29 @@ function Native.pull_event(filter)
                 local nc = read_input_char(25)
                 if nc then
                     ev = parse_escape(nc)
+                    if not ev then
+                        push_stdin_chunk(nc)
+                        ev = key_event("leftBracket", false, true, false)
+                    end
                 else
-                    ev = {"key", "escape", false, false}
+                    ev = key_event("leftBracket", false, true, false)
                 end
             elseif c == "\r" or c == "\n" then
-                ev = {"key", "enter", false, false}
+                ev = key_event("enter", false, false, false)
             elseif c == "\127" or c == "\8" then
-                ev = {"key", "backspace", false, false}
+                ev = key_event("backspace", false, false, false)
             elseif c == "\t" then
-                ev = {"key", "tab", false, false}
+                ev = key_event("tab", false, false, false)
             elseif c:byte() >= 1 and c:byte() <= 26 then
                 -- Ctrl+letter
                 local letter = string.char(c:byte() + 96)
-                ev = {"key", letter, false, true}
+                ev = key_event(letter, false, true, false)
             elseif c:byte() >= 32 and c:byte() < 127 then
                 -- Printable ASCII
-                local kn = _char_to_key[c]
                 if filter == "char" then
                     return "char", c
                 end
-                if kn then
-                    ev = {"key", kn, false, false}
-                end
+                ev = printable_ascii_event(c)
             end
 
             if ev then
@@ -1012,6 +1113,26 @@ local function path_normalize(p)
     local result = table.concat(parts, "/")
     if p:sub(1,1) == "/" then result = "/" .. result end
     return result ~= "" and result or "."
+end
+
+function Native.cwd()
+    return path_normalize(uv.cwd())
+end
+
+function Native.chdir(path)
+    uv.chdir(path_normalize(tostring(path)))
+end
+
+function Native.resolve_path(path)
+    path = tostring(path or "")
+    if path:sub(1, 1) == "/" then
+        return path_normalize(path)
+    end
+    return path_normalize(path_join(Native.cwd(), path))
+end
+
+function Native.running_program()
+    return tostring((arg and arg[0]) or "")
 end
 
 local FS = {}
