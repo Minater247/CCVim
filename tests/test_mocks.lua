@@ -447,8 +447,28 @@ local function create_term_api(state, colors)
 
     term.isColour = term.isColor
 
+    local function palette_key(index)
+        index = tonumber(index)
+        if index == nil then
+            return nil
+        end
+        if index == 0 then
+            return string.format("%x", index)
+        end
+        if (index == 1) or (index > 0 and math.floor(index) == index and index % 2 == 0) then
+            local bitmask_key = colors.toBlit(index)
+            if bitmask_key then
+                return bitmask_key
+            end
+        end
+        if index >= 0 and index <= 15 and math.floor(index) == index then
+            return string.format("%x", index)
+        end
+        return colors.toBlit(index)
+    end
+
     function term.getPaletteColor(mask)
-        local idx = colors.toBlit(mask)
+        local idx = palette_key(mask)
         local rgb = state.term.palette[idx]
         if not rgb then
             return 0, 0, 0
@@ -459,7 +479,7 @@ local function create_term_api(state, colors)
     term.getPaletteColour = term.getPaletteColor
 
     function term.setPaletteColor(mask, r, g, b)
-        local idx = colors.toBlit(mask)
+        local idx = palette_key(mask)
         if not idx then
             error("invalid palette color", 2)
         end

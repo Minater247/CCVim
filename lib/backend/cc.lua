@@ -5,8 +5,9 @@
     confined here. The rest of the program sees only RGB integers and the grid
     protocol defined in lib/screen.lua.
 
-    Slot numbering: 0–15, where slot = math.log2(cc_bitmask).
-    CC APIs take bitmasks; this backend translates: bitmask = 2^slot.
+    Slot numbering: 0–15.
+    Palette APIs use the engine's color ids for each slot, read from the
+    `colors.*` table at startup. Text/background color APIs also use those ids.
 ]]
 
 local CC = {}
@@ -65,11 +66,43 @@ local DEFAULT_SLOT_RGB = {
     [15] = 0x111111,  -- black
 }
 
+local SLOT_COLOR = {
+    [0]  = colors.white,
+    [1]  = colors.orange,
+    [2]  = colors.magenta,
+    [3]  = colors.lightBlue,
+    [4]  = colors.yellow,
+    [5]  = colors.lime,
+    [6]  = colors.pink,
+    [7]  = colors.gray,
+    [8]  = colors.lightGray,
+    [9]  = colors.cyan,
+    [10] = colors.purple,
+    [11] = colors.blue,
+    [12] = colors.brown,
+    [13] = colors.green,
+    [14] = colors.red,
+    [15] = colors.black,
+}
+
+local function pack_rgb(r, g, b)
+    return r * 65536 + g * 256 + b
+end
+
+local function current_term_slot_rgb(slot)
+    local r, g, b = term.getPaletteColor(SLOT_COLOR[slot])
+    return pack_rgb(
+        math.floor(r * 255 + 0.5),
+        math.floor(g * 255 + 0.5),
+        math.floor(b * 255 + 0.5)
+    )
+end
+
 -- Live palette: slot → packed RGB (may be reprogrammed by colorschemes)
 local _palette = {}
-for s = 0, 15 do _palette[s] = DEFAULT_SLOT_RGB[s] end
-local _default_fg_rgb = DEFAULT_SLOT_RGB[0]
-local _default_bg_rgb = DEFAULT_SLOT_RGB[15]
+for s = 0, 15 do _palette[s] = current_term_slot_rgb(s) end
+local _default_fg_rgb = _palette[0]
+local _default_bg_rgb = _palette[15]
 local _default_sp_rgb = nil
 local _grids = {}
 
@@ -424,7 +457,7 @@ function CC.optimize_palette()
         invalidate_slot_cache()
         for s = 0, 15 do
             local r, g, b = unpack_rgb(_palette[s])
-            term.setPaletteColor(2^s, r/255, g/255, b/255)
+            term.setPaletteColor(SLOT_COLOR[s], r/255, g/255, b/255)
         end
     end
     return changed
@@ -482,7 +515,7 @@ function CC.begin_frame()
     -- Apply current palette to the back buffer
     for s = 0, 15 do
         local r, g, b = unpack_rgb(_palette[s])
-        _backwin.setPaletteColor(2^s, r/255, g/255, b/255)
+        _backwin.setPaletteColor(SLOT_COLOR[s], r/255, g/255, b/255)
     end
 end
 
@@ -641,7 +674,7 @@ end
 function CC.set_palette_slot(slot, r, g, b)
     _palette[slot] = (r * 65536) + (g * 256) + b
     invalidate_slot_cache()
-    term.setPaletteColor(2^slot, r/255, g/255, b/255)
+    term.setPaletteColor(SLOT_COLOR[slot], r/255, g/255, b/255)
 end
 
 function CC.get_palette_slot(slot)
@@ -652,7 +685,7 @@ end
 function CC.capture_palette()
     local captured = {}
     for s = 0, 15 do
-        local r, g, b = term.getPaletteColor(2^s)
+        local r, g, b = term.getPaletteColor(SLOT_COLOR[s])
         -- CC returns 0-1 floats
         captured[s] = {
             math.floor(r * 255 + 0.5),
@@ -668,12 +701,12 @@ function CC.reset(original_palette)
         for s = 0, 15 do
             local c = original_palette[s]
             if c then
-                term.setPaletteColor(2^s, c[1]/255, c[2]/255, c[3]/255)
+                term.setPaletteColor(SLOT_COLOR[s], c[1]/255, c[2]/255, c[3]/255)
             end
         end
     end
-    term.setBackgroundColor(2^15)  -- black
-    term.setTextColor(2^0)         -- white
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
     term.clear()
     term.setCursorPos(1, 1)
 end
