@@ -76,6 +76,7 @@ local IMPORTANT_GROUP_WEIGHTS = {
 }
 
 local OKLAB_CACHE = {}
+local COLOR_DISTANCE_CACHE = {}
 local tracked_palette_usage = nil
 
 local HL_ID, ID_NAME, NEXT_HL_ID = {}, {}, 1
@@ -207,12 +208,36 @@ local function color_to_oklab(rgb)
 end
 
 local function color_distance(color1, color2)
+    if color1 == color2 then
+        return 0
+    end
+
+    local low = color1
+    local high = color2
+    if low > high then
+        low = color2
+        high = color1
+    end
+
+    local cached_row = COLOR_DISTANCE_CACHE[low]
+    local cached = cached_row and cached_row[high]
+    if cached ~= nil then
+        return cached
+    end
+
     local l1, a1, b1 = color_to_oklab(color1)
     local l2, a2, b2 = color_to_oklab(color2)
     local dl = l1 - l2
     local da = a1 - a2
     local db = b1 - b2
-    return math.sqrt(dl * dl + da * da + db * db)
+    local dist = math.sqrt(dl * dl + da * da + db * db)
+
+    if not cached_row then
+        cached_row = {}
+        COLOR_DISTANCE_CACHE[low] = cached_row
+    end
+    cached_row[high] = dist
+    return dist
 end
 
 local function color_luminance(rgb)
@@ -704,36 +729,37 @@ local function seeded_centers(items, wanted)
     end
 
     local selected = {}
-    local best_cost = math.huge
-    for i = 1, #items do
-        local rgb = items[i].rgb
-        local cost = palette_cost(items, { rgb })
-        if cost < best_cost or (cost == best_cost and rgb < centers[1]) then
-            centers[1] = rgb
-            best_cost = cost
-        end
-    end
+    local best_distances = {}
+    centers[1] = items[1].rgb
     selected[centers[1]] = true
+    for i = 1, #items do
+        best_distances[i] = color_distance(items[i].rgb, centers[1])
+    end
 
     while #centers < wanted do
-        local best_rgb, next_cost = nil, math.huge
+        local best_idx, best_score = nil, -1
         for i = 1, #items do
-            local rgb = items[i].rgb
+            local item = items[i]
+            local rgb = item.rgb
             if not selected[rgb] then
-                local trial = {}
-                for j = 1, #centers do
-                    trial[j] = centers[j]
-                end
-                trial[#trial + 1] = rgb
-                local cost = palette_cost(items, trial)
-                if cost < next_cost or (cost == next_cost and rgb < best_rgb) then
-                    best_rgb = rgb
-                    next_cost = cost
+                local score = best_distances[i] * item.weight
+                if best_idx == nil or score > best_score or (score == best_score and rgb < items[best_idx].rgb) then
+                    best_idx = i
+                    best_score = score
                 end
             end
         end
-        selected[best_rgb] = true
-        centers[#centers + 1] = best_rgb
+
+        local next_rgb = items[best_idx].rgb
+        selected[next_rgb] = true
+        centers[#centers + 1] = next_rgb
+
+        for i = 1, #items do
+            local dist = color_distance(items[i].rgb, next_rgb)
+            if dist < best_distances[i] then
+                best_distances[i] = dist
+            end
+        end
     end
     return centers
 end
@@ -896,7 +922,6 @@ function Highlight.CommitPaletteTracking()
 
     local items = usage_items(entries)
     local centers = seeded_centers(items, 16)
-    centers = refine_centers(items, centers)
     local slot_colors = assign_palette_slots(centers)
 
     for slot = 0, 15 do
