@@ -97,6 +97,24 @@ endfor
                 Assert.eq("malformed for rejects compile", code, nil)
                 Assert.top_error_code("malformed for uses E474", err:toString(), "E474")
             end
+
+            do
+                local code, err = Compiler.compile_script([[
+function! JitNestedRegion()
+  if 1
+    try
+      echo "try"
+    catch /.*/
+      echo "catch"
+    endtry
+  endif
+  let g:jit_nested_region_after = 1
+endfunction
+                ]])
+                Assert.truthy("nested try inside function compiles", code ~= nil, err)
+                local loaded, load_err = load(code, "jit_nested_region", "t", _G)
+                Assert.truthy("nested try compiled Lua loads", loaded ~= nil, load_err)
+            end
         end)
 
         mock.cleanup()

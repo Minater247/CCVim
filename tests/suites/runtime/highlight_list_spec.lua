@@ -7,9 +7,11 @@ return {
         local Assert = ctx.assert
 
         local result = Assert.eval_block(backend, "highlight list scenarios", [[
+            vim.cmd('highlight default link CcvimCommentRegression String " trailing comment')
             return {
                 vim.fn.execute("highlight"),
                 vim.fn.execute("highlight String"),
+                vim.fn.execute("highlight CcvimCommentRegression"),
             }
         ]])
 
@@ -22,6 +24,11 @@ return {
             "highlight single group lists that group",
             type(result[2]) == "string" and result[2]:find("String", 1, true) ~= nil,
             result[2]
+        )
+        Assert.truthy(
+            "highlight link ignores trailing comment",
+            type(result[3]) == "string" and result[3]:find("links to String", 1, true) ~= nil,
+            result[3]
         )
     end,
 }

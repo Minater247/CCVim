@@ -5791,7 +5791,7 @@ function Runtime.new(init_state, init_opts)
             target_win:cursorSet(jumpcol, jumpline)
             return true
         elseif cmd == "highlight" then
-            local args = split_ws(argstr)
+            local args = split_ws(strip_trailing_comment(argstr))
             local changed = false
             local hl = _highlight()
             if #args == 0 then

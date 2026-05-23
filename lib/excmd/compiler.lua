@@ -1049,6 +1049,22 @@ local function emit_loop_error_guard(emitter, indent, ok_name, err_name, label)
     emitter:emit(indent .. "end")
 end
 
+local function find_matching_end(seq, start_idx, open_cmd, close_cmd)
+    local depth = 0
+    for i = start_idx, #seq do
+        local cmd = seq[i].cmd
+        if cmd == open_cmd then
+            depth = depth + 1
+        elseif cmd == close_cmd then
+            depth = depth - 1
+            if depth == 0 then
+                return i
+            end
+        end
+    end
+    return nil
+end
+
 local function emit_regular_node(emitter, node, state, loop_stack, indent)
     local compiled = Compiler.compile_command(node, {
         state = state,
@@ -1171,7 +1187,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
                 emit_sequence(emitter, region.finally_body, state, indent .. "  ", loop_stack)
             end
             emitter:emit(indent .. "end")
-            i = region.end_idx + 1
+            i = (find_matching_end(seq, i, "try", "endtry") or #seq) + 1
         elseif cmd == "function" then
             local region = node.function_region
             local plist = {}
@@ -1184,7 +1200,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
             emitter:emit(indent .. "  end")
             emitter:emit(("%s  runtime:register_function(%s, {%s}, __fn)"):format(indent, lua_string(node.func_name), table.concat(plist, ", ")))
             emitter:emit(indent .. "end")
-            i = region.end_idx + 1
+            i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
         else
             emit_regular_node(emitter, node, state, loop_stack, indent)
             i = i + 1
