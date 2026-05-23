@@ -2739,6 +2739,407 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     return rv
 end
 
+local function _searchpair_context()
+    local win = windows[curwin]
+    local buf = win.buffer
+    local lines = buf:lines_ref(true)
+    if #lines == 0 then
+        lines = { "" }
+    end
+
+    local line_count = #lines
+    local line_starts = {}
+    local abs_pos = 1
+    for i = 1, line_count do
+        line_starts[i] = abs_pos
+        abs_pos = abs_pos + #(lines[i] or "")
+        if i < line_count then
+            abs_pos = abs_pos + 1
+        end
+    end
+
+    local text = table.concat(lines, "\n")
+    local text_len = #text
+
+    local function abs_to_pos(abs_idx)
+        if abs_idx < 1 then
+            abs_idx = 1
+        elseif abs_idx > text_len + 1 then
+            abs_idx = text_len + 1
+        end
+
+        local lo, hi = 1, line_count
+        local found = 1
+        while lo <= hi do
+            local mid = math.floor((lo + hi) / 2)
+            if line_starts[mid] <= abs_idx then
+                found = mid
+                lo = mid + 1
+            else
+                hi = mid - 1
+            end
+        end
+
+        local line_text = lines[found] or ""
+        local byte_col1 = abs_idx - line_starts[found] + 1
+        local byte_max_col = #line_text + 1
+        if byte_col1 < 1 then
+            byte_col1 = 1
+        elseif byte_col1 > byte_max_col then
+            byte_col1 = byte_max_col
+        end
+        local char_col1 = Utf8.col_from_byte(line_text, byte_col1, true)
+        return found, char_col1, byte_col1
+    end
+
+    local cur_lnum = math.floor(tonumber(win.cursory) or 1)
+    if cur_lnum < 1 then
+        cur_lnum = 1
+    elseif cur_lnum > line_count then
+        cur_lnum = line_count
+    end
+    local cur_col = math.floor(tonumber(win.cursorx) or 1)
+    local cur_max_col = buf:line_len(cur_lnum, true) + 1
+    if cur_col < 1 then
+        cur_col = 1
+    elseif cur_col > cur_max_col then
+        cur_col = cur_max_col
+    end
+    local cur_byte_col = buf:line_byte_index(cur_lnum, cur_col, true, true)
+    local cur_abs = line_starts[cur_lnum] + cur_byte_col - 1
+
+    return {
+        win = win,
+        lines = lines,
+        line_starts = line_starts,
+        line_count = line_count,
+        text = text,
+        text_len = text_len,
+        cur_abs = cur_abs,
+        abs_to_pos = abs_to_pos,
+    }
+end
+
+local function _searchpair_collect(ctx, kind, pat, compiled, case_sensitive, timed_out)
+    if pat == "" or compiled == nil then
+        return {}
+    end
+
+    local matches = {}
+    local newline_aware = pat:find("\\_", 1, true) ~= nil
+        or pat:find("\\n", 1, true) ~= nil
+
+    if not newline_aware then
+        for lnum = 1, ctx.line_count do
+            local line_text = ctx.lines[lnum] or ""
+            local from = 1
+            local max_from = #line_text + 1
+            while from <= max_from do
+                if timed_out() then
+                    return matches
+                end
+                local s, e = VimRegex.find_compiled(line_text, compiled, case_sensitive, from)
+                if not s then
+                    break
+                end
+                local ee = e or s
+                matches[#matches + 1] = {
+                    kind = kind,
+                    s = ctx.line_starts[lnum] + s - 1,
+                    e = ctx.line_starts[lnum] + ee - 1,
+                }
+                local next_from = (ee < s) and (s + 1) or (ee + 1)
+                if next_from <= from then
+                    next_from = from + 1
+                end
+                from = next_from
+            end
+        end
+    else
+        local from = 1
+        while from <= ctx.text_len + 1 do
+            if timed_out() then
+                return matches
+            end
+            local s, e = VimRegex.find_compiled(ctx.text, compiled, case_sensitive, from)
+            if not s then
+                break
+            end
+            matches[#matches + 1] = { kind = kind, s = s, e = e or s }
+            local next_from = s + 1
+            if next_from <= from then
+                next_from = from + 1
+            end
+            from = next_from
+        end
+    end
+
+    return matches
+end
+
+local function _searchpair_eval_skip(ctx, skip, candidate)
+    local skip_kind = type(skip)
+    if not ((skip_kind == "function") or (skip_kind == "string" and skip ~= "")) then
+        return false, nil
+    end
+
+    local line, col = ctx.abs_to_pos(candidate.s)
+    local save_line = ctx.win.cursory
+    local save_col = ctx.win.cursorx
+    ctx.win:_set_cursor_raw(line, col)
+
+    local ok, rv
+    if skip_kind == "function" then
+        ok, rv = pcall(skip)
+        if not ok then
+            ctx.win:_set_cursor_raw(save_line, save_col)
+            return nil, rv
+        end
+    else
+        local rt_ok, eval_ok, eval_rv = pcall(function()
+            return Runtime.EvalExpression(skip, {
+                state = Runtime._CURRENT_STATE,
+                ctrl = Runtime._CURRENT_CTRL,
+            })
+        end)
+        if not rt_ok then
+            ctx.win:_set_cursor_raw(save_line, save_col)
+            return nil, eval_ok
+        end
+        if not eval_ok then
+            ctx.win:_set_cursor_raw(save_line, save_col)
+            return nil, eval_rv
+        end
+        rv = eval_rv
+    end
+
+    ctx.win:_set_cursor_raw(save_line, save_col)
+    return _search_truthy(rv), nil
+end
+
+local function _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, want_pos)
+    local fl = tostring(flags or "")
+    local backward = fl:find("b", 1, true) ~= nil
+    local no_move = fl:find("n", 1, true) ~= nil
+    local repeat_outer = fl:find("r", 1, true) ~= nil
+    local return_count = fl:find("m", 1, true) ~= nil
+
+    local want_wrap
+    if repeat_outer then
+        want_wrap = false
+    elseif fl:find("w", 1, true) then
+        want_wrap = true
+    elseif fl:find("W", 1, true) then
+        want_wrap = false
+    else
+        local ok, rv = pcall(function()
+            return options.get("wrapscan")
+        end)
+        want_wrap = ok and not not rv or true
+    end
+
+    local timeout_ms = tonumber(timeout) or 0
+    timeout_ms = math.floor(timeout_ms)
+    if timeout_ms < 0 then
+        timeout_ms = 0
+    end
+    local started_at = (timeout_ms > 0) and os.clock()
+    local function timed_out()
+        if timeout_ms <= 0 then
+            return false
+        end
+        return (os.clock() - started_at) * 1000 > timeout_ms
+    end
+
+    start_pat = tostring(start_pat or "")
+    middle_pat = tostring(middle_pat or "")
+    end_pat = tostring(end_pat or "")
+    if start_pat == "" or end_pat == "" then
+        return want_pos and { 0, 0 } or 0
+    end
+
+    local start_re, start_case_sensitive, start_err = _prepare_match_pattern(start_pat)
+    if not start_re then
+        error("searchpair(): start pattern compile failed: " .. tostring(start_err))
+    end
+    local end_re, end_case_sensitive, end_err = _prepare_match_pattern(end_pat)
+    if not end_re then
+        error("searchpair(): end pattern compile failed: " .. tostring(end_err))
+    end
+    local middle_re = nil
+    local middle_case_sensitive = true
+    if middle_pat ~= "" then
+        local mid_err
+        middle_re, middle_case_sensitive, mid_err = _prepare_match_pattern(middle_pat)
+        if not middle_re then
+            error("searchpair(): middle pattern compile failed: " .. tostring(mid_err))
+        end
+    end
+
+    local ctx = _searchpair_context()
+    local matches = {}
+    local function append(list)
+        for i = 1, #list do
+            matches[#matches + 1] = list[i]
+        end
+    end
+    append(_searchpair_collect(ctx, "start", start_pat, start_re, start_case_sensitive, timed_out))
+    append(_searchpair_collect(ctx, "end", end_pat, end_re, end_case_sensitive, timed_out))
+    append(_searchpair_collect(ctx, "middle", middle_pat, middle_re, middle_case_sensitive, timed_out))
+
+    table.sort(matches, function(a, b)
+        if a.s == b.s then
+            local rank = { start = 1, middle = 2, ["end"] = 3 }
+            return (rank[a.kind] or 9) < (rank[b.kind] or 9)
+        end
+        return a.s < b.s
+    end)
+
+    local stop = tonumber(stopline) or 0
+    stop = math.floor(stop)
+    if stop < 0 then
+        stop = 0
+    elseif stop > ctx.line_count then
+        stop = ctx.line_count
+    end
+    if stop > 0 then
+        want_wrap = false
+    end
+
+    local function in_stop_range(m)
+        if stop == 0 then
+            return true
+        end
+        local lnum = ctx.abs_to_pos(m.s)
+        if backward then
+            return lnum >= stop
+        end
+        return lnum <= stop
+    end
+
+    local ordered = {}
+    if not backward then
+        for i = 1, #matches do
+            if matches[i].s >= ctx.cur_abs and in_stop_range(matches[i]) then
+                ordered[#ordered + 1] = matches[i]
+            end
+        end
+        if want_wrap then
+            for i = 1, #matches do
+                if matches[i].s < ctx.cur_abs then
+                    ordered[#ordered + 1] = matches[i]
+                end
+            end
+        end
+    else
+        for i = #matches, 1, -1 do
+            if matches[i].s <= ctx.cur_abs and in_stop_range(matches[i]) then
+                ordered[#ordered + 1] = matches[i]
+            end
+        end
+        if want_wrap then
+            for i = #matches, 1, -1 do
+                if matches[i].s > ctx.cur_abs then
+                    ordered[#ordered + 1] = matches[i]
+                end
+            end
+        end
+    end
+
+    local depth = 0
+    local selected = nil
+    local match_count = 0
+    for i = 1, #ordered do
+        if timed_out() then
+            break
+        end
+        local m = ordered[i]
+        local skipped, skip_err = _searchpair_eval_skip(ctx, skip, m)
+        if skip_err ~= nil then
+            return want_pos and { 0, 0 } or -1
+        end
+        if not skipped then
+            if not backward then
+                if m.kind == "start" then
+                    if m.s ~= ctx.cur_abs then
+                        depth = depth + 1
+                    end
+                elseif m.kind == "end" then
+                    if depth == 0 then
+                        selected = m
+                        match_count = match_count + 1
+                        if not repeat_outer then
+                            break
+                        end
+                    else
+                        depth = depth - 1
+                    end
+                elseif m.kind == "middle" and depth == 0 then
+                    selected = m
+                    match_count = match_count + 1
+                    if not repeat_outer then
+                        break
+                    end
+                end
+            else
+                if m.kind == "end" then
+                    if m.s ~= ctx.cur_abs then
+                        depth = depth + 1
+                    end
+                elseif m.kind == "start" then
+                    if depth == 0 then
+                        selected = m
+                        match_count = match_count + 1
+                        if not repeat_outer then
+                            break
+                        end
+                    else
+                        depth = depth - 1
+                    end
+                elseif m.kind == "middle" and depth == 0 then
+                    selected = m
+                    match_count = match_count + 1
+                    if not repeat_outer then
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if not selected then
+        return want_pos and { 0, 0 } or 0
+    end
+
+    local line, col, byte_col = ctx.abs_to_pos(selected.s)
+    if not no_move then
+        ctx.win:_set_cursor_raw(line, col)
+        ctx.win:mark_redraw()
+    end
+
+    if want_pos then
+        return { line, byte_col }
+    end
+    if return_count then
+        return match_count
+    end
+    return line
+end
+
+function Builtins.searchpair(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "searchpair"))
+    end
+    return _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, false)
+end
+
+function Builtins.searchpairpos(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "searchpairpos"))
+    end
+    return _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, true)
+end
+
 function Builtins.getcwd(...)
     local argc = select("#", ...)
     local winnr = select(1, ...)
@@ -3272,6 +3673,20 @@ function Builtins.match(expr, pat, start, count)
         end
         return -1
     end
+end
+
+-- matchend({expr}, {pat} [, {start} [, {count}]])
+function Builtins.matchend(expr, pat, start, count, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "matchend"))
+    end
+
+    if _is_vim_list_expr(expr) then
+        return Builtins.match(expr, pat, start, count)
+    end
+
+    local pos = Builtins.matchstrpos(expr, pat, start, count)
+    return pos[3]
 end
 
 -- matchstr({expr}, {pat} [, {start} [, {count}]])
@@ -5198,7 +5613,7 @@ function Builtins.substitute(expr, pat, sub, flags)
                 elseif nxt == "\\" then
                     out[#out + 1] = "\\"
                 else
-                    out[#out + 1] = nxt
+                    out[#out + 1] = "\\" .. nxt
                 end
                 i = i + 2
             elseif ch == "&" then

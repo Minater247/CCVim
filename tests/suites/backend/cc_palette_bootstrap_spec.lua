@@ -1,6 +1,7 @@
 return {
     id = "backend.cc_palette_bootstrap",
     description = "Bootstraps the CC backend palette from the current terminal palette instead of hardcoded defaults.", -- luacheck: ignore 631
+    supports = { headless_nvim = false },
 
     run = function(ctx)
         local Assert = ctx.assert

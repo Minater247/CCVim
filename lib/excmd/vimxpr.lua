@@ -425,6 +425,24 @@ local function tokenize(input)
         end
         if matched then goto cont end
 
+        local word_ops = {
+            "isnot#",
+            "isnot?",
+            "isnot",
+            "is#",
+            "is?",
+            "is",
+        }
+        for _, op in ipairs(word_ops) do
+            if input:sub(i, i + #op - 1) == op then
+                local nxt = input:sub(i + #op, i + #op)
+                if nxt == "" or not nxt:match("[%w_#?]") then
+                    add("OP", op, start); adv(#op); matched = true; break
+                end
+            end
+        end
+        if matched then goto cont end
+
         -- script-local function names in expression context: <SID>Foo(), <SNR>12_Foo()
         if c == "<" then
             local sid_ident = consume_sid_identifier()
@@ -511,6 +529,12 @@ local PREC = {
     ["!~#"] = 2,
     ["=~?"] = 2,
     ["!~?"] = 2,
+    ["is"] = 2,
+    ["is#"] = 2,
+    ["is?"] = 2,
+    ["isnot"] = 2,
+    ["isnot#"] = 2,
+    ["isnot?"] = 2,
     -- pipe
     ["->"] = 5,
     -- concatenation + additive share precedence (left-assoc)
@@ -1448,7 +1472,38 @@ local function eval_node(node, vim9, env)
         if op:match("^=~[#?]?$") or op:match("^!~[#?]?$") then
             local case = decide_case(op); if is_error(case) then return case end
             local ok = VimRegex.match(to_string_simple(L), to_string_simple(R), case)
-            local res = op:sub(1, 1) == "!" and (not ok) or ok
+            local res
+            if op:sub(1, 1) == "!" then
+                res = not ok
+            else
+                res = ok
+            end
+            return vim9 and res or (res and 1 or 0)
+        end
+
+        if op:match("^isnot[#?]?$") or op:match("^is[#?]?$") then
+            local neg = op:sub(1, 5) == "isnot"
+            local case = decide_case(op); if is_error(case) then return case end
+            local same
+            if type(L) == "table" or type(R) == "table" then
+                same = rawequal(L, R)
+            elseif type(L) ~= type(R) then
+                same = false
+            elseif type(L) == "string" then
+                if not case then
+                    same = L:lower() == R:lower()
+                else
+                    same = L == R
+                end
+            else
+                same = L == R
+            end
+            local res
+            if neg then
+                res = not same
+            else
+                res = same
+            end
             return vim9 and res or (res and 1 or 0)
         end
 

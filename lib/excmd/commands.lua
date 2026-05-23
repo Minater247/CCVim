@@ -31,7 +31,7 @@ local COMMAND_SPECS = {
     { name = "return", min = 4, comment_mode = "expr" },
     { name = "finish", min = 2, dispatch = true },
     { name = "call", min = 3, comment_mode = "expr" },
-    { name = "execute", min = 3 },
+    { name = "execute", min = 3, comment_mode = "expr" },
     { name = "unlet", min = 3 },
     { name = "command", min = 3, dispatch = true, no_bar_split = true },
     { name = "autocmd", min = 2, no_bar_split = true },

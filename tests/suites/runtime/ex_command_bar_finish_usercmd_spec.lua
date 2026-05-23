@@ -15,6 +15,7 @@ return {
         local keepj_script = Assert.temp_path(backend, "keepj-cmd-runtime", ".vim")
         local uargs_script = Assert.temp_path(backend, "uargs-cmd-runtime", ".vim")
         local nmap_bar_script = Assert.temp_path(backend, "nmap-bar-runtime", ".vim")
+        local execute_double_quote_script = Assert.temp_path(backend, "execute-double-quote-bar-runtime", ".vim")
 
         Assert.write_file(backend, quoted_bar, table.concat({
             "let s_skip = '1'",
@@ -68,6 +69,10 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
             "let g:nmap_bar_split = 1",
             "",
         }, "\n"))
+        Assert.write_file(backend, execute_double_quote_script, table.concat({
+            [[execute "if 1 | let g:execute_double_quote_bar_ok = 11 | endif"]],
+            "",
+        }, "\n"))
 
         local result = Assert.eval_block(backend, "ex command bar finish usercmd scenarios", string.format([=[
             local quoted_bar = %q
@@ -79,6 +84,7 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
             local keepj_script = %q
             local uargs_script = %q
             local nmap_bar_script = %q
+            local execute_double_quote_script = %q
 
             local function source(path)
                 vim.cmd("source " .. vim.fn.fnameescape(path))
@@ -101,6 +107,7 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
 
             vim.cmd("enew!")
             source(nmap_bar_script)
+            source(execute_double_quote_script)
 
             return {
                 vim.g.quoted_bar_ok,
@@ -115,6 +122,7 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
                 vim.g.uargs_f,
                 vim.g.nmap_bar_split,
                 vim.fn.maparg("-", "n"),
+                vim.g.execute_double_quote_bar_ok,
             }
         ]=],
             quoted_bar,
@@ -125,7 +133,8 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
             command_bar_script,
             keepj_script,
             uargs_script,
-            nmap_bar_script
+            nmap_bar_script,
+            execute_double_quote_script
         ))
 
         Assert.eq("quoted execute with bars runs", result[1], 42)
@@ -144,5 +153,6 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
         Assert.table_eq("user command expands <f-args>", result[10], { "one", "two" })
         Assert.eq("inline if with nmap still runs following line", result[11], 1)
         Assert.eq("inline if with nmap preserves mapping rhs", result[12], "<Plug>NetrwBrowseUpDir")
+        Assert.eq("execute double-quoted command preserves bars", result[13], 11)
     end,
 }

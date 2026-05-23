@@ -44,6 +44,7 @@ return {
                     s5 = vim.fn.eval([[substitute('ab', '\(a\)\(b\)', '\2\1', '')]]),
                     s6 = vim.fn.eval([[substitute('AB', '\(ab\)', '\1', 'i')]]),
                     s7 = vim.fn.eval([[substitute('foo', 'foo', '[\0:&:\&]', '')]]),
+                    s8 = vim.fn.eval([[substitute('(:)', ':', '\\|', 'g')]]),
                     m1 = vim.fn.eval([[match('vim/.gitignore*', "\*$")]]),
                     m2 = vim.fn.eval([[match('vim/.gitignore*', '\*$')]]),
                 }
@@ -70,6 +71,7 @@ return {
         Assert.eq("substitute swaps backrefs", result.s5, "ba")
         Assert.eq("substitute backref with ignorecase keeps original case", result.s6, "AB")
         Assert.eq("substitute supports \\0, &, and literal \\&", result.s7, "[foo:foo:&]")
+        Assert.eq("substitute preserves ordinary escaped replacement char", result.s8, [[(\|)]])
         Assert.eq("double-quoted match works", result.m1, 14)
         Assert.eq("single-quoted match works", result.m2, 14)
     end,

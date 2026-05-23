@@ -2,15 +2,6 @@
 -- Hybrid Vim-style regex engine:
 --   - Fast path: translate simple subset to Lua patterns (high throughput).
 --   - VM path: backtracking matcher for syntax-oriented constructs.
---
--- VM-supported Stage 3 constructs:
---   lookarounds: \@= \@! \@<= \@<!
---   zero-width span markers: \zs \ze
---   external captures/backrefs: \z(...) \z1..
---   grouping forms: \%(...) and \%[...]
---   generalized \_ classes (newline-inclusive class atoms)
---
--- This module intentionally focuses on syntax-engine needs and guardrails.
 
 local R = {}
 
@@ -1294,6 +1285,20 @@ local function vm_tokenize(pat)
 
             if e == "%" then
                 local e2 = peek(2)
+                local col_op, col_num, after_col = pat:match("^%%([<>]?)(%d+)c()", i + 1)
+                if col_num then
+                    local op = "eq"
+                    if col_op == ">" then
+                        op = "gt"
+                    elseif col_op == "<" then
+                        op = "lt"
+                    end
+                    ntoks = ntoks + 1
+                    toks[ntoks] = { t = "COL", op = op, col = tonumber(col_num) or 0 }
+                    i = after_col
+                    goto cont
+                end
+
                 if e2 == "(" then
                     ntoks = ntoks + 1
                     toks[ntoks] = { t = "LP", kind = "noncap" }
@@ -1428,6 +1433,11 @@ local function vm_tokenize(pat)
         if c == "[" and (mode == "magic" or mode == "verymagic") then
             local raw, after_or_err = read_bracket_class(i)
             if not raw then
+                if after_or_err == "Unterminated [] class" and pat:sub(i + 1, i + 2) == "\\|" then
+                    add("LIT", "[")
+                    i = i + 1
+                    goto cont
+                end
                 return nil, after_or_err
             end
             ntoks = ntoks + 1
@@ -1608,6 +1618,11 @@ local function vm_parse(tokens)
         if t.t == "BREF_EXT" then
             consume()
             return { kind = "BREF_EXT", id = t.id }
+        end
+
+        if t.t == "COL" then
+            consume()
+            return { kind = "COL", op = t.op, col = t.col }
         end
 
         if t.t == "PCTOPT" then
@@ -1970,7 +1985,7 @@ local function vm_bounds(node)
         return 0, nil
     end
 
-    if kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or
+    if kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or kind == "COL" or
         kind == "ZS" or kind == "ZE" or kind == "LOOK" then
         return 0, 0
     end
@@ -2287,6 +2302,21 @@ local function vm_make_matcher(ast, hints)
                 return false
             end
 
+            if kind == "COL" then
+                local ok
+                if node.op == "gt" then
+                    ok = st.pos > node.col
+                elseif node.op == "lt" then
+                    ok = st.pos < node.col
+                else
+                    ok = st.pos == node.col
+                end
+                if ok then
+                    return cont(st)
+                end
+                return false
+            end
+
             if kind == "ZS" then
                 local ns = vm_clone_state(st)
                 ns.zs = st.pos
@@ -2564,7 +2594,7 @@ local function vm_common_prefix(a, b)
 end
 
 local function vm_is_zero_width_kind(kind)
-    return kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or
+    return kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or kind == "COL" or
         kind == "ZS" or kind == "ZE" or kind == "LOOK"
 end
 
@@ -2702,6 +2732,8 @@ local VM_TRIGGER_LITS = {
     "\\z",
     "\\%(",
     "\\%[",
+    "\\%>",
+    "\\%<",
     "\\_",
     "\\=",
     "\\{-",
@@ -2714,6 +2746,9 @@ local function pattern_needs_vm(pat)
         end
     end
     if pat:find("\\@%d+<=") or pat:find("\\@%d+<!") or pat:find("\\@%d+=") or pat:find("\\@%d+!") then
+        return true
+    end
+    if pat:find("\\%%%d+c") then
         return true
     end
     return false
