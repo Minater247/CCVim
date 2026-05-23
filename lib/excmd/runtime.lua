@@ -26,6 +26,9 @@ local runtime_undo_batch_buffers = nil
 local runtime_undo_batch_active = false
 local runtime_undo_batch_pause_count = 0
 local colorscheme_load_depth = 0
+local COMPILED_SCRIPT_CACHE = {}
+local COMPILED_SCRIPT_CACHE_ORDER = {}
+local COMPILED_SCRIPT_CACHE_MAX = 256
 
 local function runtime_undo_batch_begin()
     runtime_undo_batch_buffers = {}
@@ -814,6 +817,127 @@ local function enrich_runtime_error(err, rt, opts, state, script, fallback)
     return Error(0, with_context_message(base, rt, opts, state, script))
 end
 
+local function clear_compiled_script_cache()
+    COMPILED_SCRIPT_CACHE = {}
+    COMPILED_SCRIPT_CACHE_ORDER = {}
+end
+
+local function dump_failed_compiled_script(code, load_err)
+    local path = ccvim_path .. "/log/excmd_compiled_last.lua"
+    local f = fs.open(path, "w")
+    if f then
+        f.write(code)
+        f.close()
+    end
+    LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(load_err), path)
+end
+
+local function cache_compiled_script(script, compiled)
+    if COMPILED_SCRIPT_CACHE[script] == nil and #COMPILED_SCRIPT_CACHE_ORDER >= COMPILED_SCRIPT_CACHE_MAX then
+        local evict = table.remove(COMPILED_SCRIPT_CACHE_ORDER, 1)
+        COMPILED_SCRIPT_CACHE[evict] = nil
+    end
+    if COMPILED_SCRIPT_CACHE[script] == nil then
+        COMPILED_SCRIPT_CACHE_ORDER[#COMPILED_SCRIPT_CACHE_ORDER + 1] = script
+    end
+    COMPILED_SCRIPT_CACHE[script] = compiled
+    return compiled
+end
+
+local function load_compiled_function(code, chunkname)
+    local chunk, lerr = load(code, chunkname, "t", _G)
+    if not chunk then
+        dump_failed_compiled_script(code, lerr)
+        return nil, lerr
+    end
+    return chunk()
+end
+
+local function load_compiled_script(script)
+    script = tostring(script or "")
+    local cached = COMPILED_SCRIPT_CACHE[script]
+    if cached then
+        return cached
+    end
+
+    local code, err = Compiler.compile_script(script)
+    if not code then
+        return nil, err
+    end
+
+    local compiled, load_err = load_compiled_function(code, "excmd_compiled")
+    if not compiled then
+        return nil, load_err
+    end
+    return cache_compiled_script(script, compiled)
+end
+
+local function prepare_runtime_state(opts)
+    opts = opts or {}
+    local state = opts.state
+    if type(state) ~= "table" then
+        if type(opts.durable) == "table" then
+            state = Runtime.MakeRuntimeState(opts.durable, opts.v)
+        else
+            state = ensure_state({ v = fresh_v(opts.v) })
+        end
+    end
+    state = ensure_state(state)
+    if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
+        state.script_ctx = opts.script_ctx
+        state.script_sid = script_sid_for_ctx(opts.script_ctx)
+    end
+    if type(opts.v) == "table" then
+        state.v = state.v or fresh_v()
+        for k, val in pairs(opts.v) do
+            state.v[k] = val
+        end
+    end
+    return state
+end
+
+local function build_runtime(opts)
+    opts = opts or {}
+    local state = prepare_runtime_state(opts)
+    local rt = Runtime.new(state, { ctrl = opts.ctrl or {} })
+    return state, rt
+end
+
+local function with_runtime_script_context(rt, fn)
+    rt:_push_script_ctx()
+    local ok, rv = pcall(fn)
+    rt:_pop_script_ctx()
+    return ok, rv
+end
+
+local function with_runtime_undo_batch(fn)
+    runtime_undo_batch_depth = runtime_undo_batch_depth + 1
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_begin()
+    end
+    local ok, rv = pcall(fn)
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_end()
+    end
+    runtime_undo_batch_depth = runtime_undo_batch_depth - 1
+    return ok, rv
+end
+
+local function with_lazyredraw_block(fn)
+    local lazy_block = Options.get("lazyredraw")
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block + 1
+    end
+    local ok, rv = pcall(fn)
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block - 1
+    end
+    if not ok then
+        error(rv)
+    end
+    return rv
+end
+
 local function log_command_resolution_failure(rt, name, lname, argstr, bang)
     local cursor = rt:get_exec_cursor()
     local line = tostring(cursor.line or "")
@@ -998,6 +1122,7 @@ function Runtime.new(init_state, init_opts)
     local rt = {
         state = ensure_state(init_state),
         opts = init_opts or {},
+        ctrl = (init_opts and init_opts.ctrl) or {},
         Error = Error,
         return_exc = {},
         exec_cursor = {},
@@ -1013,6 +1138,19 @@ function Runtime.new(init_state, init_opts)
 
     function rt:get_exec_cursor()
         return self.exec_cursor
+    end
+
+    function rt:set_exec_cursor_from(node)
+        self.exec_cursor.line = node.line
+        self.exec_cursor.text = node.text
+        self.exec_cursor.cmd = node.cmd
+        self.exec_cursor.rest = node.rest
+        return true
+    end
+
+    function rt:invoke_precompiled_node(node)
+        self:set_exec_cursor_from(node)
+        return self:invoke_compiled_command(node.spec)
     end
 
     function rt:push_frame(arg_values, param_names)
@@ -1292,7 +1430,7 @@ function Runtime.new(init_state, init_opts)
             self.__pushed_ctx = true
         end
         Runtime._CURRENT_STATE = state
-        Runtime._CURRENT_CTRL = nil
+        Runtime._CURRENT_CTRL = self.ctrl
     end
 
     function rt:_pop_script_ctx()
@@ -1358,39 +1496,25 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:exec_script(script)
-        local lazy_block = Options.get("lazyredraw")
-        if lazy_block then
-            lazyredraw_block = lazyredraw_block + 1
-        end
-
-        local ok, rv = pcall(function()
-            local code, err = Compiler.compile_script(script, { state = self.state })
-            if not code then error(err) end
-            local env = setmetatable({ runtime = self, _G = _G }, { __index = _G })
-            local chunk, lerr = load(code, "excmd_compiled", "t", env)
-            if not chunk then
-                local path = ccvim_path .. "/log/excmd_compiled_last.lua"
-                local f = fs.open(path, "w")
-                if f then
-                    f.write(code)
-                    f.close()
-                end
-                LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(lerr), path)
-                error(lerr)
-            end
-            local fn = chunk()
-            self:_push_script_ctx()
-            local fn_ok, fn_rv = pcall(fn, self.state, self)
-            self:_pop_script_ctx()
+        return with_lazyredraw_block(function()
+            local fn, err = load_compiled_script(script)
+            if not fn then error(err) end
+            local fn_ok, fn_rv = with_runtime_script_context(self, function()
+                return fn(self.state, self)
+            end)
             if not fn_ok then error(fn_rv) end
             return fn_rv
         end)
+    end
 
-        if lazy_block then
-            lazyredraw_block = lazyredraw_block - 1
-        end
-        if not ok then error(rv) end
-        return rv
+    function rt:exec_compiled(fn)
+        return with_lazyredraw_block(function()
+            local fn_ok, fn_rv = with_runtime_script_context(self, function()
+                return fn(self.state, self)
+            end)
+            if not fn_ok then error(fn_rv) end
+            return fn_rv
+        end)
     end
 
     function rt:execute(expr)
@@ -5888,6 +6012,10 @@ end
 
 Runtime.create = Runtime.new
 
+function Runtime.ClearCompiledScriptCache()
+    clear_compiled_script_cache()
+end
+
 function Runtime.CanonicalFunctionName(name, opts)
     return canonical_function_name(name, opts)
 end
@@ -5986,37 +6114,10 @@ end
 
 function Runtime.EvalExpression(expr, opts)
     opts = opts or {}
-    local state = opts.state
-    if type(state) ~= "table" then
-        if type(opts.durable) == "table" then
-            state = Runtime.MakeRuntimeState(opts.durable, opts.v)
-        else
-            state = ensure_state({ v = fresh_v(opts.v) })
-        end
-    end
-    state = ensure_state(state)
-    if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
-        state.script_ctx = opts.script_ctx
-        state.script_sid = script_sid_for_ctx(opts.script_ctx)
-    end
-    if opts.v and type(opts.v) == "table" then
-        state.v = state.v or fresh_v()
-        for k, val in pairs(opts.v) do
-            state.v[k] = val
-        end
-    end
-    local ctrl = opts.ctrl or {}
-
-    local rt = Runtime.new(state)
-    rt:_push_script_ctx()
-    Runtime._CURRENT_STATE = state
-    Runtime._CURRENT_CTRL = ctrl
-    local ok, rv = pcall(function()
+    local state, rt = build_runtime(opts)
+    local ok, rv = with_runtime_script_context(rt, function()
         return rt:eval_expr(tostring(expr or ""))
     end)
-    Runtime._CURRENT_STATE = nil
-    Runtime._CURRENT_CTRL = nil
-    rt:_pop_script_ctx()
 
     if not ok then
         local err = enrich_runtime_error(rv, rt, opts, state, nil, "Runtime.EvalExpresion(...)")
@@ -6028,42 +6129,31 @@ function Runtime.EvalExpression(expr, opts)
     return true, rv
 end
 
+function Runtime.run_compiled(code, opts)
+    opts = opts or {}
+    local state, rt = build_runtime(opts)
+    local fn, load_err = load_compiled_function(code, opts.chunkname or "excmd_compiled")
+    if not fn then
+        local err = enrich_runtime_error(load_err, rt, opts, state, nil, "Runtime.run_compiled(...) load failed")
+        return false, err, "load"
+    end
+
+    local ok, rv = with_runtime_undo_batch(function()
+        return rt:exec_compiled(fn)
+    end)
+    if not ok then
+        local err = enrich_runtime_error(rv, rt, opts, state, nil, "Runtime.run_compiled(...) returned nil!")
+        return false, err, "run"
+    end
+    return true, rv, "run"
+end
+
 function Runtime.run(script, opts)
     opts = opts or {}
-    local state = opts.state
-    if type(state) ~= "table" then
-        if type(opts.durable) == "table" then
-            state = Runtime.MakeRuntimeState(opts.durable, opts.v)
-        else
-            state = ensure_state({ v = fresh_v(opts.v) })
-        end
-    end
-    state = ensure_state(state)
-    if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
-        state.script_ctx = opts.script_ctx
-        state.script_sid = script_sid_for_ctx(opts.script_ctx)
-    end
-
-    local prev_state = Runtime._CURRENT_STATE
-    local prev_ctrl = Runtime._CURRENT_CTRL
-    Runtime._CURRENT_STATE = state
-    Runtime._CURRENT_CTRL = opts.ctrl or {}
-
-    local rt = Runtime.new(state)
-    runtime_undo_batch_depth = runtime_undo_batch_depth + 1
-    if runtime_undo_batch_depth == 1 then
-        runtime_undo_batch_begin()
-    end
-    local ok, rv = pcall(function()
+    local state, rt = build_runtime(opts)
+    local ok, rv = with_runtime_undo_batch(function()
         return rt:exec_script(tostring(script or ""))
     end)
-    if runtime_undo_batch_depth == 1 then
-        runtime_undo_batch_end()
-    end
-    runtime_undo_batch_depth = runtime_undo_batch_depth - 1
-
-    Runtime._CURRENT_STATE = prev_state
-    Runtime._CURRENT_CTRL = prev_ctrl
 
     if not ok then
         local err = enrich_runtime_error(rv, rt, opts, state, script, "Runtime.run(...) returned nil!")

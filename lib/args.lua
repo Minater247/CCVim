@@ -21,6 +21,7 @@ local function print_help(argv0)
   -v, --version         Print version information
   -V[N][file]           Verbose [level][file]
 
+  --no-cache            Recompile sourced .vim sidecar caches
   --startuptime <file>  Write startup timing messages to <file>]])
 end
 
@@ -61,6 +62,8 @@ function Args.parse(argv)
                 elseif c == "version" then
                     print_version(argv[0])
                     should_continue = false
+                elseif c == "no-cache" then
+                    no_cache = true
                 elseif c == "startuptime" then
                     startuptime = argv[i + 1]
                     i = i + 1

@@ -2,6 +2,7 @@ local ScriptSource = {}
 
 local LuaLoader = loadModule("lib.lualoader")
 local Runtime = loadModule("lib.excmd.runtime")
+local Compiler = loadModule("lib.excmd.compiler")
 local Error = loadModule("lib.error")
 local Filesystem = loadModule("lib.filesystem")
 local RuntimePath = loadModule("lib.runtimepath")
@@ -60,6 +61,136 @@ function ScriptSource.wrap(scriptabsolutepath, cb)
     end
 end
 
+local function read_file(path)
+    local f = fs.open(path, "r")
+    if not f then
+        return nil, Error(484, path)
+    end
+    local data = f.readAll()
+    f.close()
+    return data
+end
+
+local function write_file(path, data)
+    local f = fs.open(path, "w")
+    if not f then
+        return false, Error(484, path)
+    end
+    f.write(data)
+    f.close()
+    return true
+end
+
+local function file_modified(path)
+    local attrs = fs.attributes(path)
+    if type(attrs) ~= "table" then
+        return nil
+    end
+    local modified = attrs.modified
+    if type(modified) ~= "number" then
+        modified = attrs.modification
+    end
+    return modified
+end
+
+local function compiled_cache_path(path)
+    if path:sub(-4) ~= ".vim" then
+        return nil
+    end
+    return path:sub(1, -5) .. ".ccvim"
+end
+
+local function compiled_cache_is_fresh(source_path, cache_path)
+    if not fs.exists(cache_path) then
+        return false
+    end
+    local source_mtime = file_modified(source_path)
+    local cache_mtime = file_modified(cache_path)
+    if type(source_mtime) ~= "number" or type(cache_mtime) ~= "number" then
+        return false
+    end
+    return cache_mtime >= source_mtime
+end
+
+local function run_vimscript_compiled(source_path, compiled_code, chunkname)
+    local ok, rv, phase = Runtime.run_compiled(compiled_code, {
+        script_ctx = source_path,
+        origin = {
+            kind = "sourced-file",
+            source = source_path,
+        },
+        chunkname = chunkname,
+    })
+    if not ok then
+        local msg = Error.IsError(rv) and rv:toString() or tostring(rv)
+        LOG_DEBUG("Error executing '%s': %s", source_path, msg)
+        return false, rv, phase
+    end
+    return true, nil, phase
+end
+
+local function run_vimscript_path(path)
+    local script, read_err = read_file(path)
+    if not script then
+        LOG_DEBUG("Error executing '%s': %s", path, read_err:toString())
+        return false, read_err
+    end
+
+    local cache_path = compiled_cache_path(path)
+    local compiled_code
+    if cache_path and not no_cache and compiled_cache_is_fresh(path, cache_path) then
+        compiled_code = read_file(cache_path)
+    end
+
+    if compiled_code then
+        local ok, err, phase = run_vimscript_compiled(path, compiled_code, "@" .. cache_path)
+        if ok then
+            return true
+        end
+        if phase ~= "load" then
+            return false, err
+        end
+        compiled_code = nil
+    end
+
+    compiled_code, read_err = Compiler.compile_script(script)
+    if not compiled_code then
+        LOG_DEBUG("Error compiling '%s': %s", path, tostring(read_err))
+        return false, read_err
+    end
+
+    if cache_path then
+        local write_ok, write_err = write_file(cache_path, compiled_code)
+        if not write_ok then
+            LOG_DEBUG("Error writing cache '%s': %s", cache_path, tostring(write_err))
+        end
+    end
+
+    return run_vimscript_compiled(path, compiled_code, "@" .. cache_path)
+end
+
+local function run_resolved_path(resolvedpath)
+    if resolvedpath:sub(-4) == ".lua" then
+        local ok, err = pcall(LuaLoader.LoadFile, resolvedpath)
+        if not ok then
+            local e = Error.IsError(err) and err or Error(5107, tostring(err))
+            local msg = e:toString()
+            LOG_DEBUG("Error executing '%s': %s", resolvedpath, msg)
+            return false, e
+        end
+        return true
+    end
+
+    if resolvedpath:sub(-4) ~= ".vim" then
+        return true
+    end
+
+    ScriptSource.PushContext(resolvedpath)
+    local ok, rv = run_vimscript_path(resolvedpath)
+    ScriptSource.PopContext()
+    return ok, rv
+end
+
 function ScriptSource.source_runtime(path)
     -- Also accept a table of strings
     if type(path) == "table" then
@@ -87,39 +218,9 @@ function ScriptSource.source_runtime(path)
         return false, err
     end
 
-    if resolvedpath:sub(-4) == ".lua" then
-        local ok, err = pcall(LuaLoader.LoadFile, resolvedpath)
-        if not ok then
-            local e = Error.IsError(err) and err or Error(5107, tostring(err))
-            local msg = e:toString()
-            LOG_DEBUG("Error executing '%s': %s", resolvedpath, msg)
-            return false, e
-        end
-    elseif resolvedpath:sub(-4) == ".vim" then
-        local f = fs.open(resolvedpath, "r")
-
-        if not f then
-            local err = Error(484, resolvedpath)
-            LOG_DEBUG("Error executing '%s': %s", resolvedpath, err:toString())
-            return false, err
-        end
-
-        ScriptSource.PushContext(resolvedpath)
-        local ok, rv = Runtime.run(f.readAll(), {
-            script_ctx = resolvedpath,
-            origin = {
-                kind = "sourced-file",
-                source = resolvedpath,
-            },
-        })
-        ScriptSource.PopContext()
-        if not ok then
-            local msg = Error.IsError(rv) and rv:toString() or tostring(rv)
-            LOG_DEBUG("Error executing '%s': %s", resolvedpath, msg)
-            return false, rv
-        end
-
-        f.close()
+    local ok, err = run_resolved_path(resolvedpath)
+    if not ok then
+        return false, err
     end
 
     if startuptime then
@@ -153,35 +254,9 @@ function ScriptSource.source(path)
         return false, Error(484, resolvedpath)
     end
 
-    if resolvedpath:sub(-4) == ".lua" then
-        local ok, err = pcall(LuaLoader.LoadFile, resolvedpath)
-        if not ok then
-            local e = Error.IsError(err) and err or Error(5107, tostring(err))
-            local msg = e:toString()
-            LOG_DEBUG("Error executing '%s': %s", resolvedpath, msg)
-            return false, e
-        end
-    elseif resolvedpath:sub(-4) == ".vim" then
-        local f = fs.open(resolvedpath, "r")
-
-        if f then
-            ScriptSource.PushContext(resolvedpath)
-            local ok, rv = Runtime.run(f.readAll(), {
-                script_ctx = resolvedpath,
-                origin = {
-                    kind = "sourced-file",
-                    source = resolvedpath,
-                },
-            })
-            ScriptSource.PopContext()
-            if not ok then
-                local msg = Error.IsError(rv) and rv:toString() or tostring(rv)
-                LOG_DEBUG("Error executing '%s': %s", resolvedpath, msg)
-                return false, rv
-            end
-
-            f.close()
-        end
+    local ok, err = run_resolved_path(resolvedpath)
+    if not ok then
+        return false, err
     end
 
     if startuptime then

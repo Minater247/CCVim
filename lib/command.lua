@@ -479,6 +479,7 @@ local function composite_root_for_mode(mode_full)
 end
 
 local function _get_user_insert_root(mode_full, opts)
+    opts = opts or {}
     if opts.buffer then
         return ensure_buffer_local_root(opts.buffer, mode_full)
     elseif opts.buffer_local then
@@ -556,6 +557,7 @@ local function _clear_root(root)
 end
 
 local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
+    opts = opts or {}
     local node = _get_user_insert_root(mode_full, opts)
     local is_buffer_local = (opts.buffer ~= nil) or opts.buffer_local
     local scope_suffix = ""
@@ -612,6 +614,7 @@ local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
 end
 
 local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts)
+    opts = opts or {}
     local node = _get_user_insert_root(mode_full, opts)
     local is_buffer_local = (opts.buffer ~= nil) or opts.buffer_local
     local scope_suffix = ""

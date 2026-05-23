@@ -285,6 +285,7 @@ local _V = {
     global_marks = {},
 
     startuptime = false,
+    no_cache = false,
 
     ccvim_path = ccvim_path,
     ccvimversion_str = "0.8",

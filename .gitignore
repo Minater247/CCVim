@@ -7,3 +7,4 @@ config/
 dist/
 node_modules
 *S.md
+*.ccvim

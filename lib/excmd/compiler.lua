@@ -380,8 +380,8 @@ local function split_ws_static(raw)
 end
 
 local function compile_invocation_spec(node)
-    local cmd = tostring(node.cmd or "")
-    local rest = tostring(node.rest or "")
+    local cmd = node.cmd
+    local rest = node.rest
     local lname = cmd:lower()
     local ws_args = split_ws_static(rest)
     local ws_items = {}
@@ -412,6 +412,19 @@ local function compile_invocation_spec(node)
         fields[#fields + 1] = "dispatch = " .. lua_string(dispatch)
     end
 
+    return "{ " .. table.concat(fields, ", ") .. " }"
+end
+
+local function build_precompiled_node(node, include_spec)
+    local fields = {
+        "line = " .. tostring(node.line),
+        "text = " .. lua_string(node.text),
+        "cmd = " .. lua_string(node.cmd),
+        "rest = " .. lua_string(node.rest),
+    }
+    if include_spec then
+        fields[#fields + 1] = "spec = " .. compile_invocation_spec(node)
+    end
     return "{ " .. table.concat(fields, ", ") .. " }"
 end
 
@@ -756,8 +769,8 @@ function Compiler.compile_expr(expr, ctx)
 end
 
 function Compiler.compile_command(node, ctx)
-    local cmd = node.cmd or ""
-    local rest = node.rest or ""
+    local cmd = node.cmd
+    local rest = node.rest
     ctx = ctx or {}
 
     if cmd == "let" then
@@ -767,42 +780,48 @@ function Compiler.compile_command(node, ctx)
             op = "="
         end
         if not lhs or not op then
-            return "error('Malformed :let')"
+            return { code = "error('Malformed :let')" }
         end
         lhs = trim(lhs)
         rhs = trim(rhs)
         if op == "=" then
-            return string.format("runtime:assign(%s, %s)", lua_string(lhs), Compiler.compile_expr(rhs, ctx))
+            return {
+                code = string.format("runtime:assign(%s, %s)", lua_string(lhs), Compiler.compile_expr(rhs, ctx)),
+            }
         end
 
         if op ~= "+=" and op ~= "-=" and op ~= "*=" and op ~= "/=" and op ~= "%=" and op ~= ".=" then
-            return "error('Malformed :let')"
+            return { code = "error('Malformed :let')" }
         end
-        return string.format(
-            "do local __rv=runtime:assign_compound(%s,%s,%s); if Error.IsError(__rv) then error(__rv) end end",
-            lua_string(lhs),
-            lua_string(op),
-            Compiler.compile_expr(rhs, ctx)
-        )
+        return {
+            code = string.format(
+                "do local __rv=runtime:assign_compound(%s,%s,%s); if Error.IsError(__rv) then error(__rv) end end",
+                lua_string(lhs),
+                lua_string(op),
+                Compiler.compile_expr(rhs, ctx)
+            ),
+        }
     elseif cmd == "unlet" then
-        return string.format("runtime:unlet(%s,%s)", lua_string(rest), node.bang and "true" or "false")
+        return {
+            code = string.format("runtime:unlet(%s,%s)", lua_string(rest), node.bang and "true" or "false"),
+        }
     elseif cmd == "break" then
-        return "error(runtime:break_exc())"
+        return { code = "error(runtime:break_exc())" }
     elseif cmd == "continue" then
         local tgt = ctx.loop_continue
         if not tgt then
-            return "error('continue outside loop')"
+            return { code = "error('continue outside loop')" }
         end
-        return "error(runtime:continue_exc())"
+        return { code = "error(runtime:continue_exc())" }
     elseif cmd == "execute" then
-        return string.format("runtime:execute(%s)", lua_string(rest))
+        return { code = string.format("runtime:execute(%s)", lua_string(rest)) }
     elseif cmd == "verbose" then
         local level = tonumber(node.verbose_count) or 1
-        return string.format("runtime:exec_verbose(%d, %s)", level, lua_string(rest))
+        return { code = string.format("runtime:exec_verbose(%d, %s)", level, lua_string(rest)) }
     elseif cmd == "call" then
         local fname, argstr = rest:match("^([^%s(]+)%s*%((.*)%)%s*$")
         if not fname then
-            return "error('Malformed :call')"
+            return { code = "error('Malformed :call')" }
         end
         argstr = argstr or ""
         local args = {}
@@ -810,24 +829,366 @@ function Compiler.compile_command(node, ctx)
         for i = 1, #parts do
             args[#args + 1] = Compiler.compile_expr(parts[i], ctx)
         end
-        return string.format("runtime:call_func(%s, { %s })", lua_string(fname), table.concat(args, ", "))
+        return {
+            code = string.format("runtime:call_func(%s, { %s })", lua_string(fname), table.concat(args, ", ")),
+        }
     elseif cmd == "return" then
         local val = (#rest > 0) and Compiler.compile_expr(rest, ctx) or "nil"
-        return string.format("error(runtime:return_exc(%s))", val)
+        return { code = string.format("error(runtime:return_exc(%s))", val) }
     elseif cmd == "finish" then
-        return "error(runtime:return_exc(nil))"
+        return { code = "error(runtime:return_exc(nil))" }
     elseif cmd == "set" then
-        return string.format("runtime:set_options(%s, %s)", lua_string(rest), lua_string("both"))
+        return { code = string.format("runtime:set_options(%s, %s)", lua_string(rest), lua_string("both")) }
     elseif cmd == "setlocal" then
-        return string.format("runtime:set_options(%s, %s)", lua_string(rest), lua_string("local"))
+        return { code = string.format("runtime:set_options(%s, %s)", lua_string(rest), lua_string("local")) }
     elseif cmd == "autocmd" then
-        return string.format("runtime:define_autocmd(%s, %s)", lua_string(rest), node.bang and "true" or "false")
+        return {
+            code = string.format("runtime:define_autocmd(%s, %s)", lua_string(rest), node.bang and "true" or "false"),
+        }
     elseif cmd == "doautoall" then
-        return string.format("runtime:doautoall(%s)", lua_string(rest))
+        return { code = string.format("runtime:doautoall(%s)", lua_string(rest)) }
     elseif cmd == "command" or cmd == "command!" then
-        return string.format("runtime:define_command(%s, %s)", lua_string(rest), node.bang and "true" or "false")
+        return {
+            code = string.format("runtime:define_command(%s, %s)", lua_string(rest), node.bang and "true" or "false"),
+        }
     else
-        return string.format("runtime:invoke_compiled_command(%s)", compile_invocation_spec(node))
+        return { uses_dispatch = true }
+    end
+end
+
+local function slice_ir(seq, first, last)
+    local out = {}
+    for i = first, last do
+        out[#out + 1] = seq[i]
+    end
+    return out
+end
+
+local BLOCK_CLOSERS = {
+    ["if"] = "endif",
+    ["while"] = "endwhile",
+    ["for"] = "endfor",
+    ["try"] = "endtry",
+    ["function"] = "endfunction",
+}
+
+local function analyze_control_flow(seq)
+    local stack = {}
+
+    local function top()
+        return stack[#stack]
+    end
+
+    local function push(entry)
+        stack[#stack + 1] = entry
+    end
+
+    local function pop(expected, code, arg)
+        local entry = top()
+        if not entry or entry.kind ~= expected then
+            return nil, Error(code, arg)
+        end
+        stack[#stack] = nil
+        return entry
+    end
+
+    for i = 1, #seq do
+        local node = seq[i]
+        local cmd = node.cmd
+
+        if cmd == "if" then
+            push({ kind = "if", saw_else = false })
+        elseif cmd == "elseif" then
+            local entry = top()
+            if not entry or entry.kind ~= "if" or entry.saw_else then
+                return nil, Error(581)
+            end
+        elseif cmd == "else" then
+            local entry = top()
+            if not entry or entry.kind ~= "if" or entry.saw_else then
+                return nil, Error(581)
+            end
+            entry.saw_else = true
+        elseif cmd == "endif" then
+            local _, err = pop("if", 580)
+            if err then
+                return nil, err
+            end
+        elseif cmd == "while" then
+            push({ kind = "while" })
+        elseif cmd == "endwhile" then
+            local _, err = pop("while", 588)
+            if err then
+                return nil, err
+            end
+        elseif cmd == "for" then
+            local lhs, rhs = node.rest:match("^(.-)%s+in%s+(.+)$")
+            lhs = trim(lhs or "")
+            if lhs == "" then
+                return nil, Error(474, "for")
+            end
+            node.iter_lhs = lhs
+            node.iter_rhs = rhs
+            push({ kind = "for" })
+        elseif cmd == "endfor" then
+            local _, err = pop("for", 474, "endfor")
+            if err then
+                return nil, err
+            end
+        elseif cmd == "try" then
+            push({
+                kind = "try",
+                start_idx = i,
+                marks = {},
+                saw_finally = false,
+            })
+        elseif cmd == "catch" then
+            local entry = top()
+            if not entry or entry.kind ~= "try" or entry.saw_finally then
+                return nil, Error(603)
+            end
+            entry.marks[#entry.marks + 1] = {
+                idx = i,
+                kind = "catch",
+                rest = node.rest,
+            }
+        elseif cmd == "finally" then
+            local entry = top()
+            if not entry or entry.kind ~= "try" or entry.saw_finally then
+                return nil, Error(606)
+            end
+            entry.saw_finally = true
+            entry.marks[#entry.marks + 1] = {
+                idx = i,
+                kind = "finally",
+                rest = node.rest,
+            }
+        elseif cmd == "endtry" then
+            local entry, err = pop("try", 602)
+            if err then
+                return nil, err
+            end
+
+            local try_body_end = (#entry.marks > 0) and (entry.marks[1].idx - 1) or (i - 1)
+            local region = {
+                end_idx = i,
+                try_body = slice_ir(seq, entry.start_idx + 1, try_body_end),
+                catches = {},
+                finally_body = nil,
+            }
+
+            for mark_idx = 1, #entry.marks do
+                local mark = entry.marks[mark_idx]
+                local next_idx = (mark_idx < #entry.marks) and entry.marks[mark_idx + 1].idx or i
+                local body = slice_ir(seq, mark.idx + 1, next_idx - 1)
+                if mark.kind == "catch" then
+                    region.catches[#region.catches + 1] = {
+                        rest = mark.rest,
+                        body = body,
+                    }
+                else
+                    region.finally_body = body
+                end
+            end
+
+            seq[entry.start_idx].try_region = region
+        elseif cmd == "function" then
+            local fname, params = parse_function_head(node.rest)
+            if not fname then
+                return nil, Error(474, "function")
+            end
+            node.func_name = fname
+            node.func_params = split_params(params)
+            push({
+                kind = "function",
+                start_idx = i,
+            })
+        elseif cmd == "endfunction" then
+            local entry, err = pop("function", 474, "endfunction")
+            if err then
+                return nil, err
+            end
+            seq[entry.start_idx].function_region = {
+                end_idx = i,
+                body = slice_ir(seq, entry.start_idx + 1, i - 1),
+            }
+        end
+    end
+
+    if #stack > 0 then
+        return nil, Error(474, BLOCK_CLOSERS[stack[#stack].kind])
+    end
+
+    return true
+end
+
+local function new_script_emitter()
+    local emitter = {
+        static_nodes = {},
+        body_lines = {},
+    }
+
+    function emitter:emit(line)
+        self.body_lines[#self.body_lines + 1] = line
+    end
+
+    function emitter:intern_node(node, include_spec)
+        self.static_nodes[#self.static_nodes + 1] = build_precompiled_node(node, include_spec)
+        return "__nodes[" .. tostring(#self.static_nodes) .. "]"
+    end
+
+    return emitter
+end
+
+local function emit_loop_error_guard(emitter, indent, ok_name, err_name, label)
+    emitter:emit(indent .. "if not " .. ok_name .. " then")
+    emitter:emit(indent .. "  if type(" .. err_name .. ") == 'table' and " .. err_name .. ".__continue then goto " .. label .. " end")
+    emitter:emit(indent .. "  if type(" .. err_name .. ") == 'table' and " .. err_name .. ".__break then break end")
+    emitter:emit(indent .. "  if type(" .. err_name .. ") == 'table' and " .. err_name .. ".__ret then error(" .. err_name .. ") end")
+    emitter:emit(indent .. "  error(" .. err_name .. ")")
+    emitter:emit(indent .. "end")
+end
+
+local function emit_regular_node(emitter, node, state, loop_stack, indent)
+    local compiled = Compiler.compile_command(node, {
+        state = state,
+        loop_continue = loop_stack[#loop_stack],
+    })
+    local node_ref = emitter:intern_node(node, compiled.uses_dispatch == true)
+    if compiled.uses_dispatch then
+        emitter:emit(indent .. "runtime:invoke_precompiled_node(" .. node_ref .. ")")
+        return
+    end
+    emitter:emit(indent .. "runtime:set_exec_cursor_from(" .. node_ref .. ")")
+    emitter:emit(indent .. compiled.code)
+end
+
+local function render_compiled_chunk(emitter)
+    local lines = {}
+    if #emitter.static_nodes > 0 then
+        lines[#lines + 1] = "local __nodes = {"
+        for i = 1, #emitter.static_nodes do
+            lines[#lines + 1] = "  " .. emitter.static_nodes[i] .. ","
+        end
+        lines[#lines + 1] = "}"
+    else
+        lines[#lines + 1] = "local __nodes = {}"
+    end
+
+    lines[#lines + 1] = "return function(state, runtime)"
+    lines[#lines + 1] = "  if not runtime then error('runtime required') end"
+    lines[#lines + 1] = "  runtime.state = state or runtime.state"
+    lines[#lines + 1] = "  local Error = runtime.Error"
+    lines[#lines + 1] = "  runtime:_push_script_ctx()"
+    lines[#lines + 1] = "  local __ok, __err = runtime:_pcall(function()"
+    for i = 1, #emitter.body_lines do
+        lines[#lines + 1] = emitter.body_lines[i]
+    end
+    lines[#lines + 1] = "  end)"
+    lines[#lines + 1] = "  runtime:_pop_script_ctx()"
+    lines[#lines + 1] = "  if not __ok then"
+    lines[#lines + 1] = "    if type(__err) == 'table' and __err.__ret then return __err.value end"
+    lines[#lines + 1] = "    error(__err)"
+    lines[#lines + 1] = "  end"
+    lines[#lines + 1] = "end"
+    return table.concat(lines, "\n")
+end
+
+local function emit_sequence(emitter, seq, state, indent, loop_stack)
+    indent = indent or "  "
+    loop_stack = loop_stack or {}
+    local i = 1
+    while i <= #seq do
+        local node = seq[i]
+        local cmd = node.cmd
+        if cmd == "if" then
+            emitter:emit(("%sif %s then"):format(indent, _compile_condition(node.rest, { state = state })))
+            i = i + 1
+        elseif cmd == "elseif" then
+            emitter:emit(("%selseif %s then"):format(indent, _compile_condition(node.rest, { state = state })))
+            i = i + 1
+        elseif cmd == "else" then
+            emitter:emit(indent .. "else")
+            i = i + 1
+        elseif cmd == "endif" then
+            emitter:emit(indent .. "end")
+            i = i + 1
+        elseif cmd == "while" then
+            local label = string.format("__cont_%d", node.line)
+            loop_stack[#loop_stack + 1] = label
+            emitter:emit(indent .. "while true do")
+            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition(node.rest, { state = state })))
+            emitter:emit(indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()")
+            i = i + 1
+        elseif cmd == "endwhile" then
+            local label = loop_stack[#loop_stack]
+            loop_stack[#loop_stack] = nil
+            emitter:emit(indent .. "  end)")
+            emit_loop_error_guard(emitter, indent .. "  ", "__loop_ok", "__loop_err", label)
+            emitter:emit(indent .. "  ::" .. label .. "::")
+            emitter:emit(indent .. "end")
+            i = i + 1
+        elseif cmd == "for" then
+            local label = string.format("__cont_%d", node.line)
+            loop_stack[#loop_stack + 1] = label
+            emitter:emit(indent .. "do")
+            emitter:emit(indent .. "  for _, __v in ipairs(runtime:iter(" .. Compiler.compile_expr(node.iter_rhs, { state = state }) .. ")) do")
+            emitter:emit(indent .. "    runtime:assign(" .. lua_string(node.iter_lhs) .. ", __v)")
+            emitter:emit(indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()")
+            i = i + 1
+        elseif cmd == "endfor" then
+            local label = loop_stack[#loop_stack]
+            loop_stack[#loop_stack] = nil
+            emitter:emit(indent .. "    end)")
+            emit_loop_error_guard(emitter, indent .. "    ", "__loop_ok", "__loop_err", label)
+            emitter:emit(indent .. "    ::" .. label .. "::")
+            emitter:emit(indent .. "  end")
+            emitter:emit(indent .. "end")
+            i = i + 1
+        elseif cmd == "try" then
+            local region = node.try_region
+            emitter:emit(indent .. "do")
+            emitter:emit(indent .. "  local __try_ok, __try_err = runtime:_pcall(function()")
+            emit_sequence(emitter, region.try_body, state, indent .. "    ", loop_stack)
+            emitter:emit(indent .. "  end)")
+            emitter:emit(indent .. "  if not __try_ok then")
+            emitter:emit(indent .. "    if type(__try_err) == 'table' and (__try_err.__ret or __try_err.__break or __try_err.__continue) then error(__try_err) end")
+            if #region.catches > 0 then
+                for catch_idx = 1, #region.catches do
+                    local catch = region.catches[catch_idx]
+                    local prefix = (catch_idx == 1) and "if" or "elseif"
+                    emitter:emit(indent .. "    " .. prefix .. " runtime:catch_matches(__try_err, " .. lua_string(catch.rest) .. ") then")
+                    emit_sequence(emitter, catch.body, state, indent .. "      ", loop_stack)
+                end
+                emitter:emit(indent .. "    else")
+                emitter:emit(indent .. "      error(__try_err)")
+                emitter:emit(indent .. "    end")
+            else
+                emitter:emit(indent .. "    error(__try_err)")
+            end
+            emitter:emit(indent .. "  end")
+            if region.finally_body then
+                emit_sequence(emitter, region.finally_body, state, indent .. "  ", loop_stack)
+            end
+            emitter:emit(indent .. "end")
+            i = region.end_idx + 1
+        elseif cmd == "function" then
+            local region = node.function_region
+            local plist = {}
+            for _, p in ipairs(node.func_params) do
+                plist[#plist + 1] = lua_string(p)
+            end
+            emitter:emit(indent .. "do")
+            emitter:emit(indent .. "  local __fn = function(runtime)")
+            emit_sequence(emitter, region.body, state, indent .. "    ", {})
+            emitter:emit(indent .. "  end")
+            emitter:emit(("%s  runtime:register_function(%s, {%s}, __fn)"):format(indent, lua_string(node.func_name), table.concat(plist, ", ")))
+            emitter:emit(indent .. "end")
+            i = region.end_idx + 1
+        else
+            emit_regular_node(emitter, node, state, loop_stack, indent)
+            i = i + 1
+        end
     end
 end
 
@@ -837,258 +1198,15 @@ function Compiler.compile_script(script, opts)
     if not ir then
         return nil, err
     end
-
-    local lua_lines = {}
-    lua_lines[#lua_lines + 1] = "return function(state, runtime)"
-    lua_lines[#lua_lines + 1] = "  if not runtime then error('runtime required') end"
-    lua_lines[#lua_lines + 1] = "  runtime.state = state or runtime.state"
-    lua_lines[#lua_lines + 1] = "  local Error = runtime.Error"
-    lua_lines[#lua_lines + 1] = "  runtime:_push_script_ctx()"
-    lua_lines[#lua_lines + 1] = "  local __ok, __err = runtime:_pcall(function()"
-
-    local function emit_block(seq, indent, loop_stack)
-        indent = indent or "  "
-        loop_stack = loop_stack or {}
-        local i = 1
-        while i <= #seq do
-            local node = seq[i]
-            local c = node.cmd or ""
-            if c == "if" then
-                lua_lines[#lua_lines + 1] = ("%sif %s then"):format(
-                    indent,
-                    _compile_condition(node.rest or "", { state = opts.state })
-                )
-                i = i + 1
-            elseif c == "elseif" then
-                lua_lines[#lua_lines + 1] = ("%selseif %s then"):format(
-                    indent,
-                    _compile_condition(node.rest or "", { state = opts.state })
-                )
-                i = i + 1
-            elseif c == "else" then
-                lua_lines[#lua_lines + 1] = indent .. "else"
-                i = i + 1
-            elseif c == "endif" then
-                lua_lines[#lua_lines + 1] = indent .. "end"
-                i = i + 1
-            elseif c == "while" then
-                local lbl = string.format("__cont_%d", node.line or #lua_lines)
-                loop_stack[#loop_stack + 1] = lbl
-                lua_lines[#lua_lines + 1] = indent .. "while true do"
-                lua_lines[#lua_lines + 1] = ("%s  if not %s then break end"):format(
-                    indent,
-                    _compile_condition(node.rest or "", { state = opts.state })
-                )
-                lua_lines[#lua_lines + 1] = indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()"
-                i = i + 1
-            elseif c == "endwhile" then
-                local lbl = loop_stack[#loop_stack]
-                loop_stack[#loop_stack] = nil
-                local lbl_while = lbl or "__cont"
-                lua_lines[#lua_lines + 1] = indent .. "  end)"
-                lua_lines[#lua_lines + 1] = indent .. "  if not __loop_ok then"
-                lua_lines[#lua_lines + 1] = indent ..
-                    "    if type(__loop_err) == 'table' and __loop_err.__continue then goto " ..
-                    lbl_while .. " end"
-                lua_lines[#lua_lines + 1] = indent ..
-                    "    if type(__loop_err) == 'table' and __loop_err.__break then break end"
-                lua_lines[#lua_lines + 1] = indent ..
-                    "    if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
-                lua_lines[#lua_lines + 1] = indent .. "    error(__loop_err)"
-                lua_lines[#lua_lines + 1] = indent .. "  end"
-                lua_lines[#lua_lines + 1] = indent .. "  ::" .. lbl_while .. "::"
-                lua_lines[#lua_lines + 1] = indent .. "end"
-                i = i + 1
-            elseif c == "for" then
-                local lhs, rhs = (node.rest or ""):match("^(.-)%s+in%s+(.+)$")
-                if not lhs then
-                    lua_lines[#lua_lines + 1] = indent .. "error('Malformed :for')"
-                else
-                    local lbl = string.format("__cont_%d", node.line or #lua_lines)
-                    loop_stack[#loop_stack + 1] = lbl
-                    lua_lines[#lua_lines + 1] = indent .. "do"
-                    local iter_expr = Compiler.compile_expr(rhs or "", { state = opts.state })
-                    lua_lines[#lua_lines + 1] = indent ..
-                        "  for _, __v in ipairs(runtime:iter(" .. iter_expr .. ")) do"
-                    lua_lines[#lua_lines + 1] = indent .. "    runtime:assign(" .. lua_string(lhs) .. ", __v)"
-                    lua_lines[#lua_lines + 1] = indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()"
-                end
-                i = i + 1
-            elseif c == "endfor" then
-                local lbl = loop_stack[#loop_stack]
-                loop_stack[#loop_stack] = nil
-                local lbl_for = lbl or "__cont"
-                lua_lines[#lua_lines + 1] = indent .. "    end)"
-                lua_lines[#lua_lines + 1] = indent .. "    if not __loop_ok then"
-                lua_lines[#lua_lines + 1] = indent ..
-                    "      if type(__loop_err) == 'table' and __loop_err.__continue then goto " ..
-                    lbl_for .. " end"
-                lua_lines[#lua_lines + 1] = indent ..
-                    "      if type(__loop_err) == 'table' and __loop_err.__break then break end"
-                lua_lines[#lua_lines + 1] = indent ..
-                    "      if type(__loop_err) == 'table' and __loop_err.__ret then error(__loop_err) end"
-                lua_lines[#lua_lines + 1] = indent .. "      error(__loop_err)"
-                lua_lines[#lua_lines + 1] = indent .. "    end"
-                lua_lines[#lua_lines + 1] = indent .. "    ::" .. lbl_for .. "::"
-                lua_lines[#lua_lines + 1] = indent .. "  end"
-                lua_lines[#lua_lines + 1] = indent .. "end"
-                i = i + 1
-            elseif c == "try" then
-                local depth = 1
-                local j = i + 1
-                local end_idx = nil
-                local marks = {}
-                while j <= #seq do
-                    local inner = seq[j].cmd
-                    if inner == "try" then
-                        depth = depth + 1
-                    elseif inner == "endtry" then
-                        depth = depth - 1
-                        if depth == 0 then
-                            end_idx = j
-                            break
-                        end
-                    elseif depth == 1 and (inner == "catch" or inner == "finally") then
-                        marks[#marks + 1] = { idx = j, kind = inner, rest = seq[j].rest or "" }
-                    end
-                    j = j + 1
-                end
-
-                if not end_idx then
-                    lua_lines[#lua_lines + 1] = indent .. "error('Malformed :try')"
-                    i = i + 1
-                else
-                    local try_body_start = i + 1
-                    local try_body_end = end_idx - 1
-                    if #marks > 0 then
-                        try_body_end = marks[1].idx - 1
-                    end
-
-                    local try_body_ir = {}
-                    for k = try_body_start, try_body_end do
-                        try_body_ir[#try_body_ir + 1] = seq[k]
-                    end
-
-                    local catches = {}
-                    local finally_body_ir = nil
-                    for mi = 1, #marks do
-                        local m = marks[mi]
-                        local next_idx = (mi < #marks) and marks[mi + 1].idx or end_idx
-                        local body_start = m.idx + 1
-                        local body_end = next_idx - 1
-                        local body_ir = {}
-                        for k = body_start, body_end do
-                            body_ir[#body_ir + 1] = seq[k]
-                        end
-                        if m.kind == "catch" then
-                            catches[#catches + 1] = { rest = m.rest, body = body_ir }
-                        elseif m.kind == "finally" then
-                            finally_body_ir = body_ir
-                        end
-                    end
-
-                    lua_lines[#lua_lines + 1] = indent .. "do"
-                    lua_lines[#lua_lines + 1] = indent .. "  local __try_ok, __try_err = runtime:_pcall(function()"
-                    emit_block(try_body_ir, indent .. "    ", loop_stack)
-                    lua_lines[#lua_lines + 1] = indent .. "  end)"
-                    lua_lines[#lua_lines + 1] = indent .. "  if not __try_ok then"
-                    lua_lines[#lua_lines + 1] = indent ..
-                        "    if type(__try_err) == 'table' and " ..
-                        "(__try_err.__ret or __try_err.__break or __try_err.__continue)" ..
-                        " then error(__try_err) end"
-                    if #catches > 0 then
-                        for ci = 1, #catches do
-                            local cat = catches[ci]
-                            local kw = (ci == 1) and "if" or "elseif"
-                            lua_lines[#lua_lines + 1] = indent .. "    " ..
-                                kw .. " runtime:catch_matches(__try_err, " ..
-                                lua_string(cat.rest or "") .. ") then"
-                            emit_block(cat.body or {}, indent .. "      ", loop_stack)
-                        end
-                        lua_lines[#lua_lines + 1] = indent .. "    else"
-                        lua_lines[#lua_lines + 1] = indent .. "      error(__try_err)"
-                        lua_lines[#lua_lines + 1] = indent .. "    end"
-                    else
-                        lua_lines[#lua_lines + 1] = indent .. "    error(__try_err)"
-                    end
-                    lua_lines[#lua_lines + 1] = indent .. "  end"
-                    if finally_body_ir then
-                        emit_block(finally_body_ir, indent .. "  ", loop_stack)
-                    end
-                    lua_lines[#lua_lines + 1] = indent .. "end"
-                    i = end_idx + 1
-                end
-            elseif c == "function" then
-                local fname, params = parse_function_head(node.rest or "")
-                if not fname then
-                    lua_lines[#lua_lines + 1] = indent .. "error('Malformed :function')"
-                    i = i + 1
-                else
-                    local depth = 1
-                    local j = i + 1
-                    while j <= #seq and depth > 0 do
-                        local inner = seq[j].cmd
-                        if inner == "function" then depth = depth + 1 end
-                        if inner == "endfunction" then depth = depth - 1 end
-                        j = j + 1
-                    end
-                    local end_idx = j - 1
-                    local body_ir = {}
-                    for k = i + 1, end_idx - 1 do
-                        body_ir[#body_ir + 1] = seq[k]
-                    end
-                    local plist_raw = split_params(params)
-                    local plist = {}
-                    for _, p in ipairs(plist_raw) do
-                        plist[#plist + 1] = lua_string(p)
-                    end
-                        lua_lines[#lua_lines + 1] = indent .. "do"
-                        lua_lines[#lua_lines + 1] = indent .. "  local __fn = function(runtime)"
-                        emit_block(body_ir, indent .. "    ")
-                        lua_lines[#lua_lines + 1] = indent .. "  end"
-                        lua_lines[#lua_lines + 1] = ("%s  runtime:register_function(%s, {%s}, __fn)"):format(
-                            indent,
-                            lua_string(fname),
-                            table.concat(plist, ", ")
-                        )
-                        lua_lines[#lua_lines + 1] = indent .. "end"
-                    i = end_idx + 1
-                end
-            elseif c == "endfunction" then
-                i = i + 1
-            elseif c == "catch" or c == "finally" or c == "endtry" then
-                i = i + 1
-            else
-                lua_lines[#lua_lines + 1] = indent
-                    .. "runtime:set_exec_cursor("
-                    .. tostring(node.line or "nil")
-                    .. ", "
-                    .. lua_string(node.text or "")
-                    .. ", "
-                    .. lua_string(node.cmd or "")
-                    .. ", "
-                    .. lua_string(node.rest or "")
-                    .. ")"
-                lua_lines[#lua_lines + 1] = ("%s%s"):format(
-                    indent,
-                    Compiler.compile_command(node, { state = opts.state, loop_continue = loop_stack[#loop_stack] })
-                )
-                i = i + 1
-            end
-        end
+    local ok
+    ok, err = analyze_control_flow(ir)
+    if err then
+        return nil, err
     end
-
-    emit_block(ir, "    ")
-    lua_lines[#lua_lines + 1] = "  end)"
-    lua_lines[#lua_lines + 1] = "  runtime:_pop_script_ctx()"
-    lua_lines[#lua_lines + 1] = "  if not __ok then"
-    lua_lines[#lua_lines + 1] = "    if type(__err) == 'table' and __err.__ret then return __err.value end"
-    lua_lines[#lua_lines + 1] = "    error(__err)"
-    lua_lines[#lua_lines + 1] = "  end"
-    lua_lines[#lua_lines + 1] = "end"
-
+    local emitter = new_script_emitter()
+    emit_sequence(emitter, ir, opts.state, "    ", {})
     local source_map = {}
-    return table.concat(lua_lines, "\n"), source_map
+    return render_compiled_chunk(emitter), source_map
 end
 
 return Compiler
