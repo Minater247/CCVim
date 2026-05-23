@@ -1839,8 +1839,14 @@ function Builtins.cursor(lnum, col, ...)
         lnum = lnum[1]
     end
 
-    local y = tonumber(lnum or win.cursory) or win.cursory
-    local x = tonumber(col or win.cursorx) or win.cursorx
+    local y = tonumber(lnum)
+    if y == nil or y == 0 then
+        y = win.cursory
+    end
+    local x = tonumber(col)
+    if x == nil then
+        x = win.cursorx
+    end
     local max_y = math.max(1, win.buffer:line_count(true))
     y = math.max(1, math.min(max_y, math.floor(y)))
 
