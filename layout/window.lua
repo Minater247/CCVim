@@ -2566,7 +2566,7 @@ end
 
 function Window:markUpdate(line)
     local buf = self.buffer
-    Syntax.ParseLinetypes(buf, math.max(1, (line or 1) - 1))
+    Syntax.ParseLinetypes(buf, math.max(1, line or 1))
     buf.opts.modified = true
 
     for _, win in pairs(windows) do
