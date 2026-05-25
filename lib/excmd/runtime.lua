@@ -13,6 +13,7 @@ local scopes = loadModule("lib.luaapi.scopes")
 local Builtins = loadModule("lib.luaapi.fn")
 local Utf8 = loadModule("lib.utf8")
 local Window = loadModule("layout.window")
+local EnvVars = loadModule("lib.envvars")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -662,6 +663,200 @@ local function to_number(v)
     return 0
 end
 
+local RUNTIME_LIST_MT = { __vimxpr_kind = "list" }
+local RUNTIME_DICT_MT = { __vimxpr_kind = "dict" }
+
+local function mark_runtime_list(tbl)
+    return setmetatable(tbl or {}, RUNTIME_LIST_MT)
+end
+
+local function mark_runtime_dict(tbl)
+    return setmetatable(tbl or {}, RUNTIME_DICT_MT)
+end
+
+local function runtime_table_kind(v)
+    if type(v) ~= "table" then
+        return nil
+    end
+    local mt = getmetatable(v)
+    if mt and (mt.__vimxpr_kind == "list" or mt.__vimxpr_kind == "dict") then
+        return mt.__vimxpr_kind
+    end
+    local maxk = 0
+    local count = 0
+    for k, _ in pairs(v) do
+        if type(k) ~= "number" or k < 1 or (k % 1) ~= 0 then
+            return "dict"
+        end
+        if k > maxk then maxk = k end
+        count = count + 1
+    end
+    if count == 0 then
+        return "dict"
+    end
+    return (count == maxk) and "list" or "dict"
+end
+
+local function runtime_string(v)
+    if v == nil then return "null" end
+    if type(v) == "boolean" then return v and "true" or "false" end
+    return tostring(v)
+end
+
+local function runtime_add(a, b)
+    if type(a) == "table" and type(b) == "table" then
+        local ak = runtime_table_kind(a)
+        local bk = runtime_table_kind(b)
+        if ak == "list" and bk == "list" then
+            local out = {}
+            for i = 1, #a do out[#out + 1] = a[i] end
+            for i = 1, #b do out[#out + 1] = b[i] end
+            return mark_runtime_list(out)
+        end
+    end
+    return to_number(a) + to_number(b)
+end
+
+local function runtime_index(container, idx)
+    if container == nil then return nil end
+    if type(container) == "table" then
+        if runtime_table_kind(container) == "list" and type(idx) == "number" then
+            local key = idx >= 0 and (idx + 1) or (#container + idx + 1)
+            return container[key]
+        end
+        return container[idx]
+    end
+    if type(container) == "string" then
+        if type(idx) ~= "number" then return nil end
+        local pos = idx >= 0 and (idx + 1) or (#container + idx + 1)
+        if pos < 1 or pos > #container then return "" end
+        return container:sub(pos, pos)
+    end
+    return nil
+end
+
+local function runtime_slice(container, first, last)
+    if container == nil then return nil end
+
+    local function to_index(v, default)
+        if v == nil then return default end
+        local n = to_number(v)
+        if n >= 0 then return math.floor(n) end
+        return math.ceil(n)
+    end
+
+    local function to_bounds(len)
+        if len <= 0 then return nil, nil end
+        local s = to_index(first, 0)
+        local e = to_index(last, -1)
+        if s < 0 then s = len + s end
+        if e < 0 then e = len + e end
+        s = s + 1
+        e = e + 1
+        if s < 1 then s = 1 end
+        if e > len then e = len end
+        if s > len or e < 1 or s > e then return nil, nil end
+        return s, e
+    end
+
+    if type(container) == "table" then
+        if runtime_table_kind(container) ~= "list" then return nil end
+        local s, e = to_bounds(#container)
+        if not s then return mark_runtime_list({}) end
+        local out = {}
+        for i = s, e do out[#out + 1] = container[i] end
+        return mark_runtime_list(out)
+    end
+
+    if type(container) == "string" then
+        local s, e = to_bounds(#container)
+        if not s then return "" end
+        return container:sub(s, e)
+    end
+
+    return nil
+end
+
+local function runtime_match_op(a, op, b)
+    local case
+    if op:sub(-1) == "#" then
+        case = true
+    elseif op:sub(-1) == "?" then
+        case = false
+    else
+        local ic = Options.get("ignorecase")
+        if Error.IsError(ic) then error(ic) end
+        case = not (ic and ic ~= 0)
+    end
+    local ok = VimRegex.match(runtime_string(a), runtime_string(b), case)
+    local matched
+    if op:sub(1, 1) == "!" then
+        matched = not ok
+    else
+        matched = ok
+    end
+    return matched and 1 or 0
+end
+
+local function runtime_env(name)
+    local v = EnvVars.get(name)
+    if v == nil then return "" end
+    if type(v) == "boolean" then return v and "1" or "" end
+    return tostring(v)
+end
+
+local function runtime_reg(name)
+    local key = name
+    if key == "@" then key = "unnamed" end
+    local regval = registers[key]
+    if regval == nil and type(key) == "string" and key:match("^%d$") then
+        regval = registers[tonumber(key)]
+    end
+    if regval == nil then return "" end
+    if type(regval) == "table" then
+        local val = regval[2]
+        if type(val) == "table" then return table.concat(val, "\n") end
+        if type(val) == "string" then return val end
+        return tostring(val)
+    end
+    if type(regval) == "string" then return regval end
+    return tostring(regval)
+end
+
+local function runtime_name_part(v)
+    return tostring(v or "")
+end
+
+local function runtime_var(name, state, frame, shared_scopes)
+    local var = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local scope, key = var:match("^([gslavwb]):(.+)$")
+    if scope == "g" then return state.g[key] end
+    if scope == "s" then return state.s[key] end
+    if scope == "l" then return (frame and frame.l or state.l)[key] end
+    if scope == "a" then return (frame and frame.a or state.a)[key] end
+    if scope == "v" then return (frame and frame.v or state.v)[key] end
+    if scope == "b" then return shared_scopes.b[key] end
+    if scope == "w" then return shared_scopes.w[key] end
+    if scope == "t" then return shared_scopes.t[key] end
+    if frame and frame.l[var] ~= nil then return frame.l[var] end
+    return state.g[var]
+end
+
+local function runtime_set_var(name, value, state, frame, shared_scopes)
+    local var = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local scope, key = var:match("^([gslavwb]):(.+)$")
+    if scope == "g" then state.g[key] = value; return value end
+    if scope == "s" then state.s[key] = value; return value end
+    if scope == "l" then (frame and frame.l or state.l)[key] = value; return value end
+    if scope == "a" then (frame and frame.a or state.a)[key] = value; return value end
+    if scope == "v" then (frame and frame.v or state.v)[key] = value; return value end
+    if scope == "b" then shared_scopes.b[key] = value; return value end
+    if scope == "w" then shared_scopes.w[key] = value; return value end
+    if scope == "t" then shared_scopes.t[key] = value; return value end
+    if frame then frame.l[var] = value else state.g[var] = value end
+    return value
+end
+
 local function build_call_scopes(arg_values, param_names)
     param_names = param_names or {}
     arg_values = arg_values or {}
@@ -1130,6 +1325,23 @@ function Runtime.new(init_state, init_opts)
         opts = init_opts or {},
         ctrl = (init_opts and init_opts.ctrl) or {},
         Error = Error,
+        scopes = scopes,
+        ops = {
+            truthy = truthy,
+            to_number = to_number,
+            to_string = runtime_string,
+            add = runtime_add,
+            index = runtime_index,
+            slice = runtime_slice,
+            match_op = runtime_match_op,
+            env = runtime_env,
+            reg = runtime_reg,
+            name_part = runtime_name_part,
+            var = runtime_var,
+            set_var = runtime_set_var,
+            list = mark_runtime_list,
+            dict = mark_runtime_dict,
+        },
         return_exc = {},
         exec_cursor = {},
     }
@@ -1152,11 +1364,6 @@ function Runtime.new(init_state, init_opts)
         self.exec_cursor.cmd = node.cmd
         self.exec_cursor.rest = node.rest
         return true
-    end
-
-    function rt:invoke_precompiled_node(node)
-        self:set_exec_cursor_from(node)
-        return self:invoke_compiled_command(node.spec)
     end
 
     function rt:push_frame(arg_values, param_names)
@@ -1221,7 +1428,24 @@ function Runtime.new(init_state, init_opts)
         local VimFnMod = loadModule("lib.luaapi.fn")
         local f_builtin = VimFnMod.fn[name]
         if type(f_builtin) == "function" then
-            return f_builtin(unpack_fn(args or {}))
+            local top = self.state.frames[#self.state.frames]
+            local scope = {
+                g = self.state.g,
+                s = self.state.s,
+                l = top and top.l or self.state.l,
+                a = top and top.a or self.state.a,
+                v = top and top.v or self.state.v,
+            }
+            VimFnMod._push_eval_scope(scope)
+            local ok, rv = pcall(f_builtin, unpack_fn(args or {}))
+            VimFnMod._pop_eval_scope()
+            if ok then
+                if Error.IsError(rv) then
+                    error(rv)
+                end
+                return rv
+            end
+            error(rv)
         end
 
         local fn = resolve_function_def(name, { state = self.state })
@@ -1352,26 +1576,54 @@ function Runtime.new(init_state, init_opts)
         return val
     end
 
+    function rt:echo_values(cmd, values)
+        local parts = {}
+        for i = 1, #values do
+            parts[#parts + 1] = runtime_string(values[i])
+        end
+        local line = table.concat(parts, " ")
+        local msg = _exmsg()
+        if cmd == "echo" then msg.echo(line)
+        elseif cmd == "echoerr" then msg.echoerr(line)
+        elseif cmd == "echomsg" then msg.echomsg(line)
+        else msg.echon(line) end
+        return true
+    end
+
     function rt:cmp(a, op, b)
-        if op == "==" then return a == b end
-        if op == "!=" then return a ~= b end
+        local case_suffix = op:sub(-1)
+        local base = op
+        if case_suffix == "#" or case_suffix == "?" then
+            base = base:sub(1, -2)
+        end
+        if type(a) == "string" and type(b) == "string" and case_suffix == "?" then
+            a = a:lower()
+            b = b:lower()
+        end
+        if base == "==" then return a == b end
+        if base == "!=" then return a ~= b end
+        if a == nil or b == nil then return false end
 
         local anum = tonumber(a)
         local bnum = tonumber(b)
         if anum ~= nil and bnum ~= nil then
-            if op == "<" then return anum < bnum end
-            if op == "<=" then return anum <= bnum end
-            if op == ">" then return anum > bnum end
-            if op == ">=" then return anum >= bnum end
+            if base == "<" then return anum < bnum end
+            if base == "<=" then return anum <= bnum end
+            if base == ">" then return anum > bnum end
+            if base == ">=" then return anum >= bnum end
             error("Unknown comparison operator: " .. tostring(op))
         end
 
         local as = tostring(a or "")
         local bs = tostring(b or "")
-        if op == "<" then return as < bs end
-        if op == "<=" then return as <= bs end
-        if op == ">" then return as > bs end
-        if op == ">=" then return as >= bs end
+        if case_suffix == "?" then
+            as = as:lower()
+            bs = bs:lower()
+        end
+        if base == "<" then return as < bs end
+        if base == "<=" then return as <= bs end
+        if base == ">" then return as > bs end
+        if base == ">=" then return as >= bs end
         error("Unknown comparison operator: " .. tostring(op))
     end
 
@@ -2072,6 +2324,10 @@ function Runtime.new(init_state, init_opts)
             _syntax().OnWindowBufferChanged(win)
             scopes.w.current_syntax = nil
             win.buffer:Load(true)
+            local target_name = (newname ~= "") and newname or win.buffer.name
+            if target_name ~= "" and fs.isDir(VimFs.abspath(target_name)) then
+                Autocmd.Run("BufEnter", { bufnr = win.buffer.bufnr, bufname = win.buffer.name })
+            end
         else
             local status = win.buffer:leave(bang, nil, "autowriteall")
             if status ~= true then
@@ -6037,6 +6293,14 @@ function Runtime.new(init_state, init_opts)
             return self:exec_user_command_script(global, script)
         end
         return true
+    end
+
+    function rt:invoke_compiled_builtin_command(dispatch_cmd, spec)
+        local win = windows[curwin]
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec)
+        local rv = self:_invoke_builtin(dispatch_cmd, spec.qargs, not not spec.bang, cmdctx)
+        if rv == nil then return true end
+        return rv
     end
 
     function rt:invoke_command(name, argstr, bang)

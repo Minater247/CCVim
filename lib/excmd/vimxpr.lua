@@ -343,6 +343,12 @@ local function tokenize(input)
             add("STR", table.concat(buf), start); goto cont
         end
         if c == "$" then
+            local nxt = peek(1)
+            if nxt ~= "{" and not nxt:match("[%a_]") then
+                adv(1)
+                add("DOLLAR", "$", start)
+                goto cont
+            end
             adv(1)
             local name
             if peek() == "{" then
@@ -582,12 +588,13 @@ local function parse(tokens)
                 adv() -- '.'
                 local keytok = peek()
                 local nexttok = tokens[i + 1]
-                local can_index = node.kind ~= "str" and node.kind ~= "num"
+                local can_index = node.kind ~= "str" and node.kind ~= "num" and node.kind ~= "call"
                 if
                     can_index
                     and keytok.typ == "ID"
                     and keytok.pos == (t.pos + 1)
                     and not (nexttok and nexttok.typ == "COLON")
+                    and not (nexttok and nexttok.typ == "LPAREN")
                 then
                     local key = adv()
                     node = {
@@ -726,15 +733,19 @@ local function parse(tokens)
                         end
                         error("__not_lambda__")
                     end
-                    params[#params + 1] = parse_param()
-                    while true do
-                        local tk = peek()
-                        if tk.typ == "OP" and tk.val == "," then
-                            adv(); params[#params + 1] = parse_param()
-                        elseif tk.typ == "OP" and tk.val == "->" then
-                            adv(); break
-                        else
-                            error("__not_lambda__")
+                    if peek().typ == "OP" and peek().val == "->" then
+                        adv()
+                    else
+                        params[#params + 1] = parse_param()
+                        while true do
+                            local tk = peek()
+                            if tk.typ == "OP" and tk.val == "," then
+                                adv(); params[#params + 1] = parse_param()
+                            elseif tk.typ == "OP" and tk.val == "->" then
+                                adv(); break
+                            else
+                                error("__not_lambda__")
+                            end
                         end
                     end
                     local body = expr(0)
@@ -781,7 +792,7 @@ local function parse(tokens)
             local id = idtok.val
             local scope = nil
             local endpos = tok_end(idtok)
-            if peek().typ == "COLON" then
+            if peek().typ == "COLON" and peek().pos == (endpos + 1) then
                 local colon = adv()
                 scope = id
                 endpos = tok_end(colon)
@@ -809,11 +820,15 @@ local function parse(tokens)
             local tok = adv()
             return apply_postfix({ kind = "reg", name = tok.val, pos = tok.pos, endpos = tok_end(tok) })
         end
+        if t.typ == "DOLLAR" then
+            local tok = adv()
+            return apply_postfix({ kind = "lastline", pos = tok.pos, endpos = tok_end(tok) })
+        end
         if t.typ == "ID" then
             local id = adv().val
             local endpos = tok_end(tokens[i - 1])
             local scope, name = nil, id
-            if peek().typ == "COLON" then
+            if peek().typ == "COLON" and peek().pos == (endpos + 1) then
                 local colon = adv()
                 endpos = tok_end(colon)
                 local nxt = peek()
@@ -825,12 +840,39 @@ local function parse(tokens)
                     local name_tok = adv()
                     name = tok_text(name_tok)
                     endpos = tok_end(name_tok)
+                elseif nxt.typ == "LBRACE" then
+                    scope = id
+                    name = nil
                 else
                     -- Bare scope dictionary reference, e.g. g: / b: / s: ...
                     scope = id
                     name = nil
                 end
                 scope = scope or id
+            end
+            if scope and name == nil and peek().typ == "LBRACE" then
+                local parts = { { kind = "lit", val = tostring(scope) .. ":" } }
+                while peek().typ == "LBRACE" do
+                    adv() -- '{'
+                    local inner = expr(0)
+                    expect("RBRACE")
+                    parts[#parts + 1] = { kind = "expr", val = inner }
+                    local suffix = {}
+                    while true do
+                        local tk = peek()
+                        if tk.typ == "ID" then
+                            suffix[#suffix + 1] = adv().val
+                        elseif tk.typ == "NUM" then
+                            suffix[#suffix + 1] = tok_text(adv())
+                        else
+                            break
+                        end
+                    end
+                    if #suffix > 0 then
+                        parts[#parts + 1] = { kind = "lit", val = table.concat(suffix) }
+                    end
+                end
+                return apply_postfix({ kind = "varcurly", parts = parts, pos = t.pos, endpos = endpos })
             end
             if scope and name == nil then
                 return apply_postfix({ kind = "scope", scope = scope, pos = t.pos, endpos = endpos })
@@ -1334,6 +1376,13 @@ local function eval_node(node, vim9, env)
         if type(regval) == "string" then return regval end
         return tostring(regval)
     end
+    if k == "lastline" then
+        local f = VimFnBuiltins.fn.line
+        if type(f) == "function" then
+            return f("$")
+        end
+        return "$"
+    end
     if k == "unary" then
         local v = eval_node(node.a, vim9, env); if is_error(v) then return v end
         if node.op == "!" then
@@ -1528,6 +1577,21 @@ local function eval_node(node, vim9, env)
 end
 
 -- Public API:
+function M.parse(expr)
+    local ok_tok, toks = pcall(tokenize, tostring(expr or ""))
+    if not ok_tok then
+        return nil, toks
+    end
+    local ok, ast, next_i = pcall(parse, toks)
+    if not ok then
+        return nil, ast
+    end
+    if toks[next_i].typ ~= "EOF" then
+        return nil, Error(0, ("Trailing input at %d"):format(toks[next_i].pos))
+    end
+    return ast
+end
+
 -- Returns value or Error object.
 function M.evaluate(expr, opts)
     opts = opts or {}
@@ -1536,16 +1600,14 @@ function M.evaluate(expr, opts)
         scope = opts.scope,
         funcs = opts.funcs,
     }
-    local toks = tokenize(expr)
-    local ok, ast, next_i = pcall(parse, toks)
-    if not ok then
-        LOG_DEBUG("vimxpr parse error expr=%s err=%s", tostring(expr), tostring(ast))
-        error(ast)
-    end
-    if toks[next_i].typ ~= "EOF" then
-        LOG_DEBUG("vimxpr trailing input expr=%s pos=%d token=%s", tostring(expr), tonumber(toks[next_i].pos),
-            tostring(toks[next_i].typ))
-        return Error(0, ("Trailing input at %d"):format(toks[next_i].pos))
+    local ast, parse_err = M.parse(expr)
+    if not ast then
+        if Error.IsError(parse_err) then
+            LOG_DEBUG("vimxpr trailing input expr=%s err=%s", tostring(expr), tostring(parse_err))
+            return parse_err
+        end
+        LOG_DEBUG("vimxpr parse error expr=%s err=%s", tostring(expr), tostring(parse_err))
+        error(parse_err)
     end
     return eval_node(ast, vim9, env)
 end

@@ -1611,6 +1611,10 @@ local function make_module_loader(root, globals, stubs)
                     end
                     return _G[k]
                 end,
+                __newindex = function(_, k, v)
+                    globals[k] = v
+                    _G[k] = v
+                end,
             })
             env._G = _G  -- Use real global environment so Lua base functions are available
             env.loadModule = load_module

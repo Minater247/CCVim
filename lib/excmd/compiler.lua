@@ -3,6 +3,7 @@ local Compiler = {}
 
 local Error = loadModule("lib.error")
 local Commands = loadModule("lib.excmd.commands")
+local VimExpr = loadModule("lib.excmd.vimxpr")
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -399,7 +400,7 @@ local function compile_invocation_spec(node)
 
     local dispatch
     if lname ~= "" then
-        if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] then
+        if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] or Commands.MENU_COMMAND_SPECS[lname] then
             dispatch = lname
         else
             local resolved = resolve_dispatch_name(lname)
@@ -505,6 +506,42 @@ local function split_top_args(arg_str)
     return out
 end
 
+local function split_let_assignment(rest)
+    local s = tostring(rest or "")
+    local in_s, in_d, esc = false, false, false
+    local depth_p, depth_c, depth_b = 0, 0, 0
+    local i, n = 1, #s
+    while i <= n do
+        local ch = s:sub(i, i)
+        if esc then
+            esc = false
+        elseif ch == "\\" then
+            if not in_s then esc = true end
+        elseif not in_d and ch == "'" then
+            in_s = not in_s
+        elseif not in_s and ch == '"' then
+            in_d = not in_d
+        elseif not in_s and not in_d then
+            if ch == "(" then depth_p = depth_p + 1
+            elseif ch == ")" then depth_p = math.max(0, depth_p - 1)
+            elseif ch == "{" then depth_c = depth_c + 1
+            elseif ch == "}" then depth_c = math.max(0, depth_c - 1)
+            elseif ch == "[" then depth_b = depth_b + 1
+            elseif ch == "]" then depth_b = math.max(0, depth_b - 1)
+            elseif depth_p == 0 and depth_c == 0 and depth_b == 0 then
+                local two = s:sub(i, i + 1)
+                if two == "+=" or two == "-=" or two == "*=" or two == "/=" or two == "%=" or two == ".=" then
+                    return trim(s:sub(1, i - 1)), two, trim(s:sub(i + 2))
+                elseif ch == "=" then
+                    return trim(s:sub(1, i - 1)), "=", trim(s:sub(i + 1))
+                end
+            end
+        end
+        i = i + 1
+    end
+    return nil
+end
+
 local function build_ir(script)
     local cmds = split_commands(script or "")
     local ir = {}
@@ -575,185 +612,324 @@ local function build_ir(script)
 end
 
 local SIMPLE_VAR_PATTERN = "^[A-Za-z_][A-Za-z0-9_]*$"
-local SCOPED_VAR_PATTERN = "^[gslavwb]:[A-Za-z_][A-Za-z0-9_]*$"
-local OPTION_PATTERN = "^&([gl]):([A-Za-z_][A-Za-z0-9_]*)$"
-local OPTION_AUTO_PATTERN = "^&([A-Za-z_][A-Za-z0-9_]*)$"
+local DIRECT_SCOPES = { g = "__g", s = "__s", v = "__v" }
+local SHARED_SCOPES = { b = true, w = true, t = true }
+local LUA_KEYWORDS = {
+    ["and"] = true,
+    ["break"] = true,
+    ["do"] = true,
+    ["else"] = true,
+    ["elseif"] = true,
+    ["end"] = true,
+    ["false"] = true,
+    ["for"] = true,
+    ["function"] = true,
+    ["goto"] = true,
+    ["if"] = true,
+    ["in"] = true,
+    ["local"] = true,
+    ["nil"] = true,
+    ["not"] = true,
+    ["or"] = true,
+    ["repeat"] = true,
+    ["return"] = true,
+    ["then"] = true,
+    ["true"] = true,
+    ["until"] = true,
+    ["while"] = true,
+}
 
-local function _is_number_literal(s)
-    return s:match("^[+-]?%d+$") ~= nil or s:match("^[+-]?%d+%.%d+$") ~= nil
+local function lua_key(name)
+    if type(name) == "string" and name:match(SIMPLE_VAR_PATTERN) and not LUA_KEYWORDS[name] then
+        return "." .. name
+    end
+    return "[" .. lua_string(name) .. "]"
 end
 
-local function _is_string_literal(s)
-    return s:match("^'.*'$") ~= nil or s:match('^".*"$') ~= nil
+local function scoped_table(scope, ctx)
+    if scope == "l" then
+        return "((__frame and __frame.l) or __state.l)"
+    elseif scope == "a" then
+        return "((__frame and __frame.a) or __state.a)"
+    elseif DIRECT_SCOPES[scope] then
+        return DIRECT_SCOPES[scope]
+    elseif SHARED_SCOPES[scope] then
+        return "__scopes." .. scope
+    end
+    if ctx and ctx.in_function then
+        return nil
+    end
+    return "__g"
 end
 
-local function _find_top_level_binary(s, op)
-    local in_s, in_d, esc = false, false, false
-    local depth_p, depth_c, depth_b = 0, 0, 0
-    local i, n = 1, #s
-    while i <= n do
-        local ch = s:sub(i, i)
-        if esc then
-            esc = false
-        elseif ch == "\\" then
-            if not in_s then esc = true end
-        elseif not in_d and ch == "'" then
-            in_s = not in_s
-        elseif not in_s and ch == '"' then
-            in_d = not in_d
-        elseif not in_s and not in_d then
-            if ch == "(" then depth_p = depth_p + 1
-            elseif ch == ")" then depth_p = math.max(0, depth_p - 1)
-            elseif ch == "{" then depth_c = depth_c + 1
-            elseif ch == "}" then depth_c = math.max(0, depth_c - 1)
-            elseif ch == "[" then depth_b = depth_b + 1
-            elseif ch == "]" then depth_b = math.max(0, depth_b - 1)
-            elseif depth_p == 0 and depth_c == 0 and depth_b == 0 then
-                -- Treat angle tokens like <SID>, <SNR>, <cword> as atomic so
-                -- comparison scanning doesn't split inside them.
-                if ch == "<" then
-                    local close = s:find(">", i + 1, true)
-                    if close then
-                        local inner = s:sub(i + 1, close - 1)
-                        if inner:match("^[%w%-]+$") then
-                            i = close + 1
-                            goto continue
-                        end
-                    end
-                end
-                if s:sub(i, i + #op - 1) == op then
-                    if op == ">" and i > 1 and s:sub(i - 1, i - 1) == "-" then
-                        i = i + 1
-                        goto continue
-                    end
-                    return i
-                end
-            end
+local function var_read_code(scope, name, ctx)
+    if not scope and ctx and ctx.local_vars and ctx.local_vars[name] then
+        return "__l_" .. tostring(name)
+    end
+    if not scope then
+        if ctx and ctx.in_function then
+            return "((__frame and __frame.l[" .. lua_string(name) .. "] ~= nil) and __frame.l[" .. lua_string(name) .. "] or __g" .. lua_key(name) .. ")"
         end
-        i = i + 1
-        ::continue::
+        return "__g" .. lua_key(name)
+    end
+    local tbl = scoped_table(scope, ctx)
+    if not tbl then
+        return "runtime:get_var(" .. lua_string(scope .. ":" .. tostring(name or "")) .. ")"
+    end
+    return tbl .. lua_key(name)
+end
+
+local function var_write_code(scope, name, value_code, ctx)
+    if not scope and ctx and ctx.local_vars and ctx.local_vars[name] then
+        return "__l_" .. tostring(name) .. " = " .. value_code
+    end
+    if not scope then
+        if ctx and ctx.in_function then
+            return "((__frame and __frame.l) or __state.l)" .. lua_key(name) .. " = " .. value_code
+        end
+        return "__g" .. lua_key(name) .. " = " .. value_code
+    end
+    local tbl = scoped_table(scope, ctx)
+    if not tbl then
+        return "runtime:assign(" .. lua_string(scope .. ":" .. tostring(name or "")) .. ", " .. value_code .. ")"
+    end
+    return tbl .. lua_key(name) .. " = " .. value_code
+end
+
+local function parse_static_lvalue(lhs)
+    local s = trim(lhs)
+    local scope, name = s:match("^([gslavbtw]):([A-Za-z_][A-Za-z0-9_]*)$")
+    if scope then
+        return { scope = scope, name = name }
+    end
+    if s:match(SIMPLE_VAR_PATTERN) then
+        return { scope = nil, name = s }
+    end
+    local ast = VimExpr.parse(s)
+    if ast and (ast.kind == "curlyvar" or ast.kind == "varcurly") then
+        return { dynamic = ast }
     end
     return nil
 end
 
-local BANG_OPERATORS = {
-    "||", "&&", "?",
-    "==#", "==?", "!=#", "!=?", "<=#", ">=#", "<=?", ">=?",
-    "<#", ">#", "<?", ">?",
-    "=~#", "=~?", "!~#", "!~?",
-    "==", "!=", ">=", "<=", "=~", "!~", ">", "<",
-    "..", ".", "+", "-", "*", "/", "%", "->",
-}
-
-local function _has_top_level_operator(s)
-    for i = 1, #BANG_OPERATORS do
-        if _find_top_level_binary(s, BANG_OPERATORS[i]) then
-            return true
-        end
-    end
-    return false
-end
-
-local function _compile_simple_atom(expr)
-    local s = trim(expr)
-    if s == "" then
+local function compile_ast(node, ctx)
+    if type(node) ~= "table" then
         return nil
     end
-    if _is_number_literal(s) then
-        return { code = s, kind = "number" }
-    end
-    if s == "[]" then
-        return { code = "{}", kind = "table" }
-    end
-    if _is_string_literal(s) then
-        return { code = string.format("runtime:eval_expr(%q)", s), kind = "string" }
-    end
-    local oscope, oname = s:match(OPTION_PATTERN)
-    if oscope and oname then
-        local mode = (oscope == "g") and "global" or "local"
-        return { code = string.format("runtime:get_option(%q, %q)", oname, mode), kind = "unknown" }
-    end
-    local oauto = s:match(OPTION_AUTO_PATTERN)
-    if oauto then
-        return { code = string.format("runtime:get_option(%q, %q)", oauto, "auto"), kind = "unknown" }
-    end
-    if s:match(SCOPED_VAR_PATTERN) or s:match(SIMPLE_VAR_PATTERN) then
-        return { code = string.format("runtime:get_var(%q)", s), kind = "unknown" }
+    local k = node.kind
+    if k == "num" then
+        return { code = tostring(node.val), kind = "number" }
+    elseif k == "str" then
+        return { code = lua_string(node.val), kind = "string" }
+    elseif k == "var" then
+        if node.name == nil then return nil end
+        return { code = var_read_code(node.scope, node.name, ctx), kind = "unknown" }
+    elseif k == "scope" then
+        local tbl = scoped_table(node.scope, ctx)
+        if not tbl then return nil end
+        return { code = tbl, kind = "table" }
+    elseif k == "opt" then
+        local mode = "auto"
+        if node.scope == "g" then mode = "global"
+        elseif node.scope == "l" then mode = "local"
+        elseif node.scope and node.scope ~= "" then return nil end
+        return { code = string.format("runtime:get_option(%q, %q)", node.name, mode), kind = "unknown" }
+    elseif k == "env" then
+        return { code = "__ops.env(" .. lua_string(node.name) .. ")", kind = "string" }
+    elseif k == "reg" then
+        return { code = "__ops.reg(" .. lua_string(node.name) .. ")", kind = "string" }
+    elseif k == "lastline" then
+        return { code = "runtime:call_func(" .. lua_string("line") .. ", { " .. lua_string("$") .. " })", kind = "number" }
+    elseif k == "curlyvar" then
+        local inner = compile_ast(node.inner, ctx)
+        if not inner then return nil end
+        return {
+            code = "__ops.var(__ops.name_part(" .. inner.code .. ") .. " .. lua_string(node.suffix or "") .. ", __state, __frame, __scopes)",
+            kind = "unknown",
+        }
+    elseif k == "varcurly" then
+        local parts = {}
+        for i = 1, #node.parts do
+            local part = node.parts[i]
+            if part.kind == "lit" then
+                parts[#parts + 1] = lua_string(part.val or "")
+            else
+                local compiled_part = compile_ast(part.val, ctx)
+                if not compiled_part then return nil end
+                parts[#parts + 1] = "__ops.name_part(" .. compiled_part.code .. ")"
+            end
+        end
+        return {
+            code = "__ops.var(" .. table.concat(parts, " .. ") .. ", __state, __frame, __scopes)",
+            kind = "unknown",
+        }
+    elseif k == "list" then
+        local items = {}
+        for i = 1, #node.items do
+            local item = compile_ast(node.items[i], ctx)
+            if not item then return nil end
+            items[#items + 1] = item.code
+        end
+        return { code = "__ops.list({ " .. table.concat(items, ", ") .. " })", kind = "table" }
+    elseif k == "dict" then
+        local entries = {}
+        for i = 1, #node.entries do
+            local pair = node.entries[i]
+            local value = compile_ast(pair.v, ctx)
+            if not value then return nil end
+            entries[#entries + 1] = "[" .. lua_string(pair.k) .. "] = " .. value.code
+        end
+        return { code = "__ops.dict({ " .. table.concat(entries, ", ") .. " })", kind = "table" }
+    elseif k == "index" then
+        local container = compile_ast(node.a, ctx)
+        local idx = compile_ast(node.idx, ctx)
+        if not container or not idx then return nil end
+        return { code = "__ops.index(" .. container.code .. ", " .. idx.code .. ")", kind = "unknown" }
+    elseif k == "slice" then
+        local container = compile_ast(node.a, ctx)
+        if not container then return nil end
+        local first = node.first and compile_ast(node.first, ctx) or { code = "nil" }
+        local last = node.last and compile_ast(node.last, ctx) or { code = "nil" }
+        if not first or not last then return nil end
+        return { code = "__ops.slice(" .. container.code .. ", " .. first.code .. ", " .. last.code .. ")", kind = "unknown" }
+    elseif k == "unary" then
+        local a = compile_ast(node.a, ctx)
+        if not a then return nil end
+        if node.op == "!" then
+            return { code = "(__ops.truthy(" .. a.code .. ") and 0 or 1)", kind = "number" }
+        elseif node.op == "+" then
+            return { code = "__ops.to_number(" .. a.code .. ")", kind = "number" }
+        elseif node.op == "-" then
+            return { code = "(-__ops.to_number(" .. a.code .. "))", kind = "number" }
+        end
+    elseif k == "binop" then
+        local a = compile_ast(node.a, ctx)
+        local b = compile_ast(node.b, ctx)
+        if not a or not b then return nil end
+        local op = node.op
+        if op == "||" then
+            return { code = "(__ops.truthy(" .. a.code .. ") and 1 or (__ops.truthy(" .. b.code .. ") and 1 or 0))", kind = "number" }
+        elseif op == "&&" then
+            return { code = "(__ops.truthy(" .. a.code .. ") and (__ops.truthy(" .. b.code .. ") and 1 or 0) or 0)", kind = "number" }
+        elseif op == "+" then
+            return { code = "__ops.add(" .. a.code .. ", " .. b.code .. ")", kind = "number" }
+        elseif op == "-" or op == "*" or op == "/" or op == "%" then
+            return { code = "(__ops.to_number(" .. a.code .. ") " .. op .. " __ops.to_number(" .. b.code .. "))", kind = "number" }
+        elseif op == "." or op == ".." then
+            return { code = "(__ops.to_string(" .. a.code .. ") .. __ops.to_string(" .. b.code .. "))", kind = "string" }
+        elseif op:match("^[=!<>]=?[#?]?$") then
+            return { code = string.format("runtime:cmp(%s, %q, %s)", a.code, op, b.code), kind = "boolean" }
+        elseif op:match("^is[#?]?$") or op:match("^isnot[#?]?$") then
+            local suffix = op:match("([#?])$")
+            local base = op:gsub("[#?]$", "")
+            local cmpop = (base == "isnot") and "!=" or "=="
+            if suffix then cmpop = cmpop .. suffix end
+            return { code = string.format("runtime:cmp(%s, %q, %s)", a.code, cmpop, b.code), kind = "boolean" }
+        elseif op:match("^!?~[#?]?$") or op:match("^=~[#?]?$") then
+            return { code = "__ops.match_op(" .. a.code .. ", " .. lua_string(op) .. ", " .. b.code .. ")", kind = "number" }
+        end
+        return nil
+    elseif k == "ternary" then
+        local cond = compile_ast(node.cond, ctx)
+        local tv = compile_ast(node.t, ctx)
+        local fv = compile_ast(node.f, ctx)
+        if not cond or not tv or not fv then return nil end
+        return { code = "(__ops.truthy(" .. cond.code .. ") and " .. tv.code .. " or " .. fv.code .. ")", kind = "unknown" }
+    elseif k == "lambda" then
+        local body = compile_ast(node.body, ctx)
+        if not body then return nil end
+        local lines = {
+            "(function(...)",
+            "local __argv = { ... }",
+            "local __frame = { l = {}, a = {}, v = __state.v }",
+            "__frame.a[" .. lua_string("0") .. "] = select('#', ...)",
+        }
+        for i = 1, #(node.params or {}) do
+            local name = tostring(node.params[i])
+            lines[#lines + 1] = "__frame.l[" .. lua_string(name) .. "] = __argv[" .. tostring(i) .. "]"
+            lines[#lines + 1] = "__frame.a[" .. lua_string(name) .. "] = __argv[" .. tostring(i) .. "]"
+        end
+        lines[#lines + 1] = "return " .. body.code
+        lines[#lines + 1] = "end)"
+        return { code = table.concat(lines, "; "), kind = "function" }
+    elseif k == "call" then
+        local fname
+        if node.scope == "v" and node.name == "lua" and node.lua_path then
+            fname = "v:lua." .. node.lua_path
+        elseif node.scope then
+            fname = node.scope .. ":" .. tostring(node.name)
+        else
+            fname = tostring(node.name)
+        end
+        local args = {}
+        for i = 1, #node.args do
+            local arg = compile_ast(node.args[i], ctx)
+            if not arg then return nil end
+            args[#args + 1] = arg.code
+        end
+        return { code = "runtime:call_func(" .. lua_string(fname) .. ", { " .. table.concat(args, ", ") .. " })", kind = "unknown" }
     end
     return nil
 end
 
 local function _compile_expr_typed(expr, ctx)
-    local s = trim(expr)
-    local atom = _compile_simple_atom(s)
-    if atom then return atom end
+    ctx = ctx or {}
+    if not ctx.direct_backend then
+        return { code = string.format("runtime:eval_expr(%q)", tostring(expr or "")), kind = "unknown" }
+    end
+    local ast, parse_err = VimExpr.parse(expr)
+    if not ast then
+        error(Error(474, "Unsupported expression: " .. tostring(expr or "") .. " (" .. tostring(parse_err) .. ")"))
+    end
+    local compiled = compile_ast(ast, ctx)
+    if compiled then
+        return compiled
+    end
+    error(Error(474, "Unsupported expression: " .. tostring(expr or "")))
+end
 
-    local bang = s:match("^!%s*(.+)$")
-    if bang and not _has_top_level_operator(bang) then
-        local inner = _compile_expr_typed(bang, ctx)
-        if inner.kind == "boolean" then
-            return { code = "(not (" .. inner.code .. "))", kind = "boolean" }
-        end
-        return { code = "(not runtime:truthy(" .. inner.code .. "))", kind = "boolean" }
-    end
-
-    local or_pos = _find_top_level_binary(s, "||")
-    if or_pos then
-        return { code = string.format("runtime:eval_expr(%q)", s), kind = "unknown" }
-    end
-    local and_pos = _find_top_level_binary(s, "&&")
-    if and_pos then
-        return { code = string.format("runtime:eval_expr(%q)", s), kind = "unknown" }
-    end
-    local qmark_pos = _find_top_level_binary(s, "?")
-    if qmark_pos then
-        return { code = string.format("runtime:eval_expr(%q)", s), kind = "unknown" }
-    end
-
-    local cmp_ops = {
-        { op = "==#", fast = false },
-        { op = "==?", fast = false },
-        { op = "!=#", fast = false },
-        { op = "!=?", fast = false },
-        { op = "<=#", fast = false },
-        { op = ">=#", fast = false },
-        { op = "<=?", fast = false },
-        { op = ">=?", fast = false },
-        { op = "<#", fast = false },
-        { op = ">#", fast = false },
-        { op = "<?", fast = false },
-        { op = ">?", fast = false },
-        { op = "=~#", fast = false },
-        { op = "=~?", fast = false },
-        { op = "!~#", fast = false },
-        { op = "!~?", fast = false },
-        { op = "==", fast = true },
-        { op = "!=", fast = true },
-        { op = ">=", fast = true },
-        { op = "<=", fast = true },
-        { op = ">", fast = true },
-        { op = "<", fast = true },
-        { op = "=~", fast = false },
-        { op = "!~", fast = false },
-    }
-    for i = 1, #cmp_ops do
-        local op = cmp_ops[i].op
-        local pos = _find_top_level_binary(s, op)
-        if pos then
-            local lhs = trim(s:sub(1, pos - 1))
-            local rhs = trim(s:sub(pos + #op))
-            if lhs ~= "" and rhs ~= "" then
-                if not cmp_ops[i].fast then
-                    return { code = string.format("runtime:eval_expr(%q)", s), kind = "unknown" }
-                end
-                local lc = _compile_expr_typed(lhs, ctx)
-                local rc = _compile_expr_typed(rhs, ctx)
-                return { code = string.format("runtime:cmp(%s, %q, %s)", lc.code, op, rc.code), kind = "boolean" }
+local function dynamic_lvalue_name_code(node, ctx)
+    if node.kind == "curlyvar" then
+        local inner = compile_ast(node.inner, ctx)
+        if not inner then return nil end
+        return "__ops.name_part(" .. inner.code .. ") .. " .. lua_string(node.suffix or "")
+    elseif node.kind == "varcurly" then
+        local parts = {}
+        for i = 1, #node.parts do
+            local part = node.parts[i]
+            if part.kind == "lit" then
+                parts[#parts + 1] = lua_string(part.val or "")
+            else
+                local compiled_part = compile_ast(part.val, ctx)
+                if not compiled_part then return nil end
+                parts[#parts + 1] = "__ops.name_part(" .. compiled_part.code .. ")"
             end
         end
+        return table.concat(parts, " .. ")
     end
+    return nil
+end
 
-    return { code = string.format("runtime:eval_expr(%q)", tostring(expr or "")), kind = "unknown" }
+local function lvalue_read_code(target, ctx)
+    if target.dynamic then
+        local name_code = dynamic_lvalue_name_code(target.dynamic, ctx)
+        if not name_code then
+            error(Error(474, "Unsupported lvalue"))
+        end
+        return "__ops.var(" .. name_code .. ", __state, __frame, __scopes)"
+    end
+    return var_read_code(target.scope, target.name, ctx)
+end
+
+local function lvalue_write_code(target, value_code, ctx)
+    if target.dynamic then
+        local name_code = dynamic_lvalue_name_code(target.dynamic, ctx)
+        if not name_code then
+            error(Error(474, "Unsupported lvalue"))
+        end
+        return "__ops.set_var(" .. name_code .. ", " .. value_code .. ", __state, __frame, __scopes)"
+    end
+    return var_write_code(target.scope, target.name, value_code, ctx)
 end
 
 local function _compile_condition(expr, ctx)
@@ -761,7 +937,7 @@ local function _compile_condition(expr, ctx)
     if c.kind == "boolean" then
         return c.code
     end
-    return "runtime:truthy(" .. c.code .. ")"
+    return "__ops.truthy(" .. c.code .. ")"
 end
 
 function Compiler.compile_expr(expr, ctx)
@@ -769,91 +945,16 @@ function Compiler.compile_expr(expr, ctx)
 end
 
 function Compiler.compile_command(node, ctx)
-    local cmd = node.cmd
-    local rest = node.rest
-    ctx = ctx or {}
-
-    if cmd == "let" then
-        local lhs, op, rhs = rest:match("^(.-)%s*([%.%+%-%*%/%%]=)%s*(.+)$")
-        if not lhs then
-            lhs, rhs = rest:match("^(.-)=(.+)$")
-            op = "="
-        end
-        if not lhs or not op then
-            return { code = "error('Malformed :let')" }
-        end
-        lhs = trim(lhs)
-        rhs = trim(rhs)
-        if op == "=" then
-            return {
-                code = string.format("runtime:assign(%s, %s)", lua_string(lhs), Compiler.compile_expr(rhs, ctx)),
-            }
-        end
-
-        if op ~= "+=" and op ~= "-=" and op ~= "*=" and op ~= "/=" and op ~= "%=" and op ~= ".=" then
-            return { code = "error('Malformed :let')" }
-        end
-        return {
-            code = string.format(
-                "do local __rv=runtime:assign_compound(%s,%s,%s); if Error.IsError(__rv) then error(__rv) end end",
-                lua_string(lhs),
-                lua_string(op),
-                Compiler.compile_expr(rhs, ctx)
-            ),
-        }
-    elseif cmd == "unlet" then
-        return {
-            code = string.format("runtime:unlet(%s,%s)", lua_string(rest), node.bang and "true" or "false"),
-        }
-    elseif cmd == "break" then
-        return { code = "error(runtime:break_exc())" }
-    elseif cmd == "continue" then
-        local tgt = ctx.loop_continue
-        if not tgt then
-            return { code = "error('continue outside loop')" }
-        end
-        return { code = "error(runtime:continue_exc())" }
-    elseif cmd == "execute" then
-        return { code = string.format("runtime:execute(%s)", lua_string(rest)) }
-    elseif cmd == "verbose" then
-        local level = tonumber(node.verbose_count) or 1
-        return { code = string.format("runtime:exec_verbose(%d, %s)", level, lua_string(rest)) }
-    elseif cmd == "call" then
-        local fname, argstr = rest:match("^([^%s(]+)%s*%((.*)%)%s*$")
-        if not fname then
-            return { code = "error('Malformed :call')" }
-        end
-        argstr = argstr or ""
-        local args = {}
-        local parts = split_top_args(argstr)
-        for i = 1, #parts do
-            args[#args + 1] = Compiler.compile_expr(parts[i], ctx)
-        end
-        return {
-            code = string.format("runtime:call_func(%s, { %s })", lua_string(fname), table.concat(args, ", ")),
-        }
-    elseif cmd == "return" then
-        local val = (#rest > 0) and Compiler.compile_expr(rest, ctx) or "nil"
-        return { code = string.format("error(runtime:return_exc(%s))", val) }
-    elseif cmd == "finish" then
-        return { code = "error(runtime:return_exc(nil))" }
-    elseif cmd == "set" then
-        return { code = string.format("runtime:set_options(%s, %s)", lua_string(rest), lua_string("both")) }
-    elseif cmd == "setlocal" then
-        return { code = string.format("runtime:set_options(%s, %s)", lua_string(rest), lua_string("local")) }
-    elseif cmd == "autocmd" then
-        return {
-            code = string.format("runtime:define_autocmd(%s, %s)", lua_string(rest), node.bang and "true" or "false"),
-        }
-    elseif cmd == "doautoall" then
-        return { code = string.format("runtime:doautoall(%s)", lua_string(rest)) }
-    elseif cmd == "command" or cmd == "command!" then
-        return {
-            code = string.format("runtime:define_command(%s, %s)", lua_string(rest), node.bang and "true" or "false"),
-        }
-    else
-        return { uses_dispatch = true }
-    end
+    return Commands.compile_command(node, ctx, {
+        compile_expr = Compiler.compile_expr,
+        compile_invocation_spec = compile_invocation_spec,
+        lvalue_read_code = lvalue_read_code,
+        lvalue_write_code = lvalue_write_code,
+        lua_string = lua_string,
+        parse_static_lvalue = parse_static_lvalue,
+        split_let_assignment = split_let_assignment,
+        split_top_args = split_top_args,
+    })
 end
 
 local function slice_ir(seq, first, last)
@@ -871,6 +972,8 @@ local BLOCK_CLOSERS = {
     ["try"] = "endtry",
     ["function"] = "endfunction",
 }
+
+local find_matching_end
 
 local function analyze_control_flow(seq)
     local stack = {}
@@ -1022,6 +1125,107 @@ local function analyze_control_flow(seq)
     return true
 end
 
+local function expr_is_static(expr)
+    local ast = VimExpr.parse(expr)
+    if not ast then
+        return false
+    end
+    local function walk(node)
+        if type(node) ~= "table" then return false end
+        local k = node.kind
+        if k == "call" or k == "curlyvar" or k == "varcurly" or k == "lambda" or k == "env" or k == "reg" then
+            return false
+        elseif k == "num" or k == "str" or k == "var" or k == "scope" or k == "opt" then
+            return true
+        elseif k == "list" then
+            for i = 1, #node.items do
+                if not walk(node.items[i]) then return false end
+            end
+            return true
+        elseif k == "dict" then
+            for i = 1, #node.entries do
+                if not walk(node.entries[i].v) then return false end
+            end
+            return true
+        elseif k == "index" then
+            return walk(node.a) and walk(node.idx)
+        elseif k == "slice" then
+            return walk(node.a)
+                and (not node.first or walk(node.first))
+                and (not node.last or walk(node.last))
+        elseif k == "unary" then
+            return walk(node.a)
+        elseif k == "binop" then
+            return walk(node.a) and walk(node.b)
+        elseif k == "ternary" then
+            return walk(node.cond) and walk(node.t) and walk(node.f)
+        end
+        return false
+    end
+    return walk(ast)
+end
+
+local function infer_function_locals(seq)
+    local locals = {}
+    local safe = true
+    local i = 1
+    while i <= #seq do
+        local node = seq[i]
+        local cmd = node.cmd
+        if cmd == "function" then
+            i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
+            goto continue
+        elseif cmd == "let" then
+            local lhs, _, rhs = split_let_assignment(node.rest)
+            local target = lhs and parse_static_lvalue(lhs)
+            if not target or target.scope ~= nil or not expr_is_static(rhs or "") then
+                safe = false
+                break
+            end
+            locals[target.name] = true
+        elseif cmd == "for" then
+            local target = node.iter_lhs and parse_static_lvalue(node.iter_lhs)
+            if not target or target.scope ~= nil or not expr_is_static(node.iter_rhs or "") then
+                safe = false
+                break
+            end
+            locals[target.name] = true
+        elseif cmd == "if" or cmd == "elseif" or cmd == "while" or cmd == "return" then
+            if node.rest ~= "" and not expr_is_static(node.rest) then
+                safe = false
+                break
+            end
+        elseif cmd == "else" or cmd == "endif" or cmd == "endwhile" or cmd == "endfor"
+            or cmd == "try" or cmd == "catch" or cmd == "finally" or cmd == "endtry"
+            or cmd == "break" or cmd == "continue" or cmd == "finish" then
+            -- Structured control-flow nodes do not expose l: by themselves.
+        else
+            safe = false
+            break
+        end
+        i = i + 1
+        ::continue::
+    end
+    if not safe then
+        return nil
+    end
+    return locals
+end
+
+local function annotate_function_locals(seq)
+    local i = 1
+    while i <= #seq do
+        local node = seq[i]
+        if node.cmd == "function" and node.function_region then
+            annotate_function_locals(node.function_region.body)
+            node.local_vars = infer_function_locals(node.function_region.body)
+            i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
+        else
+            i = i + 1
+        end
+    end
+end
+
 local function new_script_emitter()
     local emitter = {
         static_nodes = {},
@@ -1049,7 +1253,7 @@ local function emit_loop_error_guard(emitter, indent, ok_name, err_name, label)
     emitter:emit(indent .. "end")
 end
 
-local function find_matching_end(seq, start_idx, open_cmd, close_cmd)
+function find_matching_end(seq, start_idx, open_cmd, close_cmd)
     local depth = 0
     for i = start_idx, #seq do
         local cmd = seq[i].cmd
@@ -1065,18 +1269,31 @@ local function find_matching_end(seq, start_idx, open_cmd, close_cmd)
     return nil
 end
 
-local function emit_regular_node(emitter, node, state, loop_stack, indent)
-    local compiled = Compiler.compile_command(node, {
-        state = state,
-        loop_continue = loop_stack[#loop_stack],
-    })
-    local node_ref = emitter:intern_node(node, compiled.uses_dispatch == true)
-    if compiled.uses_dispatch then
-        emitter:emit(indent .. "runtime:invoke_precompiled_node(" .. node_ref .. ")")
-        return
+local function merged_ctx(base, state, loop_stack)
+    local ctx = {}
+    if base then
+        for k, v in pairs(base) do ctx[k] = v end
     end
+    ctx.state = state
+    ctx.direct_backend = true
+    loop_stack = loop_stack or {}
+    ctx.loop_continue = loop_stack[#loop_stack]
+    return ctx
+end
+
+local function emit_regular_node(emitter, node, state, loop_stack, indent, compile_ctx)
+    local compiled = Compiler.compile_command(node, merged_ctx(compile_ctx, state, loop_stack))
+    local node_ref = emitter:intern_node(node, false)
     emitter:emit(indent .. "runtime:set_exec_cursor_from(" .. node_ref .. ")")
-    emitter:emit(indent .. compiled.code)
+    emitter:emit(indent .. "; " .. compiled.code)
+end
+
+local function emit_for_assignment(node, compile_ctx)
+    local target = parse_static_lvalue(node.iter_lhs)
+    if target then
+        return lvalue_write_code(target, "__iter_v", compile_ctx)
+    end
+    return "runtime:assign(" .. lua_string(node.iter_lhs) .. ", __iter_v)"
 end
 
 local function render_compiled_chunk(emitter)
@@ -1095,6 +1312,13 @@ local function render_compiled_chunk(emitter)
     lines[#lines + 1] = "  if not runtime then error('runtime required') end"
     lines[#lines + 1] = "  runtime.state = state or runtime.state"
     lines[#lines + 1] = "  local Error = runtime.Error"
+    lines[#lines + 1] = "  local __state = runtime.state"
+    lines[#lines + 1] = "  local __ops = runtime.ops"
+    lines[#lines + 1] = "  local __scopes = runtime.scopes"
+    lines[#lines + 1] = "  local __g = __state.g"
+    lines[#lines + 1] = "  local __s = __state.s"
+    lines[#lines + 1] = "  local __v = __state.v"
+    lines[#lines + 1] = "  local __frame = __state.frames[#__state.frames]"
     lines[#lines + 1] = "  runtime:_push_script_ctx()"
     lines[#lines + 1] = "  local __ok, __err = runtime:_pcall(function()"
     for i = 1, #emitter.body_lines do
@@ -1110,18 +1334,19 @@ local function render_compiled_chunk(emitter)
     return table.concat(lines, "\n")
 end
 
-local function emit_sequence(emitter, seq, state, indent, loop_stack)
+local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ctx)
     indent = indent or "  "
     loop_stack = loop_stack or {}
+    compile_ctx = compile_ctx or {}
     local i = 1
     while i <= #seq do
         local node = seq[i]
         local cmd = node.cmd
         if cmd == "if" then
-            emitter:emit(("%sif %s then"):format(indent, _compile_condition(node.rest, { state = state })))
+            emitter:emit(("%sif %s then"):format(indent, _compile_condition(node.rest, merged_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "elseif" then
-            emitter:emit(("%selseif %s then"):format(indent, _compile_condition(node.rest, { state = state })))
+            emitter:emit(("%selseif %s then"):format(indent, _compile_condition(node.rest, merged_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "else" then
             emitter:emit(indent .. "else")
@@ -1133,7 +1358,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "while true do")
-            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition(node.rest, { state = state })))
+            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition(node.rest, merged_ctx(compile_ctx, state, loop_stack))))
             emitter:emit(indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1
         elseif cmd == "endwhile" then
@@ -1148,8 +1373,8 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "do")
-            emitter:emit(indent .. "  for _, __v in ipairs(runtime:iter(" .. Compiler.compile_expr(node.iter_rhs, { state = state }) .. ")) do")
-            emitter:emit(indent .. "    runtime:assign(" .. lua_string(node.iter_lhs) .. ", __v)")
+            emitter:emit(indent .. "  for _, __iter_v in ipairs(runtime:iter(" .. Compiler.compile_expr(node.iter_rhs, merged_ctx(compile_ctx, state, loop_stack)) .. ")) do")
+            emitter:emit(indent .. "    ; " .. emit_for_assignment(node, compile_ctx))
             emitter:emit(indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1
         elseif cmd == "endfor" then
@@ -1165,7 +1390,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
             local region = node.try_region
             emitter:emit(indent .. "do")
             emitter:emit(indent .. "  local __try_ok, __try_err = runtime:_pcall(function()")
-            emit_sequence(emitter, region.try_body, state, indent .. "    ", loop_stack)
+            emit_sequence(emitter, region.try_body, state, indent .. "    ", loop_stack, compile_ctx)
             emitter:emit(indent .. "  end)")
             emitter:emit(indent .. "  if not __try_ok then")
             emitter:emit(indent .. "    if type(__try_err) == 'table' and (__try_err.__ret or __try_err.__break or __try_err.__continue) then error(__try_err) end")
@@ -1174,7 +1399,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
                     local catch = region.catches[catch_idx]
                     local prefix = (catch_idx == 1) and "if" or "elseif"
                     emitter:emit(indent .. "    " .. prefix .. " runtime:catch_matches(__try_err, " .. lua_string(catch.rest) .. ") then")
-                    emit_sequence(emitter, catch.body, state, indent .. "      ", loop_stack)
+                    emit_sequence(emitter, catch.body, state, indent .. "      ", loop_stack, compile_ctx)
                 end
                 emitter:emit(indent .. "    else")
                 emitter:emit(indent .. "      error(__try_err)")
@@ -1184,7 +1409,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
             end
             emitter:emit(indent .. "  end")
             if region.finally_body then
-                emit_sequence(emitter, region.finally_body, state, indent .. "  ", loop_stack)
+                emit_sequence(emitter, region.finally_body, state, indent .. "  ", loop_stack, compile_ctx)
             end
             emitter:emit(indent .. "end")
             i = (find_matching_end(seq, i, "try", "endtry") or #seq) + 1
@@ -1196,13 +1421,36 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack)
             end
             emitter:emit(indent .. "do")
             emitter:emit(indent .. "  local __fn = function(runtime)")
-            emit_sequence(emitter, region.body, state, indent .. "    ", {})
+            emitter:emit(indent .. "    local __state = runtime.state")
+            emitter:emit(indent .. "    local __ops = runtime.ops")
+            emitter:emit(indent .. "    local __scopes = runtime.scopes")
+            emitter:emit(indent .. "    local __g = __state.g")
+            emitter:emit(indent .. "    local __s = __state.s")
+            emitter:emit(indent .. "    local __v = __state.v")
+            emitter:emit(indent .. "    local __frame = __state.frames[#__state.frames]")
+            local fn_ctx = {
+                in_function = true,
+                local_vars = node.local_vars,
+            }
+            if node.local_vars then
+                local names = {}
+                for name in pairs(node.local_vars) do names[#names + 1] = name end
+                table.sort(names)
+                if #names > 0 then
+                    local decls = {}
+                    for _, name in ipairs(names) do
+                        decls[#decls + 1] = "__l_" .. name
+                    end
+                    emitter:emit(indent .. "    local " .. table.concat(decls, ", "))
+                end
+            end
+            emit_sequence(emitter, region.body, state, indent .. "    ", {}, fn_ctx)
             emitter:emit(indent .. "  end")
             emitter:emit(("%s  runtime:register_function(%s, {%s}, __fn)"):format(indent, lua_string(node.func_name), table.concat(plist, ", ")))
             emitter:emit(indent .. "end")
             i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
         else
-            emit_regular_node(emitter, node, state, loop_stack, indent)
+            emit_regular_node(emitter, node, state, loop_stack, indent, compile_ctx)
             i = i + 1
         end
     end
@@ -1219,8 +1467,15 @@ function Compiler.compile_script(script, opts)
     if err then
         return nil, err
     end
+    local ok_annotate, annotate_err = pcall(annotate_function_locals, ir)
+    if not ok_annotate then
+        return nil, Error.IsError(annotate_err) and annotate_err or Error(0, tostring(annotate_err))
+    end
     local emitter = new_script_emitter()
-    emit_sequence(emitter, ir, opts.state, "    ", {})
+    local ok_emit, emit_err = pcall(emit_sequence, emitter, ir, opts.state, "    ", {})
+    if not ok_emit then
+        return nil, Error.IsError(emit_err) and emit_err or Error(0, tostring(emit_err))
+    end
     local source_map = {}
     return render_compiled_chunk(emitter), source_map
 end

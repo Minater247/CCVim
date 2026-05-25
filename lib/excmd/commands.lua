@@ -2,6 +2,7 @@
 local Commands = {}
 
 local Error = loadModule("lib.error")
+local VimExpr = loadModule("lib.excmd.vimxpr")
 
 local function trim(s)
     return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -229,6 +230,7 @@ local DISPATCH_MIN_ABBREV = {}
 local DISPATCH_REGISTRY = {}
 local MAP_COMMAND_SPECS = {}
 local MENU_COMMAND_SPECS = {}
+local COMPILER_LOWERERS = {}
 
 for _, spec in ipairs(COMMAND_SPECS) do
     SPEC_BY_NAME[spec.name] = spec
@@ -245,6 +247,177 @@ for _, spec in ipairs(COMMAND_SPECS) do
     if spec.menu then
         MENU_COMMAND_SPECS[spec.name] = spec.menu
     end
+end
+
+local function command_spec_code(node, api)
+    return api.compile_invocation_spec(node)
+end
+
+local function runtime_builtin_command(node, _ctx, api)
+    return {
+        code = "runtime:invoke_compiled_builtin_command(" .. api.lua_string(node.cmd) .. ", " .. command_spec_code(node, api) .. ")",
+    }
+end
+
+local function runtime_dynamic_command(node, _ctx, api)
+    return {
+        code = "runtime:invoke_compiled_command(" .. command_spec_code(node, api) .. ")",
+    }
+end
+
+local function lower_let(node, ctx, api)
+    local lhs, op, rhs = api.split_let_assignment(node.rest)
+    if not lhs or not op then
+        return { code = "error('Malformed :let')" }
+    end
+    lhs = trim(lhs)
+    rhs = trim(rhs)
+    local static_lhs = ctx.direct_backend and api.parse_static_lvalue(lhs) or nil
+    local rhs_code = api.compile_expr(rhs, ctx)
+    if op == "=" then
+        if static_lhs then
+            return {
+                code = api.lvalue_write_code(static_lhs, rhs_code, ctx),
+            }
+        end
+        return {
+            code = string.format("runtime:assign(%s, %s)", api.lua_string(lhs), rhs_code),
+        }
+    end
+
+    if op ~= "+=" and op ~= "-=" and op ~= "*=" and op ~= "/=" and op ~= "%=" and op ~= ".=" then
+        return { code = "error('Malformed :let')" }
+    end
+    if static_lhs then
+        local cur_code = api.lvalue_read_code(static_lhs, ctx)
+        local value_code
+        if op == "+=" then
+            value_code = "__ops.add(" .. cur_code .. ", " .. rhs_code .. ")"
+        elseif op == ".=" then
+            value_code = "(__ops.to_string(" .. cur_code .. ") .. __ops.to_string(" .. rhs_code .. "))"
+        else
+            local binop = op:sub(1, 1)
+            value_code = "(__ops.to_number(" .. cur_code .. ") " .. binop .. " __ops.to_number(" .. rhs_code .. "))"
+        end
+        return {
+            code = api.lvalue_write_code(static_lhs, value_code, ctx),
+        }
+    end
+    return {
+        code = string.format(
+            "do local __rv=runtime:assign_compound(%s,%s,%s); if Error.IsError(__rv) then error(__rv) end end",
+            api.lua_string(lhs),
+            api.lua_string(op),
+            rhs_code
+        ),
+    }
+end
+
+local function lower_unlet(node, _ctx, api)
+    return {
+        code = string.format("runtime:unlet(%s,%s)", api.lua_string(node.rest), node.bang and "true" or "false"),
+    }
+end
+
+local function lower_break()
+    return { code = "error(runtime:break_exc())" }
+end
+
+local function lower_continue(_node, ctx)
+    if not ctx.loop_continue then
+        return { code = "error('continue outside loop')" }
+    end
+    return { code = "error(runtime:continue_exc())" }
+end
+
+local function lower_execute(node, _ctx, api)
+    return { code = string.format("runtime:execute(%s)", api.lua_string(node.rest)) }
+end
+
+local function lower_verbose(node, _ctx, api)
+    local level = tonumber(node.verbose_count) or 1
+    return { code = string.format("runtime:exec_verbose(%d, %s)", level, api.lua_string(node.rest)) }
+end
+
+local function lower_echo(node, ctx, api)
+    local cmd = node.cmd
+    if node.text:match("^%s*:?[%%%.%$%'%d]") then
+        return { code = "error(Error(481))" }
+    end
+    local exprs = VimExpr.splitExpressions(node.rest)
+    local values = {}
+    for i = 1, #exprs do
+        values[#values + 1] = api.compile_expr(exprs[i], ctx)
+    end
+    return { code = "runtime:echo_values(" .. api.lua_string(cmd) .. ", { " .. table.concat(values, ", ") .. " })" }
+end
+
+local function lower_call(node, ctx, api)
+    local expr_code = api.compile_expr(node.rest, ctx)
+    return { code = "do local __rv = " .. expr_code .. " end" }
+end
+
+local function lower_return(node, ctx, api)
+    local val = (#node.rest > 0) and api.compile_expr(node.rest, ctx) or "nil"
+    return { code = string.format("error(runtime:return_exc(%s))", val) }
+end
+
+local function lower_finish()
+    return { code = "error(runtime:return_exc(nil))" }
+end
+
+local function lower_set(node, _ctx, api)
+    return { code = string.format("runtime:set_options(%s, %s)", api.lua_string(node.rest), api.lua_string("both")) }
+end
+
+local function lower_setglobal(node, _ctx, api)
+    return { code = string.format("runtime:set_options(%s, %s)", api.lua_string(node.rest), api.lua_string("global")) }
+end
+
+local function lower_setlocal(node, _ctx, api)
+    return { code = string.format("runtime:set_options(%s, %s)", api.lua_string(node.rest), api.lua_string("local")) }
+end
+
+local function lower_autocmd(node, _ctx, api)
+    return {
+        code = string.format("runtime:define_autocmd(%s, %s)", api.lua_string(node.rest), node.bang and "true" or "false"),
+    }
+end
+
+local function lower_doautoall(node, _ctx, api)
+    return { code = string.format("runtime:doautoall(%s)", api.lua_string(node.rest)) }
+end
+
+local function lower_command(node, _ctx, api)
+    return {
+        code = string.format("runtime:define_command(%s, %s)", api.lua_string(node.rest), node.bang and "true" or "false"),
+    }
+end
+
+local DIRECT_LOWERERS = {
+    let = lower_let,
+    unlet = lower_unlet,
+    ["break"] = lower_break,
+    ["continue"] = lower_continue,
+    execute = lower_execute,
+    verbose = lower_verbose,
+    echo = lower_echo,
+    echoerr = lower_echo,
+    echomsg = lower_echo,
+    echon = lower_echo,
+    call = lower_call,
+    ["return"] = lower_return,
+    finish = lower_finish,
+    set = lower_set,
+    setglobal = lower_setglobal,
+    setlocal = lower_setlocal,
+    autocmd = lower_autocmd,
+    doautoall = lower_doautoall,
+    command = lower_command,
+}
+
+for _, spec in ipairs(COMMAND_SPECS) do
+    COMPILER_LOWERERS[spec.name] = DIRECT_LOWERERS[spec.name] or runtime_builtin_command
 end
 
 local function resolve_prefix(raw, registry, opts)
@@ -307,6 +480,7 @@ function Commands.mode_and_bar(cmd_raw)
     return mode, no_bar
 end
 
+Commands.COMMAND_SPECS = COMMAND_SPECS
 Commands.DISPATCH_MIN_ABBREV = DISPATCH_MIN_ABBREV
 Commands.MAP_COMMAND_SPECS = MAP_COMMAND_SPECS
 Commands.MENU_COMMAND_SPECS = MENU_COMMAND_SPECS
@@ -316,6 +490,22 @@ function Commands.get_spec(name)
         return nil
     end
     return SPEC_BY_NAME[name:lower()]
+end
+
+function Commands.compile_command(node, ctx, api)
+    local cmd = node.cmd or ""
+    cmd = cmd:lower()
+    local lowerer = COMPILER_LOWERERS[cmd]
+    if not lowerer then
+        local resolved = Commands.resolve_parse_name(cmd)
+        if type(resolved) == "string" and resolved ~= cmd then
+            lowerer = COMPILER_LOWERERS[resolved]
+        end
+    end
+    if not lowerer then
+        return runtime_dynamic_command(node, ctx, api)
+    end
+    return lowerer(node, ctx, api)
 end
 
 return Commands

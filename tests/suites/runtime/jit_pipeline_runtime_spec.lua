@@ -1,6 +1,6 @@
 return {
     id = "runtime.jit_pipeline",
-    description = "Verifies CCVim-internal JIT output shape and compile-cache reuse; this cannot run on headless Neovim because it inspects generated CCVim Lua, loads CCVim internal modules through MockEnv, and monkeypatches Compiler.compile_script to count CCVim-only JIT compiles.",
+    description = "Verifies CCVim-internal JIT lowering and compile-cache reuse; this cannot run on headless Neovim because it inspects generated CCVim Lua, loads CCVim internal modules through MockEnv, and monkeypatches Compiler.compile_script to count CCVim-only JIT compiles.",
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
@@ -24,23 +24,50 @@ return {
 
                 local code, compile_err = Compiler.compile_script([[
 echo 'hello'
-let g:jit_pipeline_shape = 7
+let g:jit_pipeline_shape = 1 + 2 * 3
                 ]], { state = state })
                 Assert.truthy("compile succeeds", code ~= nil, compile_err)
+                Assert.truthy("simple echo lowers directly", code:find("runtime:echo_values", 1, true) ~= nil, code)
                 Assert.truthy(
-                    "compiler hoists static nodes",
-                    code:find("local __nodes = {", 1, true) ~= nil,
+                    "static g: assignment lowers to direct state access",
+                    code:find("__g.jit_pipeline_shape =", 1, true) ~= nil,
                     code
                 )
+                Assert.eq(
+                    "static g: assignment avoids string lvalue helper",
+                    code:find('runtime:assign("g:jit_pipeline_shape"', 1, true),
+                    nil
+                )
+                Assert.eq(
+                    "simple arithmetic avoids expression evaluator",
+                    code:find('runtime:eval_expr("1 + 2 * 3"', 1, true),
+                    nil
+                )
+            end
+
+            do
+                local code, compile_err = Compiler.compile_script([[
+function! JitLocalLowering()
+  let x = 1
+  let x += 2
+  return x
+endfunction
+                ]], { state = state })
+                Assert.truthy("local-lowering function compiles", code ~= nil, compile_err)
                 Assert.truthy(
-                    "generic commands dispatch through precompiled nodes",
-                    code:find("runtime:invoke_precompiled_node(__nodes[1])", 1, true) ~= nil,
+                    "safe Vimscript local lowers to Lua local",
+                    code:find("local __l_x", 1, true) ~= nil,
                     code
                 )
-                Assert.truthy(
-                    "special commands reuse hoisted cursor metadata",
-                    code:find("runtime:set_exec_cursor_from(__nodes[2])", 1, true) ~= nil,
-                    code
+                Assert.eq(
+                    "safe Vimscript local avoids runtime assignment",
+                    code:find('runtime:assign("x"', 1, true),
+                    nil
+                )
+                Assert.eq(
+                    "safe Vimscript local avoids expression evaluator",
+                    code:find('runtime:eval_expr("x"', 1, true),
+                    nil
                 )
             end
 
