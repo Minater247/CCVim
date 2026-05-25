@@ -223,6 +223,30 @@ return {
             end
 
             do
+                local ctx_state = mk_ctx({
+                    "match Comment transparent /\\<\\d/ contains=String",
+                    "match String /\\d\\+/ contained",
+                })
+                local buf = mk_buf({ "abc 1977 x" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("contained match extends past transparent anchor start", fg_at(blit, 5), string_fg)
+                Assert.eq("contained match extends past transparent anchor end", fg_at(blit, 8), string_fg)
+                Assert.eq("transparent anchor does not leak beyond contained match", fg_at(blit, 9), normal_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "match Comment transparent /x/ contains=String",
+                    "keyword String xray contained",
+                })
+                local buf = mk_buf({ "xray nope" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("contained keyword extends past transparent anchor start", fg_at(blit, 1), string_fg)
+                Assert.eq("contained keyword extends past transparent anchor end", fg_at(blit, 4), string_fg)
+                Assert.eq("transparent keyword anchor does not leak", fg_at(blit, 5), normal_fg)
+            end
+
+            do
                 local ctx_state = mk_ctx({ "match String /\\cfoo/" })
                 local buf = mk_buf({ "FOO" })
                 local blit = Runtime.line_to_blit(ctx_state, buf, 1)

@@ -1001,25 +1001,31 @@ local function expand_user_command_template(body, qargs, args, bang, count, line
     local script = tostring(body or "")
     local fargs_token = "__CCVIM_FARGS__"
     local fargs = {}
+
+    local function repl(value)
+        return function()
+            return tostring(value or "")
+        end
+    end
     for i = 1, #args do
         fargs[i] = string.format("%q", args[i])
     end
-    script = script:gsub("<lt>", "<")
-    script = script:gsub("<bar>", "|")
-    script = script:gsub("<bang>0", bang and "1" or "0")
-    script = script:gsub("<f%-args>", fargs_token)
-    script = script:gsub("<q%-args>", string.format("%q", qargs))
-    script = script:gsub("<args>", qargs)
-    script = script:gsub("<bang>", bang and "!" or "")
-    script = script:gsub("<count>", tostring(count or 0))
-    script = script:gsub("<line1>", tostring(line1 or 1))
-    script = script:gsub("<line2>", tostring(line2 or 1))
-    script = script:gsub("<range>", tostring(range or 0))
+    script = script:gsub("<lt>", repl("<"))
+    script = script:gsub("<bar>", repl("|"))
+    script = script:gsub("<bang>0", repl(bang and "1" or "0"))
+    script = script:gsub("<f%-args>", repl(fargs_token))
+    script = script:gsub("<q%-args>", repl(string.format("%q", qargs)))
+    script = script:gsub("<args>", repl(qargs))
+    script = script:gsub("<bang>", repl(bang and "!" or ""))
+    script = script:gsub("<count>", repl(count or 0))
+    script = script:gsub("<line1>", repl(line1 or 1))
+    script = script:gsub("<line2>", repl(line2 or 1))
+    script = script:gsub("<range>", repl(range or 0))
     if #fargs == 0 then
         script = script:gsub(",%s*" .. fargs_token, "")
         script = script:gsub(fargs_token, "")
     else
-        script = script:gsub(fargs_token, table.concat(fargs, ","))
+        script = script:gsub(fargs_token, repl(table.concat(fargs, ",")))
     end
     return script
 end
@@ -1505,6 +1511,33 @@ function Runtime.new(init_state, init_opts)
             if not fn_ok then error(fn_rv) end
             return fn_rv
         end)
+    end
+
+    function rt:exec_user_command_script(def, script)
+        if type(def) ~= "table" then
+            return self:exec_script(script)
+        end
+
+        local prev_script_scope = self.state.s
+        local prev_script_sid = self.state.script_sid
+        local prev_script_ctx = self.state.script_ctx
+        local prev_script_funcs = self.state.funcs
+        if def.scope then self.state.s = def.scope end
+        if def.script_sid then self.state.script_sid = def.script_sid end
+        if def.script_ctx then self.state.script_ctx = def.script_ctx end
+        if def.funcs then self.state.funcs = def.funcs end
+
+        local ok, rv = pcall(function()
+            return self:exec_script(script)
+        end)
+
+        self.state.funcs = prev_script_funcs
+        self.state.script_ctx = prev_script_ctx
+        self.state.script_sid = prev_script_sid
+        self.state.s = prev_script_scope
+
+        if ok then return rv end
+        error(rv)
     end
 
     function rt:exec_compiled(fn)
@@ -4453,7 +4486,14 @@ function Runtime.new(init_state, init_opts)
         if (not bang) and (self.state.commands[key] or Runtime._USER_COMMANDS[key]) then
             error(Error(474, "Command exists"))
         end
-        local def = { body = body, nargs = nargs }
+        local def = {
+            body = body,
+            nargs = nargs,
+            scope = self.state.s,
+            funcs = self.state.funcs,
+            script_sid = self.state.script_sid,
+            script_ctx = self.state.script_ctx,
+        }
         self.state.commands[key] = def
         Runtime._USER_COMMANDS[key] = def
         return true
@@ -5932,7 +5972,7 @@ function Runtime.new(init_state, init_opts)
                 line2,
                 range
             )
-            return self:exec_script(script)
+            return self:exec_user_command_script(def, script)
         end
 
         local dispatch_cmd = spec.dispatch
@@ -5968,7 +6008,7 @@ function Runtime.new(init_state, init_opts)
                 line2,
                 range
             )
-            return self:exec_script(script)
+            return self:exec_user_command_script(global, script)
         end
         if type(global.handler) == "function" then
             return global.handler({
@@ -5994,7 +6034,7 @@ function Runtime.new(init_state, init_opts)
                 line2,
                 range
             )
-            return self:exec_script(script)
+            return self:exec_user_command_script(global, script)
         end
         return true
     end

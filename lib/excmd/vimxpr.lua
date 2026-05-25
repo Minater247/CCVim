@@ -581,7 +581,14 @@ local function parse(tokens)
                 local save_i = i
                 adv() -- '.'
                 local keytok = peek()
-                if keytok.typ == "ID" and keytok.pos == (t.pos + 1) then
+                local nexttok = tokens[i + 1]
+                local can_index = node.kind ~= "str" and node.kind ~= "num"
+                if
+                    can_index
+                    and keytok.typ == "ID"
+                    and keytok.pos == (t.pos + 1)
+                    and not (nexttok and nexttok.typ == "COLON")
+                then
                     local key = adv()
                     node = {
                         kind = "index",

@@ -394,6 +394,14 @@ local function init_lua_engine_runtime()
         setTextColor = function(_) end,
         setBackgroundColor = function(_) end,
     }
+    _G.screen = {
+        get_palette_slot = function(_) return 0, 0, 0 end,
+        hl_attrs = function(_) return {} end,
+        default_colors_set = function() end,
+        hl_id_for = function(_) return 0 end,
+        hl_group_set = function() end,
+        set_palette_slot = function() end,
+    }
     _G.LOG_ERROR = function() end
     _G.LOG_DEBUG = function() end
     _G.LOG_INTERNAL = function() end

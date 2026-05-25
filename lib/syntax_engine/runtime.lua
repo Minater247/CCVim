@@ -1263,7 +1263,7 @@ local function paint_match_contained_keywords(plan, item, line, lower_line, rang
             break
         end
         local hs = math.clamp(best.hi_start, range_s, max_col + 1)
-        local he = math.clamp(best.hi_end, 0, range_e)
+        local he = math.clamp(best.hi_end, 0, max_col)
         if he >= hs then
             spans[#spans + 1] = {
                 s = hs,
@@ -1314,7 +1314,7 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
             local mgref = resolved_matchgroup_ref(plan, best.spec)
             if mgref then group_id = mgref end
             local hs = math.clamp(best.hi_start, range_s, max_col + 1)
-            local he = math.clamp(best.hi_end, 0, range_e)
+            local he = math.clamp(best.hi_end, 0, max_col)
             if he >= hs then
                 spans[#spans + 1] = {
                     s = hs,

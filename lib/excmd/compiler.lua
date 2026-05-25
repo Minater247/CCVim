@@ -380,7 +380,7 @@ local function split_ws_static(raw)
 end
 
 local function compile_invocation_spec(node)
-    local cmd = node.cmd
+    local cmd = node.cmd or ""
     local rest = node.rest
     local lname = cmd:lower()
     local ws_args = split_ws_static(rest)
@@ -419,7 +419,7 @@ local function build_precompiled_node(node, include_spec)
     local fields = {
         "line = " .. tostring(node.line),
         "text = " .. lua_string(node.text),
-        "cmd = " .. lua_string(node.cmd),
+        "cmd = " .. lua_string(node.cmd or ""),
         "rest = " .. lua_string(node.rest),
     }
     if include_spec then
