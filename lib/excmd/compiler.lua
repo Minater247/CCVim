@@ -58,11 +58,10 @@ local function split_commands(script)
     local seg_leading = true
 
     local function get_prev_nonspace()
-        local head = table.concat(buf)
-        local i = #head
+        local i = #buf
         while i > 0 do
-            local ch = head:sub(i, i)
-            if not ch:match("%s") then return ch end
+            local ch = buf[i]
+            if not (ch == " " or ch == "\t" or ch == "\r" or ch == "\n" or ch == "\f" or ch == "\v") then return ch end
             i = i - 1
         end
         return nil
@@ -173,7 +172,7 @@ local function split_commands(script)
 
         if not seg_cmd_known and not in_s and not in_d then
             if seg_leading then
-                if c == ":" or c:match("%s") then
+                if c == ":" or c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v" then
                     buf[#buf + 1] = c
                     if c ~= ":" then seg_leading = false end
                     i = i + 1; goto continue
@@ -182,13 +181,15 @@ local function split_commands(script)
                 end
             end
             if #cmd_buf == 0 then
-                if c:match("%a") then
+                local b = c:byte()
+                if (b >= 65 and b <= 90) or (b >= 97 and b <= 122) then
                     cmd_buf = c
                 else
                     buf[#buf + 1] = c; i = i + 1; goto continue
                 end
             else
-                if c:match("[%w]") then
+                local b = c:byte()
+                if (b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b == 95 then
                     cmd_buf = cmd_buf .. c
                 elseif c == "!" then
                     cmd_buf = cmd_buf .. c
@@ -196,7 +197,7 @@ local function split_commands(script)
                     seg_mode = mode
                     seg_no_bar = no_bar
                     seg_cmd_known = true
-                elseif c:match("%s") then
+                elseif c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v" then
                     local mode, no_bar = _cmd_mode_and_bar(cmd_buf)
                     seg_mode = mode
                     seg_no_bar = no_bar
@@ -255,7 +256,11 @@ end
 local function strip_range_prefix(s)
     local i, n = 1, #s
     local function skip_ws()
-        while i <= n and s:sub(i, i):match("%s") do i = i + 1 end
+        while i <= n do
+            local c = s:sub(i, i)
+            if not (c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v") then break end
+            i = i + 1
+        end
     end
     local function skip_addr()
         skip_ws()
@@ -268,8 +273,13 @@ local function strip_range_prefix(s)
             if i + 1 <= n then i = i + 2; return true end
             return false
         end
-        if c:match("%d") then
-            while i <= n and s:sub(i, i):match("%d") do i = i + 1 end
+        local b = c:byte()
+        if b and b >= 48 and b <= 57 then
+            while i <= n do
+                local db = s:byte(i)
+                if not db or db < 48 or db > 57 then break end
+                i = i + 1
+            end
             return true
         end
         return false
@@ -344,6 +354,15 @@ local function lua_string(s)
     return string.format("%q", s or "")
 end
 
+local function lua_literal(v)
+    if type(v) == "number" then
+        return tostring(v)
+    elseif type(v) == "boolean" then
+        return v and "true" or "false"
+    end
+    return lua_string(v)
+end
+
 local function split_ws_static(raw)
     local out = {}
     local buf = {}
@@ -380,35 +399,44 @@ local function split_ws_static(raw)
     return out
 end
 
+local function lua_string_list(items)
+    local out = {}
+    for i = 1, #(items or {}) do
+        out[#out + 1] = lua_string(items[i])
+    end
+    return "{ " .. table.concat(out, ", ") .. " }"
+end
+
+local function resolve_dispatch_for_node(node)
+    local lname = tostring((node and node.cmd) or ""):lower()
+    if lname == "" then
+        return nil
+    end
+    if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] or Commands.MENU_COMMAND_SPECS[lname] then
+        return lname
+    end
+    local resolved = resolve_dispatch_name(lname)
+    if not Error.IsError(resolved) then
+        return resolved
+    end
+    return nil
+end
+
 local function compile_invocation_spec(node)
     local cmd = node.cmd or ""
     local rest = node.rest
     local lname = cmd:lower()
-    local ws_args = split_ws_static(rest)
-    local ws_items = {}
-    for i = 1, #ws_args do
-        ws_items[#ws_items + 1] = lua_string(ws_args[i])
-    end
+    local ws_args = node.ws_args or split_ws_static(rest)
 
     local fields = {
         "name = " .. lua_string(cmd),
         "lname = " .. lua_string(lname),
         "qargs = " .. lua_string(rest),
         "bang = " .. (node.bang and "true" or "false"),
-        "ws_args = { " .. table.concat(ws_items, ", ") .. " }",
+        "ws_args = " .. lua_string_list(ws_args),
     }
 
-    local dispatch
-    if lname ~= "" then
-        if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] or Commands.MENU_COMMAND_SPECS[lname] then
-            dispatch = lname
-        else
-            local resolved = resolve_dispatch_name(lname)
-            if not Error.IsError(resolved) then
-                dispatch = resolved
-            end
-        end
-    end
+    local dispatch = node.dispatch or resolve_dispatch_for_node(node)
     if dispatch then
         fields[#fields + 1] = "dispatch = " .. lua_string(dispatch)
     end
@@ -542,6 +570,98 @@ local function split_let_assignment(rest)
     return nil
 end
 
+local function split_set_args_static(s)
+    if not s or s == "" then return {} end
+    local out, buf, i, n = {}, {}, 1, #s
+    while i <= n do
+        local c = s:sub(i, i)
+        if c == "\\" and i < n then
+            buf[#buf + 1] = s:sub(i, i + 1)
+            i = i + 2
+        elseif c == "\"" then
+            local prev = (i > 1) and s:sub(i - 1, i - 1) or ""
+            if i == 1 or prev == " " or prev == "\t" then
+                break
+            end
+            buf[#buf + 1] = c
+            i = i + 1
+        elseif c == " " or c == "\t" then
+            if #buf > 0 then
+                out[#out + 1] = table.concat(buf)
+                buf = {}
+            end
+            i = i + 1
+            while i <= n and (s:sub(i, i) == " " or s:sub(i, i) == "\t") do
+                i = i + 1
+            end
+        else
+            buf[#buf + 1] = c
+            i = i + 1
+        end
+    end
+    if #buf > 0 then
+        out[#out + 1] = table.concat(buf)
+    end
+    return out
+end
+
+local function rejoin_equals_static(args)
+    local out, i = {}, 1
+    while i <= #args do
+        local tok = args[i]
+        local nxt = args[i + 1]
+        local n2 = args[i + 2]
+        if tok:match("^[%a_]%w*$") and nxt then
+            if nxt:match("^[:=]") then
+                out[#out + 1] = tok .. "=" .. nxt:sub(2)
+                i = i + 2
+                goto continue
+            elseif nxt == "=" and n2 then
+                out[#out + 1] = tok .. "=" .. n2
+                i = i + 3
+                goto continue
+            elseif nxt:match("^[+%^%-]=") then
+                out[#out + 1] = tok .. nxt
+                i = i + 2
+                goto continue
+            end
+        end
+        out[#out + 1] = tok
+        i = i + 1
+        ::continue::
+    end
+    return out
+end
+
+local function parse_command_definition(rest)
+    local parts = split_ws_static(rest)
+    local nargs = 0
+    local name
+    local body_index = #parts + 1
+    local idx = 1
+    while idx <= #parts do
+        local tok = parts[idx]
+        if tok:match("^%-nargs=") then
+            local v = tok:sub(8)
+            nargs = (v == "*" or v == "?" or v == "+") and v or tonumber(v) or 0
+            idx = idx + 1
+        elseif tok:match("^%-") then
+            idx = idx + 1
+        else
+            name = tok
+            body_index = idx + 1
+            break
+        end
+    end
+    return {
+        kind = "command",
+        parts = parts,
+        nargs = nargs,
+        name = name,
+        body_index = body_index,
+    }
+end
+
 local function build_ir(script)
     local cmds = split_commands(script or "")
     local ir = {}
@@ -667,10 +787,7 @@ local function var_read_code(scope, name, ctx)
         return "__l_" .. tostring(name)
     end
     if not scope then
-        if ctx and ctx.in_function then
-            return "((__frame and __frame.l[" .. lua_string(name) .. "] ~= nil) and __frame.l[" .. lua_string(name) .. "] or __g" .. lua_key(name) .. ")"
-        end
-        return "__g" .. lua_key(name)
+        return "((__frame and __frame.l[" .. lua_string(name) .. "] ~= nil) and __frame.l[" .. lua_string(name) .. "] or __g" .. lua_key(name) .. ")"
     end
     local tbl = scoped_table(scope, ctx)
     if not tbl then
@@ -687,7 +804,7 @@ local function var_write_code(scope, name, value_code, ctx)
         if ctx and ctx.in_function then
             return "((__frame and __frame.l) or __state.l)" .. lua_key(name) .. " = " .. value_code
         end
-        return "__g" .. lua_key(name) .. " = " .. value_code
+        return "((__frame and __frame.l) or __g)" .. lua_key(name) .. " = " .. value_code
     end
     local tbl = scoped_table(scope, ctx)
     if not tbl then
@@ -705,9 +822,11 @@ local function parse_static_lvalue(lhs)
     if s:match(SIMPLE_VAR_PATTERN) then
         return { scope = nil, name = s }
     end
-    local ast = VimExpr.parse(s)
-    if ast and (ast.kind == "curlyvar" or ast.kind == "varcurly") then
-        return { dynamic = ast }
+    if s:find("{", 1, true) then
+        local ast = VimExpr.parse(s)
+        if ast and (ast.kind == "curlyvar" or ast.kind == "varcurly") then
+            return { dynamic = ast }
+        end
     end
     return nil
 end
@@ -877,7 +996,12 @@ local function _compile_expr_typed(expr, ctx)
     if not ctx.direct_backend then
         return { code = string.format("runtime:eval_expr(%q)", tostring(expr or "")), kind = "unknown" }
     end
-    local ast, parse_err = VimExpr.parse(expr)
+    local ast, parse_err
+    if type(expr) == "table" and expr.kind then
+        ast = expr
+    else
+        ast, parse_err = VimExpr.parse(expr)
+    end
     if not ast then
         error(Error(474, "Unsupported expression: " .. tostring(expr or "") .. " (" .. tostring(parse_err) .. ")"))
     end
@@ -945,16 +1069,156 @@ function Compiler.compile_expr(expr, ctx)
 end
 
 function Compiler.compile_command(node, ctx)
-    return Commands.compile_command(node, ctx, {
-        compile_expr = Compiler.compile_expr,
-        compile_invocation_spec = compile_invocation_spec,
-        lvalue_read_code = lvalue_read_code,
-        lvalue_write_code = lvalue_write_code,
-        lua_string = lua_string,
-        parse_static_lvalue = parse_static_lvalue,
-        split_let_assignment = split_let_assignment,
-        split_top_args = split_top_args,
-    })
+    ctx = ctx or {}
+    local cmd = tostring(node.cmd or ""):lower()
+    local arg = node.arg
+
+    if cmd == "let" then
+        if not arg or arg.kind ~= "let" then
+            return { code = "error('Malformed :let')" }
+        end
+        local lhs, op, rhs = arg.lhs, arg.op, arg.rhs
+        local static_lhs = ctx.direct_backend and parse_static_lvalue(lhs) or nil
+        local rhs_code = Compiler.compile_expr(arg.rhs_ast or rhs, ctx)
+        if op == "=" then
+            if static_lhs then
+                return { code = lvalue_write_code(static_lhs, rhs_code, ctx) }
+            end
+            return { code = string.format("runtime:assign(%s, %s)", lua_string(lhs), rhs_code) }
+        end
+
+        if op ~= "+=" and op ~= "-=" and op ~= "*=" and op ~= "/=" and op ~= "%=" and op ~= ".=" then
+            return { code = "error('Malformed :let')" }
+        end
+        if static_lhs then
+            local cur_code = lvalue_read_code(static_lhs, ctx)
+            local value_code
+            if op == "+=" then
+                value_code = "__ops.add(" .. cur_code .. ", " .. rhs_code .. ")"
+            elseif op == ".=" then
+                value_code = "(__ops.to_string(" .. cur_code .. ") .. __ops.to_string(" .. rhs_code .. "))"
+            else
+                local binop = op:sub(1, 1)
+                value_code = "(__ops.to_number(" .. cur_code .. ") " .. binop .. " __ops.to_number(" .. rhs_code .. "))"
+            end
+            return { code = lvalue_write_code(static_lhs, value_code, ctx) }
+        end
+        return {
+            code = string.format(
+                "do local __rv=runtime:assign_compound(%s,%s,%s); if Error.IsError(__rv) then error(__rv) end end",
+                lua_string(lhs),
+                lua_string(op),
+                rhs_code
+            ),
+        }
+    elseif cmd == "unlet" then
+        if not arg or arg.kind ~= "unlet" then
+            return { code = "error('Malformed :unlet')" }
+        end
+        return { code = string.format("runtime:unlet({ names = %s },%s)", lua_string_list(arg.names), node.bang and "true" or "false") }
+    elseif cmd == "break" then
+        return { code = "error(runtime:break_exc())" }
+    elseif cmd == "continue" then
+        if not ctx.loop_continue then
+            return { code = "error('continue outside loop')" }
+        end
+        return { code = "error(runtime:continue_exc())" }
+    elseif cmd == "execute" then
+        if arg and arg.kind == "execute" and not arg.dynamic then
+            local values = {}
+            for i = 1, #arg.exprs do
+                values[#values + 1] = Compiler.compile_expr(arg.exprs[i].ast, ctx)
+            end
+            return { code = "runtime:execute_values({ " .. table.concat(values, ", ") .. " })" }
+        end
+        return { code = string.format("runtime:execute(%s)", lua_string(node.rest)) }
+    elseif cmd == "put" then
+        if not arg or arg.kind ~= "put" then
+            return { code = "error('Malformed :put')" }
+        end
+        local spec = compile_invocation_spec(node)
+        if arg.source == "default" then
+            return { code = "runtime:put_compiled({ source = 'default' }, " .. (node.bang and "true" or "false") .. ", " .. spec .. ")" }
+        elseif arg.source == "register" then
+            return { code = "runtime:put_compiled({ source = 'register', reg = " .. lua_string(arg.reg) .. " }, " .. (node.bang and "true" or "false") .. ", " .. spec .. ")" }
+        elseif arg.source == "expr_reuse" then
+            return { code = "runtime:put_compiled({ source = 'expr_reuse' }, " .. (node.bang and "true" or "false") .. ", " .. spec .. ")" }
+        elseif arg.source == "expr" then
+            return {
+                code = "runtime:put_compiled({ source = 'expr', expr = " .. lua_string(arg.expr) .. ", value = "
+                    .. Compiler.compile_expr(arg.expr_ast or arg.expr, ctx) .. " }, "
+                    .. (node.bang and "true" or "false") .. ", " .. spec .. ")",
+            }
+        end
+        return { code = "error(Error(488, " .. lua_string(arg.raw or node.rest) .. "))" }
+    elseif cmd == "verbose" then
+        local level = tonumber(node.verbose_count) or 1
+        return { code = string.format("runtime:exec_verbose(%d, %s)", level, lua_string(node.rest)) }
+    elseif cmd == "echo" or cmd == "echoerr" or cmd == "echomsg" or cmd == "echon" then
+        if node.text:match("^%s*:?[%%%.%$%'%d]") then
+            return { code = "error(Error(481))" }
+        end
+        if not arg or arg.kind ~= "expr_list" then
+            return { code = "error('Malformed :" .. cmd .. "')" }
+        end
+        local values = {}
+        for i = 1, #arg.exprs do
+            values[#values + 1] = Compiler.compile_expr(arg.exprs[i].ast or arg.exprs[i].text, ctx)
+        end
+        return { code = "runtime:echo_values(" .. lua_string(cmd) .. ", { " .. table.concat(values, ", ") .. " })" }
+    elseif cmd == "call" then
+        if not arg or arg.kind ~= "expr" then
+            return { code = "error('Malformed :call')" }
+        end
+        return { code = "do local __rv = " .. Compiler.compile_expr(arg.expr_ast or arg.expr, ctx) .. " end" }
+    elseif cmd == "return" then
+        local val = "nil"
+        if node.rest ~= "" then
+            if not arg or arg.kind ~= "expr" then
+                return { code = "error('Malformed :return')" }
+            end
+            val = Compiler.compile_expr(arg.expr_ast or arg.expr, ctx)
+        end
+        return { code = string.format("error(runtime:return_exc(%s))", val) }
+    elseif cmd == "finish" then
+        return { code = "error(runtime:return_exc(nil))" }
+    elseif cmd == "set" or cmd == "setglobal" or cmd == "setlocal" then
+        local scope = (cmd == "setglobal" and "global") or (cmd == "setlocal" and "local") or "both"
+        if not arg or arg.kind ~= "set" then
+            return { code = "error('Malformed :" .. cmd .. "')" }
+        end
+        return { code = string.format("runtime:set_options({ tokens = %s }, %s)", lua_string_list(arg.tokens), lua_string(scope)) }
+    elseif cmd == "autocmd" then
+        if not arg or arg.kind ~= "autocmd" then
+            return { code = "error('Malformed :autocmd')" }
+        end
+        return { code = string.format("runtime:define_autocmd({ args = %s }, %s)", lua_string_list(arg.args), node.bang and "true" or "false") }
+    elseif cmd == "doautoall" then
+        if not arg or arg.kind ~= "doautoall" then
+            return { code = "error('Malformed :doautoall')" }
+        end
+        return { code = string.format("runtime:doautoall({ event = %s })", lua_string(arg.event)) }
+    elseif cmd == "command" then
+        if not arg or arg.kind ~= "command" then
+            return { code = "error('Malformed :command')" }
+        end
+        return {
+            code = string.format(
+                "runtime:define_command({ parts = %s, nargs = %s, name = %s, body_index = %d }, %s)",
+                lua_string_list(arg.parts),
+                lua_literal(arg.nargs),
+                lua_string(arg.name),
+                tonumber(arg.body_index) or 1,
+                node.bang and "true" or "false"
+            ),
+        }
+    end
+
+    local spec = compile_invocation_spec(node)
+    if Commands.get_spec(cmd) then
+        return { code = "runtime:invoke_compiled_builtin_command(" .. lua_string(cmd) .. ", " .. spec .. ")" }
+    end
+    return { code = "runtime:invoke_compiled_command(" .. spec .. ")" }
 end
 
 local function slice_ir(seq, first, last)
@@ -1125,11 +1389,7 @@ local function analyze_control_flow(seq)
     return true
 end
 
-local function expr_is_static(expr)
-    local ast = VimExpr.parse(expr)
-    if not ast then
-        return false
-    end
+local function ast_is_static(ast)
     local function walk(node)
         if type(node) ~= "table" then return false end
         local k = node.kind
@@ -1165,6 +1425,130 @@ local function expr_is_static(expr)
     return walk(ast)
 end
 
+local function expr_is_static(expr)
+    if expr == nil or expr == "" then
+        return false
+    end
+    if type(expr) == "table" and expr.kind then
+        return ast_is_static(expr)
+    end
+    local ast = VimExpr.parse(expr)
+    if not ast then
+        return false
+    end
+    return ast_is_static(ast)
+end
+
+local function parse_expr_for_node(node, field, expr)
+    if expr == nil or expr == "" then
+        return true
+    end
+    local ast, parse_err = VimExpr.parse(expr)
+    if not ast then
+        return nil, Error(474, "Unsupported expression: " .. tostring(expr or "") .. " (" .. tostring(parse_err) .. ")")
+    end
+    node[field] = ast
+    return true
+end
+
+local function parse_command_payloads(seq)
+    for i = 1, #seq do
+        local node = seq[i]
+        local cmd = node.cmd
+        if cmd == "let" then
+            local lhs, op, rhs = split_let_assignment(node.rest)
+            if lhs and op then
+                local arg = {
+                    kind = "let",
+                    lhs = trim(lhs),
+                    op = op,
+                    rhs = trim(rhs),
+                }
+                node.arg = arg
+                local ok, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
+                if err then return nil, err end
+            end
+        elseif cmd == "if" or cmd == "elseif" or cmd == "while" then
+            local arg = { kind = "expr", expr = node.rest }
+            node.arg = arg
+            local ok, err = parse_expr_for_node(arg, "expr_ast", arg.expr)
+            if err then return nil, err end
+        elseif cmd == "for" then
+            local arg = {
+                kind = "for",
+                lhs = node.iter_lhs,
+                rhs = node.iter_rhs,
+            }
+            node.arg = arg
+            local ok, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
+            if err then return nil, err end
+        elseif cmd == "call" or (cmd == "return" and node.rest ~= "") then
+            local arg = { kind = "expr", expr = node.rest }
+            node.arg = arg
+            local ok, err = parse_expr_for_node(arg, "expr_ast", arg.expr)
+            if err then return nil, err end
+        elseif cmd == "echo" or cmd == "echoerr" or cmd == "echomsg" or cmd == "echon" then
+            node.arg = {
+                kind = "expr_list",
+                exprs = VimExpr.splitExpressionAsts(node.rest),
+            }
+        elseif cmd == "unlet" then
+            node.arg = {
+                kind = "unlet",
+                names = split_ws_static(node.rest),
+            }
+        elseif cmd == "set" or cmd == "setglobal" or cmd == "setlocal" then
+            node.arg = {
+                kind = "set",
+                tokens = rejoin_equals_static(split_set_args_static(node.rest)),
+            }
+        elseif cmd == "execute" then
+            local exprs = VimExpr.splitExpressionAsts(node.rest)
+            node.arg = {
+                kind = "execute",
+                exprs = exprs,
+                dynamic = #exprs == 0 or node.rest:find("$'", 1, true) ~= nil,
+            }
+            for j = 1, #exprs do
+                if not exprs[j].ast then
+                    node.arg.dynamic = true
+                    break
+                end
+            end
+        elseif cmd == "put" then
+            local raw = trim(node.rest)
+            if raw == "" then
+                node.arg = { kind = "put", source = "default" }
+            elseif raw:sub(1, 1) == "=" then
+                local expr = trim(raw:sub(2))
+                node.arg = { kind = "put", source = (expr == "" and "expr_reuse" or "expr"), expr = expr }
+                if expr ~= "" then
+                    local ok, err = parse_expr_for_node(node.arg, "expr_ast", expr)
+                    if err then return nil, err end
+                end
+            elseif #raw == 1 then
+                node.arg = { kind = "put", source = "register", reg = raw }
+            else
+                node.arg = { kind = "put", source = "invalid", raw = raw }
+            end
+        elseif cmd == "autocmd" then
+            node.arg = {
+                kind = "autocmd",
+                args = split_ws_static(node.rest),
+            }
+        elseif cmd == "command" then
+            node.arg = parse_command_definition(node.rest)
+        elseif cmd == "doautoall" then
+            local ws_args = split_ws_static(node.rest)
+            node.arg = {
+                kind = "doautoall",
+                event = ws_args[1],
+            }
+        end
+    end
+    return true
+end
+
 local function infer_function_locals(seq)
     local locals = {}
     local safe = true
@@ -1176,22 +1560,32 @@ local function infer_function_locals(seq)
             i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
             goto continue
         elseif cmd == "let" then
-            local lhs, _, rhs = split_let_assignment(node.rest)
+            local let_arg = node.arg and node.arg.kind == "let" and node.arg or nil
+            local lhs, _, rhs = let_arg and let_arg.lhs, let_arg and let_arg.op, let_arg and let_arg.rhs
+            if not lhs then
+                lhs, _, rhs = split_let_assignment(node.rest)
+            end
+            if not lhs or not rhs then
+                safe = false
+                break
+            end
             local target = lhs and parse_static_lvalue(lhs)
-            if not target or target.scope ~= nil or not expr_is_static(rhs or "") then
+            if not target or target.scope ~= nil or not expr_is_static((let_arg and let_arg.rhs_ast) or rhs) then
                 safe = false
                 break
             end
             locals[target.name] = true
         elseif cmd == "for" then
+            local for_arg = node.arg and node.arg.kind == "for" and node.arg or nil
             local target = node.iter_lhs and parse_static_lvalue(node.iter_lhs)
-            if not target or target.scope ~= nil or not expr_is_static(node.iter_rhs or "") then
+            if not target or target.scope ~= nil or not expr_is_static((for_arg and for_arg.rhs_ast) or node.iter_rhs) then
                 safe = false
                 break
             end
             locals[target.name] = true
         elseif cmd == "if" or cmd == "elseif" or cmd == "while" or cmd == "return" then
-            if node.rest ~= "" and not expr_is_static(node.rest) then
+            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
+            if node.rest ~= "" and not expr_is_static((expr_arg and expr_arg.expr_ast) or node.rest) then
                 safe = false
                 break
             end
@@ -1343,10 +1737,12 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
         local node = seq[i]
         local cmd = node.cmd
         if cmd == "if" then
-            emitter:emit(("%sif %s then"):format(indent, _compile_condition(node.rest, merged_ctx(compile_ctx, state, loop_stack))))
+            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
+            emitter:emit(("%sif %s then"):format(indent, _compile_condition((expr_arg and expr_arg.expr_ast) or node.rest, merged_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "elseif" then
-            emitter:emit(("%selseif %s then"):format(indent, _compile_condition(node.rest, merged_ctx(compile_ctx, state, loop_stack))))
+            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
+            emitter:emit(("%selseif %s then"):format(indent, _compile_condition((expr_arg and expr_arg.expr_ast) or node.rest, merged_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "else" then
             emitter:emit(indent .. "else")
@@ -1358,7 +1754,8 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "while true do")
-            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition(node.rest, merged_ctx(compile_ctx, state, loop_stack))))
+            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
+            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition((expr_arg and expr_arg.expr_ast) or node.rest, merged_ctx(compile_ctx, state, loop_stack))))
             emitter:emit(indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1
         elseif cmd == "endwhile" then
@@ -1373,7 +1770,8 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "do")
-            emitter:emit(indent .. "  for _, __iter_v in ipairs(runtime:iter(" .. Compiler.compile_expr(node.iter_rhs, merged_ctx(compile_ctx, state, loop_stack)) .. ")) do")
+            local for_arg = node.arg and node.arg.kind == "for" and node.arg or nil
+            emitter:emit(indent .. "  for _, __iter_v in ipairs(runtime:iter(" .. Compiler.compile_expr((for_arg and for_arg.rhs_ast) or node.iter_rhs, merged_ctx(compile_ctx, state, loop_stack)) .. ")) do")
             emitter:emit(indent .. "    ; " .. emit_for_assignment(node, compile_ctx))
             emitter:emit(indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1
@@ -1464,6 +1862,10 @@ function Compiler.compile_script(script, opts)
     end
     local ok
     ok, err = analyze_control_flow(ir)
+    if err then
+        return nil, err
+    end
+    ok, err = parse_command_payloads(ir)
     if err then
         return nil, err
     end

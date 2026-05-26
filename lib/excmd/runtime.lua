@@ -30,6 +30,7 @@ local colorscheme_load_depth = 0
 local COMPILED_SCRIPT_CACHE = {}
 local COMPILED_SCRIPT_CACHE_ORDER = {}
 local COMPILED_SCRIPT_CACHE_MAX = 256
+local unpack_fn = table.unpack or unpack
 
 local function runtime_undo_batch_begin()
     runtime_undo_batch_buffers = {}
@@ -219,6 +220,12 @@ local function resolve_function_def(name, opts)
     end
     opts = opts or {}
     local state = opts.state or Runtime._CURRENT_STATE
+    if state and state.funcs and state.funcs[name] then
+        return state.funcs[name], name
+    end
+    if Runtime._FUNCS[name] then
+        return Runtime._FUNCS[name], name
+    end
     local canon = canonical_function_name(name, {
         state = state,
         script_ctx = opts.script_ctx,
@@ -283,6 +290,38 @@ local function try_autoload_function(name)
         ok = ScriptSource.source_runtime(script .. ".lua")
     end
     return ok == true
+end
+
+local function resolve_vlua_function(callee)
+    if callee:sub(1, 6):lower() ~= "v:lua." then return nil end
+    local rest = callee:sub(7)
+
+    if rest:sub(1, 7) == "require" then
+        local _, mod, func = rest:match([[^require(['"])([^'"]+)%1%.([%w_]+)$]])
+        if not mod or not func then
+            error(Error(117, callee))
+        end
+        local Req = loadModule("lib.luaapi.require")
+        local ok, modtbl = pcall(Req, mod)
+        if not ok then
+            error(Error(5107, mod))
+        end
+        local f = modtbl and modtbl[func]
+        if type(f) ~= "function" then
+            error(Error(117, callee))
+        end
+        return f
+    end
+
+    local LuaLoader = loadModule("lib.lualoader")
+    local ok_eval, cur = LuaLoader.Eval("return " .. rest)
+    if not ok_eval then
+        error(cur)
+    end
+    if type(cur) ~= "function" then
+        error(Error(117, callee))
+    end
+    return cur
 end
 
 local function table_kind_for_index(tbl)
@@ -605,20 +644,31 @@ local function assign_lhs(lhs, value, state)
     state.g[s] = value; return true
 end
 
-local function unlet(names, _, state)
+local function unlet_one(tok, state)
     local top = state.frames[#state.frames]
-    for tok in names:gmatch("%S+") do
-        local name = tok:gsub(",%$", "")
-        local scope, key = name:match("^([gslavbtw]):(.+)$")
-        if scope == "g" then state.g[key] = nil
-        elseif scope == "s" then state.s[key] = nil
-        elseif scope == "l" then if top then top.l[key] = nil end
-        elseif scope == "a" then if top then top.a[key] = nil end
-        elseif scope == "v" then (top and top.v or state.v)[key] = nil
-        elseif scope == "b" then scopes.b[key] = nil
-        elseif scope == "w" then scopes.w[key] = nil
-        elseif scope == "t" then scopes.t[key] = nil
-        else state.g[name] = nil end
+    local name = tostring(tok or ""):gsub(",%$", "")
+    local scope, key = name:match("^([gslavbtw]):(.+)$")
+    if scope == "g" then state.g[key] = nil
+    elseif scope == "s" then state.s[key] = nil
+    elseif scope == "l" then if top then top.l[key] = nil end
+    elseif scope == "a" then if top then top.a[key] = nil end
+    elseif scope == "v" then (top and top.v or state.v)[key] = nil
+    elseif scope == "b" then scopes.b[key] = nil
+    elseif scope == "w" then scopes.w[key] = nil
+    elseif scope == "t" then scopes.t[key] = nil
+    else state.g[name] = nil end
+end
+
+local function unlet(names, _, state)
+    local tokens = type(names) == "table" and (names.names or names) or nil
+    if tokens then
+        for i = 1, #tokens do
+            unlet_one(tokens[i], state)
+        end
+        return true
+    end
+    for tok in tostring(names or ""):gmatch("%S+") do
+        unlet_one(tok, state)
     end
     return true
 end
@@ -1380,42 +1430,8 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:call_func(name, args)
-        local unpack_fn = table.unpack or unpack
-
-        local function resolve_vlua(callee)
-            if callee:sub(1, 6):lower() ~= "v:lua." then return nil end
-            local rest = callee:sub(7)
-
-            if rest:sub(1, 7) == "require" then
-                local _, mod, func = rest:match([[^require(['"])([^'"]+)%1%.([%w_]+)$]])
-                if not mod or not func then
-                    error(Error(117, callee))
-                end
-                local Req = loadModule("lib.luaapi.require")
-                local ok, modtbl = pcall(Req, mod)
-                if not ok then
-                    error(Error(5107, mod))
-                end
-                local f = modtbl and modtbl[func]
-                if type(f) ~= "function" then
-                    error(Error(117, callee))
-                end
-                return f
-            end
-
-            local LuaLoader = loadModule("lib.lualoader")
-            local ok_eval, cur = LuaLoader.Eval("return " .. rest)
-            if not ok_eval then
-                error(cur)
-            end
-            if type(cur) ~= "function" then
-                error(Error(117, callee))
-            end
-            return cur
-        end
-
         if type(name) == "string" and name:sub(1, 6):lower() == "v:lua." then
-            local f = resolve_vlua(name)
+            local f = resolve_vlua_function(name)
             local ok, rv = pcall(function()
                 return f(unpack_fn(args or {}))
             end)
@@ -1425,8 +1441,7 @@ function Runtime.new(init_state, init_opts)
             return rv
         end
 
-        local VimFnMod = loadModule("lib.luaapi.fn")
-        local f_builtin = VimFnMod.fn[name]
+        local f_builtin = Builtins.fn[name]
         if type(f_builtin) == "function" then
             local top = self.state.frames[#self.state.frames]
             local scope = {
@@ -1436,9 +1451,9 @@ function Runtime.new(init_state, init_opts)
                 a = top and top.a or self.state.a,
                 v = top and top.v or self.state.v,
             }
-            VimFnMod._push_eval_scope(scope)
+            Builtins._push_eval_scope(scope)
             local ok, rv = pcall(f_builtin, unpack_fn(args or {}))
-            VimFnMod._pop_eval_scope()
+            Builtins._pop_eval_scope()
             if ok then
                 if Error.IsError(rv) then
                     error(rv)
@@ -1506,35 +1521,23 @@ function Runtime.new(init_state, init_opts)
             v = top and top.v or state.v,
         }
 
-        -- Build a callable map for VimExpr that dispatches to runtime:call_func
-        -- so script-local definitions (including <SNR> names) are visible.
         local funcs = {}
-        local function register(name)
-            if not name or funcs[name] then return end
-            funcs[name] = function(...) return self:call_func(name, { ... }) end
-        end
-        if state.funcs then
-            for name in pairs(state.funcs) do
-                register(name)
-            end
-        end
-        for name in pairs(Runtime._FUNCS) do
-            register(name)
-        end
-        local fallback_wrappers = {}
         setmetatable(funcs, {
             __index = function(_, name)
                 if type(name) ~= "string" then
                     return nil
                 end
-                local wrapper = fallback_wrappers[name]
-                if wrapper then
-                    return wrapper
+                local fn = (state.funcs and state.funcs[name]) or Runtime._FUNCS[name]
+                if not fn then
+                    fn = resolve_function_def(name, { state = state }) or Runtime._FUNCS[name]
                 end
-                wrapper = function(...)
+                if not fn and Builtins.fn[name] == nil and not (name:sub(1, 6):lower() == "v:lua.") then
+                    return nil
+                end
+                local wrapper = function(...)
                     return self:call_func(name, { ... })
                 end
-                fallback_wrappers[name] = wrapper
+                rawset(funcs, name, wrapper)
                 return wrapper
             end,
         })
@@ -1883,6 +1886,20 @@ function Runtime.new(init_state, init_opts)
         end)
     end
 
+    function rt:execute_values(values)
+        if type(values) ~= "table" or #values == 0 then
+            error(Error(471, "Argument required"))
+        end
+        local parts = {}
+        for i = 1, #values do
+            parts[#parts + 1] = tostring(values[i])
+        end
+        local line = table.concat(parts, " ")
+        return _with_cleared_command_modifiers(function()
+            return self:exec_script(line)
+        end)
+    end
+
     function rt:exec_verbose(level, body)
         level = tonumber(level) or 1
         body = tostring(body or ""):gsub("^%s*", "", 1)
@@ -1948,7 +1965,12 @@ function Runtime.new(init_state, init_opts)
     function rt:set_options(rest, mode)
         local win, buf = current_win_buf()
         mode = mode or "both"
-        local args = rejoin_equals(split_set_args(tostring(rest or "")))
+        local args
+        if type(rest) == "table" then
+            args = rest.tokens or rest
+        else
+            args = rejoin_equals(split_set_args(tostring(rest or "")))
+        end
         for i = 1, #args do
             local tok = args[i]
             Options.exset_token(tok, mode, win, buf)
@@ -3119,6 +3141,76 @@ function Runtime.new(init_state, init_opts)
         end
 
         local win = windows[curwin]
+        local buf = win.buffer
+        local line = cmdctx.line2 or win.cursory
+        local insert_before = bang and line or (line + 1)
+        if insert_before < 1 then
+            insert_before = 1
+        end
+
+        local start0 = insert_before - 1
+        buf:set_lines(start0, start0, false, lines)
+        local target_line = insert_before + #lines - 1
+        if target_line < 1 then
+            target_line = 1
+        end
+        win:cursorSet(1, target_line)
+        win:mark_redraw()
+        return true
+    end
+
+    function rt:put_compiled(payload, bang, spec)
+        payload = payload or {}
+        local win = windows[curwin]
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec or {})
+        local source = payload.source or "default"
+        local lines
+
+        if source == "default" then
+            local reg_default = '"'
+            if Options.resolve_abbrev("clipboard") then
+                local cb = tostring(Options.get("clipboard") or "")
+                if cb:find("unnamedplus", 1, true) then
+                    reg_default = "+"
+                elseif cb:find("unnamed", 1, true) then
+                    reg_default = "*"
+                end
+            end
+            local reg_lines, rerr = _read_put_register_lines(self, reg_default)
+            if Error.IsError(rerr) then
+                error(rerr)
+            end
+            lines = reg_lines
+        elseif source == "register" then
+            local reg_lines, rerr = _read_put_register_lines(self, payload.reg)
+            if Error.IsError(rerr) then
+                error(rerr)
+            end
+            lines = reg_lines
+        elseif source == "expr" or source == "expr_reuse" then
+            local put_expr = payload.expr or ""
+            local value
+            if source == "expr_reuse" then
+                put_expr = Runtime._LAST_PUT_EXPR
+                value = (put_expr ~= "") and self:eval_expr(put_expr) or ""
+            else
+                Runtime._LAST_PUT_EXPR = put_expr
+                value = payload.value
+            end
+
+            if type(value) == "table" and not value.__call then
+                lines = _copy_lines_from_list(value)
+            else
+                lines = _split_text_lines(tostring(value or ""))
+            end
+        else
+            error(Error(488, tostring(payload.raw or "")))
+        end
+
+        if #lines == 0 then
+            return true
+        end
+
         local buf = win.buffer
         local line = cmdctx.line2 or win.cursory
         local insert_before = bang and line or (line + 1)
@@ -4398,7 +4490,7 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:define_autocmd(rest, bang)
-        local args = split_ws(rest)
+        local args = type(rest) == "table" and (rest.args or rest) or split_ws(rest)
         local H, err = _consume_autocmd_header(args)
         if Error.IsError(err) then
             error(err)
@@ -4463,7 +4555,12 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:doautoall(rest)
-        local event = tostring(rest or ""):match("^(%S+)")
+        local event
+        if type(rest) == "table" then
+            event = rest.event
+        else
+            event = tostring(rest or ""):match("^(%S+)")
+        end
         if not event then error(Error(474, "Argument required")) end
         local win = windows[curwin]
         local curbuf = win.buffer
@@ -4720,20 +4817,27 @@ function Runtime.new(init_state, init_opts)
         local name
         local body
         local parts = {}
-        for tok in tostring(rest or ""):gmatch("%S+") do parts[#parts + 1] = tok end
         local idx = 1
-        while idx <= #parts do
-            local tok = parts[idx]
-            if tok:match("^%-nargs=") then
-                local v = tok:sub(8)
-                nargs = (v == "*" or v == "?" or v == "+") and v or tonumber(v) or 0
-                idx = idx + 1
-            elseif tok:match("^%-") then
-                idx = idx + 1
-            else
-                name = tok
-                idx = idx + 1
-                break
+        if type(rest) == "table" then
+            parts = rest.parts or {}
+            nargs = rest.nargs or 0
+            name = rest.name
+            idx = rest.body_index or (#parts + 1)
+        else
+            for tok in tostring(rest or ""):gmatch("%S+") do parts[#parts + 1] = tok end
+            while idx <= #parts do
+                local tok = parts[idx]
+                if tok:match("^%-nargs=") then
+                    local v = tok:sub(8)
+                    nargs = (v == "*" or v == "?" or v == "+") and v or tonumber(v) or 0
+                    idx = idx + 1
+                elseif tok:match("^%-") then
+                    idx = idx + 1
+                else
+                    name = tok
+                    idx = idx + 1
+                    break
+                end
             end
         end
         if not name then error(Error(474, "Missing command name")) end

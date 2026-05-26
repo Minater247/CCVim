@@ -183,6 +183,69 @@ local function resolve_vlua_path(path)
 end
 
 -- -------- tokenizer --------
+local TOKEN_MULTI_OPS = {
+    "==#",
+    "==?",
+    "!=#",
+    "!=?",
+    ">=",
+    "<=",
+    "=~#",
+    "=~?",
+    "!~#",
+    "!~?",
+    "==",
+    "!=",
+    "=~",
+    "!~",
+    "&&",
+    "||",
+    "<<",
+    ">>",
+    "->",
+    ".."
+}
+
+local TOKEN_WORD_OPS = {
+    "isnot#",
+    "isnot?",
+    "isnot",
+    "is#",
+    "is?",
+    "is",
+}
+
+local DOUBLE_QUOTE_ESCAPES = {
+    n = "\n",
+    r = "\r",
+    t = "\t",
+    b = "\b",
+    e = string.char(27),
+    f = string.char(12),
+    ['\\'] = "\\",
+    ['"'] = '"',
+}
+
+local function is_space_byte(b)
+    return b == 32 or b == 9 or b == 10 or b == 13 or b == 12 or b == 11
+end
+
+local function is_digit_byte(b)
+    return b and b >= 48 and b <= 57
+end
+
+local function is_alpha_byte(b)
+    return b and ((b >= 65 and b <= 90) or (b >= 97 and b <= 122))
+end
+
+local function is_word_byte(b)
+    return b and ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b == 95)
+end
+
+local function is_ident_byte(b)
+    return is_word_byte(b) or b == 35
+end
+
 local function tokenize(input)
     local i, n, toks = 1, #input, {}
     local function peek(k)
@@ -228,18 +291,23 @@ local function tokenize(input)
     end
     while i <= n do
         local c = peek()
-        if c:match("%s") then
+        local cb = input:byte(i)
+        if is_space_byte(cb) then
             adv(1)
             goto cont
         end
         local start = i
 
         -- number: int or simple float
-        if c:match("%d") then
-            local num = consume(function(ch) return ch:match("%d") end)
-            if peek() == "." and peek(1):match("%d") then
-                num = num .. consume(function(ch) return ch == "." or ch:match("%d") end)
+        if is_digit_byte(cb) then
+            local j = i
+            while is_digit_byte(input:byte(j)) do j = j + 1 end
+            if input:sub(j, j) == "." and is_digit_byte(input:byte(j + 1)) then
+                j = j + 1
+                while is_digit_byte(input:byte(j)) do j = j + 1 end
             end
+            local num = input:sub(i, j - 1)
+            i = j
             add("NUM", tonumber(num), start, num); goto cont
         end
 
@@ -273,16 +341,7 @@ local function tokenize(input)
             while i <= n do
                 local ch = peek(); adv(1)
                 if esc then
-                    local decoded = ({
-                        n = "\n",
-                        r = "\r",
-                        t = "\t",
-                        b = "\b",
-                        e = string.char(27),
-                        f = string.char(12),
-                        ['\\'] = "\\",
-                        ['"'] = '"',
-                    })[ch]
+                    local decoded = DOUBLE_QUOTE_ESCAPES[ch]
                     if decoded == nil and ch == "<" then
                         local j = i
                         while j <= n and input:sub(j, j) ~= ">" do
@@ -344,7 +403,7 @@ local function tokenize(input)
         end
         if c == "$" then
             local nxt = peek(1)
-            if nxt ~= "{" and not nxt:match("[%a_]") then
+            if nxt ~= "{" and not (is_alpha_byte(input:byte(i + 1)) or nxt == "_") then
                 adv(1)
                 add("DOLLAR", "$", start)
                 goto cont
@@ -354,7 +413,7 @@ local function tokenize(input)
             if peek() == "{" then
                 adv(1) -- skip '{'
                 local j = i
-                while j <= n and input:sub(j, j):match("[%w_]") do j = j + 1 end
+                while j <= n and is_word_byte(input:byte(j)) do j = j + 1 end
                 name = input:sub(i, j - 1)
                 i = j
                 if peek() ~= "}" then
@@ -362,10 +421,14 @@ local function tokenize(input)
                 end
                 adv(1) -- skip '}'
             else
-                if not peek():match("[%a_]") then
+                local pb = input:byte(i)
+                if not (is_alpha_byte(pb) or pb == 95) then
                     error(("Invalid env var name at %d: %s"):format(start, input:sub(i)))
                 end
-                local ident = consume(function(ch) return ch:match("[%w_]") end)
+                local j = i
+                while is_word_byte(input:byte(j)) do j = j + 1 end
+                local ident = input:sub(i, j - 1)
+                i = j
                 name = ident
             end
             add("ENV", name, start); goto cont
@@ -401,48 +464,19 @@ local function tokenize(input)
         end
 
         -- multi-char operators (longest first)
-        local multi = {
-            "==#",
-            "==?",
-            "!=#",
-            "!=?",
-            ">=",
-            "<=",
-            "=~#",
-            "=~?",
-            "!~#",
-            "!~?",
-            "==",
-            "!=",
-            "=~",
-            "!~",
-            "&&",
-            "||",
-            "<<",
-            ">>",
-            "->",
-            ".."
-        }
         local matched = false
-        for _, op in ipairs(multi) do
+        for _, op in ipairs(TOKEN_MULTI_OPS) do
             if input:sub(i, i + #op - 1) == op then
                 add("OP", op, start); adv(#op); matched = true; break
             end
         end
         if matched then goto cont end
 
-        local word_ops = {
-            "isnot#",
-            "isnot?",
-            "isnot",
-            "is#",
-            "is?",
-            "is",
-        }
-        for _, op in ipairs(word_ops) do
+        for _, op in ipairs(TOKEN_WORD_OPS) do
             if input:sub(i, i + #op - 1) == op then
+                local nb = input:byte(i + #op)
                 local nxt = input:sub(i + #op, i + #op)
-                if nxt == "" or not nxt:match("[%w_#?]") then
+                if nxt == "" or not (is_ident_byte(nb) or nxt == "?") then
                     add("OP", op, start); adv(#op); matched = true; break
                 end
             end
@@ -487,13 +521,16 @@ local function tokenize(input)
         if c == ":" then
             add("COLON", ":", start); adv(1); goto cont
         end
-        if c:match("[%+%-%*/%%<>%.%!%?,]") then
+        if c == "+" or c == "-" or c == "*" or c == "/" or c == "%" or c == "<" or c == ">" or c == "." or c == "!" or c == "?" or c == "," then
             add("OP", c, start); adv(1); goto cont
         end
 
         -- identifiers
-        if c:match("[%a_]") then
-            local ident = consume(function(ch) return ch:match("[%w_#]") end)
+        if is_alpha_byte(cb) or cb == 95 then
+            local j = i + 1
+            while is_ident_byte(input:byte(j)) do j = j + 1 end
+            local ident = input:sub(i, j - 1)
+            i = j
             add("ID", ident, start); goto cont
         end
 
@@ -1612,7 +1649,7 @@ function M.evaluate(expr, opts)
     return eval_node(ast, vim9, env)
 end
 
-function M.splitExpressions(expr_str)
+local function split_expression_items(expr_str, include_ast)
     local expressions = {}
     local current_pos = 1
 
@@ -1624,7 +1661,11 @@ function M.splitExpressions(expr_str)
         if not ok or #toks <= 1 then -- only EOF
             local first_word = sub_expr:match("^%s*([^%s]+)")
             if first_word then
-                expressions[#expressions + 1] = first_word
+                if include_ast then
+                    expressions[#expressions + 1] = { text = first_word }
+                else
+                    expressions[#expressions + 1] = first_word
+                end
                 current_pos = current_pos + (sub_expr:find(first_word, 1, true) + #first_word - 1)
             else
                 break -- Should not happen if not empty
@@ -1632,11 +1673,15 @@ function M.splitExpressions(expr_str)
             goto continue
         end
 
-        local ok_parse, _, end_tok_idx = pcall(parse, toks)
+        local ok_parse, ast, end_tok_idx = pcall(parse, toks)
         if not ok_parse or not end_tok_idx then
             local first_word = sub_expr:match("^%s*([^%s]+)")
             if first_word then
-                expressions[#expressions + 1] = first_word
+                if include_ast then
+                    expressions[#expressions + 1] = { text = first_word }
+                else
+                    expressions[#expressions + 1] = first_word
+                end
                 current_pos = current_pos + (sub_expr:find(first_word, 1, true) + #first_word - 1)
             else
                 break
@@ -1650,13 +1695,26 @@ function M.splitExpressions(expr_str)
         local end_pos = (next_tok and next_tok.pos and (next_tok.pos - 1)) or #sub_expr
         if end_pos < 1 then end_pos = 1 end
 
-        expressions[#expressions + 1] = sub_expr:sub(1, end_pos)
+        local text = sub_expr:sub(1, end_pos)
+        if include_ast then
+            expressions[#expressions + 1] = { text = text, ast = ast }
+        else
+            expressions[#expressions + 1] = text
+        end
         current_pos = current_pos + end_pos
 
         ::continue::
     end
 
     return expressions
+end
+
+function M.splitExpressions(expr_str)
+    return split_expression_items(expr_str, false)
+end
+
+function M.splitExpressionAsts(expr_str)
+    return split_expression_items(expr_str, true)
 end
 
 return M
