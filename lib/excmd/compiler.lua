@@ -5,8 +5,47 @@ local Error = loadModule("lib.error")
 local Commands = loadModule("lib.excmd.commands")
 local VimExpr = loadModule("lib.excmd.vimxpr")
 
+local function is_space_code(b)
+    return b == 32 or b == 9 or b == 10 or b == 13 or b == 12 or b == 11
+end
+
+local function is_alpha_code(b)
+    return b and ((b >= 65 and b <= 90) or (b >= 97 and b <= 122))
+end
+
+local function is_word_code(b)
+    return b and ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b == 95)
+end
+
+local function skip_space_pos(s, pos, n)
+    while pos <= n and is_space_code(s:byte(pos)) do
+        pos = pos + 1
+    end
+    return pos
+end
+
+local function lstrip_from(s, pos)
+    local n = #s
+    pos = skip_space_pos(s, pos, n)
+    if pos <= 1 then
+        return s
+    end
+    return s:sub(pos)
+end
+
 local function trim(s)
-    return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+    s = tostring(s or "")
+    local first, last = 1, #s
+    while first <= last and is_space_code(s:byte(first)) do
+        first = first + 1
+    end
+    while last >= first and is_space_code(s:byte(last)) do
+        last = last - 1
+    end
+    if first == 1 and last == #s then
+        return s
+    end
+    return s:sub(first, last)
 end
 
 local function resolve_cmd_name(raw)
@@ -48,53 +87,61 @@ end
 
 local function split_commands(script)
     script = tostring(script or ""):gsub("\n%s*\\", " ")
-    local out, buf = {}, {}
-    local in_s, in_d, esc = false, false, false
-    local in_comment = false
-    local seg_cmd_known = false
-    local seg_mode = "commentable"
-    local seg_no_bar = false
-    local cmd_buf = ""
-    local seg_leading = true
+    local out = {}
 
-    local function get_prev_nonspace()
-        local i = #buf
-        while i > 0 do
-            local ch = buf[i]
-            if not (ch == " " or ch == "\t" or ch == "\r" or ch == "\n" or ch == "\f" or ch == "\v") then return ch end
-            i = i - 1
-        end
-        return nil
-    end
-
-    local function flush_segment()
-        local seg = trim(table.concat(buf))
+    local function emit(seg)
+        seg = trim(seg)
         if #seg > 0 then
             out[#out + 1] = seg
         end
-        buf = {}
-        in_s, in_d, esc, in_comment = false, false, false, false
-        seg_cmd_known = false
-        seg_mode = "commentable"
-        seg_no_bar = false
-        cmd_buf = ""
-        seg_leading = true
     end
 
-    local i, n = 1, #script
-    while i <= n do
-        local c = script:sub(i, i)
+    local function process_line(line)
+        local pieces = {}
+        local in_s, in_d, esc = false, false, false
+        local in_comment = false
+        local seg_cmd_known = false
+        local seg_mode = "commentable"
+        local seg_no_bar = false
+        local cmd_buf = ""
+        local seg_leading = true
+        local seg_start = 1
+        local seg_prev_nonspace
 
-        if in_comment then
-            if c == "\n" then
-                flush_segment()
+        local function add_chunk(end_idx)
+            if seg_start and end_idx >= seg_start then
+                pieces[#pieces + 1] = line:sub(seg_start, end_idx)
             end
-            i = i + 1; goto continue
-        else
-            if c == "\n" then
-                flush_segment(); i = i + 1; goto continue
+        end
+
+        local function current_segment(end_idx)
+            local seg = table.concat(pieces)
+            if seg_start and end_idx >= seg_start then
+                seg = seg .. line:sub(seg_start, end_idx)
+            end
+            return seg
+        end
+
+        local function reset_segment(next_start)
+            pieces = {}
+            seg_start = next_start
+            seg_prev_nonspace = nil
+            in_s, in_d, esc, in_comment = false, false, false, false
+            seg_cmd_known = false
+            seg_mode = "commentable"
+            seg_no_bar = false
+            cmd_buf = ""
+            seg_leading = true
+        end
+
+        local i, n = 1, #line
+        while i <= n do
+            local c = line:sub(i, i)
+
+            if in_comment then
+                i = i + 1; goto continue
             elseif not in_s and not in_d and c == "|" and not seg_no_bar and not esc then
-                local head = trim(table.concat(buf))
+                local head = trim(current_segment(i - 1))
                 if head ~= "" then
                     local cmd, rest = parse_cmd_head(head)
                     local guard = 0
@@ -109,118 +156,150 @@ local function split_commands(script)
                     if type(cmd) == "string" and cmd ~= "" then
                         local _, nested_no_bar = _cmd_mode_and_bar(cmd)
                         if nested_no_bar then
-                            buf[#buf + 1] = c; i = i + 1; goto continue
+                            seg_prev_nonspace = c
+                            i = i + 1; goto continue
                         end
                     end
                 end
-                local prevc = (i > 1) and script:sub(i - 1, i - 1) or ""
+                local prevc = (i > 1) and line:sub(i - 1, i - 1) or ""
                 if prevc == "\\" then
-                    buf[#buf + 1] = c; i = i + 1; goto continue
+                    seg_prev_nonspace = c
+                    i = i + 1; goto continue
                 end
                 if seg_mode == "expr" then
-                    local nextc = (i < n) and script:sub(i + 1, i + 1) or ""
+                    local nextc = (i < n) and line:sub(i + 1, i + 1) or ""
                     if prevc == "|" or nextc == "|" then
-                        buf[#buf + 1] = c; i = i + 1; goto continue
-                    end
-                end
-                flush_segment(); i = i + 1; goto continue
-            end
-        end
-
-        if esc then
-            buf[#buf + 1] = c; esc = false; i = i + 1; goto continue
-        end
-        if c == "\\" then
-            if in_s then
-                buf[#buf + 1] = c; i = i + 1; goto continue
-            end
-            esc = true; buf[#buf + 1] = c; i = i + 1; goto continue
-        end
-
-        if not in_d and c == "'" then
-            in_s = not in_s
-            buf[#buf + 1] = c; i = i + 1; goto continue
-        end
-
-        if not in_s and c == '"' then
-            if seg_mode == "commentable" then
-                in_comment = true
-                i = i + 1; goto continue
-            elseif seg_mode == "expr" then
-                if not in_d then
-                    local prev = get_prev_nonspace()
-                    local start_string = false
-                    if not prev then
-                        start_string = true
-                    elseif
-                        prev:match("[=,:%(%[%{%+%-%*/%%<>~%^&|?#%.]")
-                        or _expr_head_only_before_quote(table.concat(buf))
-                    then
-                        start_string = true
-                    end
-                    if not start_string then
-                        in_comment = true
+                        seg_prev_nonspace = c
                         i = i + 1; goto continue
                     end
                 end
-                in_d = not in_d
-                buf[#buf + 1] = c; i = i + 1; goto continue
-            else
-                buf[#buf + 1] = c; i = i + 1; goto continue
+                emit(head)
+                reset_segment(i + 1); i = i + 1; goto continue
             end
-        end
 
-        if not seg_cmd_known and not in_s and not in_d then
-            if seg_leading then
-                if c == ":" or c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v" then
-                    buf[#buf + 1] = c
-                    if c ~= ":" then seg_leading = false end
+            if esc then
+                esc = false
+                if not (c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v") then
+                    seg_prev_nonspace = c
+                end
+                i = i + 1; goto continue
+            end
+            if c == "\\" then
+                if in_s then
+                    seg_prev_nonspace = c; i = i + 1; goto continue
+                end
+                esc = true; seg_prev_nonspace = c; i = i + 1; goto continue
+            end
+
+            if not in_d and c == "'" then
+                in_s = not in_s
+                seg_prev_nonspace = c; i = i + 1; goto continue
+            end
+
+            if not in_s and c == '"' then
+                if seg_mode == "commentable" then
+                    add_chunk(i - 1)
+                    seg_start = nil
+                    in_comment = true
                     i = i + 1; goto continue
+                elseif seg_mode == "expr" then
+                    if not in_d then
+                        local prev = seg_prev_nonspace
+                        local start_string = false
+                        if not prev then
+                            start_string = true
+                        elseif
+                            prev:match("[=,:%(%[%{%+%-%*/%%<>~%^&|?#%.]")
+                            or _expr_head_only_before_quote(current_segment(i - 1))
+                        then
+                            start_string = true
+                        end
+                        if not start_string then
+                            add_chunk(i - 1)
+                            seg_start = nil
+                            in_comment = true
+                            i = i + 1; goto continue
+                        end
+                    end
+                    in_d = not in_d
+                    seg_prev_nonspace = c; i = i + 1; goto continue
                 else
-                    seg_leading = false
+                    seg_prev_nonspace = c; i = i + 1; goto continue
                 end
             end
-            if #cmd_buf == 0 then
-                local b = c:byte()
-                if (b >= 65 and b <= 90) or (b >= 97 and b <= 122) then
-                    cmd_buf = c
-                else
-                    buf[#buf + 1] = c; i = i + 1; goto continue
+
+            if not seg_cmd_known and not in_s and not in_d then
+                if seg_leading then
+                    if c == ":" or c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v" then
+                        if c ~= ":" then seg_leading = false end
+                        if c == ":" then seg_prev_nonspace = c end
+                        i = i + 1; goto continue
+                    else
+                        seg_leading = false
+                    end
                 end
-            else
-                local b = c:byte()
-                if (b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b == 95 then
-                    cmd_buf = cmd_buf .. c
-                elseif c == "!" then
-                    cmd_buf = cmd_buf .. c
-                    local mode, no_bar = _cmd_mode_and_bar(cmd_buf)
-                    seg_mode = mode
-                    seg_no_bar = no_bar
-                    seg_cmd_known = true
-                elseif c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v" then
-                    local mode, no_bar = _cmd_mode_and_bar(cmd_buf)
-                    seg_mode = mode
-                    seg_no_bar = no_bar
-                    seg_cmd_known = true
-                    buf[#buf + 1] = c; i = i + 1; goto continue
+                if #cmd_buf == 0 then
+                    local b = c:byte()
+                    if (b >= 65 and b <= 90) or (b >= 97 and b <= 122) then
+                        cmd_buf = c
+                    else
+                        if not (c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v") then
+                            seg_prev_nonspace = c
+                        end
+                        i = i + 1; goto continue
+                    end
                 else
-                    local mode, no_bar = _cmd_mode_and_bar(cmd_buf)
-                    seg_mode = mode
-                    seg_no_bar = no_bar
-                    seg_cmd_known = true
-                    buf[#buf + 1] = c; i = i + 1; goto continue
+                    local b = c:byte()
+                    if (b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b == 95 then
+                        cmd_buf = cmd_buf .. c
+                    elseif c == "!" then
+                        cmd_buf = cmd_buf .. c
+                        local mode, no_bar = _cmd_mode_and_bar(cmd_buf)
+                        seg_mode = mode
+                        seg_no_bar = no_bar
+                        seg_cmd_known = true
+                    elseif c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v" then
+                        local mode, no_bar = _cmd_mode_and_bar(cmd_buf)
+                        seg_mode = mode
+                        seg_no_bar = no_bar
+                        seg_cmd_known = true
+                        i = i + 1; goto continue
+                    else
+                        local mode, no_bar = _cmd_mode_and_bar(cmd_buf)
+                        seg_mode = mode
+                        seg_no_bar = no_bar
+                        seg_cmd_known = true
+                        if not (c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v") then
+                            seg_prev_nonspace = c
+                        end
+                        i = i + 1; goto continue
+                    end
                 end
             end
+
+            if not (c == " " or c == "\t" or c == "\r" or c == "\n" or c == "\f" or c == "\v") then
+                seg_prev_nonspace = c
+            end
+            i = i + 1
+            ::continue::
         end
 
-        buf[#buf + 1] = c
-        i = i + 1
-        ::continue::
+        emit(current_segment(n))
     end
 
-    local tail = trim(table.concat(buf))
-    if #tail > 0 then
-        out[#out + 1] = tail
+    for line in (script .. "\n"):gmatch("(.-)\n") do
+        local first = 1
+        local line_len = #line
+        while first <= line_len and is_space_code(line:byte(first)) do
+            first = first + 1
+        end
+        if first > line_len or line:byte(first) == 34 then
+            -- Empty lines and full-line comments do not produce Ex commands.
+        elseif not line:find("|", 1, true) and not line:find("\"", 1, true) then
+            emit(line)
+        else
+            process_line(line)
+        end
     end
     return out
 end
@@ -302,46 +381,70 @@ local function strip_range_prefix(s)
 end
 
 function parse_cmd_head(line)
-    local s = tostring(line or ""):gsub("^%s+", "")
+    local s = tostring(line or "")
+    local n = #s
+    local pos = skip_space_pos(s, 1, n)
     while true do
-        local c = s:sub(1, 1)
-        if c == ":" then
-            s = s:sub(2):gsub("^%s+", "")
+        if s:byte(pos) == 58 then
+            pos = skip_space_pos(s, pos + 1, n)
         else
             break
         end
     end
 
-    local count_prefix = s:match("^(%d+)")
-    if count_prefix then
-        local after_count = s:sub(#count_prefix + 1)
-        local tail = after_count:gsub("^%s+", "")
-        local base = tail:match("^([%a][%w]*)")
-        if base then
+    local first_byte = s:byte(pos)
+    if first_byte and first_byte >= 48 and first_byte <= 57 then
+        local count_start = pos
+        repeat
+            pos = pos + 1
+            first_byte = s:byte(pos)
+        until not (first_byte and first_byte >= 48 and first_byte <= 57)
+        local tail_pos = skip_space_pos(s, pos, n)
+        local b = s:byte(tail_pos)
+        if is_alpha_code(b) then
+            local base_start = tail_pos
+            tail_pos = tail_pos + 1
+            while is_word_code(s:byte(tail_pos)) do
+                tail_pos = tail_pos + 1
+            end
+            local base = s:sub(base_start, tail_pos - 1)
             local resolved, rerr = resolve_cmd_name(base)
             if not Error.IsError(rerr) and resolved == "verbose" then
                 local raw_base = base
-                local bang = tail:sub(#base + 1, #base + 1) == "!"
-                local rest = tail:sub(#base + (bang and 2 or 1)):gsub("^%s+", "")
-                return resolved, rest, nil, bang, raw_base, tonumber(count_prefix)
+                local bang = s:byte(tail_pos) == 33
+                local rest = lstrip_from(s, tail_pos + (bang and 1 or 0))
+                return resolved, rest, nil, bang, raw_base, tonumber(s:sub(count_start, pos - 1))
             end
         end
+        pos = count_start
     end
 
-    s = strip_range_prefix(s)
+    local range_byte = s:byte(pos)
+    if range_byte == 37 or range_byte == 46 or range_byte == 36 or range_byte == 39
+        or (range_byte and range_byte >= 48 and range_byte <= 57)
+    then
+        s = strip_range_prefix(s:sub(pos))
+        n = #s
+        pos = 1
+    end
     while true do
-        local c = s:sub(1, 1)
-        if c == ":" then
-            s = s:sub(2):gsub("^%s+", "")
+        if s:byte(pos) == 58 then
+            pos = skip_space_pos(s, pos + 1, n)
         else
             break
         end
     end
-    local base = s:match("^([%a][%w]*)")
-    if not base then return nil, s end
+    local b = s:byte(pos)
+    if not is_alpha_code(b) then return nil, s:sub(pos) end
+    local base_start = pos
+    pos = pos + 1
+    while is_word_code(s:byte(pos)) do
+        pos = pos + 1
+    end
+    local base = s:sub(base_start, pos - 1)
     local raw_base = base
-    local bang = s:sub(#base + 1, #base + 1) == "!"
-    local rest = s:sub(#base + (bang and 2 or 1)):gsub("^%s+", "")
+    local bang = s:byte(pos) == 33
+    local rest = lstrip_from(s, pos + (bang and 1 or 0))
 
     local resolved, rerr = resolve_cmd_name(base)
     if Error.IsError(rerr) then
@@ -1074,6 +1177,9 @@ function Compiler.compile_command(node, ctx)
     local arg = node.arg
 
     if cmd == "let" then
+        if arg.kind == "let_query" then
+            return { code = "runtime:invoke_compiled_builtin_command(" .. lua_string(cmd) .. ", " .. compile_invocation_spec(node) .. ")" }
+        end
         local lhs, op, rhs = arg.lhs, arg.op, arg.rhs
         local static_lhs = parse_static_lvalue(lhs)
         local rhs_code = Compiler.compile_expr(arg.rhs_ast, ctx)
@@ -1418,17 +1524,18 @@ local function parse_command_payloads(seq)
         if cmd == "let" then
             local lhs, op, rhs = split_let_assignment(node.rest)
             if not lhs or not op then
-                return nil, Error(474, "let")
+                node.arg = { kind = "let_query" }
+            else
+                local arg = {
+                    kind = "let",
+                    lhs = trim(lhs),
+                    op = op,
+                    rhs = trim(rhs),
+                }
+                node.arg = arg
+                local ok, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
+                if err then return nil, err end
             end
-            local arg = {
-                kind = "let",
-                lhs = trim(lhs),
-                op = op,
-                rhs = trim(rhs),
-            }
-            node.arg = arg
-            local ok, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
-            if err then return nil, err end
         elseif cmd == "if" or cmd == "elseif" or cmd == "while" then
             local arg = { kind = "expr", expr = node.rest }
             node.arg = arg
@@ -1528,6 +1635,10 @@ local function infer_function_locals(seq)
             goto continue
         elseif cmd == "let" then
             local let_arg = node.arg
+            if let_arg.kind ~= "let" then
+                safe = false
+                break
+            end
             local target = parse_static_lvalue(let_arg.lhs)
             if not target or target.scope ~= nil or not expr_is_static(let_arg.rhs_ast) then
                 safe = false
@@ -1623,11 +1734,8 @@ function find_matching_end(seq, start_idx, open_cmd, close_cmd)
     return nil
 end
 
-local function merged_ctx(base, state, loop_stack)
-    local ctx = {}
-    if base then
-        for k, v in pairs(base) do ctx[k] = v end
-    end
+local function prepare_ctx(ctx, state, loop_stack)
+    ctx = ctx or {}
     ctx.state = state
     ctx.direct_backend = true
     ctx.loop_continue = loop_stack[#loop_stack]
@@ -1635,7 +1743,7 @@ local function merged_ctx(base, state, loop_stack)
 end
 
 local function emit_regular_node(emitter, node, state, loop_stack, indent, compile_ctx)
-    local compiled = Compiler.compile_command(node, merged_ctx(compile_ctx, state, loop_stack))
+    local compiled = Compiler.compile_command(node, prepare_ctx(compile_ctx, state, loop_stack))
     local node_ref = emitter:intern_node(node, false)
     emitter:emit(indent .. "runtime:set_exec_cursor_from(" .. node_ref .. ")")
     emitter:emit(indent .. "; " .. compiled.code)
@@ -1693,10 +1801,10 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
         local node = seq[i]
         local cmd = node.cmd
         if cmd == "if" then
-            emitter:emit(("%sif %s then"):format(indent, _compile_condition(node.arg.expr_ast, merged_ctx(compile_ctx, state, loop_stack))))
+            emitter:emit(("%sif %s then"):format(indent, _compile_condition(node.arg.expr_ast, prepare_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "elseif" then
-            emitter:emit(("%selseif %s then"):format(indent, _compile_condition(node.arg.expr_ast, merged_ctx(compile_ctx, state, loop_stack))))
+            emitter:emit(("%selseif %s then"):format(indent, _compile_condition(node.arg.expr_ast, prepare_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "else" then
             emitter:emit(indent .. "else")
@@ -1708,7 +1816,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "while true do")
-            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition(node.arg.expr_ast, merged_ctx(compile_ctx, state, loop_stack))))
+            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition(node.arg.expr_ast, prepare_ctx(compile_ctx, state, loop_stack))))
             emitter:emit(indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1
         elseif cmd == "endwhile" then
@@ -1723,7 +1831,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "do")
-            emitter:emit(indent .. "  for _, __iter_v in ipairs(runtime:iter(" .. Compiler.compile_expr(node.arg.rhs_ast, merged_ctx(compile_ctx, state, loop_stack)) .. ")) do")
+            emitter:emit(indent .. "  for _, __iter_v in ipairs(runtime:iter(" .. Compiler.compile_expr(node.arg.rhs_ast, prepare_ctx(compile_ctx, state, loop_stack)) .. ")) do")
             emitter:emit(indent .. "    ; " .. emit_for_assignment(node, compile_ctx))
             emitter:emit(indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1

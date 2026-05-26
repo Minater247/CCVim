@@ -215,6 +215,30 @@ local TOKEN_WORD_OPS = {
     "is",
 }
 
+local TOKEN_MULTI_OPS_BY_BYTE = {}
+for i = 1, #TOKEN_MULTI_OPS do
+    local op = TOKEN_MULTI_OPS[i]
+    local b = op:byte(1)
+    local bucket = TOKEN_MULTI_OPS_BY_BYTE[b]
+    if not bucket then
+        bucket = {}
+        TOKEN_MULTI_OPS_BY_BYTE[b] = bucket
+    end
+    bucket[#bucket + 1] = op
+end
+
+local TOKEN_WORD_OPS_BY_BYTE = {}
+for i = 1, #TOKEN_WORD_OPS do
+    local op = TOKEN_WORD_OPS[i]
+    local b = op:byte(1)
+    local bucket = TOKEN_WORD_OPS_BY_BYTE[b]
+    if not bucket then
+        bucket = {}
+        TOKEN_WORD_OPS_BY_BYTE[b] = bucket
+    end
+    bucket[#bucket + 1] = op
+end
+
 local DOUBLE_QUOTE_ESCAPES = {
     n = "\n",
     r = "\r",
@@ -305,10 +329,10 @@ local function tokenize(input)
         return nil
     end
     while i <= n do
-        local c = peek()
+        local c = input:sub(i, i)
         local cb = input:byte(i)
         if is_space_byte(cb) then
-            adv(1)
+            i = i + 1
             goto cont
         end
         local start = i
@@ -323,27 +347,27 @@ local function tokenize(input)
             end
             local num = input:sub(i, j - 1)
             i = j
-            add("NUM", tonumber(num), start, num); goto cont
+            add("NUM", tonumber(num), start, num, j - 1); goto cont
         end
 
         -- string (single or double quoted)
         if c == "'" then
-            adv(1)
+            i = i + 1
             local buf = {}
             while i <= n do
-                local ch = peek(); adv(1)
+                local ch = input:sub(i, i); i = i + 1
                 if ch == "'" then
                     -- Vimscript single-quote escaping: '' -> literal '
                     if peek() == "'" then
                         buf[#buf + 1] = "'"
-                        adv(1)
+                        i = i + 1
                     else
                         break
                     end
                 elseif ch == "\\" and peek() == '"' then
                     -- In Vimscript single-quoted strings, \" yields a literal ".
                     buf[#buf + 1] = '"'
-                    adv(1)
+                    i = i + 1
                 else
                     buf[#buf + 1] = ch
                 end
@@ -351,10 +375,10 @@ local function tokenize(input)
             add("STR", table.concat(buf), start, nil, i - 1); goto cont
         end
         if c == '"' then
-            adv(1)
+            i = i + 1
             local buf, esc = {}, false
             while i <= n do
-                local ch = peek(); adv(1)
+                local ch = input:sub(i, i); i = i + 1
                 if esc then
                     local decoded = DOUBLE_QUOTE_ESCAPES[ch]
                     if decoded == nil and ch == "<" then
@@ -399,14 +423,14 @@ local function tokenize(input)
             -- $'...' single-quoted string.
             -- Parse as one string token so splitExpressions() can segment
             -- execute arguments without being confused by interpolation text.
-            adv(2) -- skip $'
+            i = i + 2 -- skip $'
             local buf = {}
             while i <= n do
-                local ch = peek(); adv(1)
+                local ch = input:sub(i, i); i = i + 1
                 if ch == "'" then
                     if peek() == "'" then
                         buf[#buf + 1] = "'"
-                        adv(1)
+                        i = i + 1
                     else
                         break
                     end
@@ -419,14 +443,14 @@ local function tokenize(input)
         if c == "$" then
             local nxt = peek(1)
             if nxt ~= "{" and not (is_alpha_byte(input:byte(i + 1)) or nxt == "_") then
-                adv(1)
-                add("DOLLAR", "$", start)
+                i = i + 1
+                add("DOLLAR", "$", start, nil, start)
                 goto cont
             end
-            adv(1)
+            i = i + 1
             local name
             if peek() == "{" then
-                adv(1) -- skip '{'
+                i = i + 1 -- skip '{'
                 local j = i
                 while j <= n and is_word_byte(input:byte(j)) do j = j + 1 end
                 name = input:sub(i, j - 1)
@@ -434,7 +458,7 @@ local function tokenize(input)
                 if peek() ~= "}" then
                     error(("Unterminated ${ at %d"):format(start))
                 end
-                adv(1) -- skip '}'
+                i = i + 1 -- skip '}'
             else
                 local pb = input:byte(i)
                 if not (is_alpha_byte(pb) or pb == 95) then
@@ -451,18 +475,18 @@ local function tokenize(input)
 
         -- register: @x or @@
         if c == "@" then
-            adv(1)
+            i = i + 1
             local nxt = peek()
             if nxt == "" then
                 error(("Missing register name at %d"):format(start))
             end
             if nxt == "@" then
-                adv(1)
-                add("REG", "@", start); goto cont
+                i = i + 1
+                add("REG", "@", start, nil, i - 1); goto cont
             end
             if nxt == "{" then
                 -- minimal support for @{name}; read until }
-                adv(1) -- skip '{'
+                i = i + 1 -- skip '{'
                 local j = i
                 while j <= n and input:sub(j, j) ~= "}" do j = j + 1 end
                 if j > n then
@@ -474,29 +498,39 @@ local function tokenize(input)
             end
             -- single-character register name
             local reg = nxt
-            adv(1)
-            add("REG", reg, start); goto cont
+            i = i + 1
+            add("REG", reg, start, nil, i - 1); goto cont
         end
 
         -- multi-char operators (longest first)
         local matched = false
-        for _, op in ipairs(TOKEN_MULTI_OPS) do
-            if input:sub(i, i + #op - 1) == op then
-                add("OP", op, start); adv(#op); matched = true; break
-            end
-        end
-        if matched then goto cont end
-
-        for _, op in ipairs(TOKEN_WORD_OPS) do
-            if input:sub(i, i + #op - 1) == op then
-                local nb = input:byte(i + #op)
-                local nxt = input:sub(i + #op, i + #op)
-                if nxt == "" or not (is_ident_byte(nb) or nxt == "?") then
-                    add("OP", op, start); adv(#op); matched = true; break
+        local multi_ops = TOKEN_MULTI_OPS_BY_BYTE[cb]
+        if multi_ops then
+            for op_idx = 1, #multi_ops do
+                local op = multi_ops[op_idx]
+                if input:sub(i, i + #op - 1) == op then
+                    local endpos = i + #op - 1
+                    add("OP", op, start, nil, endpos); i = endpos + 1; matched = true; break
                 end
             end
+            if matched then goto cont end
         end
-        if matched then goto cont end
+
+        local word_ops = TOKEN_WORD_OPS_BY_BYTE[cb]
+        if word_ops then
+            for op_idx = 1, #word_ops do
+                local op = word_ops[op_idx]
+                if input:sub(i, i + #op - 1) == op then
+                    local nb = input:byte(i + #op)
+                    local nxt = input:sub(i + #op, i + #op)
+                    if nxt == "" or not (is_ident_byte(nb) or nxt == "?") then
+                        local endpos = i + #op - 1
+                        add("OP", op, start, nil, endpos); i = endpos + 1; matched = true; break
+                    end
+                end
+            end
+            if matched then goto cont end
+        end
 
         -- script-local function names in expression context: <SID>Foo(), <SNR>12_Foo()
         if c == "<" then
@@ -510,34 +544,34 @@ local function tokenize(input)
         if c == "#" and peek(1) == "{" then
             -- Vim literal dictionary syntax: #{ key: value }.
             -- Treat this as a dict-opening brace for parser compatibility.
-            add("LBRACE", "{", start); adv(2); goto cont
+            add("LBRACE", "{", start, nil, start + 1); i = i + 2; goto cont
         end
         if c == "(" then
-            add("LPAREN", "(", start); adv(1); goto cont
+            add("LPAREN", "(", start, nil, start); i = i + 1; goto cont
         end
         if c == ")" then
-            add("RPAREN", ")", start); adv(1); goto cont
+            add("RPAREN", ")", start, nil, start); i = i + 1; goto cont
         end
         if c == "{" then
-            add("LBRACE", "{", start); adv(1); goto cont
+            add("LBRACE", "{", start, nil, start); i = i + 1; goto cont
         end
         if c == "}" then
-            add("RBRACE", "}", start); adv(1); goto cont
+            add("RBRACE", "}", start, nil, start); i = i + 1; goto cont
         end
         if c == "[" then
-            add("LBRACK", "[", start); adv(1); goto cont
+            add("LBRACK", "[", start, nil, start); i = i + 1; goto cont
         end
         if c == "]" then
-            add("RBRACK", "]", start); adv(1); goto cont
+            add("RBRACK", "]", start, nil, start); i = i + 1; goto cont
         end
         if c == "&" then
-            add("AMP", "&", start); adv(1); goto cont
+            add("AMP", "&", start, nil, start); i = i + 1; goto cont
         end
         if c == ":" then
-            add("COLON", ":", start); adv(1); goto cont
+            add("COLON", ":", start, nil, start); i = i + 1; goto cont
         end
         if c == "+" or c == "-" or c == "*" or c == "/" or c == "%" or c == "<" or c == ">" or c == "." or c == "!" or c == "?" or c == "," then
-            add("OP", c, start); adv(1); goto cont
+            add("OP", c, start, nil, start); i = i + 1; goto cont
         end
 
         -- identifiers
@@ -546,7 +580,7 @@ local function tokenize(input)
             while is_ident_byte(input:byte(j)) do j = j + 1 end
             local ident = input:sub(i, j - 1)
             i = j
-            add("ID", ident, start); goto cont
+            add("ID", ident, start, nil, j - 1); goto cont
         end
 
         error(("Unexpected char %q at %d (expr=%q, tail=%q)"):format(c, i, short_expr(input, 120),
