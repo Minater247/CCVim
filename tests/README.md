@@ -63,6 +63,18 @@ Use the Neovim parity backend:
 lua tests/run.lua --backend=headless_nvim
 ```
 
+Run benchmark suites:
+
+```sh
+lua tests/run.lua --benchmarks
+```
+
+Run the runtime-wide highlighting parity benchmark directly:
+
+```sh
+lua tests/benchmark_runtime_highlighting.lua
+```
+
 ## Writing Tests
 
 Each test suite is a Lua file returning a table:

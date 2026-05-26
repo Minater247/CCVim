@@ -274,13 +274,22 @@ return {
                     return painted
                 end
 
+                local priorities = {}
+                for i = 1, #text do
+                    priorities[i] = -1
+                end
+
                 for i = 1, #cache.spans do
                     local span = cache.spans[i]
                     local name = group_name_for_id(ctx_state.syntax_ir, span.group_id)
+                    local priority = span.priority or 0
                     local s = math.max(1, span.s or 1)
                     local e = math.min(#text, span.e or #text)
                     for col = s, e do
-                        painted[col] = name
+                        if priority >= priorities[col] then
+                            painted[col] = name
+                            priorities[col] = priority
+                        end
                     end
                 end
 

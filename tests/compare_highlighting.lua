@@ -261,6 +261,7 @@ if vim.bo.filetype ~= "" then
 end
 
 io.write("FT\t" .. tostring(vim.bo.filetype or "") .. "\n")
+io.write("SMC\t" .. tostring(vim.bo.synmaxcol or 3000) .. "\n")
 
 local line_count = vim.api.nvim_buf_line_count(0)
 for ln = 1, line_count do
@@ -324,6 +325,7 @@ local function collect_nvim_segments(path, forced_ft)
 
     local out = {
         filetype = "",
+        synmaxcol = 3000,
         segments = {},
     }
 
@@ -331,6 +333,8 @@ local function collect_nvim_segments(path, forced_ft)
         local row = line:gsub("\n$", "")
         if starts_with(row, "FT\t") then
             out.filetype = row:sub(4)
+        elseif starts_with(row, "SMC\t") then
+            out.synmaxcol = tonumber(row:sub(5)) or 3000
         elseif starts_with(row, "S\t") then
             local l, s, e, g = row:match("^S\t(%d+)\t(%d+)\t(%d+)\t(.*)$")
             if l then
@@ -349,6 +353,161 @@ local function collect_nvim_segments(path, forced_ft)
 
     if out.filetype == "" and forced_ft and forced_ft ~= "" then
         out.filetype = forced_ft
+    end
+    out.synmaxcol = out.synmaxcol or 3000
+
+    return out
+end
+
+local function write_nvim_batch_probe_script(path)
+    local f, err = io.open(path, "w")
+    if not f then
+        error("Failed to create nvim batch probe script: " .. tostring(err))
+    end
+
+    f:write([[
+local first = (arg[1] == "--") and 2 or 1
+
+vim.o.swapfile = false
+vim.o.modeline = false
+vim.cmd("set nomore")
+vim.cmd("filetype on")
+vim.cmd("syntax on")
+
+local function scrub(text)
+  return tostring(text or ""):gsub("[\t\r\n]", " ")
+end
+
+local out_idx = 1
+for idx = first, #arg do
+  local target = arg[idx]
+  io.write(("F\t%d\t%s\n"):format(out_idx, scrub(target)))
+
+  local ok, err = pcall(function()
+    vim.cmd("silent edit " .. vim.fn.fnameescape(target))
+    vim.cmd("filetype detect")
+    if vim.bo.filetype ~= "" then
+      vim.bo.syntax = vim.bo.filetype
+    end
+
+    io.write("FT\t" .. tostring(out_idx) .. "\t" .. scrub(vim.bo.filetype or "") .. "\n")
+    io.write("SMC\t" .. tostring(out_idx) .. "\t" .. tostring(vim.bo.synmaxcol or 3000) .. "\n")
+
+    local line_count = vim.api.nvim_buf_line_count(0)
+    for ln = 1, line_count do
+      local text = vim.fn.getline(ln)
+      local len = #text
+      if len > 0 then
+        local col = 1
+        while col <= len do
+          local id = vim.fn.synID(ln, col, 1)
+          local name = vim.fn.synIDattr(id, "name")
+          if name == "" then name = "Normal" end
+
+          local j = col + 1
+          while j <= len do
+            local id2 = vim.fn.synID(ln, j, 1)
+            local name2 = vim.fn.synIDattr(id2, "name")
+            if name2 == "" then name2 = "Normal" end
+            if name2 ~= name then break end
+            j = j + 1
+          end
+
+          io.write(("S\t%d\t%d\t%d\t%d\t%s\n"):format(out_idx, ln, col, j - 1, scrub(name)))
+          col = j
+        end
+      end
+    end
+    vim.cmd("silent! bwipe!")
+  end)
+
+  if not ok then
+    io.write(("ERR\t%d\t%s\n"):format(out_idx, scrub(err)))
+    vim.cmd("silent! bwipe!")
+  end
+
+  out_idx = out_idx + 1
+end
+
+vim.cmd("qa!")
+]])
+
+    f:close()
+end
+
+local function collect_nvim_segments_many(paths)
+    local tmp = os.tmpname()
+    write_nvim_batch_probe_script(tmp)
+
+    local parts = {
+        "nvim --headless -u NONE -i NONE -n -l",
+        shell_quote(tmp),
+        "--",
+    }
+    for i = 1, #paths do
+        parts[#parts + 1] = shell_quote(paths[i])
+    end
+
+    local pipe = io.popen(table.concat(parts, " ") .. " 2>&1", "r")
+    if not pipe then
+        os.remove(tmp)
+        error("Failed to start nvim")
+    end
+
+    local output = pipe:read("*a") or ""
+    local ok, _, code = pipe:close()
+    os.remove(tmp)
+
+    if not ok then
+        error(("nvim batch probe failed (exit %s)\n%s"):format(tostring(code or "?"), output))
+    end
+
+    local out = {}
+    for i = 1, #paths do
+        out[paths[i]] = {
+            filetype = "",
+            synmaxcol = 3000,
+            segments = {},
+        }
+    end
+
+    for line in output:gmatch("[^\n]*\n?") do
+        local row = line:gsub("\n$", "")
+        if starts_with(row, "FT\t") then
+            local idx, ft = row:match("^FT\t(%d+)\t(.*)$")
+            idx = tonumber(idx)
+            local path = idx and paths[idx]
+            if path and out[path] then
+                out[path].filetype = ft or ""
+            end
+        elseif starts_with(row, "SMC\t") then
+            local idx, value = row:match("^SMC\t(%d+)\t(.*)$")
+            idx = tonumber(idx)
+            local path = idx and paths[idx]
+            if path and out[path] then
+                out[path].synmaxcol = tonumber(value) or 3000
+            end
+        elseif starts_with(row, "S\t") then
+            local idx, l, s, e, g = row:match("^S\t(%d+)\t(%d+)\t(%d+)\t(%d+)\t(.*)$")
+            idx = tonumber(idx)
+            local path = idx and paths[idx]
+            if path and out[path] then
+                local ln = tonumber(l)
+                out[path].segments[ln] = out[path].segments[ln] or {}
+                out[path].segments[ln][#out[path].segments[ln] + 1] = {
+                    s = tonumber(s),
+                    e = tonumber(e),
+                    group = (g ~= "" and g or "Normal"),
+                }
+            end
+        elseif starts_with(row, "ERR\t") then
+            local idx, err = row:match("^ERR\t(%d+)\t(.*)$")
+            idx = tonumber(idx)
+            local path = idx and paths[idx]
+            if path and out[path] then
+                out[path].error = err or "nvim probe failed"
+            end
+        end
     end
 
     return out
@@ -874,17 +1033,23 @@ end
 local function paint_line_groups(line_text, spans, ir)
     local len = #line_text
     local groups = {}
+    local priorities = {}
     for i = 1, len do
         groups[i] = "Normal"
+        priorities[i] = -1
     end
 
     for i = 1, #spans do
         local span = spans[i]
         local name = group_name_from_id(ir, span.group_id)
+        local priority = span.priority or 0
         local s = math.max(1, span.s or 1)
         local e = math.min(len, span.e or len)
         for col = s, e do
-            groups[col] = name
+            if priority >= priorities[col] then
+                groups[col] = name
+                priorities[col] = priority
+            end
         end
     end
 
@@ -948,7 +1113,7 @@ local function collect_lua_segments(path, ft, opts)
 
     local ctx = State.new_context({
         syntax = ft,
-        synmaxcol = 100000,
+        synmaxcol = opts.synmaxcol or 3000,
     })
     ctx.syntax_commands = commands
     ctx.syntax_ir = Compiler.compile(commands)
@@ -960,8 +1125,8 @@ local function collect_lua_segments(path, ft, opts)
         lines = lines,
     }
 
+    Runtime.lines_to_blit(ctx, buf, 1, #lines)
     for ln = 1, #lines do
-        Runtime.line_to_blit(ctx, buf, ln)
         local cache = ctx.span_cache[ln]
         if cache and cache.spans then
             local painted = paint_line_groups(lines[ln], cache.spans, ctx.syntax_ir)
@@ -984,6 +1149,7 @@ local function fmt_snippet(s)
 end
 
 local function compare_and_print(path, ft, nvim_data, lua_data, opts)
+    opts = opts or {}
     local lines = lua_data.lines
     local line_count = #lines
 
@@ -1040,6 +1206,21 @@ local function compare_and_print(path, ft, nvim_data, lua_data, opts)
         end
     end
 
+    local stats = {
+        file = path,
+        filetype = ft,
+        syntax_file = lua_data.syntax_file,
+        compared_lines = compared_lines,
+        mismatch_lines = mismatch_lines,
+        mismatch_cols = mismatch_cols,
+        total_cols = total_cols,
+        reports = reports,
+    }
+
+    if opts.quiet then
+        return stats
+    end
+
     io.write(("File: %s\n"):format(path))
     io.write(("Filetype: %s\n"):format(ft))
     io.write(("Syntax File (Lua engine): %s\n"):format(lua_data.syntax_file))
@@ -1049,7 +1230,7 @@ local function compare_and_print(path, ft, nvim_data, lua_data, opts)
 
     if mismatch_lines == 0 then
         io.write("No discrepancies found.\n")
-        return 0
+        return stats
     end
 
     io.write("\nDiscrepancies:\n")
@@ -1072,17 +1253,20 @@ local function compare_and_print(path, ft, nvim_data, lua_data, opts)
         end
     end
 
-    return mismatch_lines
+    return stats
 end
 
-local function main(argv)
-    local opts = parse_args(argv)
+local function compare_file(opts)
+    opts = opts or {}
     local target = normalize_path(opts.file)
     if not file_exists(target) then
         error("File not found: " .. target)
     end
 
-    local nvim_data = collect_nvim_segments(target, opts.ft)
+    local nvim_data = opts.nvim_data or collect_nvim_segments(target, opts.ft)
+    if nvim_data.error then
+        error("nvim probe failed: " .. tostring(nvim_data.error))
+    end
     local ft = trim(opts.ft or "")
     if ft == "" then
         ft = trim(nvim_data.filetype)
@@ -1091,15 +1275,39 @@ local function main(argv)
         error("Unable to determine filetype. Pass --ft=<filetype>.")
     end
 
-    local lua_data, lerr = collect_lua_segments(target, ft, opts)
+    local lua_opts = {}
+    for k, v in pairs(opts) do
+        lua_opts[k] = v
+    end
+    lua_opts.synmaxcol = lua_opts.synmaxcol or nvim_data.synmaxcol or 3000
+
+    local lua_data, lerr = collect_lua_segments(target, ft, lua_opts)
     if not lua_data then
         error("Lua engine probe failed: " .. tostring(lerr))
     end
 
-    local mismatch_lines = compare_and_print(target, ft, nvim_data, lua_data, opts)
-    if opts.fail_on_diff and mismatch_lines > 0 then
+    return compare_and_print(target, ft, nvim_data, lua_data, opts)
+end
+
+local function main(argv)
+    local opts = parse_args(argv)
+    local stats = compare_file(opts)
+    if opts.fail_on_diff and stats.mismatch_lines > 0 then
         os.exit(1)
     end
 end
 
-main(arg)
+local M = {
+    compare_file = compare_file,
+    collect_lua_segments = collect_lua_segments,
+    collect_nvim_segments = collect_nvim_segments,
+    collect_nvim_segments_many = collect_nvim_segments_many,
+    normalize_path = normalize_path,
+}
+
+local module_name = ...
+if not (type(module_name) == "string" and module_name:match("compare_highlighting$")) then
+    main(arg)
+end
+
+return M
