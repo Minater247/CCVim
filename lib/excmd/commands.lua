@@ -224,20 +224,43 @@ local COMMAND_SPECS = {
 }
 
 local SPEC_BY_NAME = {}
-local PARSE_REGISTRY = {}
+local PARSE_REGISTRY_BY_FIRST = {}
 local DISPATCH_MIN_ABBREV = {}
-local DISPATCH_REGISTRY = {}
+local DISPATCH_REGISTRY_BY_FIRST = {}
 local MAP_COMMAND_SPECS = {}
 local MENU_COMMAND_SPECS = {}
+local EMPTY_REGISTRY = {}
+
+local function add_registry(by_first, entry)
+    local first = entry.name:sub(1, 1)
+    local bucket = by_first[first]
+    if not bucket then
+        bucket = {}
+        by_first[first] = bucket
+    end
+    bucket[#bucket + 1] = entry
+end
+
+local function normalize_prefix(raw)
+    local prefix = tostring(raw):lower()
+    local bang_end = #prefix
+    while bang_end > 0 and prefix:byte(bang_end) == 33 do
+        bang_end = bang_end - 1
+    end
+    if bang_end ~= #prefix then
+        prefix = prefix:sub(1, bang_end)
+    end
+    return prefix
+end
 
 for _, spec in ipairs(COMMAND_SPECS) do
     SPEC_BY_NAME[spec.name] = spec
     if spec.min then
-        PARSE_REGISTRY[#PARSE_REGISTRY + 1] = { name = spec.name, min = spec.min }
+        add_registry(PARSE_REGISTRY_BY_FIRST, { name = spec.name, min = spec.min })
     end
     if spec.dispatch then
         DISPATCH_MIN_ABBREV[spec.name] = spec.min
-        DISPATCH_REGISTRY[#DISPATCH_REGISTRY + 1] = { name = spec.name, min = spec.min }
+        add_registry(DISPATCH_REGISTRY_BY_FIRST, { name = spec.name, min = spec.min })
     end
     if spec.map then
         MAP_COMMAND_SPECS[spec.name] = spec.map
@@ -247,13 +270,15 @@ for _, spec in ipairs(COMMAND_SPECS) do
     end
 end
 
-local function resolve_prefix(raw, registry, opts)
-    opts = opts or {}
+local function resolve_prefix(raw, by_first, exact_names, fallback_raw, sort_matches)
     if not raw or raw == "" then
         return nil
     end
-    local prefix = tostring(raw):lower():gsub("!+$", "")
+    local prefix = normalize_prefix(raw)
     local prefix_len = #prefix
+    if exact_names[prefix] then
+        return prefix
+    end
     local delete_name = "delete"
     if delete_name:find(prefix, 1, true) ~= 1 then
         local tail = prefix:sub(-1)
@@ -264,6 +289,7 @@ local function resolve_prefix(raw, registry, opts)
             end
         end
     end
+    local registry = by_first[prefix:sub(1, 1)] or EMPTY_REGISTRY
     local first
     local matches
     local match_count = 0
@@ -285,36 +311,42 @@ local function resolve_prefix(raw, registry, opts)
         return first
     end
     if match_count == 0 then
-        if opts.fallback_raw then
+        if fallback_raw then
             return trim(raw)
         end
         return nil
     end
-    if opts.sort_matches then
+    if sort_matches then
         table.sort(matches)
     end
     return nil, Error(464, prefix, table.concat(matches, ", "))
 end
 
 function Commands.resolve_parse_name(raw)
-    return resolve_prefix(raw, PARSE_REGISTRY, { fallback_raw = true, sort_matches = false })
+    return resolve_prefix(raw, PARSE_REGISTRY_BY_FIRST, SPEC_BY_NAME, true, false)
 end
 
 function Commands.resolve_dispatch_name(prefix)
-    return resolve_prefix(prefix, DISPATCH_REGISTRY, { fallback_raw = false, sort_matches = true })
+    return resolve_prefix(prefix, DISPATCH_REGISTRY_BY_FIRST, DISPATCH_MIN_ABBREV, false, true)
 end
 
 function Commands.mode_and_bar(cmd_raw)
     if not cmd_raw or cmd_raw == "" then
         return "commentable", false
     end
-    local canonical = Commands.resolve_parse_name(cmd_raw)
-    if type(canonical) ~= "string" or canonical == "" then
-        return "commentable", false
+    local spec = SPEC_BY_NAME[normalize_prefix(cmd_raw)]
+    if not spec then
+        local canonical = Commands.resolve_parse_name(cmd_raw)
+        if type(canonical) ~= "string" or canonical == "" then
+            return "commentable", false
+        end
+        spec = SPEC_BY_NAME[canonical]
+        if not spec then
+            return "raw", false
+        end
     end
-    local spec = SPEC_BY_NAME[canonical]
-    local mode = (spec and spec.comment_mode) or "raw"
-    local no_bar = (spec and spec.no_bar_split) and true or false
+    local mode = spec.comment_mode or "raw"
+    local no_bar = spec.no_bar_split == true
     return mode, no_bar
 end
 

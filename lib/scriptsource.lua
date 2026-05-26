@@ -130,12 +130,6 @@ local function run_vimscript_compiled(source_path, compiled_code, chunkname)
 end
 
 local function run_vimscript_path(path)
-    local script, read_err = read_file(path)
-    if not script then
-        LOG_DEBUG("Error executing '%s': %s", path, read_err:toString())
-        return false, read_err
-    end
-
     local cache_path = compiled_cache_path(path)
     local compiled_code
     if cache_path and not no_cache and compiled_cache_is_fresh(path, cache_path) then
@@ -151,6 +145,12 @@ local function run_vimscript_path(path)
             return false, err
         end
         compiled_code = nil
+    end
+
+    local script, read_err = read_file(path)
+    if not script then
+        LOG_DEBUG("Error executing '%s': %s", path, read_err:toString())
+        return false, read_err
     end
 
     compiled_code, read_err = Compiler.compile_script(script)

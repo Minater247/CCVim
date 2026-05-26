@@ -748,7 +748,7 @@ local function runtime_table_kind(v)
 end
 
 local function runtime_string(v)
-    if v == nil then return "null" end
+    if v == nil then return "v:null" end
     if type(v) == "boolean" then return v and "true" or "false" end
     return tostring(v)
 end
@@ -1491,7 +1491,7 @@ function Runtime.new(init_state, init_opts)
 
     function rt:register_function(name, params, body)
         local def = {
-            params = params or {},
+            params = params,
             body = body,
             scope = self.state.s,
             funcs = self.state.funcs,
@@ -2373,7 +2373,7 @@ function Runtime.new(init_state, init_opts)
 
     local function _to_string_simple(v)
         local t = type(v)
-        if t == "nil" then return "null" end
+        if t == "nil" then return "v:null" end
         if t == "boolean" then return v and "true" or "false" end
         return tostring(v)
     end
@@ -3160,10 +3160,9 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:put_compiled(payload, bang, spec)
-        payload = payload or {}
         local win = windows[curwin]
-        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec or {})
-        local source = payload.source or "default"
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec)
+        local source = payload.source
         local lines
 
         if source == "default" then
@@ -4819,10 +4818,10 @@ function Runtime.new(init_state, init_opts)
         local parts = {}
         local idx = 1
         if type(rest) == "table" then
-            parts = rest.parts or {}
-            nargs = rest.nargs or 0
+            parts = rest.parts
+            nargs = rest.nargs
             name = rest.name
-            idx = rest.body_index or (#parts + 1)
+            idx = rest.body_index
         else
             for tok in tostring(rest or ""):gmatch("%S+") do parts[#parts + 1] = tok end
             while idx <= #parts do

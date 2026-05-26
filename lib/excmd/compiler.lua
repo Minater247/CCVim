@@ -401,14 +401,14 @@ end
 
 local function lua_string_list(items)
     local out = {}
-    for i = 1, #(items or {}) do
+    for i = 1, #items do
         out[#out + 1] = lua_string(items[i])
     end
     return "{ " .. table.concat(out, ", ") .. " }"
 end
 
 local function resolve_dispatch_for_node(node)
-    local lname = tostring((node and node.cmd) or ""):lower()
+    local lname = node.cmd:lower()
     if lname == "" then
         return nil
     end
@@ -423,7 +423,7 @@ local function resolve_dispatch_for_node(node)
 end
 
 local function compile_invocation_spec(node)
-    local cmd = node.cmd or ""
+    local cmd = node.cmd
     local rest = node.rest
     local lname = cmd:lower()
     local ws_args = node.ws_args or split_ws_static(rest)
@@ -448,7 +448,7 @@ local function build_precompiled_node(node, include_spec)
     local fields = {
         "line = " .. tostring(node.line),
         "text = " .. lua_string(node.text),
-        "cmd = " .. lua_string(node.cmd or ""),
+        "cmd = " .. lua_string(node.cmd),
         "rest = " .. lua_string(node.rest),
     }
     if include_spec then
@@ -716,6 +716,7 @@ local function build_ir(script)
             if Error.IsError(perr) then
                 return nil, perr
             end
+            cmd = cmd or ""
             ir[#ir + 1] = {
                 cmd = cmd,
                 rest = rest or "",
@@ -791,7 +792,7 @@ local function var_read_code(scope, name, ctx)
     end
     local tbl = scoped_table(scope, ctx)
     if not tbl then
-        return "runtime:get_var(" .. lua_string(scope .. ":" .. tostring(name or "")) .. ")"
+        return "runtime:get_var(" .. lua_string(scope .. ":" .. tostring(name)) .. ")"
     end
     return tbl .. lua_key(name)
 end
@@ -808,7 +809,7 @@ local function var_write_code(scope, name, value_code, ctx)
     end
     local tbl = scoped_table(scope, ctx)
     if not tbl then
-        return "runtime:assign(" .. lua_string(scope .. ":" .. tostring(name or "")) .. ", " .. value_code .. ")"
+        return "runtime:assign(" .. lua_string(scope .. ":" .. tostring(name)) .. ", " .. value_code .. ")"
     end
     return tbl .. lua_key(name) .. " = " .. value_code
 end
@@ -863,7 +864,7 @@ local function compile_ast(node, ctx)
         local inner = compile_ast(node.inner, ctx)
         if not inner then return nil end
         return {
-            code = "__ops.var(__ops.name_part(" .. inner.code .. ") .. " .. lua_string(node.suffix or "") .. ", __state, __frame, __scopes)",
+            code = "__ops.var(__ops.name_part(" .. inner.code .. ") .. " .. lua_string(node.suffix) .. ", __state, __frame, __scopes)",
             kind = "unknown",
         }
     elseif k == "varcurly" then
@@ -871,7 +872,7 @@ local function compile_ast(node, ctx)
         for i = 1, #node.parts do
             local part = node.parts[i]
             if part.kind == "lit" then
-                parts[#parts + 1] = lua_string(part.val or "")
+                parts[#parts + 1] = lua_string(part.val)
             else
                 local compiled_part = compile_ast(part.val, ctx)
                 if not compiled_part then return nil end
@@ -963,7 +964,7 @@ local function compile_ast(node, ctx)
             "local __frame = { l = {}, a = {}, v = __state.v }",
             "__frame.a[" .. lua_string("0") .. "] = select('#', ...)",
         }
-        for i = 1, #(node.params or {}) do
+        for i = 1, #node.params do
             local name = tostring(node.params[i])
             lines[#lines + 1] = "__frame.l[" .. lua_string(name) .. "] = __argv[" .. tostring(i) .. "]"
             lines[#lines + 1] = "__frame.a[" .. lua_string(name) .. "] = __argv[" .. tostring(i) .. "]"
@@ -1016,13 +1017,13 @@ local function dynamic_lvalue_name_code(node, ctx)
     if node.kind == "curlyvar" then
         local inner = compile_ast(node.inner, ctx)
         if not inner then return nil end
-        return "__ops.name_part(" .. inner.code .. ") .. " .. lua_string(node.suffix or "")
+        return "__ops.name_part(" .. inner.code .. ") .. " .. lua_string(node.suffix)
     elseif node.kind == "varcurly" then
         local parts = {}
         for i = 1, #node.parts do
             local part = node.parts[i]
             if part.kind == "lit" then
-                parts[#parts + 1] = lua_string(part.val or "")
+                parts[#parts + 1] = lua_string(part.val)
             else
                 local compiled_part = compile_ast(part.val, ctx)
                 if not compiled_part then return nil end
@@ -1069,17 +1070,13 @@ function Compiler.compile_expr(expr, ctx)
 end
 
 function Compiler.compile_command(node, ctx)
-    ctx = ctx or {}
-    local cmd = tostring(node.cmd or ""):lower()
+    local cmd = node.cmd:lower()
     local arg = node.arg
 
     if cmd == "let" then
-        if not arg or arg.kind ~= "let" then
-            return { code = "error('Malformed :let')" }
-        end
         local lhs, op, rhs = arg.lhs, arg.op, arg.rhs
-        local static_lhs = ctx.direct_backend and parse_static_lvalue(lhs) or nil
-        local rhs_code = Compiler.compile_expr(arg.rhs_ast or rhs, ctx)
+        local static_lhs = parse_static_lvalue(lhs)
+        local rhs_code = Compiler.compile_expr(arg.rhs_ast, ctx)
         if op == "=" then
             if static_lhs then
                 return { code = lvalue_write_code(static_lhs, rhs_code, ctx) }
@@ -1088,7 +1085,7 @@ function Compiler.compile_command(node, ctx)
         end
 
         if op ~= "+=" and op ~= "-=" and op ~= "*=" and op ~= "/=" and op ~= "%=" and op ~= ".=" then
-            return { code = "error('Malformed :let')" }
+            error(Error(474, "let"))
         end
         if static_lhs then
             local cur_code = lvalue_read_code(static_lhs, ctx)
@@ -1112,9 +1109,6 @@ function Compiler.compile_command(node, ctx)
             ),
         }
     elseif cmd == "unlet" then
-        if not arg or arg.kind ~= "unlet" then
-            return { code = "error('Malformed :unlet')" }
-        end
         return { code = string.format("runtime:unlet({ names = %s },%s)", lua_string_list(arg.names), node.bang and "true" or "false") }
     elseif cmd == "break" then
         return { code = "error(runtime:break_exc())" }
@@ -1124,7 +1118,7 @@ function Compiler.compile_command(node, ctx)
         end
         return { code = "error(runtime:continue_exc())" }
     elseif cmd == "execute" then
-        if arg and arg.kind == "execute" and not arg.dynamic then
+        if not arg.dynamic then
             local values = {}
             for i = 1, #arg.exprs do
                 values[#values + 1] = Compiler.compile_expr(arg.exprs[i].ast, ctx)
@@ -1133,9 +1127,6 @@ function Compiler.compile_command(node, ctx)
         end
         return { code = string.format("runtime:execute(%s)", lua_string(node.rest)) }
     elseif cmd == "put" then
-        if not arg or arg.kind ~= "put" then
-            return { code = "error('Malformed :put')" }
-        end
         local spec = compile_invocation_spec(node)
         if arg.source == "default" then
             return { code = "runtime:put_compiled({ source = 'default' }, " .. (node.bang and "true" or "false") .. ", " .. spec .. ")" }
@@ -1146,11 +1137,11 @@ function Compiler.compile_command(node, ctx)
         elseif arg.source == "expr" then
             return {
                 code = "runtime:put_compiled({ source = 'expr', expr = " .. lua_string(arg.expr) .. ", value = "
-                    .. Compiler.compile_expr(arg.expr_ast or arg.expr, ctx) .. " }, "
+                    .. Compiler.compile_expr(arg.expr_ast, ctx) .. " }, "
                     .. (node.bang and "true" or "false") .. ", " .. spec .. ")",
             }
         end
-        return { code = "error(Error(488, " .. lua_string(arg.raw or node.rest) .. "))" }
+        return { code = "error(Error(488, " .. lua_string(arg.raw) .. "))" }
     elseif cmd == "verbose" then
         local level = tonumber(node.verbose_count) or 1
         return { code = string.format("runtime:exec_verbose(%d, %s)", level, lua_string(node.rest)) }
@@ -1158,57 +1149,36 @@ function Compiler.compile_command(node, ctx)
         if node.text:match("^%s*:?[%%%.%$%'%d]") then
             return { code = "error(Error(481))" }
         end
-        if not arg or arg.kind ~= "expr_list" then
-            return { code = "error('Malformed :" .. cmd .. "')" }
-        end
         local values = {}
         for i = 1, #arg.exprs do
-            values[#values + 1] = Compiler.compile_expr(arg.exprs[i].ast or arg.exprs[i].text, ctx)
+            values[#values + 1] = Compiler.compile_expr(arg.exprs[i].ast, ctx)
         end
         return { code = "runtime:echo_values(" .. lua_string(cmd) .. ", { " .. table.concat(values, ", ") .. " })" }
     elseif cmd == "call" then
-        if not arg or arg.kind ~= "expr" then
-            return { code = "error('Malformed :call')" }
-        end
-        return { code = "do local __rv = " .. Compiler.compile_expr(arg.expr_ast or arg.expr, ctx) .. " end" }
+        return { code = "do local __rv = " .. Compiler.compile_expr(arg.expr_ast, ctx) .. " end" }
     elseif cmd == "return" then
         local val = "nil"
         if node.rest ~= "" then
-            if not arg or arg.kind ~= "expr" then
-                return { code = "error('Malformed :return')" }
-            end
-            val = Compiler.compile_expr(arg.expr_ast or arg.expr, ctx)
+            val = Compiler.compile_expr(arg.expr_ast, ctx)
         end
         return { code = string.format("error(runtime:return_exc(%s))", val) }
     elseif cmd == "finish" then
         return { code = "error(runtime:return_exc(nil))" }
     elseif cmd == "set" or cmd == "setglobal" or cmd == "setlocal" then
         local scope = (cmd == "setglobal" and "global") or (cmd == "setlocal" and "local") or "both"
-        if not arg or arg.kind ~= "set" then
-            return { code = "error('Malformed :" .. cmd .. "')" }
-        end
         return { code = string.format("runtime:set_options({ tokens = %s }, %s)", lua_string_list(arg.tokens), lua_string(scope)) }
     elseif cmd == "autocmd" then
-        if not arg or arg.kind ~= "autocmd" then
-            return { code = "error('Malformed :autocmd')" }
-        end
         return { code = string.format("runtime:define_autocmd({ args = %s }, %s)", lua_string_list(arg.args), node.bang and "true" or "false") }
     elseif cmd == "doautoall" then
-        if not arg or arg.kind ~= "doautoall" then
-            return { code = "error('Malformed :doautoall')" }
-        end
         return { code = string.format("runtime:doautoall({ event = %s })", lua_string(arg.event)) }
     elseif cmd == "command" then
-        if not arg or arg.kind ~= "command" then
-            return { code = "error('Malformed :command')" }
-        end
         return {
             code = string.format(
                 "runtime:define_command({ parts = %s, nargs = %s, name = %s, body_index = %d }, %s)",
                 lua_string_list(arg.parts),
                 lua_literal(arg.nargs),
                 lua_string(arg.name),
-                tonumber(arg.body_index) or 1,
+                arg.body_index,
                 node.bang and "true" or "false"
             ),
         }
@@ -1426,17 +1396,7 @@ local function ast_is_static(ast)
 end
 
 local function expr_is_static(expr)
-    if expr == nil or expr == "" then
-        return false
-    end
-    if type(expr) == "table" and expr.kind then
-        return ast_is_static(expr)
-    end
-    local ast = VimExpr.parse(expr)
-    if not ast then
-        return false
-    end
-    return ast_is_static(ast)
+    return ast_is_static(expr)
 end
 
 local function parse_expr_for_node(node, field, expr)
@@ -1457,17 +1417,18 @@ local function parse_command_payloads(seq)
         local cmd = node.cmd
         if cmd == "let" then
             local lhs, op, rhs = split_let_assignment(node.rest)
-            if lhs and op then
-                local arg = {
-                    kind = "let",
-                    lhs = trim(lhs),
-                    op = op,
-                    rhs = trim(rhs),
-                }
-                node.arg = arg
-                local ok, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
-                if err then return nil, err end
+            if not lhs or not op then
+                return nil, Error(474, "let")
             end
+            local arg = {
+                kind = "let",
+                lhs = trim(lhs),
+                op = op,
+                rhs = trim(rhs),
+            }
+            node.arg = arg
+            local ok, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
+            if err then return nil, err end
         elseif cmd == "if" or cmd == "elseif" or cmd == "while" then
             local arg = { kind = "expr", expr = node.rest }
             node.arg = arg
@@ -1488,9 +1449,15 @@ local function parse_command_payloads(seq)
             local ok, err = parse_expr_for_node(arg, "expr_ast", arg.expr)
             if err then return nil, err end
         elseif cmd == "echo" or cmd == "echoerr" or cmd == "echomsg" or cmd == "echon" then
+            local exprs = VimExpr.splitExpressionAsts(node.rest)
+            for j = 1, #exprs do
+                if not exprs[j].ast then
+                    return nil, Error(474, "Unsupported expression: " .. tostring(exprs[j].text))
+                end
+            end
             node.arg = {
                 kind = "expr_list",
-                exprs = VimExpr.splitExpressionAsts(node.rest),
+                exprs = exprs,
             }
         elseif cmd == "unlet" then
             node.arg = {
@@ -1557,35 +1524,27 @@ local function infer_function_locals(seq)
         local node = seq[i]
         local cmd = node.cmd
         if cmd == "function" then
-            i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
+            i = find_matching_end(seq, i, "function", "endfunction") + 1
             goto continue
         elseif cmd == "let" then
-            local let_arg = node.arg and node.arg.kind == "let" and node.arg or nil
-            local lhs, _, rhs = let_arg and let_arg.lhs, let_arg and let_arg.op, let_arg and let_arg.rhs
-            if not lhs then
-                lhs, _, rhs = split_let_assignment(node.rest)
-            end
-            if not lhs or not rhs then
-                safe = false
-                break
-            end
-            local target = lhs and parse_static_lvalue(lhs)
-            if not target or target.scope ~= nil or not expr_is_static((let_arg and let_arg.rhs_ast) or rhs) then
+            local let_arg = node.arg
+            local target = parse_static_lvalue(let_arg.lhs)
+            if not target or target.scope ~= nil or not expr_is_static(let_arg.rhs_ast) then
                 safe = false
                 break
             end
             locals[target.name] = true
         elseif cmd == "for" then
-            local for_arg = node.arg and node.arg.kind == "for" and node.arg or nil
-            local target = node.iter_lhs and parse_static_lvalue(node.iter_lhs)
-            if not target or target.scope ~= nil or not expr_is_static((for_arg and for_arg.rhs_ast) or node.iter_rhs) then
+            local for_arg = node.arg
+            local target = parse_static_lvalue(for_arg.lhs)
+            if not target or target.scope ~= nil or not expr_is_static(for_arg.rhs_ast) then
                 safe = false
                 break
             end
             locals[target.name] = true
         elseif cmd == "if" or cmd == "elseif" or cmd == "while" or cmd == "return" then
-            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
-            if node.rest ~= "" and not expr_is_static((expr_arg and expr_arg.expr_ast) or node.rest) then
+            local expr_arg = node.arg
+            if node.rest ~= "" and not expr_is_static(expr_arg.expr_ast) then
                 safe = false
                 break
             end
@@ -1610,10 +1569,11 @@ local function annotate_function_locals(seq)
     local i = 1
     while i <= #seq do
         local node = seq[i]
-        if node.cmd == "function" and node.function_region then
-            annotate_function_locals(node.function_region.body)
-            node.local_vars = infer_function_locals(node.function_region.body)
-            i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
+        if node.cmd == "function" then
+            local region = node.function_region
+            annotate_function_locals(region.body)
+            node.local_vars = infer_function_locals(region.body)
+            i = find_matching_end(seq, i, "function", "endfunction") + 1
         else
             i = i + 1
         end
@@ -1670,7 +1630,6 @@ local function merged_ctx(base, state, loop_stack)
     end
     ctx.state = state
     ctx.direct_backend = true
-    loop_stack = loop_stack or {}
     ctx.loop_continue = loop_stack[#loop_stack]
     return ctx
 end
@@ -1729,20 +1688,15 @@ local function render_compiled_chunk(emitter)
 end
 
 local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ctx)
-    indent = indent or "  "
-    loop_stack = loop_stack or {}
-    compile_ctx = compile_ctx or {}
     local i = 1
     while i <= #seq do
         local node = seq[i]
         local cmd = node.cmd
         if cmd == "if" then
-            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
-            emitter:emit(("%sif %s then"):format(indent, _compile_condition((expr_arg and expr_arg.expr_ast) or node.rest, merged_ctx(compile_ctx, state, loop_stack))))
+            emitter:emit(("%sif %s then"):format(indent, _compile_condition(node.arg.expr_ast, merged_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "elseif" then
-            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
-            emitter:emit(("%selseif %s then"):format(indent, _compile_condition((expr_arg and expr_arg.expr_ast) or node.rest, merged_ctx(compile_ctx, state, loop_stack))))
+            emitter:emit(("%selseif %s then"):format(indent, _compile_condition(node.arg.expr_ast, merged_ctx(compile_ctx, state, loop_stack))))
             i = i + 1
         elseif cmd == "else" then
             emitter:emit(indent .. "else")
@@ -1754,8 +1708,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "while true do")
-            local expr_arg = node.arg and node.arg.kind == "expr" and node.arg or nil
-            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition((expr_arg and expr_arg.expr_ast) or node.rest, merged_ctx(compile_ctx, state, loop_stack))))
+            emitter:emit(("%s  if not %s then break end"):format(indent, _compile_condition(node.arg.expr_ast, merged_ctx(compile_ctx, state, loop_stack))))
             emitter:emit(indent .. "  local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1
         elseif cmd == "endwhile" then
@@ -1770,8 +1723,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             local label = string.format("__cont_%d", node.line)
             loop_stack[#loop_stack + 1] = label
             emitter:emit(indent .. "do")
-            local for_arg = node.arg and node.arg.kind == "for" and node.arg or nil
-            emitter:emit(indent .. "  for _, __iter_v in ipairs(runtime:iter(" .. Compiler.compile_expr((for_arg and for_arg.rhs_ast) or node.iter_rhs, merged_ctx(compile_ctx, state, loop_stack)) .. ")) do")
+            emitter:emit(indent .. "  for _, __iter_v in ipairs(runtime:iter(" .. Compiler.compile_expr(node.arg.rhs_ast, merged_ctx(compile_ctx, state, loop_stack)) .. ")) do")
             emitter:emit(indent .. "    ; " .. emit_for_assignment(node, compile_ctx))
             emitter:emit(indent .. "    local __loop_ok, __loop_err = runtime:_pcall(function()")
             i = i + 1
@@ -1810,7 +1762,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
                 emit_sequence(emitter, region.finally_body, state, indent .. "  ", loop_stack, compile_ctx)
             end
             emitter:emit(indent .. "end")
-            i = (find_matching_end(seq, i, "try", "endtry") or #seq) + 1
+            i = find_matching_end(seq, i, "try", "endtry") + 1
         elseif cmd == "function" then
             local region = node.function_region
             local plist = {}
@@ -1846,7 +1798,7 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             emitter:emit(indent .. "  end")
             emitter:emit(("%s  runtime:register_function(%s, {%s}, __fn)"):format(indent, lua_string(node.func_name), table.concat(plist, ", ")))
             emitter:emit(indent .. "end")
-            i = (find_matching_end(seq, i, "function", "endfunction") or #seq) + 1
+            i = find_matching_end(seq, i, "function", "endfunction") + 1
         else
             emit_regular_node(emitter, node, state, loop_stack, indent, compile_ctx)
             i = i + 1
@@ -1874,7 +1826,7 @@ function Compiler.compile_script(script, opts)
         return nil, Error.IsError(annotate_err) and annotate_err or Error(0, tostring(annotate_err))
     end
     local emitter = new_script_emitter()
-    local ok_emit, emit_err = pcall(emit_sequence, emitter, ir, opts.state, "    ", {})
+    local ok_emit, emit_err = pcall(emit_sequence, emitter, ir, opts.state, "    ", {}, {})
     if not ok_emit then
         return nil, Error.IsError(emit_err) and emit_err or Error(0, tostring(emit_err))
     end

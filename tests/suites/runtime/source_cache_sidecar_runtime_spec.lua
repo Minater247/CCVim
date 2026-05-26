@@ -8,6 +8,7 @@ return {
 
         local mock = MockEnv.setup()
         local orig_attributes
+        local orig_open
         local orig_compile
         local orig_no_cache
         local ok, err = pcall(function()
@@ -72,7 +73,17 @@ return {
             local cached_code = read(cache_path)
             Assert.truthy("cache file has compiled chunk", cached_code:find("return function", 1, true) ~= nil, cached_code)
 
+            orig_open = fs.open
+            fs.open = function(path, mode)
+                if path == source_path and (mode == nil or mode == "r") then
+                    error("source file should not be read when sidecar cache is fresh")
+                end
+                return orig_open(path, mode)
+            end
+
             local ok2, err2 = ScriptSource.source(source_path)
+            fs.open = orig_open
+            orig_open = nil
             Assert.eq("second source succeeds", ok2, true)
             Assert.eq("second source error", err2, nil)
             Assert.eq("fresh cache avoids recompiling", compile_calls, 1)
@@ -112,6 +123,9 @@ return {
         end
         if orig_attributes then
             fs.attributes = orig_attributes
+        end
+        if orig_open then
+            fs.open = orig_open
         end
         _G.no_cache = orig_no_cache
         mock.cleanup()

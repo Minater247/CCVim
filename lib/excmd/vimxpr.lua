@@ -96,7 +96,7 @@ local function num_coerce_or_error(v)
 end
 local function to_string_simple(v)
     local t = type(v)
-    if t == "nil" then return "null" end
+    if t == "nil" then return "v:null" end
     if t == "boolean" then return v and "true" or "false" end
     return tostring(v)
 end
@@ -243,7 +243,13 @@ local function is_word_byte(b)
 end
 
 local function is_ident_byte(b)
-    return is_word_byte(b) or b == 35
+    return b and (
+        (b >= 48 and b <= 57)
+        or (b >= 65 and b <= 90)
+        or (b >= 97 and b <= 122)
+        or b == 95
+        or b == 35
+    )
 end
 
 local function tokenize(input)
@@ -252,7 +258,16 @@ local function tokenize(input)
         k = k or 0; local j = i + k; return j <= n and input:sub(j, j) or ""
     end
     local function adv(k) i = i + (k or 1) end
-    local function add(typ, val, pos, raw) toks[#toks + 1] = { typ = typ, val = val, pos = pos, raw = raw } end
+    local function add(typ, val, pos, raw, endpos)
+        if endpos == nil then
+            local text = raw
+            if text == nil then
+                text = val
+            end
+            endpos = pos + #tostring(text or "") - 1
+        end
+        toks[#toks + 1] = { typ = typ, val = val, pos = pos, raw = raw, endpos = endpos }
+    end
     local function consume(pred)
         local j = i
         while j <= n and pred(input:sub(j, j)) do j = j + 1 end
@@ -333,7 +348,7 @@ local function tokenize(input)
                     buf[#buf + 1] = ch
                 end
             end
-            add("STR", table.concat(buf), start); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1); goto cont
         end
         if c == '"' then
             adv(1)
@@ -376,7 +391,7 @@ local function tokenize(input)
                 -- Trailing backslash in a double-quoted string is literal.
                 buf[#buf + 1] = "\\"
             end
-            add("STR", table.concat(buf), start); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1); goto cont
         end
 
         -- environment variable: $NAME or ${NAME}
@@ -399,7 +414,7 @@ local function tokenize(input)
                     buf[#buf + 1] = ch
                 end
             end
-            add("STR", table.concat(buf), start); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1); goto cont
         end
         if c == "$" then
             local nxt = peek(1)
@@ -431,7 +446,7 @@ local function tokenize(input)
                 i = j
                 name = ident
             end
-            add("ENV", name, start); goto cont
+            add("ENV", name, start, nil, i - 1); goto cont
         end
 
         -- register: @x or @@
@@ -455,7 +470,7 @@ local function tokenize(input)
                 end
                 local name = input:sub(i, j - 1)
                 i = j + 1
-                add("REG", name, start); goto cont
+                add("REG", name, start, nil, i - 1); goto cont
             end
             -- single-character register name
             local reg = nxt
@@ -605,14 +620,17 @@ local function parse(tokens)
         return adv()
     end
     local function tok_text(tok)
-        if tok and tok.raw ~= nil then
+        if tok.raw ~= nil then
             return tostring(tok.raw)
         end
-        return tostring(tok and tok.val or "")
+        return tostring(tok.val or "")
     end
     local function tok_end(tok)
+        if tok.endpos then
+            return tok.endpos
+        end
         local text = tok_text(tok)
-        return (tok and tok.pos or 1) + #text - 1
+        return tok.pos + #text - 1
     end
 
     local expr, unary, apply_postfix
@@ -1186,7 +1204,7 @@ local function eval_node(node, vim9, env)
     end
     if k == "curlyvar" then
         local pv = eval_node(node.inner, vim9, env); if is_error(pv) then return pv end
-        local full = tostring(pv or "") .. (node.suffix or "")
+        local full = tostring(pv or "") .. node.suffix
         local scope_name, var_name = full:match("^([gsalvbtw]):(.+)$")
         if scope_name then
             return resolve_var(scope_name, var_name)
@@ -1198,7 +1216,7 @@ local function eval_node(node, vim9, env)
         for i = 1, #node.parts do
             local part = node.parts[i]
             if part.kind == "lit" then
-                chunks[#chunks + 1] = part.val or ""
+                chunks[#chunks + 1] = part.val
             else
                 local pv = eval_node(part.val, vim9, env); if is_error(pv) then return pv end
                 chunks[#chunks + 1] = tostring(pv or "")
@@ -1212,7 +1230,7 @@ local function eval_node(node, vim9, env)
         return resolve_var(nil, full)
     end
     if k == "lambda" then
-        local params = node.params or {}
+        local params = node.params
         return function(...)
             local args = { ... }
             local l, a = {}, {}
@@ -1691,8 +1709,7 @@ local function split_expression_items(expr_str, include_ast)
 
         -- Use the next token's start to compute the end of the parsed expression.
         -- This preserves original source length (including quotes), avoiding stalls.
-        local next_tok = toks[end_tok_idx]
-        local end_pos = (next_tok and next_tok.pos and (next_tok.pos - 1)) or #sub_expr
+        local end_pos = toks[end_tok_idx].pos - 1
         if end_pos < 1 then end_pos = 1 end
 
         local text = sub_expr:sub(1, end_pos)

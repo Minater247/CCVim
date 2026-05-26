@@ -56,6 +56,11 @@ return {
             browse.lines
         )
         Assert.truthy(
+            "editing a directory does not render nil as null",
+            table.concat(browse.lines, "\n"):find("null", 1, true) == nil,
+            browse.lines
+        )
+        Assert.truthy(
             "editing a directory lists child directory",
             table.concat(browse.lines, "\n"):find("child-dir/", 1, true) ~= nil,
             browse.lines
