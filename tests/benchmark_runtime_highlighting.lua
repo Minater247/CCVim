@@ -13,8 +13,11 @@ Usage: lua tests/benchmark_runtime_highlighting.lua [options]
 
 Options:
   --runtime-root=<path>  Runtime directory to scan (default: runtime).
+  --start=<n>           Start at the nth discovered runtime file (default: 1).
   --limit=<n>           Compare only the first n files, for development.
+  --batch-size=<n>      Number of files per Neovim probe batch (default: 64).
   --max-failures=<n>    Number of failures to print (default: 20).
+  --progress            Print each batch to stderr while running.
   --help                Show this help.
 
 This benchmark compares every comparable file under runtime/ against Neovim
@@ -36,10 +39,16 @@ local function parse_args(argv)
             os.exit(0)
         elseif starts_with(arg, "--runtime-root=") then
             opts.runtime_root = arg:sub(16)
+        elseif starts_with(arg, "--start=") then
+            opts.start_index = tonumber(arg:sub(9))
         elseif starts_with(arg, "--limit=") then
             opts.max_files = tonumber(arg:sub(9))
+        elseif starts_with(arg, "--batch-size=") then
+            opts.batch_size = tonumber(arg:sub(14))
         elseif starts_with(arg, "--max-failures=") then
             opts.max_failures = tonumber(arg:sub(16)) or opts.max_failures
+        elseif arg == "--progress" then
+            opts.progress = true
         else
             error("Unknown argument: " .. arg)
         end

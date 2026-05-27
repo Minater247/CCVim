@@ -808,6 +808,9 @@ local function load_syntax_commands(ft, opts)
         out = out:gsub("!=", "~=")
         out = out:gsub("&&", " and ")
         out = out:gsub("%|%|", " or ")
+        out = out:gsub("get%s*%(%s*([%a]):%s*,%s*(['\"])(.-)%2%s*,%s*([^)]+)%)", function(scope, _, name, default)
+            return ("getvar(%q, %q, %s)"):format(scope .. ":", name, default)
+        end)
         out = out:gsub("exists%s*%((['\"])(.-)%1%)", function(_, name)
             return ("exists(%q)"):format(name)
         end)
@@ -842,6 +845,13 @@ local function load_syntax_commands(ft, opts)
             end,
             var = function(name)
                 return vars[name] or 0
+            end,
+            getvar = function(scope, name, default)
+                local value = vars[tostring(scope or "") .. tostring(name or "")]
+                if value ~= nil then
+                    return value
+                end
+                return default
             end,
             has = function(_)
                 return false

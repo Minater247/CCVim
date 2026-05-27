@@ -327,11 +327,11 @@ return {
             do
                 local ctx_state = mk_ctx({
                     'match Comment /\\s".*$/lc=1 extend',
-                    'region String start=/[^a-zA-Z>\\\\@]"/lc=1 end=/"/ keepend extend',
+                    'region String start=/[^a-zA-Z>\\\\@]"/lc=1 end=/"/ oneline keepend extend',
                 })
                 local buf = mk_buf({ 'foo " bar' })
                 local blit = Runtime.line_to_blit(ctx_state, buf, 1)
-                Assert.eq("extend match beats same-start region", fg_at(blit, 5), comment_fg)
+                Assert.eq("unterminated oneline region yields to same-start match", fg_at(blit, 5), comment_fg)
             end
 
             do

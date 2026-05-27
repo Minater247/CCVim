@@ -69,19 +69,25 @@ function Benchmark.run(opts)
     opts = opts or {}
     local root = normalize_path(opts.runtime_root or "runtime")
     local max_files = tonumber(opts.max_files or os.getenv("CCVIM_RUNTIME_HIGHLIGHT_LIMIT") or "")
+    local start_index = tonumber(opts.start_index or os.getenv("CCVIM_RUNTIME_HIGHLIGHT_START") or 1) or 1
     local max_failures = tonumber(opts.max_failures or 20) or 20
     local batch_size = tonumber(opts.batch_size or os.getenv("CCVIM_RUNTIME_HIGHLIGHT_BATCH") or 64) or 64
+    local progress = opts.progress or os.getenv("CCVIM_RUNTIME_HIGHLIGHT_PROGRESS") == "1"
     if batch_size < 1 then
         batch_size = 1
     end
     local files = discover_runtime_files(root)
-    local limit = max_files and math.min(max_files, #files) or #files
+    if start_index < 1 then
+        start_index = 1
+    end
+    local limit = max_files and math.min(start_index + max_files - 1, #files) or #files
 
     local started = now()
     local result = {
         runtime_root = root,
         discovered = #files,
-        visited = limit,
+        start_index = start_index,
+        visited = math.max(0, limit - start_index + 1),
         compared = 0,
         skipped = 0,
         failed = 0,
@@ -93,12 +99,22 @@ function Benchmark.run(opts)
         elapsed_sec = 0,
     }
 
-    local i = 1
+    local i = start_index
     while i <= limit do
         local chunk = {}
         local last = math.min(limit, i + batch_size - 1)
         for idx = i, last do
             chunk[#chunk + 1] = files[idx]
+        end
+        if progress then
+            io.stderr:write(string.format(
+                "runtime highlight parity: batch %d-%d/%d %s\n",
+                i,
+                last,
+                #files,
+                relative_path(root, files[i])
+            ))
+            io.stderr:flush()
         end
 
         local ok_batch, nvim_batch_or_err = pcall(Compare.collect_nvim_segments_many, chunk)
