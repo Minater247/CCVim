@@ -62,7 +62,9 @@ return {
                     for i = 1, #cells do
                         local cell = cells[i]
                         local rep = cell[3] or 1
-                        if row == target_row and cell[2] == cursor_id and target_col >= cx and target_col < (cx + rep) then
+                        if row == target_row and cell[2] == cursor_id
+                            and target_col >= cx and target_col < (cx + rep)
+                        then
                             cursor_writes = cursor_writes + (cell[3] or 1)
                         end
                         cx = cx + rep

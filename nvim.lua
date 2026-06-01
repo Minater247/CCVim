@@ -399,7 +399,6 @@ _V.screen_size = {
 -- Use a Vim-compatible value, not the NVIM version tuple, so runtime scripts
 -- that gate on Vim version (eg netrw) behave predictably.
 local Scopes = loadModule("lib.luaapi.scopes")
-local Highlight = loadModule("lib.highlight")
 local original_palette = _backend.capture_palette()
 Scopes._v.version = (_V.vimcompat_maj * 100) + _V.vimcompat_min
 Scopes._v.vim_did_init = 0

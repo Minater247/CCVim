@@ -241,7 +241,7 @@ local function renderdisplay()
             local len = #text
             if len > 0 then
                 str_parts[#str_parts + 1] = text
-                for j = 1, len do
+                for _ = 1, len do
                     hl_parts[#hl_parts + 1] = hl_id
                 end
             end
@@ -276,7 +276,12 @@ local function calculateScreenLines()
             { hl = triad[2] }
         )
         for j = 1, #new_lines do
-            screenlines[#screenlines + 1] = { new_lines[j], new_blits.hl[j], j < #new_lines, new_blits.swap and new_blits.swap[j] }
+            screenlines[#screenlines + 1] = {
+                new_lines[j],
+                new_blits.hl[j],
+                j < #new_lines,
+                new_blits.swap and new_blits.swap[j],
+            }
         end
     end
 

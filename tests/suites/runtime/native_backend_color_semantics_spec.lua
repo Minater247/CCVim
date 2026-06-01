@@ -80,8 +80,16 @@ return {
             },
         })
         Assert.eq("256-color depth", rgb_only_depth, "256")
-        Assert.truthy("rgb-only attrs do not emit truecolor in 256-color mode", rgb_only_out:find("38;2;", 1, true) == nil, rgb_only_out)
-        Assert.truthy("rgb-only attrs do not fabricate 256-color sgr", rgb_only_out:find("38;5;", 1, true) == nil, rgb_only_out)
+        Assert.truthy(
+            "rgb-only attrs do not emit truecolor in 256-color mode",
+            rgb_only_out:find("38;2;", 1, true) == nil,
+            rgb_only_out
+        )
+        Assert.truthy(
+            "rgb-only attrs do not fabricate 256-color sgr",
+            rgb_only_out:find("38;5;", 1, true) == nil,
+            rgb_only_out
+        )
 
         local cterm_out = render_case({
             term = "xterm-256color",

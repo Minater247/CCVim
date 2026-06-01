@@ -7,7 +7,6 @@ local curr_tabno = 1
 local Window = loadModule("layout.window")
 local Buffer = loadModule("layout.buffer")
 local FrameTree = loadModule("lib.frame")
-local Highlight = loadModule("lib.highlight")
 local Statusline = loadModule("lib.statusline")
 local Command = loadModule("lib.command")
 local CmdRead = loadModule("lib.excmd.cmdread")

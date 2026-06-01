@@ -1,6 +1,6 @@
 return {
     id = "runtime.source_cache_sidecar",
-    description = "Verifies CCVim's sourced-Vimscript sidecar cache files; this cannot run on headless Neovim because `.ccvim` caching is CCVim-specific, uses MockEnv to patch `fs.attributes`, and monkeypatches `Compiler.compile_script` to observe CCVim's internal compile path.",
+    description = "Verifies CCVim's sourced-Vimscript sidecar cache files; this cannot run on headless Neovim because `.ccvim` caching is CCVim-specific, uses MockEnv to patch `fs.attributes`, and monkeypatches `Compiler.compile_script` to observe CCVim's internal compile path.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
@@ -34,7 +34,11 @@ return {
                 return data
             end
 
-            write(source_path, "let g:source_cache_hits = get(g:, 'source_cache_hits', 0) + 1 | let g:source_cache_stage = 'first'")
+            write(
+                source_path,
+                "let g:source_cache_hits = get(g:, 'source_cache_hits', 0) + 1"
+                    .. " | let g:source_cache_stage = 'first'"
+            )
 
             local mtimes = {
                 [source_path] = 100,
@@ -71,7 +75,11 @@ return {
 
             mtimes[cache_path] = 100
             local cached_code = read(cache_path)
-            Assert.truthy("cache file has compiled chunk", cached_code:find("return function", 1, true) ~= nil, cached_code)
+            Assert.truthy(
+                "cache file has compiled chunk",
+                cached_code:find("return function", 1, true) ~= nil,
+                cached_code
+            )
 
             orig_open = fs.open
             fs.open = function(path, mode)
@@ -90,7 +98,11 @@ return {
             Assert.eq("second source still executes script", Scopes._g.source_cache_hits, 2)
             Assert.eq("second source reuses cached stage", Scopes._g.source_cache_stage, "first")
 
-            write(source_path, "let g:source_cache_hits = get(g:, 'source_cache_hits', 0) + 1 | let g:source_cache_stage = 'second'")
+            write(
+                source_path,
+                "let g:source_cache_hits = get(g:, 'source_cache_hits', 0) + 1"
+                    .. " | let g:source_cache_stage = 'second'"
+            )
             mtimes[source_path] = 200
             mtimes[cache_path] = 100
 
@@ -103,7 +115,11 @@ return {
 
             local stale_cached_code = read(cache_path)
 
-            write(source_path, "let g:source_cache_hits = get(g:, 'source_cache_hits', 0) + 1 | let g:source_cache_stage = 'third'")
+            write(
+                source_path,
+                "let g:source_cache_hits = get(g:, 'source_cache_hits', 0) + 1"
+                    .. " | let g:source_cache_stage = 'third'"
+            )
             mtimes[source_path] = 300
             mtimes[cache_path] = 300
             _G.no_cache = true

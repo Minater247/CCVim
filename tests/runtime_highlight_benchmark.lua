@@ -193,7 +193,8 @@ function Benchmark.summary(result)
         skips[1] = "none"
     end
     return string.format(
-        "runtime highlight parity: discovered=%d visited=%d compared=%d skipped=%d failed=%d mismatch_lines=%d mismatch_cols=%d/%d elapsed=%.3fs skips={%s}",
+        "runtime highlight parity: discovered=%d visited=%d compared=%d skipped=%d failed=%d "
+            .. "mismatch_lines=%d mismatch_cols=%d/%d elapsed=%.3fs skips={%s}",
         result.discovered,
         result.visited,
         result.compared,

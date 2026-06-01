@@ -700,22 +700,6 @@ local function usage_items(entries)
     return items
 end
 
-local function palette_cost(items, centers)
-    local total = 0
-    for i = 1, #items do
-        local item = items[i]
-        local best = math.huge
-        for j = 1, #centers do
-            local dist = color_distance(item.rgb, centers[j])
-            if dist < best then
-                best = dist
-            end
-        end
-        total = total + best * item.weight
-    end
-    return total
-end
-
 local function seeded_centers(items, wanted)
     local centers = {}
     if #items == 0 then
@@ -761,47 +745,6 @@ local function seeded_centers(items, wanted)
             end
         end
     end
-    return centers
-end
-
-local function refine_centers(items, centers)
-    if #items <= #centers then
-        return centers
-    end
-
-    local selected = {}
-    for i = 1, #centers do
-        selected[centers[i]] = true
-    end
-
-    local current_cost = palette_cost(items, centers)
-    local improved = true
-    while improved do
-        improved = false
-        for i = 1, #centers do
-            local old_rgb = centers[i]
-            selected[old_rgb] = nil
-            for j = 1, #items do
-                local candidate = items[j].rgb
-                if not selected[candidate] then
-                    centers[i] = candidate
-                    local cost = palette_cost(items, centers)
-                    if cost < current_cost then
-                        selected[candidate] = true
-                        current_cost = cost
-                        improved = true
-                        break
-                    end
-                end
-            end
-            if improved then
-                break
-            end
-            centers[i] = old_rgb
-            selected[old_rgb] = true
-        end
-    end
-
     return centers
 end
 

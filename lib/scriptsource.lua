@@ -144,7 +144,6 @@ local function run_vimscript_path(path)
         if phase ~= "load" then
             return false, err
         end
-        compiled_code = nil
     end
 
     local script, read_err = read_file(path)

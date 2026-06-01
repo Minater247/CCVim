@@ -72,7 +72,10 @@ return {
         )
 
         if backend.name == "lua_editor" then
-            local render_probe = Assert.eval_block(backend, "edit directory marks netrw window redraw", string.format([=[
+            local render_probe = Assert.eval_block(
+                backend,
+                "edit directory marks netrw window redraw",
+                string.format([=[
                 screen.width = 80
                 screen.height = 24
                 vim.cmd("packadd netrw")
@@ -83,7 +86,8 @@ return {
                     needs_redraw = need_redraw,
                     window_needs_redraw = windows[curwin].need_redraw,
                 }
-            ]=], dir_path))
+            ]=], dir_path)
+            )
 
             Assert.eq("editing a directory opens netrw before render probe", render_probe.filetype, "netrw")
             Assert.eq("editing a directory schedules a screen redraw", render_probe.needs_redraw, true)

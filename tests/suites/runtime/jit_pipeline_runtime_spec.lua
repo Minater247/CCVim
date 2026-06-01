@@ -1,6 +1,6 @@
 return {
     id = "runtime.jit_pipeline",
-    description = "Verifies CCVim-internal JIT lowering and compile-cache reuse; this cannot run on headless Neovim because it inspects generated CCVim Lua, loads CCVim internal modules through MockEnv, and monkeypatches Compiler.compile_script to count CCVim-only JIT compiles.",
+    description = "Verifies CCVim-internal JIT lowering and compile-cache reuse; this cannot run on headless Neovim because it inspects generated CCVim Lua, loads CCVim internal modules through MockEnv, and monkeypatches Compiler.compile_script to count CCVim-only JIT compiles.", -- luacheck: ignore 631
     supports = { headless_nvim = false },
     run = function(ctx)
         local Assert = ctx.assert
@@ -14,14 +14,14 @@ return {
 
             Runtime.ClearCompiledScriptCache()
 
-            do
-                local durable = Runtime.CaptureDurableScriptState({
-                    script_ctx = "/tmp/jit_pipeline_compile_shape.vim",
-                }) or { s = {}, funcs = {} }
-                durable.g = durable.g or Scopes._g
-                local state = Runtime.MakeRuntimeState(durable)
-                state.g = durable.g
+            local durable = Runtime.CaptureDurableScriptState({
+                script_ctx = "/tmp/jit_pipeline_compile_shape.vim",
+            }) or { s = {}, funcs = {} }
+            durable.g = durable.g or Scopes._g
+            local state = Runtime.MakeRuntimeState(durable)
+            state.g = durable.g
 
+            do
                 local code, compile_err = Compiler.compile_script([[
 echo 'hello'
 let g:jit_pipeline_shape = 1 + 2 * 3

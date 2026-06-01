@@ -640,7 +640,7 @@ local function assign_lhs(lhs, value, state)
     if scope == "b" then scopes.b[name] = value; return true end
     if scope == "w" then scopes.w[name] = value; return true end
     if scope == "t" then scopes.t[name] = value; return true end
-    if top then top.l[s] = value; return true end
+    if top and top.kind == "func" then top.l[s] = value; return true end
     state.g[s] = value; return true
 end
 
@@ -888,7 +888,7 @@ local function runtime_var(name, state, frame, shared_scopes)
     if scope == "b" then return shared_scopes.b[key] end
     if scope == "w" then return shared_scopes.w[key] end
     if scope == "t" then return shared_scopes.t[key] end
-    if frame and frame.l[var] ~= nil then return frame.l[var] end
+    if frame and frame.kind == "func" and frame.l[var] ~= nil then return frame.l[var] end
     return state.g[var]
 end
 
@@ -903,7 +903,7 @@ local function runtime_set_var(name, value, state, frame, shared_scopes)
     if scope == "b" then shared_scopes.b[key] = value; return value end
     if scope == "w" then shared_scopes.w[key] = value; return value end
     if scope == "t" then shared_scopes.t[key] = value; return value end
-    if frame then frame.l[var] = value else state.g[var] = value end
+    if frame and frame.kind == "func" then frame.l[var] = value else state.g[var] = value end
     return value
 end
 
@@ -1418,7 +1418,14 @@ function Runtime.new(init_state, init_opts)
 
     function rt:push_frame(arg_values, param_names)
         local l_scope, a_scope = build_call_scopes(arg_values, param_names)
-        local frame = { l = l_scope, a = a_scope, v = self.state.v }
+        local frame = { kind = "func", l = l_scope, a = a_scope, v = self.state.v }
+        local sf = self.state.frames
+        sf[#sf + 1] = frame
+        return frame
+    end
+
+    function rt:push_script_frame()
+        local frame = { kind = "script", l = self.state.l, a = self.state.a, v = self.state.v }
         local sf = self.state.frames
         sf[#sf + 1] = frame
         return frame
@@ -1531,7 +1538,7 @@ function Runtime.new(init_state, init_opts)
                 if not fn then
                     fn = resolve_function_def(name, { state = state }) or Runtime._FUNCS[name]
                 end
-                if not fn and Builtins.fn[name] == nil and not (name:sub(1, 6):lower() == "v:lua.") then
+                if not fn and Builtins.fn[name] == nil and name:sub(1, 6):lower() ~= "v:lua." then
                     return nil
                 end
                 local wrapper = function(...)

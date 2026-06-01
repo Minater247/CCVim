@@ -570,7 +570,9 @@ local function tokenize(input)
         if c == ":" then
             add("COLON", ":", start, nil, start); i = i + 1; goto cont
         end
-        if c == "+" or c == "-" or c == "*" or c == "/" or c == "%" or c == "<" or c == ">" or c == "." or c == "!" or c == "?" or c == "," then
+        if c == "+" or c == "-" or c == "*" or c == "/" or c == "%" or c == "<" or c == ">"
+            or c == "." or c == "!" or c == "?" or c == ","
+        then
             add("OP", c, start, nil, start); i = i + 1; goto cont
         end
 

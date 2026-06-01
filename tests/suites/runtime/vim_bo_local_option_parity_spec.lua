@@ -100,14 +100,26 @@ return {
         Assert.eq("api buf tabstop sees vim.bo local write", result.after_vim_bo_api_tabstop, 6)
         Assert.eq("api buf keywordprg sees vim.bo local write", result.after_vim_bo_api_keywordprg, ":LocalKeywordPrg")
         Assert.eq("vim.bo write leaves global tabstop alone", result.after_vim_bo_global_tabstop, 4)
-        Assert.eq("vim.bo write leaves global keywordprg alone", result.after_vim_bo_global_keywordprg, ":GlobalKeywordPrg")
+        Assert.eq(
+            "vim.bo write leaves global keywordprg alone",
+            result.after_vim_bo_global_keywordprg,
+            ":GlobalKeywordPrg"
+        )
 
         Assert.eq("new buffer after vim.bo write uses global tabstop", result.after_vim_bo_new_bo_tabstop, 4)
-        Assert.eq("new buffer after vim.bo write has empty local keywordprg", result.after_vim_bo_new_bo_keywordprg, "")
+        Assert.eq(
+            "new buffer after vim.bo write has empty local keywordprg",
+            result.after_vim_bo_new_bo_keywordprg,
+            ""
+        )
         Assert.eq("api buf on new buffer uses global-seeded tabstop", result.after_vim_bo_new_api_tabstop, 4)
         Assert.eq("api buf on new buffer still reads local keywordprg", result.after_vim_bo_new_api_keywordprg, "")
         Assert.eq("globals persist after buffer creation tabstop", result.after_vim_bo_new_global_tabstop, 4)
-        Assert.eq("globals persist after buffer creation keywordprg", result.after_vim_bo_new_global_keywordprg, ":GlobalKeywordPrg")
+        Assert.eq(
+            "globals persist after buffer creation keywordprg",
+            result.after_vim_bo_new_global_keywordprg,
+            ":GlobalKeywordPrg"
+        )
 
         Assert.eq("api buf set writes local tabstop", result.after_api_bo_tabstop, 5)
         Assert.eq("api buf set writes local keywordprg", result.after_api_bo_keywordprg, ":ApiLocalKeywordPrg")
@@ -117,10 +129,26 @@ return {
         Assert.eq("api buf set leaves global keywordprg alone", result.after_api_global_keywordprg, ":GlobalKeywordPrg")
 
         Assert.eq("new buffer after api buf set uses global tabstop", result.after_api_new_bo_tabstop, 4)
-        Assert.eq("new buffer after api buf set has empty local keywordprg", result.after_api_new_bo_keywordprg, "")
-        Assert.eq("api buf on second new buffer sees global-seeded tabstop", result.after_api_new_api_tabstop, 4)
-        Assert.eq("api buf on second new buffer still reads local keywordprg", result.after_api_new_api_keywordprg, "")
+        Assert.eq(
+            "new buffer after api buf set has empty local keywordprg",
+            result.after_api_new_bo_keywordprg,
+            ""
+        )
+        Assert.eq(
+            "api buf on second new buffer sees global-seeded tabstop",
+            result.after_api_new_api_tabstop,
+            4
+        )
+        Assert.eq(
+            "api buf on second new buffer still reads local keywordprg",
+            result.after_api_new_api_keywordprg,
+            ""
+        )
         Assert.eq("globals remain unchanged after api buf set tabstop", result.after_api_new_global_tabstop, 4)
-        Assert.eq("globals remain unchanged after api buf set keywordprg", result.after_api_new_global_keywordprg, ":GlobalKeywordPrg")
+        Assert.eq(
+            "globals remain unchanged after api buf set keywordprg",
+            result.after_api_new_global_keywordprg,
+            ":GlobalKeywordPrg"
+        )
     end,
 }

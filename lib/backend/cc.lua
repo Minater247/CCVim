@@ -103,7 +103,6 @@ local _palette = {}
 for s = 0, 15 do _palette[s] = current_term_slot_rgb(s) end
 local _default_fg_rgb = _palette[0]
 local _default_bg_rgb = _palette[15]
-local _default_sp_rgb = nil
 local _grids = {}
 
 -- =========================================================================
@@ -163,30 +162,6 @@ local function shell_path_to_abs(path)
         return "/" .. path
     end
     return path
-end
-
-local function render_row_range(state, row, left, right)
-    if not _backwin or row < 0 or row >= state.h then
-        return
-    end
-    if right <= left then
-        return
-    end
-
-    local text = {}
-    local fg = {}
-    local bg = {}
-    for col = left, right - 1 do
-        local cell = state.rows[row][col]
-        local ch = cell[1]
-        local fg_slot = cell[2]
-        local bg_slot = cell[3]
-        text[#text + 1] = ch == "" and " " or ch
-        fg[#fg + 1] = SLOT_HEX[fg_slot or rgb_to_slot(_default_fg_rgb)]
-        bg[#bg + 1] = SLOT_HEX[bg_slot or rgb_to_slot(_default_bg_rgb)]
-    end
-    _backwin.setCursorPos(left + 1, row + 1)
-    _backwin.blit(table.concat(text), table.concat(fg), table.concat(bg))
 end
 
 local function srgb_linear(c)
@@ -288,15 +263,6 @@ for s = 0, 15 do SLOT_HEX[s] = string.format("%x", s) end
 -- =========================================================================
 
 local _hl_usage = {}        -- [rgb] = cumulative weight
-local _hl_weights = {       -- group-name importance weight
-    Normal=8, StatusLine=6, StatusLineNC=4, WinSeparator=4, VertSplit=4,
-    TabLine=4, TabLineSel=5, NonText=5, EndOfBuffer=5, CursorLine=3,
-    CursorLineNr=3, CursorColumn=3, Visual=3, Search=3, IncSearch=3,
-    Pmenu=3, PmenuSel=3, Error=4, ErrorMsg=4, WarningMsg=3, Todo=3,
-    Comment=2, Constant=2, Identifier=2, Statement=2, PreProc=2,
-    Type=2, Special=2, Directory=2, Title=2,
-}
-
 local function color_luminance(rgb)
     local r8, g8, b8 = unpack_rgb(rgb)
     local r = r8 / 255
@@ -482,10 +448,9 @@ function CC.hl_define(id, attrs)
     _hl[id] = attrs
 end
 
-function CC.default_colors_set(rgb_fg, rgb_bg, rgb_sp, _cterm_fg, _cterm_bg)
+function CC.default_colors_set(rgb_fg, rgb_bg, _rgb_sp, _cterm_fg, _cterm_bg)
     _default_fg_rgb = rgb_fg or _default_fg_rgb
     _default_bg_rgb = rgb_bg or _default_bg_rgb
-    _default_sp_rgb = rgb_sp
 end
 
 -- =========================================================================
@@ -495,6 +460,30 @@ end
 local _backwin   = nil
 local _prevterm  = nil
 local _parent    = nil
+
+local function render_row_range(state, row, left, right)
+    if not _backwin or row < 0 or row >= state.h then
+        return
+    end
+    if right <= left then
+        return
+    end
+
+    local text = {}
+    local fg = {}
+    local bg = {}
+    for col = left, right - 1 do
+        local cell = state.rows[row][col]
+        local ch = cell[1]
+        local fg_slot = cell[2]
+        local bg_slot = cell[3]
+        text[#text + 1] = ch == "" and " " or ch
+        fg[#fg + 1] = SLOT_HEX[fg_slot or rgb_to_slot(_default_fg_rgb)]
+        bg[#bg + 1] = SLOT_HEX[bg_slot or rgb_to_slot(_default_bg_rgb)]
+    end
+    _backwin.setCursorPos(left + 1, row + 1)
+    _backwin.blit(table.concat(text), table.concat(fg), table.concat(bg))
+end
 
 -- =========================================================================
 -- Backend interface
@@ -528,8 +517,10 @@ function CC.flush()
     CC.end_frame()
 end
 
-function CC.grid_line(grid, row, col, cells, wrap)
-    local state = ensure_grid_state(grid, grid == 1 and term.getSize() or 1, grid == 1 and select(2, term.getSize()) or 1)
+function CC.grid_line(grid, row, col, cells, _wrap)
+    local width = grid == 1 and term.getSize() or 1
+    local height = grid == 1 and select(2, term.getSize()) or 1
+    local state = ensure_grid_state(grid, width, height)
     local cx = col + 1
     local cy = row + 1
     local last_fg_slot = rgb_to_slot(_default_fg_rgb)
@@ -592,7 +583,7 @@ function CC.grid_line(grid, row, col, cells, wrap)
     end
 end
 
-function CC.grid_cursor_goto(grid, row, col)
+function CC.grid_cursor_goto(_grid, row, col)
     term.setCursorPos(col + 1, row + 1)
 end
 

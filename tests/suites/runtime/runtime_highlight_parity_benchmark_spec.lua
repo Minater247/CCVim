@@ -38,6 +38,10 @@ return {
             )
         end
 
-        Assert.truthy("runtime highlight parity compared at least one file", result.compared > 0, Benchmark.summary(result))
+        Assert.truthy(
+            "runtime highlight parity compared at least one file",
+            result.compared > 0,
+            Benchmark.summary(result)
+        )
     end,
 }

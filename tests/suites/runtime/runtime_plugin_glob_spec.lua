@@ -8,7 +8,9 @@ return {
         local Assert = ctx.assert
         local Filesystem = backend.mock.loadModule("lib.filesystem")
 
-        local plugin_matches = Filesystem.ExpandWildcards(backend.mock.globals().ccvim_path .. "/runtime/plugin/**/*.vim")
+        local plugin_matches = Filesystem.ExpandWildcards(
+            backend.mock.globals().ccvim_path .. "/runtime/plugin/**/*.vim"
+        )
         local found_netrw_wrapper = false
         for _, path in ipairs(plugin_matches) do
             if path:match("/runtime/plugin/netrwPlugin%.vim$") then

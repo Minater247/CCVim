@@ -67,7 +67,10 @@ return {
         assert_match("percent column less", R, "abc", "\\%<2c", true, 1, 0)
         assert_match("percent column exact", R, "abc", "\\%2c", true, 2, 1)
         assert_match("matchit current-token column guard", R, "(x)", "(\\(\\%>1c.*$\\)\\@=", true, 1, 1)
-        assert_no_match("matchit current-token column guard after current token", R, "(x)", "(\\(\\%>2c.*$\\)\\@=", true)
+        assert_no_match(
+            "matchit current-token column guard after current token",
+            R, "(x)", "(\\(\\%>2c.*$\\)\\@=", true
+        )
         assert_match("underscore class newline", R, "a\nb", "a\\_sb", true, 1, 3)
         assert_match("identifier classes i/I", R, "::cont::", "::\\I\\i*::", true, 1, 8)
         assert_match("alternation earliest branch position", R, "x .. +", "[+]\\|\\.\\{2,3}", true, 3, 4)
@@ -86,7 +89,9 @@ return {
         assert_match("help option pattern repeat", R, "'textwidth'", "'[a-z]\\{2,\\}'", true, 1, 11)
         do
             local matchit_pat =
-                "\\%(\\%((\\|)\\|{\\|}\\|\\\\\\\\[\\|\\]\\|<\\|>\\|\\/\\*\\|\\*\\/\\|#\\s*if\\%(n\\=def\\)\\=\\|#\\s*else\\>\\|#\\s*elif\\%(n\\=def\\)\\=\\>\\|#\\s*endif\\>\\)\\)$"
+                "\\%(\\%((\\|)\\|{\\|}\\|\\\\\\\\[\\|\\]\\|<\\|>\\|\\/\\*\\|\\*\\/"
+                .. "\\|#\\s*if\\%(n\\=def\\)\\=\\|#\\s*else\\>\\|#\\s*elif\\%(n\\=def\\)\\=\\>"
+                .. "\\|#\\s*endif\\>\\)\\)$"
             local compiled, emsg = R.compile(matchit_pat)
             Assert.truthy("matchit matchpairs pattern compiles", compiled ~= nil, emsg)
         end

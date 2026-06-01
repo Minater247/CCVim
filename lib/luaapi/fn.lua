@@ -1231,8 +1231,7 @@ function Builtins.synIDtrans(id, ...)
     return Highlight.IdByName(resolved)
 end
 
--- TODO: Handle mode argument
-function Builtins.synIDattr(syn_id, what, _mode, ...)
+function Builtins.synIDattr(syn_id, what, mode_arg, ...)
     if select("#", ...) > 0 then
         error(Error(118, "synIDattr"))
     end
@@ -1247,7 +1246,7 @@ function Builtins.synIDattr(syn_id, what, _mode, ...)
         return name
     end
 
-    local mode = tostring(_mode or ""):lower()
+    local mode = tostring(mode_arg or ""):lower()
     local use_gui
     if mode == "gui" then
         use_gui = true

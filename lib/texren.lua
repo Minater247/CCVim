@@ -250,7 +250,10 @@ end
 
 -- Emit glyphs i..j to rv[ri]; if colors requested, emit to rbfg[ri]/rbbg[ri].
 -- Returns next ri and (maybe) mapped_col if target in [i..j].
-local function emit_line_from_glyphs(rv, rbfg, rbbg, rbhl, rbswap, ri, gch, gfg, gbg, ghl, gswap, i, j, want_pos, target_idx, want_blit, want_hl)
+local function emit_line_from_glyphs(
+    rv, rbfg, rbbg, rbhl, rbswap, ri, gch, gfg, gbg, ghl, gswap,
+    i, j, want_pos, target_idx, want_blit, want_hl
+)
     rv[ri] = t_concat(gch, "", i, j)
     if want_blit then
         rbfg[ri] = t_concat(gfg, "", i, j)
@@ -297,6 +300,15 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
     elseif want_hl then
         rbhl = {}
         rbswap = {}
+    end
+
+    local function attrs()
+        if want_blit then
+            return { fg = rbfg, bg = rbbg }
+        end
+        if want_hl then
+            return { hl = rbhl, swap = rbswap }
+        end
     end
 
     -- Build glyph arrays (+colors if requested)
@@ -370,12 +382,12 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
             if wl > 0 and (not target_idx) then
                 local line_len = (rv[1] and Utf8.len(rv[1])) or 0
                 if line_len > 0 and col == line_len + 1 and line_len == wl then
-                    return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl, swap = rbswap }), finish_pos(2, 1), ranges, gsrc
+                    return rv, attrs(), finish_pos(2, 1), ranges, gsrc
                 end
             end
-            return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl, swap = rbswap }), finish_pos(1, col), ranges, gsrc
+            return rv, attrs(), finish_pos(1, col), ranges, gsrc
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl, swap = rbswap }), nil, ranges, gsrc
+        return rv, attrs(), nil, ranges, gsrc
     end
 
     local i, n = 1, #gch
@@ -442,9 +454,9 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
                 mapped_ch_explicit = " "
             end
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl, swap = rbswap }), finish_pos(mapped_line, mapped_col), ranges, gsrc
+        return rv, attrs(), finish_pos(mapped_line, mapped_col), ranges, gsrc
     else
-        return rv, (want_blit and { fg = rbfg, bg = rbbg } or want_hl and { hl = rbhl, swap = rbswap }), nil, ranges, gsrc
+        return rv, attrs(), nil, ranges, gsrc
     end
 end
 

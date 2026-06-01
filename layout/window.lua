@@ -1401,11 +1401,6 @@ function Window:render(xoff, yoff)
         draw_x = draw_x + Utf8.len(text)
     end
 
-    local function writeBlit(text, fg, bg)
-        ScreenDraw.put_blit(draw_y - 1, draw_x - 1, text, fg, bg)
-        draw_x = draw_x + #text
-    end
-
     -- Clear this window's drawable region first
     setGroup("Normal")
     for i = 1, height do

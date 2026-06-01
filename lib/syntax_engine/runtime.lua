@@ -975,7 +975,6 @@ end
 local function find_best_start_event(plan, state, line, lower_line, pos,
                                      anchored, syn_limit, exclude_item_id, exclude_pos, line_cache)
     local best = nil
-    local stack = state.stack
     local top = active_syntax_container(state)
     local pending_next = state.pending_next
 
@@ -1222,7 +1221,7 @@ local function line_blit_from_spans(plan, line, spans)
         if gid ~= run_gid then
             local hl_id = get_group_hl(plan, run_gid)
             local count = i - run_start
-            for j = 1, count do
+            for _ = 1, count do
                 hl[#hl + 1] = hl_id
             end
             run_gid = gid
@@ -1232,7 +1231,7 @@ local function line_blit_from_spans(plan, line, spans)
     do
         local hl_id = get_group_hl(plan, run_gid)
         local count = len - run_start + 1
-        for j = 1, count do
+        for _ = 1, count do
             hl[#hl + 1] = hl_id
         end
     end
@@ -1537,7 +1536,9 @@ local function region_start_advance(event, cursor_pos)
     return math.max(event_resume_end(event) + 1, cursor_pos + 1)
 end
 
-local function paint_anchored_contained_start(plan, state, line, lower_line, start_pos, start_spec, max_col, spans, line_cache)
+local function paint_anchored_contained_start(
+    plan, state, line, lower_line, start_pos, start_spec, max_col, spans, line_cache
+)
     local top = state.stack[#state.stack]
     if top.transparent or not top.contains_bits or get_matchgroup_name(start_spec) ~= nil then
         return nil
@@ -1621,7 +1622,6 @@ local function highlight_line(plan, state_in, line, syn_limit)
     local truncated_by_synmaxcol = syn_limit > 0 and len > syn_limit
     if truncated_by_synmaxcol then
         line = line:sub(1, max_col)
-        len = #line
     end
 
     local state = clone_state(state_in)
@@ -1794,7 +1794,9 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         local rs = math.clamp(anchored.match_start, 1, max_col)
                         local re = math.clamp(anchored.match_end, 0, max_col)
                         if re >= rs then
-                            paint_match_contained_items(plan, item, line, lower_line, rs, re, max_col, spans, line_cache)
+                            paint_match_contained_items(
+                                plan, item, line, lower_line, rs, re, max_col, spans, line_cache
+                            )
                         end
                     end
                     state.pending_next = nil
@@ -1842,7 +1844,9 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     entry.hash_token = region_entry_hash_token(entry)
                     if entry.oneline then
                         local from_pos = region_end_search_pos(anchored, pos)
-                        local has_end = find_region_end_event(entry, line, lower_line, from_pos, max_col, line_cache) ~= nil
+                        local has_end = find_region_end_event(
+                            entry, line, lower_line, from_pos, max_col, line_cache
+                        ) ~= nil
                         if not has_end then
                             excluded_item_id = item.id
                             excluded_pos = anchored.match_start
@@ -1858,7 +1862,10 @@ local function highlight_line(plan, state_in, line, syn_limit)
                         local mgref = resolved_matchgroup_ref(plan, anchored.spec)
                             or fallback_region_matchgroup(item, line, anchored)
                         if mgref then group_id = mgref end
-                        local ps, pe = event_paint_span(anchored, mgref ~= nil and region_delim_uses_raw_span(anchored.spec))
+                        local ps, pe = event_paint_span(
+                            anchored,
+                            mgref ~= nil and region_delim_uses_raw_span(anchored.spec)
+                        )
                         local hs = math.clamp(ps, 1, max_col + 1)
                         local he = math.clamp(pe, 0, max_col)
                         spans[#spans + 1] = {

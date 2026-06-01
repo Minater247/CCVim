@@ -24,9 +24,6 @@ local function write(s) io.write(s) end
 local function flush() io.flush() end
 
 local function esc(s) return "\27[" .. s end
-local function unpack_rgb(rgb)
-    return math.floor(rgb / 65536) % 256, math.floor(rgb / 256) % 256, rgb % 256
-end
 
 local function epoch_ms()
     return math.floor(uv.hrtime() / 1000000)
@@ -155,43 +152,6 @@ local function xterm256_to_rgb(idx)
     return 0
 end
 
-local function rgb_to_xterm256(rgb)
-    -- Check standard 16
-    local best_idx, best_dist = 0, math.huge
-    for i, c in ipairs(XTERM256_STANDARD) do
-        local d = rgb_dist_sq(rgb, c)
-        if d < best_dist then best_idx = i-1; best_dist = d end
-    end
-    -- Check 6x6x6 color cube (indices 16-231)
-    local function cube_entry(r, g, b)
-        local function v(n)
-            if n == 0 then return 0 end
-            return 55 + n * 40
-        end
-        return v(r)*65536 + v(g)*256 + v(b)
-    end
-    for r = 0, 5 do
-        for g = 0, 5 do
-            for b = 0, 5 do
-                local c = cube_entry(r, g, b)
-                local d = rgb_dist_sq(rgb, c)
-                if d < best_dist then
-                    best_idx = 16 + r*36 + g*6 + b
-                    best_dist = d
-                end
-            end
-        end
-    end
-    -- Check grayscale ramp (indices 232-255)
-    for i = 0, 23 do
-        local v = 8 + i * 10
-        local c = v*65536 + v*256 + v
-        local d = rgb_dist_sq(rgb, c)
-        if d < best_dist then best_idx = 232 + i; best_dist = d end
-    end
-    return best_idx
-end
-
 -- Default palette (slot → {r,g,b} for get_palette_slot / capture_palette)
 local NATIVE_PALETTE = {
     [0]  = {0xF0, 0xF0, 0xF0},  -- white
@@ -217,11 +177,8 @@ local NATIVE_PALETTE = {
 -- =========================================================================
 
 local _w, _h = 80, 24
-local _cur_fg_hl = nil  -- last emitted fg string fragment
-local _cur_bg_hl = nil  -- last emitted bg string fragment
 local _default_fg_rgb = 0xF0F0F0
 local _default_bg_rgb = 0x111111
-local _default_sp_rgb = nil
 local _default_fg_cterm = nil
 local _default_bg_cterm = nil
 
@@ -254,8 +211,6 @@ end
 
 local function emit_sgr_reset()
     write(esc("0m"))
-    _cur_fg_hl = nil
-    _cur_bg_hl = nil
 end
 
 local _terminal_ui_active = false
@@ -480,12 +435,11 @@ function Native.flush()
     Native.end_frame()
 end
 
-function Native.default_colors_set(rgb_fg, rgb_bg, rgb_sp, _cterm_fg, _cterm_bg)
+function Native.default_colors_set(rgb_fg, rgb_bg, _rgb_sp, cterm_fg, cterm_bg)
     _default_fg_rgb = rgb_fg or _default_fg_rgb
     _default_bg_rgb = rgb_bg or _default_bg_rgb
-    _default_sp_rgb = rgb_sp
-    _default_fg_cterm = _cterm_fg
-    _default_bg_cterm = _cterm_bg
+    _default_fg_cterm = cterm_fg
+    _default_bg_cterm = cterm_bg
 end
 
 function Native.normalize_codepoint(cp)
@@ -496,7 +450,7 @@ function Native.on_load_module_ready(scope)
     Utf8 = scope.loadModule("lib.utf8")
 end
 
-function Native.grid_line(grid, row, col, cells, wrap)
+function Native.grid_line(_grid, row, col, cells, _wrap)
     if not _grid_current[row] then return end
     local cx = col
     local last_fg = default_fg_token()
@@ -541,19 +495,19 @@ function Native.grid_line(grid, row, col, cells, wrap)
     end
 end
 
-function Native.grid_cursor_goto(grid, row, col)
+function Native.grid_cursor_goto(_grid, row, col)
     _cursor_row = row
     _cursor_col = col
 end
 
-function Native.grid_clear(grid)
+function Native.grid_clear(_grid)
     _grid_current = grid_alloc(_w, _h)
     _grid_back    = nil
     write(esc("2J") .. esc("H"))
     flush()
 end
 
-function Native.grid_resize(grid, w, h)
+function Native.grid_resize(_grid, w, h)
     _w = w; _h = h
     _grid_current = grid_alloc(w, h)
     _grid_back    = nil
@@ -565,7 +519,7 @@ function Native.grid_destroy(grid)
     end
 end
 
-function Native.grid_scroll(grid, top, bot, left, right, rows, cols)
+function Native.grid_scroll(_grid, top, bot, left, right, rows, cols)
     cols = cols or 0
     if rows == 0 and cols == 0 then
         return
@@ -611,7 +565,7 @@ function Native.supports_palette()
     return false
 end
 
-function Native.set_palette_slot(slot, r, g, b)
+function Native.set_palette_slot(_slot, _r, _g, _b)
     -- no-op on standard terminals
 end
 
@@ -627,19 +581,6 @@ function Native.capture_palette()
         out[s] = {p[1], p[2], p[3]}
     end
     return out
-end
-
-local close_stdin_reader
-local set_raw_mode
-
-function Native.reset(original_palette)
-    if _raw_mode_active then
-        set_raw_mode(false)
-    else
-        close_stdin_reader()
-        os.execute("stty sane 2>/dev/null")
-    end
-    leave_terminal_ui()
 end
 
 -- =========================================================================
@@ -819,6 +760,7 @@ local _stdin_buffer = {}
 local _stdin_buffer_len = 0
 local _stdin_error = nil
 local _stdin_eof = false
+local _raw_mode_active = false
 
 local function push_stdin_chunk(chunk)
     if chunk ~= "" then
@@ -862,7 +804,7 @@ local function ensure_stdin_reader()
     end))
 end
 
-close_stdin_reader = function()
+local function close_stdin_reader()
     if not _stdin_tty then
         return
     end
@@ -910,9 +852,7 @@ local function read_input_char(timeout_ms)
     return pop_stdin_char()
 end
 
-local _raw_mode_active = false
-
-set_raw_mode = function(on)
+local function set_raw_mode(on)
     if on then
         enter_terminal_ui()
         os.execute("stty raw -echo 2>/dev/null")
@@ -928,6 +868,16 @@ set_raw_mode = function(on)
         close_stdin_reader()
         _raw_mode_active = false
     end
+end
+
+function Native.reset(_original_palette)
+    if _raw_mode_active then
+        set_raw_mode(false)
+    else
+        close_stdin_reader()
+        os.execute("stty sane 2>/dev/null")
+    end
+    leave_terminal_ui()
 end
 
 -- Parse a complete escape sequence starting after the initial ESC.
@@ -1252,8 +1202,6 @@ function FS.open(path, mode)
     if not f then return nil end
 
     local is_read = (mode == "r" or mode == "rb")
-    local is_binary = (mode == "rb" or mode == "wb")
-
     local handle = {}
     if is_read then
         function handle.read(n)

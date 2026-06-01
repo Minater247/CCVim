@@ -1,6 +1,5 @@
 local CmdRead = {}
 
-local Highlight = loadModule("lib.highlight")
 local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
 local ExMsg = loadModule("lib.excmd.exmsg")
