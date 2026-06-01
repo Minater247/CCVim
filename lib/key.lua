@@ -11,107 +11,31 @@ local function S(n)
     return bit32.bor(n, 8192)
 end
 
+local _dig_names = {"one","two","three","four","five","six","seven","eight","nine","zero"}
+local _dig_chars = {"1","2","3","4","5","6","7","8","9","0"}
+local _sft_chars = {"!","@","#","$","%","^","&","*","(",")"}
+
 local printables = {
-    [keys.tab] = "Tab",
-    [keys.backspace] = "BS",
-    [keys.enter] = "CR",
-    [keys.space] = "Space",
-    [keys.up] = "Up",
-    [keys.down] = "Down",
-    [keys.left] = "Left",
-    [keys.right] = "Right",
-    [keys.home] = "Home",
-    [keys["end"]] = "End",
-    [keys.pageUp] = "PageUp",
-    [keys.pageDown] = "PageDown",
-    [keys.insert] = "Insert",
-    [keys.delete] = "Del",
-    [keys.f1] = "F1",
-    [keys.f2] = "F2",
-    [keys.f3] = "F3",
-    [keys.f4] = "F4",
-    [keys.f5] = "F5",
-    [keys.f6] = "F6",
-    [keys.f7] = "F7",
-    [keys.f8] = "F8",
-    [keys.f9] = "F9",
-    [keys.f10] = "F10",
-    [keys.f11] = "F11",
-    [keys.f12] = "F12",
-    [keys.f13] = "F13",
-    [keys.f14] = "F14",
-    [keys.f15] = "F15",
-
-    [keys.one] = "1",
-    [keys.two] = "2",
-    [keys.three] = "3",
-    [keys.four] = "4",
-    [keys.five] = "5",
-    [keys.six] = "6",
-    [keys.seven] = "7",
-    [keys.eight] = "8",
-    [keys.nine] = "9",
-    [keys.zero] = "0",
-    [keys.minus] = "-",
-    [keys.equals] = "=",
-
-    [keys.q] = "q",
-    [keys.w] = "w",
-    [keys.e] = "e",
-    [keys.r] = "r",
-    [keys.t] = "t",
-    [keys.y] = "y",
-    [keys.u] = "u",
-    [keys.i] = "i",
-    [keys.o] = "o",
-    [keys.p] = "p",
-    [keys.a] = "a",
-    [keys.s] = "s",
-    [keys.d] = "d",
-    [keys.f] = "f",
-    [keys.g] = "g",
-    [keys.h] = "h",
-    [keys.j] = "j",
-    [keys.k] = "k",
-    [keys.l] = "l",
-    [keys.z] = "z",
-    [keys.x] = "x",
-    [keys.c] = "c",
-    [keys.v] = "v",
-    [keys.b] = "b",
-    [keys.n] = "n",
-    [keys.m] = "m",
-
-    [keys.leftBracket] = "[",
-    [keys.rightBracket] = "]",
+    [keys.tab] = "Tab", [keys.backspace] = "BS", [keys.enter] = "CR", [keys.space] = " ",
+    [keys.up] = "Up", [keys.down] = "Down", [keys.left] = "Left", [keys.right] = "Right",
+    [keys.home] = "Home", [keys["end"]] = "End",
+    [keys.pageUp] = "PageUp", [keys.pageDown] = "PageDown",
+    [keys.insert] = "Insert", [keys.delete] = "Del",
+    [keys.minus] = "-", [keys.equals] = "=",
+    [keys.leftBracket] = "[", [keys.rightBracket] = "]",
     [keys.semiColon or keys.semicolon] = ";",
-    [keys.apostrophe] = "'",
-    [keys.grave] = "`",
-    [keys.backslash] = "\\",
-    [keys.comma] = ",",
-    [keys.period] = ".",
-    [keys.slash] = "/",
-    [keys.space] = " ",
-
-    [keys.numPad0] = "k0",
-    [keys.numPad1] = "k1",
-    [keys.numPad2] = "k2",
-    [keys.numPad3] = "k3",
-    [keys.numPad4] = "k4",
-    [keys.numPad5] = "k5",
-    [keys.numPad6] = "k6",
-    [keys.numPad7] = "k7",
-    [keys.numPad8] = "k8",
-    [keys.numPad9] = "k9",
-    [keys.numPadSubtract] = "kMinus",
-    [keys.numPadAdd] = "kPlus",
+    [keys.apostrophe] = "'", [keys.grave] = "`", [keys.backslash] = "\\",
+    [keys.comma] = ",", [keys.period] = ".", [keys.slash] = "/",
+    [keys.numPadSubtract] = "kMinus", [keys.numPadAdd] = "kPlus",
     [keys.numPadDecimal] = "kPoint",
     [keys.multiply or keys.numPadMultiply] = "kMultiply",
-    [keys.numPadEnter] = "kEnter",
-    [keys.numPadDivide] = "kDivide",
-
+    [keys.numPadEnter] = "kEnter", [keys.numPadDivide] = "kDivide",
     plug = "Plug",
 }
+for c in ("abcdefghijklmnopqrstuvwxyz"):gmatch(".") do printables[keys[c]] = c end
+for i, n in ipairs(_dig_names) do printables[keys[n]] = _dig_chars[i] end
+for i = 0, 9 do printables[keys["numPad"..i]] = "k"..i end
+for i = 1, 15 do printables[keys["f"..i]] = "F"..i end
 
 local MOUSE_CODES = {}
 local next_mouse_code = 3000
@@ -162,185 +86,43 @@ for clicks = 2, 4 do
 end
 
 local shiftables = {
-    [keys.one] = "!",
-    [keys.two] = "@",
-    [keys.three] = "#",
-    [keys.four] = "$",
-    [keys.five] = "%",
-    [keys.six] = "^",
-    [keys.seven] = "&",
-    [keys.eight] = "*",
-    [keys.nine] = "(",
-    [keys.zero] = ")",
-    [keys.minus] = "_",
-    [keys.equals] = "+",
-
-    [keys.q] = "Q",
-    [keys.w] = "W",
-    [keys.e] = "E",
-    [keys.r] = "R",
-    [keys.t] = "T",
-    [keys.y] = "Y",
-    [keys.u] = "U",
-    [keys.i] = "I",
-    [keys.o] = "O",
-    [keys.p] = "P",
-    [keys.a] = "A",
-    [keys.s] = "S",
-    [keys.d] = "D",
-    [keys.f] = "F",
-    [keys.g] = "G",
-    [keys.h] = "H",
-    [keys.j] = "J",
-    [keys.k] = "K",
-    [keys.l] = "L",
-    [keys.z] = "Z",
-    [keys.x] = "X",
-    [keys.c] = "C",
-    [keys.v] = "V",
-    [keys.b] = "B",
-    [keys.n] = "N",
-    [keys.m] = "M",
-
-    [keys.leftBracket] = "{",
-    [keys.rightBracket] = "}",
+    [keys.minus] = "_", [keys.equals] = "+",
+    [keys.leftBracket] = "{", [keys.rightBracket] = "}",
     [keys.semiColon or keys.semicolon] = ":",
-    [keys.apostrophe] = "\"",
-    [keys.grave] = "~",
-    [keys.backslash] = "|",
-    [keys.comma] = "<",
-    [keys.period] = ">",
-    [keys.slash] = "?",
+    [keys.apostrophe] = "\"", [keys.grave] = "~", [keys.backslash] = "|",
+    [keys.comma] = "<", [keys.period] = ">", [keys.slash] = "?",
 }
+for c in ("abcdefghijklmnopqrstuvwxyz"):gmatch(".") do shiftables[keys[c]] = c:upper() end
+for i, n in ipairs(_dig_names) do shiftables[keys[n]] = _sft_chars[i] end
 
 -- TODO: handle keys.delete
 local emittables = {
-    [keys.tab] = "\t",
-    [keys.backspace] = "\b",
-    [keys.enter] = "\r",
-    [keys.space] = " ",
-
-    [keys.one] = "1",
-    [keys.two] = "2",
-    [keys.three] = "3",
-    [keys.four] = "4",
-    [keys.five] = "5",
-    [keys.six] = "6",
-    [keys.seven] = "7",
-    [keys.eight] = "8",
-    [keys.nine] = "9",
-    [keys.zero] = "0",
-    [keys.minus] = "-",
-    [keys.equals] = "=",
-
-    [keys.q] = "q",
-    [keys.w] = "w",
-    [keys.e] = "e",
-    [keys.r] = "r",
-    [keys.t] = "t",
-    [keys.y] = "y",
-    [keys.u] = "u",
-    [keys.i] = "i",
-    [keys.o] = "o",
-    [keys.p] = "p",
-    [keys.a] = "a",
-    [keys.s] = "s",
-    [keys.d] = "d",
-    [keys.f] = "f",
-    [keys.g] = "g",
-    [keys.h] = "h",
-    [keys.j] = "j",
-    [keys.k] = "k",
-    [keys.l] = "l",
-    [keys.z] = "z",
-    [keys.x] = "x",
-    [keys.c] = "c",
-    [keys.v] = "v",
-    [keys.b] = "b",
-    [keys.n] = "n",
-    [keys.m] = "m",
-
-    [keys.leftBracket] = "[",
-    [keys.rightBracket] = "]",
+    [keys.tab] = "\t", [keys.backspace] = "\b", [keys.enter] = "\r", [keys.space] = " ",
+    [keys.minus] = "-", [keys.equals] = "=",
+    [keys.leftBracket] = "[", [keys.rightBracket] = "]",
     [keys.semiColon or keys.semicolon] = ";",
-    [keys.apostrophe] = "'",
-    [keys.grave] = "`",
-    [keys.backslash] = "\\",
-    [keys.comma] = ",",
-    [keys.period] = ".",
-    [keys.slash] = "/",
-    [keys.space] = " ",
-
-    [keys.numPad0] = "0",
-    [keys.numPad1] = "1",
-    [keys.numPad2] = "2",
-    [keys.numPad3] = "3",
-    [keys.numPad4] = "4",
-    [keys.numPad5] = "5",
-    [keys.numPad6] = "6",
-    [keys.numPad7] = "7",
-    [keys.numPad8] = "8",
-    [keys.numPad9] = "9",
-    [keys.numPadSubtract] = "-",
-    [keys.numPadAdd] = "+",
-    [keys.numPadDecimal] = "",
+    [keys.apostrophe] = "'", [keys.grave] = "`", [keys.backslash] = "\\",
+    [keys.comma] = ",", [keys.period] = ".", [keys.slash] = "/",
+    [keys.numPadSubtract] = "-", [keys.numPadAdd] = "+", [keys.numPadDecimal] = "",
     [keys.multiply or keys.numPadMultiply] = "*",
-    [keys.numPadEnter] = "\r",
-    [keys.numPadDivide] = "/",
-
-    [S(keys.one)] = "!",
-    [S(keys.two)] = "@",
-    [S(keys.three)] = "#",
-    [S(keys.four)] = "$",
-    [S(keys.five)] = "%",
-    [S(keys.six)] = "^",
-    [S(keys.seven)] = "&",
-    [S(keys.eight)] = "*",
-    [S(keys.nine)] = "(",
-    [S(keys.zero)] = ")",
-    [S(keys.minus)] = "_",
-    [S(keys.equals)] = "+",
-
-    [S(keys.q)] = "Q",
-    [S(keys.w)] = "W",
-    [S(keys.e)] = "E",
-    [S(keys.r)] = "R",
-    [S(keys.t)] = "T",
-    [S(keys.y)] = "Y",
-    [S(keys.u)] = "U",
-    [S(keys.i)] = "I",
-    [S(keys.o)] = "O",
-    [S(keys.p)] = "P",
-    [S(keys.a)] = "A",
-    [S(keys.s)] = "S",
-    [S(keys.d)] = "D",
-    [S(keys.f)] = "F",
-    [S(keys.g)] = "G",
-    [S(keys.h)] = "H",
-    [S(keys.j)] = "J",
-    [S(keys.k)] = "K",
-    [S(keys.l)] = "L",
-    [S(keys.z)] = "Z",
-    [S(keys.x)] = "X",
-    [S(keys.c)] = "C",
-    [S(keys.v)] = "V",
-    [S(keys.b)] = "B",
-    [S(keys.n)] = "N",
-    [S(keys.m)] = "M",
-
-    [S(keys.leftBracket)] = "{",
-    [S(keys.rightBracket)] = "}",
+    [keys.numPadEnter] = "\r", [keys.numPadDivide] = "/",
+    [S(keys.minus)] = "_", [S(keys.equals)] = "+",
+    [S(keys.leftBracket)] = "{", [S(keys.rightBracket)] = "}",
     [S(keys.semiColon or keys.semicolon)] = ":",
-    [S(keys.apostrophe)] = "\"",
-    [S(keys.grave)] = "~",
-    [S(keys.backslash)] = "|",
-    [S(keys.comma)] = "<",
-    [S(keys.period)] = ">",
-    [S(keys.slash)] = "?",
-
-    [S(keys.space)] = " ",
-    [S(keys.enter)] = "\r",
+    [S(keys.apostrophe)] = "\"", [S(keys.grave)] = "~", [S(keys.backslash)] = "|",
+    [S(keys.comma)] = "<", [S(keys.period)] = ">", [S(keys.slash)] = "?",
+    [S(keys.space)] = " ", [S(keys.enter)] = "\r",
 }
+for c in ("abcdefghijklmnopqrstuvwxyz"):gmatch(".") do
+    local k = keys[c]; emittables[k] = c; emittables[S(k)] = c:upper()
+end
+for i, n in ipairs(_dig_names) do
+    local k = keys[n]; emittables[k] = _dig_chars[i]; emittables[S(k)] = _sft_chars[i]
+end
+for i = 0, 9 do
+    local k = keys["numPad"..i]; local s = tostring(i)
+    emittables[k] = s; emittables[S(k)] = s
+end
 
 function Key:new(keynr, ctrld, shifted, alted)
     local ctrlval = ctrld and 4096 or 0
@@ -404,40 +186,12 @@ function Key.printable_number(num)
     return start .. ">"
 end
 
-local digitmap = {
-    [keys.one] = 1,
-    [keys.two] = 2,
-    [keys.three] = 3,
-    [keys.four] = 4,
-    [keys.five] = 5,
-    [keys.six] = 6,
-    [keys.seven] = 7,
-    [keys.eight] = 8,
-    [keys.nine] = 9,
-    [keys.zero] = 0,
-
-    [keys.numPad0] = 0,
-    [keys.numPad1] = 1,
-    [keys.numPad2] = 2,
-    [keys.numPad3] = 3,
-    [keys.numPad4] = 4,
-    [keys.numPad5] = 5,
-    [keys.numPad6] = 6,
-    [keys.numPad7] = 7,
-    [keys.numPad8] = 8,
-    [keys.numPad9] = 9,
-
-    [bit32.bor(keys.numPad0, 8192)] = 0,
-    [bit32.bor(keys.numPad1, 8192)] = 1,
-    [bit32.bor(keys.numPad2, 8192)] = 2,
-    [bit32.bor(keys.numPad3, 8192)] = 3,
-    [bit32.bor(keys.numPad4, 8192)] = 4,
-    [bit32.bor(keys.numPad5, 8192)] = 5,
-    [bit32.bor(keys.numPad6, 8192)] = 6,
-    [bit32.bor(keys.numPad7, 8192)] = 7,
-    [bit32.bor(keys.numPad8, 8192)] = 8,
-    [bit32.bor(keys.numPad9, 8192)] = 9,
-}
+local digitmap = {}
+for i, n in ipairs(_dig_names) do digitmap[keys[n]] = i % 10 end
+for i = 0, 9 do
+    local k = keys["numPad"..i]
+    digitmap[k] = i; digitmap[bit32.bor(k, 8192)] = i
+end
 function Key.ToDigitNumeric(code)
     return digitmap[code]
 end
@@ -487,18 +241,6 @@ local NVIM_SPECIAL_KEYCODE = {
     ["<Left>"] = bytes3(128, 107, 108),
     ["<Right>"] = bytes3(128, 107, 114),
     ["<S-Tab>"] = bytes3(128, 107, 66),
-    ["<F1>"] = bytes3(128, 107, 49),
-    ["<F2>"] = bytes3(128, 107, 50),
-    ["<F3>"] = bytes3(128, 107, 51),
-    ["<F4>"] = bytes3(128, 107, 52),
-    ["<F5>"] = bytes3(128, 107, 53),
-    ["<F6>"] = bytes3(128, 107, 54),
-    ["<F7>"] = bytes3(128, 107, 55),
-    ["<F8>"] = bytes3(128, 107, 56),
-    ["<F9>"] = bytes3(128, 107, 57),
-    ["<F10>"] = bytes3(128, 107, 59),
-    ["<F11>"] = bytes3(128, 70, 49),
-    ["<F12>"] = bytes3(128, 70, 50),
     ["<C-Home>"] = bytes3(128, 253, 87),
     ["<C-Left>"] = bytes3(128, 253, 85),
     ["<C-Right>"] = bytes3(128, 253, 86),
@@ -510,6 +252,9 @@ local NVIM_SPECIAL_KEYCODE = {
     ["<Cmd>"] = bytes3(128, 253, 104),
     ["<Plug>"] = bytes3(128, 253, 112),
 }
+for i = 1, 9 do NVIM_SPECIAL_KEYCODE["<F"..i..">"] = bytes3(128, 107, 48+i) end
+NVIM_SPECIAL_KEYCODE["<F10>"] = bytes3(128, 107, 59)
+for i = 11, 12 do NVIM_SPECIAL_KEYCODE["<F"..i..">"] = bytes3(128, 70, 38+i) end
 
 local NVIM_SPECIAL_BY_BYTES = {}
 for notation, seq in pairs(NVIM_SPECIAL_KEYCODE) do
@@ -530,18 +275,6 @@ local NVIM_SPECIAL_TO_NUMERIC = {
     ["<Left>"] = keys.left,
     ["<Right>"] = keys.right,
     ["<S-Tab>"] = S(keys.tab),
-    ["<F1>"] = keys.f1,
-    ["<F2>"] = keys.f2,
-    ["<F3>"] = keys.f3,
-    ["<F4>"] = keys.f4,
-    ["<F5>"] = keys.f5,
-    ["<F6>"] = keys.f6,
-    ["<F7>"] = keys.f7,
-    ["<F8>"] = keys.f8,
-    ["<F9>"] = keys.f9,
-    ["<F10>"] = keys.f10,
-    ["<F11>"] = keys.f11,
-    ["<F12>"] = keys.f12,
     ["<C-Home>"] = C(keys.home),
     ["<C-Left>"] = C(keys.left),
     ["<C-Right>"] = C(keys.right),
@@ -551,6 +284,7 @@ local NVIM_SPECIAL_TO_NUMERIC = {
     ["<S-Right>"] = S(keys.right),
     ["<Nul>"] = C(S(keys.two)),
 }
+for i = 1, 12 do NVIM_SPECIAL_TO_NUMERIC["<F"..i..">"] = keys["f"..i] end
 
 local function key_from_numeric(num)
     return setmetatable({ numeric = num }, Key)

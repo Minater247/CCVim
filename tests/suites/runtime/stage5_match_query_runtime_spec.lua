@@ -97,10 +97,10 @@ return {
                 local blit = blits[1]
                 Assert.truthy("match-only line blit exists", blit ~= nil)
 
-                local search_fg = colors.toBlit(Highlight.For("Search")[1])
-                Assert.eq("match overlay fg at f", blit.fg:sub(1, 1), search_fg)
-                Assert.eq("match overlay fg at o", blit.fg:sub(2, 2), search_fg)
-                Assert.eq("match overlay fg at o2", blit.fg:sub(3, 3), search_fg)
+                local search_hl = Highlight.GetId("Search")
+                Assert.eq("match overlay fg at f", blit.hl[1], search_hl)
+                Assert.eq("match overlay fg at o", blit.hl[2], search_hl)
+                Assert.eq("match overlay fg at o2", blit.hl[3], search_hl)
             end
 
             do
@@ -148,11 +148,11 @@ return {
 
                 local blit_a = Syntax.LineToBlit(shared, 1, win_a)
                 local blit_b = Syntax.LineToBlit(shared, 1, win_b)
-                local comment_fg = colors.toBlit(Highlight.For("Comment")[1])
-                local string_fg = colors.toBlit(Highlight.For("String")[1])
+                local comment_hl = Highlight.GetId("Comment")
+                local string_hl = Highlight.GetId("String")
 
-                Assert.eq("shared buffer regular window keeps buffer syntax", blit_a.fg:sub(1, 1), comment_fg)
-                Assert.eq("shared buffer ownsyntax window uses override syntax", blit_b.fg:sub(1, 1), string_fg)
+                Assert.eq("shared buffer regular window keeps buffer syntax", blit_a.hl[1], comment_hl)
+                Assert.eq("shared buffer ownsyntax window uses override syntax", blit_b.hl[1], string_hl)
             end
 
             do

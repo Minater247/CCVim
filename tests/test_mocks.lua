@@ -8,7 +8,6 @@ local real_os_date = os.date
 local real_os_exit = os.exit
 local real_os_remove = os.remove
 local real_os_rename = os.rename
-local real_loadfile = loadfile
 local has_lfs, lfs = pcall(require, "lfs")
 if not has_lfs then
     error("test_mocks.lua requires LuaFileSystem (lfs)")
@@ -448,8 +447,28 @@ local function create_term_api(state, colors)
 
     term.isColour = term.isColor
 
+    local function palette_key(index)
+        index = tonumber(index)
+        if index == nil then
+            return nil
+        end
+        if index == 0 then
+            return string.format("%x", index)
+        end
+        if (index == 1) or (index > 0 and math.floor(index) == index and index % 2 == 0) then
+            local bitmask_key = colors.toBlit(index)
+            if bitmask_key then
+                return bitmask_key
+            end
+        end
+        if index >= 0 and index <= 15 and math.floor(index) == index then
+            return string.format("%x", index)
+        end
+        return colors.toBlit(index)
+    end
+
     function term.getPaletteColor(mask)
-        local idx = colors.toBlit(mask)
+        local idx = palette_key(mask)
         local rgb = state.term.palette[idx]
         if not rgb then
             return 0, 0, 0
@@ -460,7 +479,7 @@ local function create_term_api(state, colors)
     term.getPaletteColour = term.getPaletteColor
 
     function term.setPaletteColor(mask, r, g, b)
-        local idx = colors.toBlit(mask)
+        local idx = palette_key(mask)
         if not idx then
             error("invalid palette color", 2)
         end
@@ -758,18 +777,36 @@ local function create_fs_api(state)
         return state.fs_root .. rel(path)
     end
 
+    local function repo_abs(path)
+        path = tostring(path or "")
+        if path == "" or path:sub(1, 1) ~= "/" then
+            return nil
+        end
+
+        local editor_path = normalize_path(path)
+        if editor_path == state.ccvim_root or editor_path:sub(1, #state.ccvim_root + 1) == state.ccvim_root .. "/" then
+            if lfs_attr(editor_path) ~= nil then
+                return editor_path
+            end
+            return nil
+        end
+
+        local candidate = state.ccvim_root
+        if editor_path ~= "/" then
+            candidate = normalize_path(state.ccvim_root .. "/" .. editor_path:sub(2))
+        end
+        return candidate
+    end
+
     local function path_attr(path)
         return lfs_attr(path)
     end
 
     local function host_runtime_attr(path)
         path = tostring(path or "")
-        local root = tostring(state.ccvim_root or "")
-        if root == "" or path == "" or path:sub(1, 1) ~= "/" then
-            return nil
-        end
-        if path == root or path:sub(1, #root + 1) == root .. "/" then
-            return path_attr(path)
+        local repo_path = repo_abs(path)
+        if repo_path then
+            return path_attr(repo_path)
         end
         return nil
     end
@@ -878,23 +915,34 @@ local function create_fs_api(state)
         if not fs.isDir(orig_path) then
             error("not a directory", 2)
         end
-        local target = abs(path)
+        local targets = {}
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
             if attr and attr.mode == "directory" then
-                target = orig_path
+                targets[#targets + 1] = orig_path
             end
         else
-            local attr = host_runtime_attr(orig_path)
+            local repo_target = repo_abs(orig_path)
+            local attr = repo_target and path_attr(repo_target)
             if attr and attr.mode == "directory" then
-                target = orig_path
+                targets[#targets + 1] = repo_target
             end
         end
 
+        local temp_target = abs(path)
+        local temp_attr = path_attr(temp_target)
+        if temp_attr and temp_attr.mode == "directory" then
+            targets[#targets + 1] = temp_target
+        end
+
+        local seen = {}
         local lines = {}
-        for name in lfs.dir(target) do
-            if name ~= "." and name ~= ".." then
-                lines[#lines + 1] = name
+        for i = 1, #targets do
+            for name in lfs.dir(targets[i]) do
+                if name ~= "." and name ~= ".." and not seen[name] then
+                    seen[name] = true
+                    lines[#lines + 1] = name
+                end
             end
         end
         table.sort(lines)
@@ -934,7 +982,12 @@ local function create_fs_api(state)
         if fs.isDir(path) then
             return 0
         end
-        local f = io.open(abs(path), "rb")
+        local target = abs(path)
+        local attr = host_runtime_attr(path)
+        if attr and attr.mode == "file" then
+            target = repo_abs(path)
+        end
+        local f = io.open(target, "rb")
         if not f then
             return 0
         end
@@ -965,21 +1018,29 @@ local function create_fs_api(state)
         path = rel(path)
         mode = tostring(mode or "r")
 
-        -- Check if this is a real filesystem path (for vim runtime files)
         local use_real_path = false
         if orig_path ~= "" and orig_path:sub(1, 1) ~= "/" then
             local attr = path_attr(orig_path)
             if attr and attr.mode == "file" then
                 use_real_path = true
             end
-        else
+        elseif mode == "r" or mode == "rb" then
             local attr = host_runtime_attr(orig_path)
             if attr and attr.mode == "file" then
                 use_real_path = true
             end
         end
 
-        local abs_path = use_real_path and orig_path or abs(path)
+        local abs_path
+        if use_real_path then
+            if orig_path:sub(1, 1) ~= "/" then
+                abs_path = orig_path
+            else
+                abs_path = repo_abs(orig_path)
+            end
+        else
+            abs_path = abs(path)
+        end
 
         local parent = fs.getDir(use_real_path and orig_path or path)
         if mode == "w" or mode == "a" or mode == "wb" or mode == "ab" then
@@ -1313,15 +1374,90 @@ local function default_globals(state, colors)
     local shell = create_shell_api(state)
     local keys = create_keys_api()
     local cc_os = create_os_api(state)
+    local function mounted_repo_path(path)
+        path = tostring(path or "")
+        if path == "" or path:sub(1, 1) ~= "/" then
+            return nil
+        end
+
+        local editor_path = normalize_path(path)
+        if editor_path == state.ccvim_root or editor_path:sub(1, #state.ccvim_root + 1) == state.ccvim_root .. "/" then
+            return editor_path
+        end
+
+        local candidate = state.ccvim_root
+        if editor_path ~= "/" then
+            candidate = normalize_path(state.ccvim_root .. "/" .. editor_path:sub(2))
+        end
+
+        if lfs_attr(candidate) ~= nil then
+            return candidate
+        end
+        return nil
+    end
+
     local function resolve_loadfile_path(path)
         path = tostring(path or "")
         if path == "" then
             return path
         end
+        local mounted = mounted_repo_path(path)
+        if mounted ~= nil then
+            return mounted
+        end
         if lfs_attr(path) ~= nil then
             return path
         end
         return state.fs.abs_path(path)
+    end
+
+    local function editor_chunk_path(path, resolved)
+        path = tostring(path or "")
+        resolved = tostring(resolved or "")
+
+        if path ~= "" and path:sub(1, 1) == "/" then
+            return normalize_path(path)
+        end
+
+        if resolved == state.ccvim_root then
+            return "/"
+        end
+        if resolved:sub(1, #state.ccvim_root + 1) == state.ccvim_root .. "/" then
+            return normalize_path(resolved:sub(#state.ccvim_root + 1))
+        end
+
+        if resolved == state.fs_root then
+            return "/"
+        end
+        if resolved:sub(1, #state.fs_root + 1) == state.fs_root .. "/" then
+            return normalize_path(resolved:sub(#state.fs_root + 1))
+        end
+
+        if path ~= "" then
+            if path:sub(1, 1) == "/" then
+                return normalize_path(path)
+            end
+            return normalize_path("/" .. path)
+        end
+
+        return normalize_path(resolved)
+    end
+
+    local function compile_virtual_file(path, mode, env)
+        local resolved = resolve_loadfile_path(path)
+        local file, err = io.open(resolved, "rb")
+        if not file then
+            return nil, err
+        end
+
+        local source = file:read("*a")
+        file:close()
+
+        local chunkname = "@" .. editor_chunk_path(path, resolved)
+        if env == nil then
+            return load(source, chunkname, mode or "bt")
+        end
+        return load(source, chunkname, mode or "bt", env)
     end
 
     local g = {
@@ -1386,7 +1522,10 @@ local function default_globals(state, colors)
                 }
                 for k, v in pairs(parent) do
                     if type(v) == "function" then
-                        win[k] = function(_, ...)
+                        win[k] = function(...)
+                            if select(1, ...) == win then
+                                return v(select(2, ...))
+                            end
                             return v(...)
                         end
                     end
@@ -1413,17 +1552,10 @@ local function default_globals(state, colors)
             end,
         },
         loadfile = function(path, mode, env)
-            local resolved = resolve_loadfile_path(path)
-            if mode == nil and env == nil then
-                return real_loadfile(resolved)
-            end
-            if env == nil then
-                return real_loadfile(resolved, mode)
-            end
-            return real_loadfile(resolved, mode, env)
+            return compile_virtual_file(path, mode, env)
         end,
         dofile = function(path)
-            local chunk, err = real_loadfile(resolve_loadfile_path(path), "t", _G)
+            local chunk, err = compile_virtual_file(path, "t", _G)
             if not chunk then
                 error(err, 2)
             end
@@ -1478,6 +1610,10 @@ local function make_module_loader(root, globals, stubs)
                         return v
                     end
                     return _G[k]
+                end,
+                __newindex = function(_, k, v)
+                    globals[k] = v
+                    _G[k] = v
                 end,
             })
             env._G = _G  -- Use real global environment so Lua base functions are available
@@ -1607,11 +1743,418 @@ function MockEnv.setup(opts)
     state.ccvim_root = ccvim_root
 
     local globals = default_globals(state, colors)
+
+    math.clamp = function(value, min_value, max_value) -- luacheck: ignore 122
+        if value < min_value then
+            return min_value
+        end
+        if value > max_value then
+            return max_value
+        end
+        return value
+    end
     
     globals.ccvim_path = ccvim_root
     globals.screen = {
         width = state.term.width,
         height = state.term.height,
+    }
+
+    do
+        local hl_by_id = {}
+        local hl_cache = {}
+        local next_hl_id = 1
+        local default_attrs = { fg = nil, bg = nil, foreground = nil, background = nil }
+        local normalize_map = {
+            [0x2713] = { char = "v" },
+            [0x2714] = { char = "v" },
+            [0x2611] = { char = "v" },
+            [0x2715] = { char = "x" },
+            [0x2717] = { char = "x" },
+            [0x2718] = { char = "x" },
+            [0x00D7] = { char = "x" },
+            [0x2191] = { char = "\x18" },
+            [0x2193] = { char = "\x19" },
+            [0x2190] = { char = "\x1b" },
+            [0x2192] = { char = "\x1a" },
+            [0xE0B0] = { char = string.char(0x97), swap = true },
+            [0xE0B2] = { char = string.char(0x94) },
+            [0xE0B4] = { char = string.char(0x88) },
+            [0xE0B6] = { char = string.char(0x84) },
+            [0xE0B8] = { char = string.char(0x8B), swap = true },
+            [0xE0BA] = { char = string.char(0x87), swap = true },
+            [0x2518] = { char = "/" },
+            [0x2500] = { char = "-" },
+            [0x2514] = { char = "\\" },
+            [0x2502] = { char = "|" },
+            [0x2510] = { char = "\\" },
+            [0x250C] = { char = "/" },
+            [0x2019] = { char = "'" },
+            [0x201C] = { char = "\"" },
+        }
+
+        local function pack_rgb(r, g, b)
+            return r * 65536 + g * 256 + b
+        end
+
+        local function unpack_rgb(rgb)
+            return math.floor(rgb / 65536) % 256, math.floor(rgb / 256) % 256, rgb % 256
+        end
+
+        local function palette_rgb(slot)
+            local key = string.format("%x", slot)
+            local rgb = state.term.palette[key] or { 0, 0, 0 }
+            return math.floor(rgb[1] * 255 + 0.5), math.floor(rgb[2] * 255 + 0.5), math.floor(rgb[3] * 255 + 0.5)
+        end
+
+        local function rgb_dist(a, b)
+            local ar, ag, ab = unpack_rgb(a)
+            local br, bg, bb = unpack_rgb(b)
+            local dr = ar - br
+            local dg = ag - bg
+            local db = ab - bb
+            return dr * dr + dg * dg + db * db
+        end
+
+        local function nearest_slot(rgb)
+            local best_slot = 0
+            local best_dist = math.huge
+            for slot = 0, 15 do
+                local pr, pg, pb = palette_rgb(slot)
+                local dist = rgb_dist(rgb, pack_rgb(pr, pg, pb))
+                if dist < best_dist then
+                    best_slot = slot
+                    best_dist = dist
+                end
+            end
+            return string.format("%x", best_slot)
+        end
+
+        local function normalize_hl_attrs(attrs)
+            attrs = attrs or {}
+            local fg = attrs.foreground
+            if fg == nil then fg = attrs.fg end
+            local bg = attrs.background
+            if bg == nil then bg = attrs.bg end
+            return {
+                fg = fg,
+                bg = bg,
+                foreground = fg,
+                background = bg,
+                special = attrs.special,
+                reverse = not not attrs.reverse,
+                italic = not not attrs.italic,
+                bold = not not attrs.bold,
+                strikethrough = not not attrs.strikethrough,
+                underline = not not attrs.underline,
+                undercurl = not not attrs.undercurl,
+                underdouble = not not attrs.underdouble,
+                underdotted = not not attrs.underdotted,
+                underdashed = not not attrs.underdashed,
+                altfont = attrs.altfont,
+                blend = attrs.blend,
+                url = attrs.url,
+                cterm_foreground = attrs.cterm_foreground,
+                cterm_background = attrs.cterm_background,
+            }
+        end
+
+        local function hl_key(attrs)
+            attrs = normalize_hl_attrs(attrs)
+            return table.concat({
+                tostring(attrs.foreground or -1),
+                tostring(attrs.background or -1),
+                tostring(attrs.special or -1),
+                attrs.bold and "B" or "",
+                attrs.italic and "I" or "",
+                attrs.underline and "U" or "",
+                attrs.undercurl and "C" or "",
+                attrs.underdouble and "D" or "",
+                attrs.underdotted and "O" or "",
+                attrs.underdashed and "A" or "",
+                attrs.strikethrough and "S" or "",
+                attrs.reverse and "R" or "",
+                attrs.altfont and ("F" .. tostring(attrs.altfont)) or "",
+                attrs.blend and ("L" .. tostring(attrs.blend)) or "",
+                attrs.url and ("@" .. attrs.url) or "",
+                tostring(attrs.cterm_foreground or -1),
+                tostring(attrs.cterm_background or -1),
+            }, ":")
+        end
+
+        function globals.screen.begin_frame()
+        end
+
+        function globals.screen.end_frame()
+        end
+
+        function globals.screen.flush()
+        end
+
+        function globals.screen.get_size()
+            return globals.screen.width, globals.screen.height
+        end
+
+        function globals.screen.color_depth()
+            return "16"
+        end
+
+        function globals.screen.supports_palette()
+            return true
+        end
+
+        function globals.screen.get_palette_slot(slot)
+            return palette_rgb(slot)
+        end
+
+        function globals.screen.normalize_codepoint(cp)
+            if cp >= 32 and cp <= 127 then
+                return string.char(cp), false
+            end
+            local replacement = normalize_map[cp]
+            if replacement then
+                return replacement.char, replacement.swap == true
+            end
+            return "?", false
+        end
+
+        function globals.screen.set_palette_slot(slot, r, g, b)
+            state.term.palette[string.format("%x", slot)] = {
+                (tonumber(r) or 0) / 255,
+                (tonumber(g) or 0) / 255,
+                (tonumber(b) or 0) / 255,
+            }
+        end
+
+        function globals.screen.hl_define(id, attrs)
+            local normalized = normalize_hl_attrs(attrs)
+            hl_by_id[id] = normalized
+            hl_cache[hl_key(normalized)] = id
+        end
+
+        function globals.screen.hl_id_for(attrs)
+            local normalized = normalize_hl_attrs(attrs)
+            local key = hl_key(normalized)
+            local id = hl_cache[key]
+            if id then
+                return id
+            end
+            id = next_hl_id
+            next_hl_id = next_hl_id + 1
+            globals.screen.hl_define(id, normalized)
+            return id
+        end
+
+        function globals.screen.hl_attrs(id)
+            return hl_by_id[id]
+        end
+
+        function globals.screen.default_colors_set(rgb_fg, rgb_bg, rgb_sp, cterm_fg, cterm_bg)
+            default_attrs = {
+                fg = rgb_fg,
+                bg = rgb_bg,
+                foreground = rgb_fg,
+                background = rgb_bg,
+                special = rgb_sp,
+                cterm_foreground = cterm_fg,
+                cterm_background = cterm_bg,
+            }
+            hl_by_id[0] = default_attrs
+        end
+
+        function globals.screen.hl_attr_define(id, rgb_attr, cterm_attr, info)
+            globals.screen.hl_define(id, {
+                fg = rgb_attr and rgb_attr.foreground,
+                bg = rgb_attr and rgb_attr.background,
+                foreground = rgb_attr and rgb_attr.foreground,
+                background = rgb_attr and rgb_attr.background,
+                special = rgb_attr and rgb_attr.special,
+                reverse = rgb_attr and rgb_attr.reverse,
+                italic = rgb_attr and rgb_attr.italic,
+                bold = rgb_attr and rgb_attr.bold,
+                strikethrough = rgb_attr and rgb_attr.strikethrough,
+                underline = rgb_attr and rgb_attr.underline,
+                cterm_foreground = cterm_attr and cterm_attr.foreground,
+                cterm_background = cterm_attr and cterm_attr.background,
+                info = info,
+            })
+        end
+
+        function globals.screen.hl_group_set(name, id)
+            state.screen_groups = state.screen_groups or {}
+            state.screen_groups[name] = id
+        end
+
+        function globals.screen.grid_line(_grid, row, col, cells, _wrap)
+            local x = col + 1
+            local y = row + 1
+            local current = default_attrs
+
+            for i = 1, #cells do
+                local cell = cells[i]
+                if cell[2] ~= nil then
+                    current = hl_by_id[cell[2]] or default_attrs
+                end
+
+                local fg = "0"
+                local bg = "f"
+                if current then
+                    local fg_rgb = current.foreground or current.fg
+                    local bg_rgb = current.background or current.bg
+                    if fg_rgb then
+                        fg = nearest_slot(fg_rgb)
+                    end
+                    if bg_rgb then
+                        bg = nearest_slot(bg_rgb)
+                    end
+                    if current.reverse then
+                        fg, bg = bg, fg
+                    end
+                end
+
+                local rep = cell[3] or 1
+                globals.term.setCursorPos(x, y)
+                globals.term.blit(string.rep(cell[1], rep), string.rep(fg, rep), string.rep(bg, rep))
+                x = x + rep
+            end
+        end
+
+        function globals.screen.grid_cursor_goto(_grid, row, col)
+            state.term.cy = row + 1
+            state.term.cx = col + 1
+        end
+
+        function globals.screen.grid_clear(_grid)
+            globals.term.clear()
+        end
+
+        function globals.screen.grid_resize(_grid, w, h)
+            globals.screen.width = w
+            globals.screen.height = h
+            state.term.width = w
+            state.term.height = h
+            state.term.reset()
+        end
+
+        function globals.screen.grid_destroy(_grid)
+        end
+
+        function globals.screen.grid_scroll(_grid, _top, _bot, _left, _right, _rows, _cols)
+        end
+    end
+
+    globals.backend = {
+        kind = "cc",
+        begin_frame = function()
+        end,
+        end_frame = function()
+        end,
+        flush = function()
+        end,
+        hl_define = function(id, attrs)
+            globals.screen.hl_define(id, attrs)
+        end,
+        default_colors_set = function(rgb_fg, rgb_bg, rgb_sp, cterm_fg, cterm_bg)
+            globals.screen.default_colors_set(rgb_fg, rgb_bg, rgb_sp, cterm_fg, cterm_bg)
+        end,
+        grid_line = function(grid, row, col, cells, wrap)
+            globals.screen.grid_line(grid, row, col, cells, wrap)
+        end,
+        grid_cursor_goto = function(grid, row, col)
+            globals.screen.grid_cursor_goto(grid, row, col)
+        end,
+        grid_clear = function(grid)
+            globals.screen.grid_clear(grid)
+        end,
+        grid_destroy = function(grid)
+            globals.screen.grid_destroy(grid)
+        end,
+        grid_resize = function(grid, w, h)
+            globals.screen.grid_resize(grid, w, h)
+        end,
+        grid_scroll = function(grid, top, bot, left, right, rows, cols)
+            globals.screen.grid_scroll(grid, top, bot, left, right, rows, cols)
+        end,
+        size = function()
+            return globals.term.getSize()
+        end,
+        color_depth = function()
+            return "16"
+        end,
+        supports_palette = function()
+            return true
+        end,
+        set_palette_slot = function(slot, r, g, b)
+            globals.screen.set_palette_slot(slot, r, g, b)
+        end,
+        get_palette_slot = function(slot)
+            return globals.screen.get_palette_slot(slot)
+        end,
+        capture_palette = function()
+            local out = {}
+            for slot = 0, 15 do
+                local r, g, b = globals.screen.get_palette_slot(slot)
+                out[slot] = { r, g, b }
+            end
+            return out
+        end,
+        reset = function()
+            globals.term.clear()
+            globals.term.setCursorPos(1, 1)
+        end,
+        pull_event = function(filter)
+            while true do
+                local ev = { globals.os.pullEvent(filter) }
+                if ev[1] == "mouse_scroll" then
+                    local delta = tonumber(ev[2]) or 0
+                    if delta > 0 then
+                        ev[2] = "down"
+                        return table.unpack(ev)
+                    end
+                    if delta < 0 then
+                        ev[2] = "up"
+                        return table.unpack(ev)
+                    end
+                else
+                    return table.unpack(ev)
+                end
+            end
+        end,
+        start_timer = function(time)
+            return globals.os.startTimer(time)
+        end,
+        cancel_timer = function(id)
+            return globals.os.cancelTimer(id)
+        end,
+        get_epoch = function()
+            return globals.os.epoch("utc")
+        end,
+        cwd = function()
+            local dir = globals.shell.dir()
+            if dir == "" then
+                return "/"
+            end
+            if dir:sub(1, 1) ~= "/" then
+                return "/" .. dir
+            end
+            return dir
+        end,
+        chdir = function(path)
+            local dir = tostring(path)
+            if dir == "/" then
+                globals.shell.setDir("")
+                return
+            end
+            globals.shell.setDir(dir:sub(2))
+        end,
+        resolve_path = function(path)
+            return globals.shell.resolve(path)
+        end,
+        running_program = function()
+            return tostring((arg and arg[0]) or "")
+        end,
+        keys = globals.keys,
+        fs = globals.fs,
     }
 
     globals.windows = {}
@@ -1902,9 +2445,22 @@ function MockEnv.setup(opts)
     end
 
     if opts.bootstrap_default_editor ~= false and not globals.windows[1] then
-        local b = mock.create_buffer(1, "/tmp/current.txt", { "" }, { refcount = 1 })
-        local w = mock.create_window(1, b, { cursorx = 1, cursory = 1 })
-        mock.create_tabpage(1, { w }, {})
+        local Buffer = load_module("layout.buffer")
+        local Window = load_module("layout.window")
+        local Tabpage = load_module("layout.tabpage")
+
+        local b = Buffer(true, false, true)
+        b.bufnr = 1
+        globals.buffers[1] = b
+
+        local w = Window(b)
+        w.winnr = 1
+        globals.windows[1] = w
+
+        local tp = Tabpage(w)
+        tp.tabnr = 1
+        globals.tabpages[1] = tp
+
         globals.curwin = 1
         globals.curtp = 1
     end

@@ -9,6 +9,7 @@ local Syntax = loadModule("lib.syntax")
 local Utf8 = loadModule("lib.utf8")
 local BufAttach = loadModule("lib.bufattach")
 local Sign = loadModule("lib.sign")
+local Options = loadModule("lib.options")
 
 local curr_bufno = 1
 
@@ -66,6 +67,19 @@ local function _bytes_before_row(lines, row0)
         total = total + #(lines[i] or "") + 1
     end
     return total
+end
+
+local function _mk_bytes(start_row, start_byte, old_lines, old_byte, new_lines, new_byte)
+    local on, nn = #old_lines, #new_lines
+    return {
+        start_row = start_row, start_col = 0, start_byte = start_byte,
+        old_end_row = on > 0 and on - 1 or 0,
+        old_end_col = on > 0 and #(old_lines[on] or "") or 0,
+        old_end_byte = old_byte,
+        new_end_row = nn > 0 and nn - 1 or 0,
+        new_end_col = nn > 0 and #(new_lines[nn] or "") or 0,
+        new_end_byte = new_byte,
+    }
 end
 
 local function _text_sizes(text)
@@ -216,17 +230,7 @@ local function _notify_full_replace(buf, old_lines, new_lines)
         new_lastline = new_count,
         byte_count = old_byte,
         deleted_lines = old_lines,
-        bytes = {
-            start_row = 0,
-            start_col = 0,
-            start_byte = 0,
-            old_end_row = (old_count > 0) and (old_count - 1) or 0,
-            old_end_col = (old_count > 0) and #(old_lines[old_count] or "") or 0,
-            old_end_byte = old_byte,
-            new_end_row = (new_count > 0) and (new_count - 1) or 0,
-            new_end_col = (new_count > 0) and #(new_lines[new_count] or "") or 0,
-            new_end_byte = new_byte,
-        },
+        bytes = _mk_bytes(0, 0, old_lines, old_byte, new_lines, new_byte),
     })
 end
 
@@ -269,13 +273,13 @@ end
 ---@param loaded boolean|nil Whether this buffer should start loaded.
 function Buffer:new(listed, scratch, loaded)
     local is_loaded = (loaded ~= false)
+    local opts = Options.new_object_local_opts("buf")
+    opts.buflisted = listed or false
+    opts.modified = false
     local obj = setmetatable({
         scratch = scratch or false,
         bufnr = curr_bufno,
-        opts = {
-            buflisted = listed or false,
-            modified  = false
-        },
+        opts = opts,
         state = "hidden",
         lines = is_loaded and { "" } or {},
         loaded = is_loaded,
@@ -759,17 +763,7 @@ function Buffer:undo_line(win, noauto)
             new_lastline = target_line,
             byte_count = #old_line,
             deleted_text = old_line,
-            bytes = {
-                start_row = target_line - 1,
-                start_col = 0,
-                start_byte = start_byte,
-                old_end_row = 0,
-                old_end_col = #old_line,
-                old_end_byte = #old_line,
-                new_end_row = 0,
-                new_end_col = #new_line,
-                new_end_byte = #new_line,
-            },
+            bytes = _mk_bytes(target_line - 1, start_byte, {old_line}, #old_line, {new_line}, #new_line),
         })
         _run_textchanged(self, noauto)
 
@@ -852,17 +846,7 @@ function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
         new_lastline = ln,
         byte_count = #old_line,
         deleted_text = old_line,
-        bytes = {
-            start_row = ln - 1,
-            start_col = 0,
-            start_byte = start_byte,
-            old_end_row = 0,
-            old_end_col = #old_line,
-            old_end_byte = #old_line,
-            new_end_row = 0,
-            new_end_col = #new_line,
-            new_end_byte = #new_line,
-        },
+        bytes = _mk_bytes(ln - 1, start_byte, {old_line}, #old_line, {new_line}, #new_line),
     })
     _run_textchanged(self, noauto)
     self:undo_end()
@@ -884,17 +868,7 @@ function Buffer:insert_line(index, item, load_if_unloaded, noauto)
         new_lastline = idx,
         byte_count = 0,
         deleted_text = "",
-        bytes = {
-            start_row = idx - 1,
-            start_col = 0,
-            start_byte = start_byte,
-            old_end_row = 0,
-            old_end_col = 0,
-            old_end_byte = 0,
-            new_end_row = 0,
-            new_end_col = #new_line,
-            new_end_byte = #new_line,
-        },
+        bytes = _mk_bytes(idx - 1, start_byte, {}, 0, {new_line}, #new_line),
     })
     _run_textchanged(self, noauto)
     self:undo_end()
@@ -966,17 +940,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
             new_lastline = s - 1,
             byte_count = old_byte,
             deleted_text = table.concat(removed, "\n"),
-            bytes = {
-                start_row = s - 1,
-                start_col = 0,
-                start_byte = start_byte,
-                old_end_row = (#removed > 0) and (#removed - 1) or 0,
-                old_end_col = (#removed > 0) and #(removed[#removed] or "") or 0,
-                old_end_byte = old_byte,
-                new_end_row = 0,
-                new_end_col = 0,
-                new_end_byte = 0,
-            },
+            bytes = _mk_bytes(s - 1, start_byte, removed, old_byte, {}, 0),
         })
     end
     
@@ -1067,17 +1031,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
             new_lastline = s + m_insert,
             byte_count = old_byte,
             deleted_text = table.concat(removed_lines, "\n"),
-            bytes = {
-                start_row = s,
-                start_col = 0,
-                start_byte = start_byte,
-                old_end_row = (#removed_lines > 0) and (#removed_lines - 1) or 0,
-                old_end_col = (#removed_lines > 0) and #(removed_lines[#removed_lines] or "") or 0,
-                old_end_byte = old_byte,
-                new_end_row = (#inserted_lines > 0) and (#inserted_lines - 1) or 0,
-                new_end_col = (#inserted_lines > 0) and #(inserted_lines[#inserted_lines] or "") or 0,
-                new_end_byte = new_byte,
-            },
+            bytes = _mk_bytes(s, start_byte, removed_lines, old_byte, inserted_lines, new_byte),
         })
     end
 
@@ -1087,29 +1041,36 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
     self:undo_end()
 end
 
-local function _autowrite_enabled(kind)
-    if kind == "autowrite" then
-        return options.get("autowrite") or options.get("autowriteall")
-    elseif kind == "autowriteall" then
-        return options.get("autowriteall")
-    end
-    return false
-end
-
-local function _autowrite_blocked_buftype(buf)
+function Buffer.AutowriteBlockedBuftype(buf)
     local bt = options.get("buftype", nil, buf)
     return bt == "nowrite" or bt == "nofile" or bt == "terminal" or bt == "prompt"
+end
+
+local function _write_line_ending(buf)
+    local fileformat = options.get("fileformat", nil, buf)
+    if fileformat == "dos" then
+        return "\r\n"
+    elseif fileformat == "mac" then
+        return "\r"
+    end
+    return "\n"
 end
 
 function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     local bufhidden = options.get("bufhidden", nil, self)
     local hidden = options.get("hidden")
+    local autowrite_enabled = false
+    if autowrite_kind == "autowrite" then
+        autowrite_enabled = options.get("autowrite") or options.get("autowriteall")
+    elseif autowrite_kind == "autowriteall" then
+        autowrite_enabled = options.get("autowriteall")
+    end
 
     if
         not forceabandon
         and self.opts.modified
-        and _autowrite_enabled(autowrite_kind)
-        and not _autowrite_blocked_buftype(self)
+        and autowrite_enabled
+        and not Buffer.AutowriteBlockedBuftype(self)
     then
         local status = self:write(false)
         if status ~= true then
@@ -1153,7 +1114,6 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     return true
 end
 
--- TODO: several options affect write, such as line endings via fileformat
 function Buffer:write(force, newname)
     if not options.get("write") then
         return Error(142)
@@ -1198,12 +1158,13 @@ function Buffer:write(force, newname)
     end
 
     local writesz = 0
-    for i = 1, #self.lines - 1 do
-        f.write(self.lines[i] .. "\n")
-        writesz = writesz + #self.lines[i] + 1
+    local line_ending = _write_line_ending(self)
+    for i = 1, #self.lines do
+        local line = self.lines[i]
+        f.write(line)
+        f.write(line_ending)
+        writesz = writesz + #line + #line_ending
     end
-    f.write(self.lines[#self.lines])
-    writesz = writesz + #self.lines[#self.lines]
 
     f.close()
 

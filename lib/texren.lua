@@ -51,12 +51,14 @@ end
 -- Glyph building (two tight inner variants to avoid hot-path branches)
 -- ============
 
--- Build glyphs (flat arrays) and optional glyph colors from a blit pair.
+-- Build glyphs (flat arrays) and optional glyph colors from a blit pair or
+-- highlight-id array.
 -- Returns:
 --   gch[]     : array of single-char strings (rendered glyphs)
 --   issp[]    : parallel array of booleans (true if space)
 --   gfg[]?    : parallel array of fg blit chars (present if want_blit)
 --   gbg[]?    : parallel array of bg blit chars (present if want_blit)
+--   ghl[]?    : parallel array of hl ids (present if want_hl)
 --   target    : 1-based glyph index of first display cell for bytepos (or nil)
 --   n         : #gch
 
@@ -106,10 +108,11 @@ local function build_glyphs_with_map_noblit(s, bytepos, cfg, listcfg)
             local second = (cp == 127) and "?" or s_char(cp + 64)
             push("^", i); push(second, i)
         else
-            push(Utf8.ascii_cell_for_codepoint(cp), i)
+            local ch = screen.normalize_codepoint(cp)
+            push(ch, i)
         end
     end)
-    return gch, issp, nil, nil, target, #gch, gsrc
+    return gch, issp, nil, nil, nil, nil, target, #gch, gsrc
 end
 
 local function build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listcfg)
@@ -165,15 +168,81 @@ local function build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listc
             local second = (cp == 127) and "?" or s_char(cp + 64)
             push("^", i, f, b); push(second, i, f, b)
         else
-            push(Utf8.ascii_cell_for_codepoint(cp), i, f, b)
+            local ch, swap = screen.normalize_codepoint(cp)
+            if swap then
+                f, b = b, f
+            end
+            push(ch, i, f, b)
         end
     end)
-    return gch, issp, gfg, gbg, target, #gch, gsrc
+    return gch, issp, gfg, gbg, nil, nil, target, #gch, gsrc
 end
 
-local function build_glyphs_with_map(s, bytepos, cfg, blitfg, blitbg, want_blit, listcfg)
+local function build_glyphs_with_map_hl(s, bytepos, cfg, hlline, listcfg)
+    local gch, issp, ghl, gswap, gsrc = {}, {}, {}, {}, {}
+    local target = nil
+    local col = 0
+    local list_space = listcfg and listcfg.space
+    local tab_head = listcfg and listcfg.tab_head
+    local tab_fill = listcfg and listcfg.tab_fill or tab_head
+
+    local function push(ch, src_i, hl, swap)
+        local k = #gch + 1
+        if ch == " " and list_space then
+            gch[k] = list_space
+        else
+            gch[k] = ch
+        end
+        issp[k] = (ch == " ")
+        ghl[k] = hl
+        gswap[k] = swap == true
+        gsrc[k] = src_i
+        if bytepos and src_i == bytepos and not target then target = k end
+        col = col + 1
+    end
+
+    each_char_with_byte(s, function(i, cp)
+        local hl = hlline and hlline[i]
+        if cp == 9 then
+            local stop = Tab.next_display_tabstop(col, cfg)
+            local n = stop - col
+            if n <= 0 then n = 1 end
+            local k0 = #gch
+            for k = 1, n do
+                local idx = k0 + k
+                if tab_head then
+                    if k == 1 then
+                        gch[idx] = tab_head
+                    else
+                        gch[idx] = tab_fill or tab_head
+                    end
+                else
+                    gch[idx] = " "
+                end
+                issp[idx] = true
+                ghl[idx] = hl
+                gswap[idx] = false
+                gsrc[idx] = i
+            end
+            if bytepos and i == bytepos and not target then target = k0 + 1 end
+            col = col + n
+        elseif cp < 32 or cp == 127 then
+            local second = (cp == 127) and "?" or s_char(cp + 64)
+            push("^", i, hl, false)
+            push(second, i, hl, false)
+        else
+            local ch, swap = screen.normalize_codepoint(cp)
+            push(ch, i, hl, swap)
+        end
+    end)
+    return gch, issp, nil, nil, ghl, gswap, target, #gch, gsrc
+end
+
+local function build_glyphs_with_map(s, bytepos, cfg, blitfg, blitbg, hlline, want_blit, want_hl, listcfg)
     if want_blit then
         return build_glyphs_with_map_blit(s, bytepos, cfg, blitfg, blitbg, listcfg)
+    elseif want_hl then
+        return build_glyphs_with_map_hl(s, bytepos, cfg, hlline, listcfg)
     else
         return build_glyphs_with_map_noblit(s, bytepos, cfg, listcfg)
     end
@@ -181,11 +250,22 @@ end
 
 -- Emit glyphs i..j to rv[ri]; if colors requested, emit to rbfg[ri]/rbbg[ri].
 -- Returns next ri and (maybe) mapped_col if target in [i..j].
-local function emit_line_from_glyphs(rv, rbfg, rbbg, ri, gch, gfg, gbg, i, j, want_pos, target_idx, want_blit)
+local function emit_line_from_glyphs(
+    rv, rbfg, rbbg, rbhl, rbswap, ri, gch, gfg, gbg, ghl, gswap,
+    i, j, want_pos, target_idx, want_blit, want_hl
+)
     rv[ri] = t_concat(gch, "", i, j)
     if want_blit then
         rbfg[ri] = t_concat(gfg, "", i, j)
         rbbg[ri] = t_concat(gbg, "", i, j)
+    elseif want_hl then
+        local out, swap_out = {}, {}
+        for k = i, j do
+            out[#out + 1] = ghl[k]
+            swap_out[#swap_out + 1] = gswap[k]
+        end
+        rbhl[ri] = out
+        rbswap[ri] = swap_out
     end
     local mapped_col = nil
     if want_pos and target_idx and target_idx >= i and target_idx <= j then
@@ -203,20 +283,37 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
 
     -- Normalize blit inputs
     local blitfg, blitbg
+    local hlline
     if type(blit_pair) == "table" then
         blitfg = blit_pair.fg or blit_pair[1]
         blitbg = blit_pair.bg or blit_pair[2]
+        hlline = blit_pair.hl
     end
     local want_blit = (type(blitfg) == "string")
                    and (type(blitbg) == "string")
+    local want_hl = type(hlline) == "table"
 
     -- Only allocate blit output tables if needed
-    local rbfg, rbbg = nil, nil
-    if want_blit then rbfg, rbbg = {}, {} end
+    local rbfg, rbbg, rbhl, rbswap = nil, nil, nil, nil
+    if want_blit then
+        rbfg, rbbg = {}, {}
+    elseif want_hl then
+        rbhl = {}
+        rbswap = {}
+    end
+
+    local function attrs()
+        if want_blit then
+            return { fg = rbfg, bg = rbbg }
+        end
+        if want_hl then
+            return { hl = rbhl, swap = rbswap }
+        end
+    end
 
     -- Build glyph arrays (+colors if requested)
-    local gch, issp, gfg, gbg, target_idx, total_cols, gsrc =
-        build_glyphs_with_map(str, bytepos, params.tabcfg, blitfg, blitbg, want_blit, params.listcfg)
+    local gch, issp, gfg, gbg, ghl, gswap, target_idx, total_cols, gsrc =
+        build_glyphs_with_map(str, bytepos, params.tabcfg, blitfg, blitbg, hlline, want_blit, want_hl, params.listcfg)
 
     local want_pos = (bytepos ~= nil)
 
@@ -227,11 +324,12 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
     if wordwrap and params.breakat and type(params.breakat) == "string" then
         breakset = {}
         each_char_with_byte(params.breakat, function(_, cp)
-            breakset[Utf8.ascii_cell_for_codepoint(cp)] = true
+            local ch = screen.normalize_codepoint(cp)
+            breakset[ch] = true
         end)
         src_is_break = {}
         each_char_with_byte(str, function(si, cp)
-            local ch = Utf8.ascii_cell_for_codepoint(cp)
+            local ch = screen.normalize_codepoint(cp)
             if breakset[ch] then src_is_break[si] = true end
         end)
     end
@@ -248,7 +346,25 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
         local line_idx = ri
         local mapped_col_local
         ri, mapped_col_local =
-            emit_line_from_glyphs(rv, rbfg, rbbg, ri, gch, gfg, gbg, i, j, want_pos, target_idx, want_blit)
+            emit_line_from_glyphs(
+                rv,
+                rbfg,
+                rbbg,
+                rbhl,
+                rbswap,
+                ri,
+                gch,
+                gfg,
+                gbg,
+                ghl,
+                gswap,
+                i,
+                j,
+                want_pos,
+                target_idx,
+                want_blit,
+                want_hl
+            )
         if ranges then
             ranges[line_idx] = { i = i, j = j }
         end
@@ -261,17 +377,17 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
     if wl <= 0 or total_cols <= wl then
         emit_line(1, #gch)
         if want_pos then
-            local col = mapped_col or ((rv[1] and #rv[1] or 0) + 1)
+            local col = mapped_col or ((rv[1] and Utf8.len(rv[1]) or 0) + 1)
             if not mapped_col then mapped_ch_explicit = " " end
             if wl > 0 and (not target_idx) then
-                local line_len = (rv[1] and #rv[1]) or 0
+                local line_len = (rv[1] and Utf8.len(rv[1])) or 0
                 if line_len > 0 and col == line_len + 1 and line_len == wl then
-                    return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(2, 1), ranges, gsrc
+                    return rv, attrs(), finish_pos(2, 1), ranges, gsrc
                 end
             end
-            return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(1, col), ranges, gsrc
+            return rv, attrs(), finish_pos(1, col), ranges, gsrc
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg }), nil, ranges, gsrc
+        return rv, attrs(), nil, ranges, gsrc
     end
 
     local i, n = 1, #gch
@@ -327,20 +443,20 @@ local function parse_internal(str, params, bytepos, blit_pair, want_ranges)
     if want_pos then
         if not (mapped_line and mapped_col) then
             mapped_line = ri - 1
-            mapped_col = (rv[mapped_line] and #rv[mapped_line] or 0) + 1
+            mapped_col = (rv[mapped_line] and Utf8.len(rv[mapped_line]) or 0) + 1
             mapped_ch_explicit = " "
         end
         if wl > 0 and (not target_idx) then
-            local line_len = (rv[mapped_line] and #rv[mapped_line]) or 0
+            local line_len = (rv[mapped_line] and Utf8.len(rv[mapped_line])) or 0
             if line_len > 0 and mapped_col == line_len + 1 and line_len == wl then
                 mapped_line = mapped_line + 1
                 mapped_col = 1
                 mapped_ch_explicit = " "
             end
         end
-        return rv, (want_blit and { fg = rbfg, bg = rbbg }), finish_pos(mapped_line, mapped_col), ranges, gsrc
+        return rv, attrs(), finish_pos(mapped_line, mapped_col), ranges, gsrc
     else
-        return rv, (want_blit and { fg = rbfg, bg = rbbg }), nil, ranges, gsrc
+        return rv, attrs(), nil, ranges, gsrc
     end
 end
 

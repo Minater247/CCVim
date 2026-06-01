@@ -25,6 +25,7 @@ local errStrings = {
     [134] = "Cannot move a range of lines into itself",
     [142] = "File not written: Writing is disabled by 'write' option",
     [149] = function(params) return "Sorry, no help for " .. params[1] end,
+    [185] = function(params) return "Cannot find color scheme " .. "'" .. params[1] .. "'" end,
     [189] = function(params) return (params[1] or "File") .. " exists (add ! to override)" end,
     [191] = "Argument must be a letter or forward/backward quote",
     [212] = "Cannot open file for writing",
@@ -67,8 +68,11 @@ local errStrings = {
     [698] = "Variable nested too deep for making a copy",
     [703] = "Using a Funcref as a Number",
     [724] = "Cannot use deepcopy() with a cyclic reference when {noref} is 1",
+    [726] = "Stride is zero",
+    [727] = "Start past end",
     [728] = "Using a Dictionary as a Number",
     [739] = function(params) return "Cannot create directory: " .. tostring(params[1] or "") end,
+    [784] = "Cannot close last tab page",
     [745] = "Using a List as a Number",
     [790] = "undojoin is not allowed after undo",
     [919] = function(params) return "Directory not found in 'packpath': " .. (params[1] or "") end,
@@ -78,6 +82,7 @@ local errStrings = {
         return "String, List or Dictionary required for argument " .. tostring(params[1] or 1)
     end,
     [5002] = "Cannot find window number.",
+    [5070] = "Character number must not be less than zero",
     [5107] = function(params) return "Error loading lua " .. params[1] end,
     [5108] = function(params) return "Error executing lua " .. (params[1] or "[NULL]") end,
 }

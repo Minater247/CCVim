@@ -14,6 +14,7 @@ return {
             local Compiler = mock.loadModule("lib.syntax_engine.compiler")
             local State = mock.loadModule("lib.syntax_engine.state")
             local Buffer = mock.loadModule("layout.buffer")
+            local Highlight = mock.loadModule("lib.highlight")
 
             local function trim(s)
                 return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -273,13 +274,22 @@ return {
                     return painted
                 end
 
+                local priorities = {}
+                for i = 1, #text do
+                    priorities[i] = -1
+                end
+
                 for i = 1, #cache.spans do
                     local span = cache.spans[i]
                     local name = group_name_for_id(ctx_state.syntax_ir, span.group_id)
+                    local priority = span.priority or 0
                     local s = math.max(1, span.s or 1)
                     local e = math.min(#text, span.e or #text)
                     for col = s, e do
-                        painted[col] = name
+                        if priority >= priorities[col] then
+                            painted[col] = name
+                            priorities[col] = priority
+                        end
                     end
                 end
 
@@ -332,6 +342,62 @@ return {
             do
                 local g31 = painted_groups_for_line(ctx_state, buf, 31)
                 Assert.eq("line 31 for keyword", g31[7], "vimCommand")
+            end
+
+            do
+                local hi_buf = mk_buf({ "hi Normal guifg=#ffd700 guibg=#000087 gui=NONE cterm=NONE" })
+                local g = painted_groups_for_line(ctx_state, hi_buf, 1)
+                Assert.eq("hi guifg separator", g[16], "vimHiKeyList")
+                Assert.eq("hi guibg separator", g[30], "vimHiKeyList")
+                Assert.eq("hi gui separator", g[42], "vimHiKeyList")
+                Assert.eq("hi cterm separator", g[53], "vimHiKeyList")
+            end
+
+            do
+                local hi_none_buf = mk_buf({ "hi Comment guifg=#0000ff guibg=NONE gui=NONE cterm=NONE" })
+                local g = painted_groups_for_line(ctx_state, hi_none_buf, 1)
+                Highlight.SetHL(0, "vimHiCTerm", { fg = colors.orange })
+                Highlight.SetHL(0, "vimHiKeyList", { fg = colors.magenta })
+                Highlight.SetHL(0, "vimHiAttrib", { fg = colors.yellow })
+                Highlight.SetHL(0, "vimCmdSep", { fg = colors.lime })
+                local blit = Runtime.line_to_blit(ctx_state, hi_none_buf, 1)
+                local cterm_none_fg = {}
+                for col = 48, 55 do
+                    local attrs = screen.hl_attrs(blit.hl[col]) or {}
+                    cterm_none_fg[#cterm_none_fg + 1] = attrs.fg
+                end
+                Assert.eq("cterm NONE final cell group", g[55], "vimHiAttrib")
+                Assert.table_eq(
+                    "cterm NONE blit tail matches palette-backed groups",
+                    cterm_none_fg,
+                    {
+                        Highlight.For("vimHiCTerm")[1],
+                        Highlight.For("vimHiCTerm")[1],
+                        Highlight.For("vimHiCTerm")[1],
+                        Highlight.For("vimHiKeyList")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                        Highlight.For("vimHiAttrib")[1],
+                    }
+                )
+            end
+
+            do
+                local hi_link_buf = mk_buf({ "hi! link Debug Special" })
+                local g = painted_groups_for_line(ctx_state, hi_link_buf, 1)
+                Assert.eq("hi! bang", g[3], "vimHiBang")
+                Assert.eq("hi! link keyword", g[5], "Type")
+                Assert.eq("hi! link target", g[10], "vimGroup")
+                Assert.eq("hi! link source", g[16], "vimGroup")
+            end
+
+            do
+                local source_buf =
+                    mk_buf({ 'source $VIMRUNTIME/colors/vim.lua " Nvim: revert to Vim default color scheme' })
+                local g = painted_groups_for_line(ctx_state, source_buf, 1)
+                Assert.eq("source trailing comment quote", g[35], "vimComment")
+                Assert.eq("source trailing comment text", g[40], "vimComment")
             end
         end)
 

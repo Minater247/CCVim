@@ -12,6 +12,8 @@ local ScriptSource = loadModule("lib.scriptsource")
 local scopes = loadModule("lib.luaapi.scopes")
 local Builtins = loadModule("lib.luaapi.fn")
 local Utf8 = loadModule("lib.utf8")
+local Window = loadModule("layout.window")
+local EnvVars = loadModule("lib.envvars")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -24,6 +26,11 @@ local runtime_undo_batch_depth = 0
 local runtime_undo_batch_buffers = nil
 local runtime_undo_batch_active = false
 local runtime_undo_batch_pause_count = 0
+local colorscheme_load_depth = 0
+local COMPILED_SCRIPT_CACHE = {}
+local COMPILED_SCRIPT_CACHE_ORDER = {}
+local COMPILED_SCRIPT_CACHE_MAX = 256
+local unpack_fn = table.unpack or unpack
 
 local function runtime_undo_batch_begin()
     runtime_undo_batch_buffers = {}
@@ -213,6 +220,12 @@ local function resolve_function_def(name, opts)
     end
     opts = opts or {}
     local state = opts.state or Runtime._CURRENT_STATE
+    if state and state.funcs and state.funcs[name] then
+        return state.funcs[name], name
+    end
+    if Runtime._FUNCS[name] then
+        return Runtime._FUNCS[name], name
+    end
     local canon = canonical_function_name(name, {
         state = state,
         script_ctx = opts.script_ctx,
@@ -277,6 +290,38 @@ local function try_autoload_function(name)
         ok = ScriptSource.source_runtime(script .. ".lua")
     end
     return ok == true
+end
+
+local function resolve_vlua_function(callee)
+    if callee:sub(1, 6):lower() ~= "v:lua." then return nil end
+    local rest = callee:sub(7)
+
+    if rest:sub(1, 7) == "require" then
+        local _, mod, func = rest:match([[^require(['"])([^'"]+)%1%.([%w_]+)$]])
+        if not mod or not func then
+            error(Error(117, callee))
+        end
+        local Req = loadModule("lib.luaapi.require")
+        local ok, modtbl = pcall(Req, mod)
+        if not ok then
+            error(Error(5107, mod))
+        end
+        local f = modtbl and modtbl[func]
+        if type(f) ~= "function" then
+            error(Error(117, callee))
+        end
+        return f
+    end
+
+    local LuaLoader = loadModule("lib.lualoader")
+    local ok_eval, cur = LuaLoader.Eval("return " .. rest)
+    if not ok_eval then
+        error(cur)
+    end
+    if type(cur) ~= "function" then
+        error(Error(117, callee))
+    end
+    return cur
 end
 
 local function table_kind_for_index(tbl)
@@ -595,24 +640,35 @@ local function assign_lhs(lhs, value, state)
     if scope == "b" then scopes.b[name] = value; return true end
     if scope == "w" then scopes.w[name] = value; return true end
     if scope == "t" then scopes.t[name] = value; return true end
-    if top then top.l[s] = value; return true end
+    if top and top.kind == "func" then top.l[s] = value; return true end
     state.g[s] = value; return true
 end
 
-local function unlet(names, _, state)
+local function unlet_one(tok, state)
     local top = state.frames[#state.frames]
-    for tok in names:gmatch("%S+") do
-        local name = tok:gsub(",%$", "")
-        local scope, key = name:match("^([gslavbtw]):(.+)$")
-        if scope == "g" then state.g[key] = nil
-        elseif scope == "s" then state.s[key] = nil
-        elseif scope == "l" then if top then top.l[key] = nil end
-        elseif scope == "a" then if top then top.a[key] = nil end
-        elseif scope == "v" then (top and top.v or state.v)[key] = nil
-        elseif scope == "b" then scopes.b[key] = nil
-        elseif scope == "w" then scopes.w[key] = nil
-        elseif scope == "t" then scopes.t[key] = nil
-        else state.g[name] = nil end
+    local name = tostring(tok or ""):gsub(",%$", "")
+    local scope, key = name:match("^([gslavbtw]):(.+)$")
+    if scope == "g" then state.g[key] = nil
+    elseif scope == "s" then state.s[key] = nil
+    elseif scope == "l" then if top then top.l[key] = nil end
+    elseif scope == "a" then if top then top.a[key] = nil end
+    elseif scope == "v" then (top and top.v or state.v)[key] = nil
+    elseif scope == "b" then scopes.b[key] = nil
+    elseif scope == "w" then scopes.w[key] = nil
+    elseif scope == "t" then scopes.t[key] = nil
+    else state.g[name] = nil end
+end
+
+local function unlet(names, _, state)
+    local tokens = type(names) == "table" and (names.names or names) or nil
+    if tokens then
+        for i = 1, #tokens do
+            unlet_one(tokens[i], state)
+        end
+        return true
+    end
+    for tok in tostring(names or ""):gmatch("%S+") do
+        unlet_one(tok, state)
     end
     return true
 end
@@ -655,6 +711,200 @@ local function to_number(v)
         return 0
     end
     return 0
+end
+
+local RUNTIME_LIST_MT = { __vimxpr_kind = "list" }
+local RUNTIME_DICT_MT = { __vimxpr_kind = "dict" }
+
+local function mark_runtime_list(tbl)
+    return setmetatable(tbl or {}, RUNTIME_LIST_MT)
+end
+
+local function mark_runtime_dict(tbl)
+    return setmetatable(tbl or {}, RUNTIME_DICT_MT)
+end
+
+local function runtime_table_kind(v)
+    if type(v) ~= "table" then
+        return nil
+    end
+    local mt = getmetatable(v)
+    if mt and (mt.__vimxpr_kind == "list" or mt.__vimxpr_kind == "dict") then
+        return mt.__vimxpr_kind
+    end
+    local maxk = 0
+    local count = 0
+    for k, _ in pairs(v) do
+        if type(k) ~= "number" or k < 1 or (k % 1) ~= 0 then
+            return "dict"
+        end
+        if k > maxk then maxk = k end
+        count = count + 1
+    end
+    if count == 0 then
+        return "dict"
+    end
+    return (count == maxk) and "list" or "dict"
+end
+
+local function runtime_string(v)
+    if v == nil then return "v:null" end
+    if type(v) == "boolean" then return v and "true" or "false" end
+    return tostring(v)
+end
+
+local function runtime_add(a, b)
+    if type(a) == "table" and type(b) == "table" then
+        local ak = runtime_table_kind(a)
+        local bk = runtime_table_kind(b)
+        if ak == "list" and bk == "list" then
+            local out = {}
+            for i = 1, #a do out[#out + 1] = a[i] end
+            for i = 1, #b do out[#out + 1] = b[i] end
+            return mark_runtime_list(out)
+        end
+    end
+    return to_number(a) + to_number(b)
+end
+
+local function runtime_index(container, idx)
+    if container == nil then return nil end
+    if type(container) == "table" then
+        if runtime_table_kind(container) == "list" and type(idx) == "number" then
+            local key = idx >= 0 and (idx + 1) or (#container + idx + 1)
+            return container[key]
+        end
+        return container[idx]
+    end
+    if type(container) == "string" then
+        if type(idx) ~= "number" then return nil end
+        local pos = idx >= 0 and (idx + 1) or (#container + idx + 1)
+        if pos < 1 or pos > #container then return "" end
+        return container:sub(pos, pos)
+    end
+    return nil
+end
+
+local function runtime_slice(container, first, last)
+    if container == nil then return nil end
+
+    local function to_index(v, default)
+        if v == nil then return default end
+        local n = to_number(v)
+        if n >= 0 then return math.floor(n) end
+        return math.ceil(n)
+    end
+
+    local function to_bounds(len)
+        if len <= 0 then return nil, nil end
+        local s = to_index(first, 0)
+        local e = to_index(last, -1)
+        if s < 0 then s = len + s end
+        if e < 0 then e = len + e end
+        s = s + 1
+        e = e + 1
+        if s < 1 then s = 1 end
+        if e > len then e = len end
+        if s > len or e < 1 or s > e then return nil, nil end
+        return s, e
+    end
+
+    if type(container) == "table" then
+        if runtime_table_kind(container) ~= "list" then return nil end
+        local s, e = to_bounds(#container)
+        if not s then return mark_runtime_list({}) end
+        local out = {}
+        for i = s, e do out[#out + 1] = container[i] end
+        return mark_runtime_list(out)
+    end
+
+    if type(container) == "string" then
+        local s, e = to_bounds(#container)
+        if not s then return "" end
+        return container:sub(s, e)
+    end
+
+    return nil
+end
+
+local function runtime_match_op(a, op, b)
+    local case
+    if op:sub(-1) == "#" then
+        case = true
+    elseif op:sub(-1) == "?" then
+        case = false
+    else
+        local ic = Options.get("ignorecase")
+        if Error.IsError(ic) then error(ic) end
+        case = not (ic and ic ~= 0)
+    end
+    local ok = VimRegex.match(runtime_string(a), runtime_string(b), case)
+    local matched
+    if op:sub(1, 1) == "!" then
+        matched = not ok
+    else
+        matched = ok
+    end
+    return matched and 1 or 0
+end
+
+local function runtime_env(name)
+    local v = EnvVars.get(name)
+    if v == nil then return "" end
+    if type(v) == "boolean" then return v and "1" or "" end
+    return tostring(v)
+end
+
+local function runtime_reg(name)
+    local key = name
+    if key == "@" then key = "unnamed" end
+    local regval = registers[key]
+    if regval == nil and type(key) == "string" and key:match("^%d$") then
+        regval = registers[tonumber(key)]
+    end
+    if regval == nil then return "" end
+    if type(regval) == "table" then
+        local val = regval[2]
+        if type(val) == "table" then return table.concat(val, "\n") end
+        if type(val) == "string" then return val end
+        return tostring(val)
+    end
+    if type(regval) == "string" then return regval end
+    return tostring(regval)
+end
+
+local function runtime_name_part(v)
+    return tostring(v or "")
+end
+
+local function runtime_var(name, state, frame, shared_scopes)
+    local var = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local scope, key = var:match("^([gslavwb]):(.+)$")
+    if scope == "g" then return state.g[key] end
+    if scope == "s" then return state.s[key] end
+    if scope == "l" then return (frame and frame.l or state.l)[key] end
+    if scope == "a" then return (frame and frame.a or state.a)[key] end
+    if scope == "v" then return (frame and frame.v or state.v)[key] end
+    if scope == "b" then return shared_scopes.b[key] end
+    if scope == "w" then return shared_scopes.w[key] end
+    if scope == "t" then return shared_scopes.t[key] end
+    if frame and frame.kind == "func" and frame.l[var] ~= nil then return frame.l[var] end
+    return state.g[var]
+end
+
+local function runtime_set_var(name, value, state, frame, shared_scopes)
+    local var = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local scope, key = var:match("^([gslavwb]):(.+)$")
+    if scope == "g" then state.g[key] = value; return value end
+    if scope == "s" then state.s[key] = value; return value end
+    if scope == "l" then (frame and frame.l or state.l)[key] = value; return value end
+    if scope == "a" then (frame and frame.a or state.a)[key] = value; return value end
+    if scope == "v" then (frame and frame.v or state.v)[key] = value; return value end
+    if scope == "b" then shared_scopes.b[key] = value; return value end
+    if scope == "w" then shared_scopes.w[key] = value; return value end
+    if scope == "t" then shared_scopes.t[key] = value; return value end
+    if frame and frame.kind == "func" then frame.l[var] = value else state.g[var] = value end
+    return value
 end
 
 local function build_call_scopes(arg_values, param_names)
@@ -812,6 +1062,127 @@ local function enrich_runtime_error(err, rt, opts, state, script, fallback)
     return Error(0, with_context_message(base, rt, opts, state, script))
 end
 
+local function clear_compiled_script_cache()
+    COMPILED_SCRIPT_CACHE = {}
+    COMPILED_SCRIPT_CACHE_ORDER = {}
+end
+
+local function dump_failed_compiled_script(code, load_err)
+    local path = ccvim_path .. "/log/excmd_compiled_last.lua"
+    local f = fs.open(path, "w")
+    if f then
+        f.write(code)
+        f.close()
+    end
+    LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(load_err), path)
+end
+
+local function cache_compiled_script(script, compiled)
+    if COMPILED_SCRIPT_CACHE[script] == nil and #COMPILED_SCRIPT_CACHE_ORDER >= COMPILED_SCRIPT_CACHE_MAX then
+        local evict = table.remove(COMPILED_SCRIPT_CACHE_ORDER, 1)
+        COMPILED_SCRIPT_CACHE[evict] = nil
+    end
+    if COMPILED_SCRIPT_CACHE[script] == nil then
+        COMPILED_SCRIPT_CACHE_ORDER[#COMPILED_SCRIPT_CACHE_ORDER + 1] = script
+    end
+    COMPILED_SCRIPT_CACHE[script] = compiled
+    return compiled
+end
+
+local function load_compiled_function(code, chunkname)
+    local chunk, lerr = load(code, chunkname, "t", _G)
+    if not chunk then
+        dump_failed_compiled_script(code, lerr)
+        return nil, lerr
+    end
+    return chunk()
+end
+
+local function load_compiled_script(script)
+    script = tostring(script or "")
+    local cached = COMPILED_SCRIPT_CACHE[script]
+    if cached then
+        return cached
+    end
+
+    local code, err = Compiler.compile_script(script)
+    if not code then
+        return nil, err
+    end
+
+    local compiled, load_err = load_compiled_function(code, "excmd_compiled")
+    if not compiled then
+        return nil, load_err
+    end
+    return cache_compiled_script(script, compiled)
+end
+
+local function prepare_runtime_state(opts)
+    opts = opts or {}
+    local state = opts.state
+    if type(state) ~= "table" then
+        if type(opts.durable) == "table" then
+            state = Runtime.MakeRuntimeState(opts.durable, opts.v)
+        else
+            state = ensure_state({ v = fresh_v(opts.v) })
+        end
+    end
+    state = ensure_state(state)
+    if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
+        state.script_ctx = opts.script_ctx
+        state.script_sid = script_sid_for_ctx(opts.script_ctx)
+    end
+    if type(opts.v) == "table" then
+        state.v = state.v or fresh_v()
+        for k, val in pairs(opts.v) do
+            state.v[k] = val
+        end
+    end
+    return state
+end
+
+local function build_runtime(opts)
+    opts = opts or {}
+    local state = prepare_runtime_state(opts)
+    local rt = Runtime.new(state, { ctrl = opts.ctrl or {} })
+    return state, rt
+end
+
+local function with_runtime_script_context(rt, fn)
+    rt:_push_script_ctx()
+    local ok, rv = pcall(fn)
+    rt:_pop_script_ctx()
+    return ok, rv
+end
+
+local function with_runtime_undo_batch(fn)
+    runtime_undo_batch_depth = runtime_undo_batch_depth + 1
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_begin()
+    end
+    local ok, rv = pcall(fn)
+    if runtime_undo_batch_depth == 1 then
+        runtime_undo_batch_end()
+    end
+    runtime_undo_batch_depth = runtime_undo_batch_depth - 1
+    return ok, rv
+end
+
+local function with_lazyredraw_block(fn)
+    local lazy_block = Options.get("lazyredraw")
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block + 1
+    end
+    local ok, rv = pcall(fn)
+    if lazy_block then
+        lazyredraw_block = lazyredraw_block - 1
+    end
+    if not ok then
+        error(rv)
+    end
+    return rv
+end
+
 local function log_command_resolution_failure(rt, name, lname, argstr, bang)
     local cursor = rt:get_exec_cursor()
     local line = tostring(cursor.line or "")
@@ -875,25 +1246,31 @@ local function expand_user_command_template(body, qargs, args, bang, count, line
     local script = tostring(body or "")
     local fargs_token = "__CCVIM_FARGS__"
     local fargs = {}
+
+    local function repl(value)
+        return function()
+            return tostring(value or "")
+        end
+    end
     for i = 1, #args do
         fargs[i] = string.format("%q", args[i])
     end
-    script = script:gsub("<lt>", "<")
-    script = script:gsub("<bar>", "|")
-    script = script:gsub("<bang>0", bang and "1" or "0")
-    script = script:gsub("<f%-args>", fargs_token)
-    script = script:gsub("<q%-args>", string.format("%q", qargs))
-    script = script:gsub("<args>", qargs)
-    script = script:gsub("<bang>", bang and "!" or "")
-    script = script:gsub("<count>", tostring(count or 0))
-    script = script:gsub("<line1>", tostring(line1 or 1))
-    script = script:gsub("<line2>", tostring(line2 or 1))
-    script = script:gsub("<range>", tostring(range or 0))
+    script = script:gsub("<lt>", repl("<"))
+    script = script:gsub("<bar>", repl("|"))
+    script = script:gsub("<bang>0", repl(bang and "1" or "0"))
+    script = script:gsub("<f%-args>", repl(fargs_token))
+    script = script:gsub("<q%-args>", repl(string.format("%q", qargs)))
+    script = script:gsub("<args>", repl(qargs))
+    script = script:gsub("<bang>", repl(bang and "!" or ""))
+    script = script:gsub("<count>", repl(count or 0))
+    script = script:gsub("<line1>", repl(line1 or 1))
+    script = script:gsub("<line2>", repl(line2 or 1))
+    script = script:gsub("<range>", repl(range or 0))
     if #fargs == 0 then
         script = script:gsub(",%s*" .. fargs_token, "")
         script = script:gsub(fargs_token, "")
     else
-        script = script:gsub(fargs_token, table.concat(fargs, ","))
+        script = script:gsub(fargs_token, repl(table.concat(fargs, ",")))
     end
     return script
 end
@@ -988,6 +1365,7 @@ local resolve_dispatch_name = Commands.resolve_dispatch_name
 
 function Runtime.new(init_state, init_opts)
     local ExMsg = loadModule("lib.excmd.exmsg")
+    local _with_cleared_command_modifiers
     local function _exmsg()
         return ExMsg
     end
@@ -995,7 +1373,25 @@ function Runtime.new(init_state, init_opts)
     local rt = {
         state = ensure_state(init_state),
         opts = init_opts or {},
+        ctrl = (init_opts and init_opts.ctrl) or {},
         Error = Error,
+        scopes = scopes,
+        ops = {
+            truthy = truthy,
+            to_number = to_number,
+            to_string = runtime_string,
+            add = runtime_add,
+            index = runtime_index,
+            slice = runtime_slice,
+            match_op = runtime_match_op,
+            env = runtime_env,
+            reg = runtime_reg,
+            name_part = runtime_name_part,
+            var = runtime_var,
+            set_var = runtime_set_var,
+            list = mark_runtime_list,
+            dict = mark_runtime_dict,
+        },
         return_exc = {},
         exec_cursor = {},
     }
@@ -1012,9 +1408,24 @@ function Runtime.new(init_state, init_opts)
         return self.exec_cursor
     end
 
+    function rt:set_exec_cursor_from(node)
+        self.exec_cursor.line = node.line
+        self.exec_cursor.text = node.text
+        self.exec_cursor.cmd = node.cmd
+        self.exec_cursor.rest = node.rest
+        return true
+    end
+
     function rt:push_frame(arg_values, param_names)
         local l_scope, a_scope = build_call_scopes(arg_values, param_names)
-        local frame = { l = l_scope, a = a_scope, v = self.state.v }
+        local frame = { kind = "func", l = l_scope, a = a_scope, v = self.state.v }
+        local sf = self.state.frames
+        sf[#sf + 1] = frame
+        return frame
+    end
+
+    function rt:push_script_frame()
+        local frame = { kind = "script", l = self.state.l, a = self.state.a, v = self.state.v }
         local sf = self.state.frames
         sf[#sf + 1] = frame
         return frame
@@ -1026,42 +1437,8 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:call_func(name, args)
-        local unpack_fn = table.unpack or unpack
-
-        local function resolve_vlua(callee)
-            if callee:sub(1, 6):lower() ~= "v:lua." then return nil end
-            local rest = callee:sub(7)
-
-            if rest:sub(1, 7) == "require" then
-                local _, mod, func = rest:match([[^require(['"])([^'"]+)%1%.([%w_]+)$]])
-                if not mod or not func then
-                    error(Error(117, callee))
-                end
-                local Req = loadModule("lib.luaapi.require")
-                local ok, modtbl = pcall(Req, mod)
-                if not ok then
-                    error(Error(5107, mod))
-                end
-                local f = modtbl and modtbl[func]
-                if type(f) ~= "function" then
-                    error(Error(117, callee))
-                end
-                return f
-            end
-
-            local LuaLoader = loadModule("lib.lualoader")
-            local ok_eval, cur = LuaLoader.Eval("return " .. rest)
-            if not ok_eval then
-                error(cur)
-            end
-            if type(cur) ~= "function" then
-                error(Error(117, callee))
-            end
-            return cur
-        end
-
         if type(name) == "string" and name:sub(1, 6):lower() == "v:lua." then
-            local f = resolve_vlua(name)
+            local f = resolve_vlua_function(name)
             local ok, rv = pcall(function()
                 return f(unpack_fn(args or {}))
             end)
@@ -1071,10 +1448,26 @@ function Runtime.new(init_state, init_opts)
             return rv
         end
 
-        local VimFnMod = loadModule("lib.luaapi.fn")
-        local f_builtin = VimFnMod.fn[name]
+        local f_builtin = Builtins.fn[name]
         if type(f_builtin) == "function" then
-            return f_builtin(unpack_fn(args or {}))
+            local top = self.state.frames[#self.state.frames]
+            local scope = {
+                g = self.state.g,
+                s = self.state.s,
+                l = top and top.l or self.state.l,
+                a = top and top.a or self.state.a,
+                v = top and top.v or self.state.v,
+            }
+            Builtins._push_eval_scope(scope)
+            local ok, rv = pcall(f_builtin, unpack_fn(args or {}))
+            Builtins._pop_eval_scope()
+            if ok then
+                if Error.IsError(rv) then
+                    error(rv)
+                end
+                return rv
+            end
+            error(rv)
         end
 
         local fn = resolve_function_def(name, { state = self.state })
@@ -1105,7 +1498,7 @@ function Runtime.new(init_state, init_opts)
 
     function rt:register_function(name, params, body)
         local def = {
-            params = params or {},
+            params = params,
             body = body,
             scope = self.state.s,
             funcs = self.state.funcs,
@@ -1135,35 +1528,23 @@ function Runtime.new(init_state, init_opts)
             v = top and top.v or state.v,
         }
 
-        -- Build a callable map for VimExpr that dispatches to runtime:call_func
-        -- so script-local definitions (including <SNR> names) are visible.
         local funcs = {}
-        local function register(name)
-            if not name or funcs[name] then return end
-            funcs[name] = function(...) return self:call_func(name, { ... }) end
-        end
-        if state.funcs then
-            for name in pairs(state.funcs) do
-                register(name)
-            end
-        end
-        for name in pairs(Runtime._FUNCS) do
-            register(name)
-        end
-        local fallback_wrappers = {}
         setmetatable(funcs, {
             __index = function(_, name)
                 if type(name) ~= "string" then
                     return nil
                 end
-                local wrapper = fallback_wrappers[name]
-                if wrapper then
-                    return wrapper
+                local fn = (state.funcs and state.funcs[name]) or Runtime._FUNCS[name]
+                if not fn then
+                    fn = resolve_function_def(name, { state = state }) or Runtime._FUNCS[name]
                 end
-                wrapper = function(...)
+                if not fn and Builtins.fn[name] == nil and name:sub(1, 6):lower() ~= "v:lua." then
+                    return nil
+                end
+                local wrapper = function(...)
                     return self:call_func(name, { ... })
                 end
-                fallback_wrappers[name] = wrapper
+                rawset(funcs, name, wrapper)
                 return wrapper
             end,
         })
@@ -1205,26 +1586,54 @@ function Runtime.new(init_state, init_opts)
         return val
     end
 
+    function rt:echo_values(cmd, values)
+        local parts = {}
+        for i = 1, #values do
+            parts[#parts + 1] = runtime_string(values[i])
+        end
+        local line = table.concat(parts, " ")
+        local msg = _exmsg()
+        if cmd == "echo" then msg.echo(line)
+        elseif cmd == "echoerr" then msg.echoerr(line)
+        elseif cmd == "echomsg" then msg.echomsg(line)
+        else msg.echon(line) end
+        return true
+    end
+
     function rt:cmp(a, op, b)
-        if op == "==" then return a == b end
-        if op == "!=" then return a ~= b end
+        local case_suffix = op:sub(-1)
+        local base = op
+        if case_suffix == "#" or case_suffix == "?" then
+            base = base:sub(1, -2)
+        end
+        if type(a) == "string" and type(b) == "string" and case_suffix == "?" then
+            a = a:lower()
+            b = b:lower()
+        end
+        if base == "==" then return a == b end
+        if base == "!=" then return a ~= b end
+        if a == nil or b == nil then return false end
 
         local anum = tonumber(a)
         local bnum = tonumber(b)
         if anum ~= nil and bnum ~= nil then
-            if op == "<" then return anum < bnum end
-            if op == "<=" then return anum <= bnum end
-            if op == ">" then return anum > bnum end
-            if op == ">=" then return anum >= bnum end
+            if base == "<" then return anum < bnum end
+            if base == "<=" then return anum <= bnum end
+            if base == ">" then return anum > bnum end
+            if base == ">=" then return anum >= bnum end
             error("Unknown comparison operator: " .. tostring(op))
         end
 
         local as = tostring(a or "")
         local bs = tostring(b or "")
-        if op == "<" then return as < bs end
-        if op == "<=" then return as <= bs end
-        if op == ">" then return as > bs end
-        if op == ">=" then return as >= bs end
+        if case_suffix == "?" then
+            as = as:lower()
+            bs = bs:lower()
+        end
+        if base == "<" then return as < bs end
+        if base == "<=" then return as <= bs end
+        if base == ">" then return as > bs end
+        if base == ">=" then return as >= bs end
         error("Unknown comparison operator: " .. tostring(op))
     end
 
@@ -1289,7 +1698,7 @@ function Runtime.new(init_state, init_opts)
             self.__pushed_ctx = true
         end
         Runtime._CURRENT_STATE = state
-        Runtime._CURRENT_CTRL = nil
+        Runtime._CURRENT_CTRL = self.ctrl
     end
 
     function rt:_pop_script_ctx()
@@ -1355,39 +1764,52 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:exec_script(script)
-        local lazy_block = Options.get("lazyredraw")
-        if lazy_block then
-            lazyredraw_block = lazyredraw_block + 1
-        end
-
-        local ok, rv = pcall(function()
-            local code, err = Compiler.compile_script(script, { state = self.state })
-            if not code then error(err) end
-            local env = setmetatable({ runtime = self, _G = _G }, { __index = _G })
-            local chunk, lerr = load(code, "excmd_compiled", "t", env)
-            if not chunk then
-                local path = ccvim_path .. "/log/excmd_compiled_last.lua"
-                local f = fs.open(path, "w")
-                if f then
-                    f.write(code)
-                    f.close()
-                end
-                LOG_DEBUG("excmd_compiled load error: %s (dumped=%s)", tostring(lerr), path)
-                error(lerr)
-            end
-            local fn = chunk()
-            self:_push_script_ctx()
-            local fn_ok, fn_rv = pcall(fn, self.state, self)
-            self:_pop_script_ctx()
+        return with_lazyredraw_block(function()
+            local fn, err = load_compiled_script(script)
+            if not fn then error(err) end
+            local fn_ok, fn_rv = with_runtime_script_context(self, function()
+                return fn(self.state, self)
+            end)
             if not fn_ok then error(fn_rv) end
             return fn_rv
         end)
+    end
 
-        if lazy_block then
-            lazyredraw_block = lazyredraw_block - 1
+    function rt:exec_user_command_script(def, script)
+        if type(def) ~= "table" then
+            return self:exec_script(script)
         end
-        if not ok then error(rv) end
-        return rv
+
+        local prev_script_scope = self.state.s
+        local prev_script_sid = self.state.script_sid
+        local prev_script_ctx = self.state.script_ctx
+        local prev_script_funcs = self.state.funcs
+        if def.scope then self.state.s = def.scope end
+        if def.script_sid then self.state.script_sid = def.script_sid end
+        if def.script_ctx then self.state.script_ctx = def.script_ctx end
+        if def.funcs then self.state.funcs = def.funcs end
+
+        local ok, rv = pcall(function()
+            return self:exec_script(script)
+        end)
+
+        self.state.funcs = prev_script_funcs
+        self.state.script_ctx = prev_script_ctx
+        self.state.script_sid = prev_script_sid
+        self.state.s = prev_script_scope
+
+        if ok then return rv end
+        error(rv)
+    end
+
+    function rt:exec_compiled(fn)
+        return with_lazyredraw_block(function()
+            local fn_ok, fn_rv = with_runtime_script_context(self, function()
+                return fn(self.state, self)
+            end)
+            if not fn_ok then error(fn_rv) end
+            return fn_rv
+        end)
     end
 
     function rt:execute(expr)
@@ -1447,7 +1869,9 @@ function Runtime.new(init_state, init_opts)
         -- a leading '$' as an env-var and error on $'...'.
         local line, is_interp = expand_execute_dollar_single_quoted(s)
         if is_interp then
-            return self:exec_script(line)
+            return _with_cleared_command_modifiers(function()
+                return self:exec_script(line)
+            end)
         end
 
         local exprs = VimExpr.splitExpressions(s)
@@ -1464,7 +1888,23 @@ function Runtime.new(init_state, init_opts)
             parts[#parts + 1] = tostring(val)
         end
         line = table.concat(parts, " ")
-        return self:exec_script(line)
+        return _with_cleared_command_modifiers(function()
+            return self:exec_script(line)
+        end)
+    end
+
+    function rt:execute_values(values)
+        if type(values) ~= "table" or #values == 0 then
+            error(Error(471, "Argument required"))
+        end
+        local parts = {}
+        for i = 1, #values do
+            parts[#parts + 1] = tostring(values[i])
+        end
+        local line = table.concat(parts, " ")
+        return _with_cleared_command_modifiers(function()
+            return self:exec_script(line)
+        end)
     end
 
     function rt:exec_verbose(level, body)
@@ -1532,7 +1972,12 @@ function Runtime.new(init_state, init_opts)
     function rt:set_options(rest, mode)
         local win, buf = current_win_buf()
         mode = mode or "both"
-        local args = rejoin_equals(split_set_args(tostring(rest or "")))
+        local args
+        if type(rest) == "table" then
+            args = rest.tokens or rest
+        else
+            args = rejoin_equals(split_set_args(tostring(rest or "")))
+        end
         for i = 1, #args do
             local tok = args[i]
             Options.exset_token(tok, mode, win, buf)
@@ -1542,7 +1987,7 @@ function Runtime.new(init_state, init_opts)
 
     local ScriptSourceMod = loadModule("lib.scriptsource")
     local Buffer = loadModule("layout.buffer")
-    local Window = loadModule("layout.window")
+    local Tabpage = loadModule("layout.tabpage")
     local VimFn = loadModule("lib.luaapi.fn")
     local VimFs = loadModule("lib.luaapi.fs")
     local Tags = loadModule("lib.tags")
@@ -1565,6 +2010,10 @@ function Runtime.new(init_state, init_opts)
 
     local function _window_mod()
         return Window
+    end
+
+    local function _tabpage_mod()
+        return Tabpage
     end
 
     local function _vimfn()
@@ -1615,6 +2064,86 @@ function Runtime.new(init_state, init_opts)
         return RuntimePath
     end
 
+    local function _colors_name_var()
+        local name = scopes._g and scopes._g.colors_name or nil
+        if type(name) == "string" and name ~= "" then
+            return name
+        end
+    end
+
+    local function _current_colorscheme_name()
+        return _colors_name_var() or "default"
+    end
+
+    local function _colorscheme_search_roots()
+        local roots = {}
+        local seen = {}
+        local rtp = _runtimepath()
+
+        local function append(list)
+            for i = 1, #list do
+                local path = list[i]
+                if not seen[path] then
+                    roots[#roots + 1] = path
+                    seen[path] = true
+                end
+            end
+        end
+
+        append(rtp.get_search_list())
+        append(rtp.get_opt_package_list())
+        return roots
+    end
+
+    local function _find_colorscheme_path(name)
+        local roots = _colorscheme_search_roots()
+        for _, ext in ipairs({ "vim", "lua" }) do
+            for i = 1, #roots do
+                local path = roots[i] .. "/colors/" .. name .. "." .. ext
+                if fs.exists(path) and not fs.isDir(path) then
+                    return path
+                end
+            end
+        end
+    end
+
+    local function _load_colorscheme(name)
+        if colorscheme_load_depth > 0 then
+            error(Error(474, "Cannot use :colorscheme recursively"))
+        end
+
+        local path = _find_colorscheme_path(name)
+        if not path then
+            error(Error(185, name))
+        end
+
+        colorscheme_load_depth = colorscheme_load_depth + 1
+        _highlight().ResetPalette()
+        _highlight().BeginPaletteTracking()
+
+        local ok, err = pcall(function()
+            Autocmd.Run("ColorSchemePre", { bufname = name, pattern = name })
+            local sourced, source_err = _scriptsource().source(path)
+            if not sourced then
+                error(source_err)
+            end
+            _highlight().CommitPaletteTracking()
+        end)
+
+        colorscheme_load_depth = colorscheme_load_depth - 1
+
+        if not ok then
+            _highlight().CancelPaletteTracking()
+            error(err)
+        end
+
+        local loaded_name = _colors_name_var() or name
+        Autocmd.Run("ColorScheme", { bufname = loaded_name, pattern = loaded_name })
+        what_redraw["all"] = true
+        need_redraw = true
+        return true
+    end
+
     local function _pack()
         return Pack
     end
@@ -1629,27 +2158,6 @@ function Runtime.new(init_state, init_opts)
 
     local function _syntax()
         return Syntax
-    end
-
-    local function _buf_ctx_from(buf)
-        return { bufnr = buf.bufnr, bufname = buf.name }
-    end
-
-    local function _switch_current_buffer(win, newbuf, opts)
-        opts = opts or {}
-        if win.buffer == newbuf then return end
-        if not opts.keepalt then
-            win.altbuf = win.buffer
-        end
-        if not opts.skip_leave then
-            Autocmd.Run("BufLeave", _buf_ctx_from(win.buffer))
-        end
-        win.buffer = newbuf
-        _syntax().OnWindowBufferChanged(win)
-        scopes.w.current_syntax = nil
-        if not opts.skip_enter then
-            Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
-        end
     end
 
     local function _resolve_find_name(raw)
@@ -1689,22 +2197,27 @@ function Runtime.new(init_state, init_opts)
         buf.refcount = math.max(0, buf.refcount - 1)
     end
 
-    local function _split_preflight(target_winnr, refwin, vertical)
+    local function _split_preflight(target_winnr, refwin, vertical, place_after)
         local tabp = tabpages[curtp]
         if not tabp then
             return false
         end
         local probe = tabp:MakeSplitProbe(refwin)
-        return tabp:WinSplit(target_winnr, probe, vertical, { dry_run = true }) == true
+        return tabp:WinSplit(target_winnr, probe, vertical, {
+            dry_run = true,
+            place_after = place_after,
+        }) == true
     end
 
-    local function _split_real(target_winnr, newwin, vertical)
+    local function _split_real(target_winnr, newwin, vertical, place_after)
         local tabp = tabpages[curtp]
         if not tabp then
             _cleanup_failed_split_window(newwin)
             return false
         end
-        local ok = tabp:WinSplit(target_winnr, newwin, vertical)
+        local ok = tabp:WinSplit(target_winnr, newwin, vertical, {
+            place_after = place_after,
+        })
         if not ok then
             _cleanup_failed_split_window(newwin)
             return false
@@ -1712,11 +2225,138 @@ function Runtime.new(init_state, init_opts)
         return true
     end
 
+    -- See runtime/doc/windows.txt for the documented split helper modifiers.
+    local COMMAND_MODIFIER_SPECS = {
+        vertical = {
+            split_orientation = "vertical",
+            equalize_axis = "vertical",
+        },
+        horizontal = {
+            equalize_axis = "horizontal",
+        },
+        leftabove = {
+            split_location = "aboveleft",
+        },
+        aboveleft = {
+            split_location = "aboveleft",
+        },
+        rightbelow = {
+            split_location = "belowright",
+        },
+        belowright = {
+            split_location = "belowright",
+        },
+        topleft = {
+            split_location = "topleft",
+        },
+        botright = {
+            split_location = "botright",
+        },
+    }
+
+    local function _current_command_modifiers()
+        local stack = rt._command_modifiers
+        if type(stack) ~= "table" or #stack == 0 then
+            return nil
+        end
+        local merged = {}
+        for i = 1, #stack do
+            local modifier = stack[i]
+            if modifier.split_orientation then
+                merged.split_orientation = modifier.split_orientation
+            end
+            if modifier.equalize_axis then
+                merged.equalize_axis = modifier.equalize_axis
+            end
+            if modifier.split_location then
+                merged.split_location = modifier.split_location
+            end
+        end
+        return merged
+    end
+
+    local function _with_command_modifier(modifier, fn)
+        rt._command_modifiers = rt._command_modifiers or {}
+        local stack = rt._command_modifiers
+        stack[#stack + 1] = COMMAND_MODIFIER_SPECS[modifier]
+        local ok, rv = pcall(fn)
+        stack[#stack] = nil
+        if not ok then
+            error(rv)
+        end
+        return rv
+    end
+
+    _with_cleared_command_modifiers = function(fn)
+        local saved = rt._command_modifiers
+        rt._command_modifiers = nil
+        local ok, rv = pcall(fn)
+        rt._command_modifiers = saved
+        if not ok then
+            error(rv)
+        end
+        return rv
+    end
+
+    local function _split_orientation(default_vertical)
+        local mods = _current_command_modifiers()
+        if mods and mods.split_orientation == "vertical" then
+            return true
+        end
+        return default_vertical
+    end
+
+    local function _current_equalize_axis()
+        local mods = _current_command_modifiers()
+        if mods then
+            return mods.equalize_axis
+        end
+    end
+
+    local function _split_place_after(vertical)
+        local mods = _current_command_modifiers()
+        if mods then
+            if mods.split_location == "aboveleft" or mods.split_location == "topleft" then
+                return false
+            end
+            if mods.split_location == "belowright" or mods.split_location == "botright" then
+                return true
+            end
+        end
+        return vertical and options.get("splitright") or options.get("splitbelow")
+    end
+
+    local function _split_target_winnr(default_target_winnr)
+        local mods = _current_command_modifiers()
+        if mods then
+            if mods.split_location == "aboveleft" or mods.split_location == "belowright" then
+                return 0
+            end
+            if mods.split_location == "topleft" or mods.split_location == "botright" then
+                return -1
+            end
+        end
+        return default_target_winnr
+    end
+
+    local function _split_command_options(default_target_winnr, default_vertical)
+        local vertical = _split_orientation(default_vertical)
+        return {
+            vertical = vertical,
+            target_winnr = _split_target_winnr(default_target_winnr),
+            place_after = _split_place_after(vertical),
+        }
+    end
+
     local function _edit_buffer_name(win, newname, bang)
         if newname == win.buffer.name or newname == "" then
             _syntax().OnWindowBufferChanged(win)
             scopes.w.current_syntax = nil
             win.buffer:Load(true)
+            local target_name = (newname ~= "") and newname or win.buffer.name
+            if target_name ~= "" and fs.isDir(VimFs.abspath(target_name)) then
+                Autocmd.Run("BufEnter", { bufnr = win.buffer.bufnr, bufname = win.buffer.name })
+            end
         else
             local status = win.buffer:leave(bang, nil, "autowriteall")
             if status ~= true then
@@ -1726,11 +2366,11 @@ function Runtime.new(init_state, init_opts)
             local newbuf = _buffer_mod()(true, false)
             newbuf.name = newname
             if newbuf.opts and newbuf.opts.buflisted then
-                Autocmd.Run("BufAdd", _buf_ctx_from(newbuf))
+                Autocmd.Run("BufAdd", { bufnr = newbuf.bufnr, bufname = newbuf.name })
             end
-            _switch_current_buffer(win, newbuf, { skip_enter = true })
+            Window.SwitchBuffer(win, newbuf, { skip_enter = true })
             newbuf:Load(true)
-            Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
+            Autocmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
         end
 
         win:cursorSet(1, 1)
@@ -1740,7 +2380,7 @@ function Runtime.new(init_state, init_opts)
 
     local function _to_string_simple(v)
         local t = type(v)
-        if t == "nil" then return "null" end
+        if t == "nil" then return "v:null" end
         if t == "boolean" then return v and "true" or "false" end
         return tostring(v)
     end
@@ -1860,7 +2500,7 @@ function Runtime.new(init_state, init_opts)
         local raw_cmd, raw_l1, raw_l2, has_raw_range = _cursor_parse_head(cursor, win)
         local name = tostring((spec and (spec.dispatch or spec.lname or spec.name)) or raw_cmd or ""):lower()
         local cmd_spec = get_command_spec(name)
-        local addr_mode = cmd_spec and cmd_spec.addr
+        local addr_mode = cmd_spec and (((spec and spec.structured) and cmd_spec.structured_addr) or cmd_spec.addr)
         local ctx = {
             raw_cmd = raw_cmd,
             line1 = nil,
@@ -1951,6 +2591,56 @@ function Runtime.new(init_state, init_opts)
             return nil, Error(16)
         end
         return target, nil
+    end
+
+    local function _sorted_tabnrs()
+        local ids = {}
+        for tabnr, _ in pairs(tabpages) do
+            ids[#ids + 1] = tabnr
+        end
+        table.sort(ids)
+        return ids
+    end
+
+    local function _tab_switch_target(raw, step)
+        local ids = _sorted_tabnrs()
+        local text = strip(raw)
+        if text == "" then
+            local current_idx = 1
+            for i = 1, #ids do
+                if ids[i] == curtp then
+                    current_idx = i
+                    break
+                end
+            end
+            return ids[((current_idx - 1 + step) % #ids) + 1], nil
+        end
+
+        if text == "$" then
+            return ids[#ids], nil
+        end
+
+        local target = tonumber(text)
+        if not target or not tabpages[target] then
+            return nil, Error(475, text)
+        end
+        return target, nil
+    end
+
+    local function _switch_to_tab(target)
+        if target == curtp then
+            return true
+        end
+        if not tabpages[target] then
+            return Error(475, tostring(target))
+        end
+
+        tabpages[curtp].lastwin = curwin
+        curtp = target
+        enterWindow(tabpages[curtp].lastwin or tabpages[curtp].windows[1].winnr)
+        what_redraw["all"] = true
+        need_redraw = true
+        return true
     end
 
     local function _delete_suffix_mode(raw_cmd)
@@ -2476,6 +3166,75 @@ function Runtime.new(init_state, init_opts)
         return true
     end
 
+    function rt:put_compiled(payload, bang, spec)
+        local win = windows[curwin]
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec)
+        local source = payload.source
+        local lines
+
+        if source == "default" then
+            local reg_default = '"'
+            if Options.resolve_abbrev("clipboard") then
+                local cb = tostring(Options.get("clipboard") or "")
+                if cb:find("unnamedplus", 1, true) then
+                    reg_default = "+"
+                elseif cb:find("unnamed", 1, true) then
+                    reg_default = "*"
+                end
+            end
+            local reg_lines, rerr = _read_put_register_lines(self, reg_default)
+            if Error.IsError(rerr) then
+                error(rerr)
+            end
+            lines = reg_lines
+        elseif source == "register" then
+            local reg_lines, rerr = _read_put_register_lines(self, payload.reg)
+            if Error.IsError(rerr) then
+                error(rerr)
+            end
+            lines = reg_lines
+        elseif source == "expr" or source == "expr_reuse" then
+            local put_expr = payload.expr or ""
+            local value
+            if source == "expr_reuse" then
+                put_expr = Runtime._LAST_PUT_EXPR
+                value = (put_expr ~= "") and self:eval_expr(put_expr) or ""
+            else
+                Runtime._LAST_PUT_EXPR = put_expr
+                value = payload.value
+            end
+
+            if type(value) == "table" and not value.__call then
+                lines = _copy_lines_from_list(value)
+            else
+                lines = _split_text_lines(tostring(value or ""))
+            end
+        else
+            error(Error(488, tostring(payload.raw or "")))
+        end
+
+        if #lines == 0 then
+            return true
+        end
+
+        local buf = win.buffer
+        local line = cmdctx.line2 or win.cursory
+        local insert_before = bang and line or (line + 1)
+        if insert_before < 1 then
+            insert_before = 1
+        end
+
+        local start0 = insert_before - 1
+        buf:set_lines(start0, start0, false, lines)
+        local target_line = insert_before + #lines - 1
+        if target_line < 1 then
+            target_line = 1
+        end
+        win:cursorSet(1, target_line)
+        win:mark_redraw()
+        return true
+    end
+
     function rt:substitute(argstr, _bang, cmdctx)
         local spec, perr = _parse_substitute_args(argstr)
         if Error.IsError(perr) then
@@ -2945,9 +3704,14 @@ function Runtime.new(init_state, init_opts)
 
     local function _map_command_opts(opts, map_meta)
         local out = map_meta and { map_meta = map_meta } or nil
-        if opts and opts.buffer then
+        if opts.buffer then
             out = out or {}
             out.buffer_local = true
+        end
+        if opts.expr then
+            out = out or {}
+            out.expr = true
+            out.replace_keycodes = true
         end
         return out
     end
@@ -3128,8 +3892,6 @@ function Runtime.new(init_state, init_opts)
 
         local lhs_seq, lerr = _strtoseq_tolerant(lhs_expanded)
         if Error.IsError(lerr) then return lerr end
-        local rhs_seq, rerr = _strtoseq_tolerant(rhs_expanded)
-        if Error.IsError(rerr) then return rerr end
 
         local map_opts = _map_command_opts(parsed.opts, {
             raw_lhs = parsed.lhs,
@@ -3138,6 +3900,14 @@ function Runtime.new(init_state, init_opts)
             expanded_rhs = rhs_expanded,
             sid = script_sid_for_state(rt.state),
         })
+        local rhs_seq = nil
+        if not parsed.opts.expr then
+            local rerr
+            rhs_seq, rerr = _strtoseq_tolerant(rhs_expanded)
+            if Error.IsError(rerr) then return rerr end
+        else
+            map_opts.expr_rhs = rhs_expanded
+        end
         if spec.recursive then
             CommandMod.remap_keys(modes, lhs_seq, rhs_seq, map_opts)
         else
@@ -3726,7 +4496,7 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:define_autocmd(rest, bang)
-        local args = split_ws(rest)
+        local args = type(rest) == "table" and (rest.args or rest) or split_ws(rest)
         local H, err = _consume_autocmd_header(args)
         if Error.IsError(err) then
             error(err)
@@ -3791,7 +4561,12 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:doautoall(rest)
-        local event = tostring(rest or ""):match("^(%S+)")
+        local event
+        if type(rest) == "table" then
+            event = rest.event
+        else
+            event = tostring(rest or ""):match("^(%S+)")
+        end
         if not event then error(Error(474, "Argument required")) end
         local win = windows[curwin]
         local curbuf = win.buffer
@@ -3973,7 +4748,7 @@ function Runtime.new(init_state, init_opts)
             local ok = _filetype_enable_detection()
             if Error.IsError(ok) then return ok end
             local buf = windows[curwin].buffer
-            local ctx = _buf_ctx_from(buf)
+            local ctx = { bufnr = buf.bufnr, bufname = buf.name }
             Autocmd.Run("BufRead", ctx)
             Autocmd.Run("BufNewFile", ctx)
             if buf.name == "" then
@@ -4048,20 +4823,27 @@ function Runtime.new(init_state, init_opts)
         local name
         local body
         local parts = {}
-        for tok in tostring(rest or ""):gmatch("%S+") do parts[#parts + 1] = tok end
         local idx = 1
-        while idx <= #parts do
-            local tok = parts[idx]
-            if tok:match("^%-nargs=") then
-                local v = tok:sub(8)
-                nargs = (v == "*" or v == "?" or v == "+") and v or tonumber(v) or 0
-                idx = idx + 1
-            elseif tok:match("^%-") then
-                idx = idx + 1
-            else
-                name = tok
-                idx = idx + 1
-                break
+        if type(rest) == "table" then
+            parts = rest.parts
+            nargs = rest.nargs
+            name = rest.name
+            idx = rest.body_index
+        else
+            for tok in tostring(rest or ""):gmatch("%S+") do parts[#parts + 1] = tok end
+            while idx <= #parts do
+                local tok = parts[idx]
+                if tok:match("^%-nargs=") then
+                    local v = tok:sub(8)
+                    nargs = (v == "*" or v == "?" or v == "+") and v or tonumber(v) or 0
+                    idx = idx + 1
+                elseif tok:match("^%-") then
+                    idx = idx + 1
+                else
+                    name = tok
+                    idx = idx + 1
+                    break
+                end
             end
         end
         if not name then error(Error(474, "Missing command name")) end
@@ -4070,7 +4852,14 @@ function Runtime.new(init_state, init_opts)
         if (not bang) and (self.state.commands[key] or Runtime._USER_COMMANDS[key]) then
             error(Error(474, "Command exists"))
         end
-        local def = { body = body, nargs = nargs }
+        local def = {
+            body = body,
+            nargs = nargs,
+            scope = self.state.s,
+            funcs = self.state.funcs,
+            script_sid = self.state.script_sid,
+            script_ctx = self.state.script_ctx,
+        }
         self.state.commands[key] = def
         Runtime._USER_COMMANDS[key] = def
         return true
@@ -4109,6 +4898,13 @@ function Runtime.new(init_state, init_opts)
             win.altbuf = saved_alt
             if not ok then error(rv) end
             return rv
+        elseif COMMAND_MODIFIER_SPECS[cmd] then
+            if argstr == "" then
+                error(Error(471))
+            end
+            return _with_command_modifier(cmd, function()
+                return self:exec_script(argstr)
+            end)
         elseif cmd == "wq" then
             local status = windows[curwin].buffer:write(bang, argstr)
             if status ~= true then error(status) end
@@ -4118,7 +4914,10 @@ function Runtime.new(init_state, init_opts)
         elseif cmd == "finish" then
             error(self:return_exc(nil))
         elseif cmd == "quit" then
-            Autocmd.Run("QuitPre", _buf_ctx_from(windows[curwin].buffer))
+            Autocmd.Run("QuitPre", {
+                bufnr = windows[curwin].buffer.bufnr,
+                bufname = windows[curwin].buffer.name,
+            })
             local q = tabpages[curtp]:close(windows[curwin], bang, nil, "autowriteall")
             if q ~= true then error(q) end
             return true
@@ -4558,6 +5357,63 @@ function Runtime.new(init_state, init_opts)
             need_redraw = true
             lazyredraw_force = true
             return true
+        elseif cmd == "resize" then
+            local target = windows[curwin]
+            if cmdctx.count ~= nil then
+                local count = tonumber(cmdctx.count)
+                if not count or count < 1 then
+                    error(Error(16))
+                end
+                local target_win = tabpages[curtp].windows[count]
+                if not target_win then
+                    error(Error(16))
+                end
+                target = target_win
+            end
+
+            local raw = strip(argstr)
+            local vertical = (_current_equalize_axis() == "vertical")
+            local frame = target.frame
+            local current_size
+            if frame then
+                current_size = vertical and frame.width or frame.height
+            elseif vertical then
+                current_size = target.width or 1
+            else
+                current_size = target.height or 1
+            end
+
+            local delta
+            if raw == "" then
+                delta = 999999
+            else
+                local sign, digits = raw:match("^([+-]?)(%d+)$")
+                local num = tonumber(digits)
+                if not num then
+                    error(Error(474, argstr))
+                end
+                if sign == "+" then
+                    delta = num
+                elseif sign == "-" then
+                    delta = -num
+                else
+                    delta = num - current_size
+                end
+            end
+
+            local ok
+            if frame and not frame.parent and vertical then
+                ok = true
+            else
+                ok = vertical and target:resizeWidth(delta) or target:resizeHeight(delta)
+            end
+            if not ok and delta ~= 0 then
+                error(Error(36))
+            end
+
+            what_redraw["all"] = true
+            need_redraw = true
+            return true
         elseif cmd == "redir" then
             local spec, perr = _parse_redir_spec(argstr)
             if Error.IsError(perr) then error(perr) end
@@ -4658,6 +5514,13 @@ function Runtime.new(init_state, init_opts)
                 end
             end
             return true
+        elseif cmd == "colorscheme" then
+            local name = strip(argstr)
+            if name == "" then
+                _exmsg().echo(_current_colorscheme_name())
+                return true
+            end
+            return _load_colorscheme(name)
         elseif cmd == "packadd" then
             local name = strip(argstr)
             if name == "" then error(Error(471)) end
@@ -4666,8 +5529,16 @@ function Runtime.new(init_state, init_opts)
             return true
         elseif cmd == "buffer" then
             local args = split_ws(argstr)
-            if #args ~= 1 then error(Error(474, "Argument required")) end
             local target = args[1]
+            if target == nil and cmdctx.count ~= nil then
+                target = tostring(cmdctx.count)
+            end
+            if target == nil then
+                return true
+            end
+            if #args > 1 then
+                error(Error(474, "Argument required"))
+            end
             local win = windows[curwin]
             local curbuf = win.buffer
             local target_buf = nil
@@ -4689,7 +5560,7 @@ function Runtime.new(init_state, init_opts)
             if target_buf.loaded ~= true then
                 target_buf:Load(true)
             end
-            _switch_current_buffer(win, target_buf)
+            Window.SwitchBuffer(win, target_buf)
             target_buf.refcount = target_buf.refcount + 1
             win:cursorSet(1, 1)
             win:mark_redraw()
@@ -4863,7 +5734,7 @@ function Runtime.new(init_state, init_opts)
 
             local newbuf = _buffer_mod()(true, false)
             newbuf.name = ""
-            _switch_current_buffer(win, newbuf, { skip_enter = true })
+            Window.SwitchBuffer(win, newbuf, { skip_enter = true })
 
             local ff = Options.get("fileformat", win, newbuf)
             local ffs = _csv_first(Options.get("fileformats", win, curbuf))
@@ -4873,7 +5744,7 @@ function Runtime.new(init_state, init_opts)
             newbuf.opts.fileformat = ff
 
             newbuf:Load(true)
-            Autocmd.Run("BufEnter", _buf_ctx_from(newbuf))
+            Autocmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
             win:cursorSet(1, 1)
             win:mark_redraw()
             return true
@@ -4887,14 +5758,15 @@ function Runtime.new(init_state, init_opts)
             local found, err = _resolve_find_name(argstr)
             if not found then error(err) end
             local refwin = windows[curwin]
-            if not _split_preflight(0, refwin, false) then
+            local split_opts = _split_command_options(0, false)
+            if not _split_preflight(split_opts.target_winnr, refwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             local targetbuf = _buffer_mod()(true, false)
             targetbuf.name = found
             targetbuf:Load(true)
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, false) then
+            if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
@@ -4905,6 +5777,73 @@ function Runtime.new(init_state, init_opts)
             if not found then error(err) end
             local rv = _edit_buffer_name(windows[curwin], found, bang)
             if rv ~= true then error(rv) end
+            return true
+        elseif cmd == "tabnew" or cmd == "tabedit" then
+            local refwin = windows[curwin]
+            local target_name = strip(argstr)
+            local newbuf = _buffer_mod()(true, false)
+            newbuf.name = target_name
+            if newbuf.opts and newbuf.opts.buflisted then
+                Autocmd.Run("BufAdd", { bufnr = newbuf.bufnr, bufname = newbuf.name })
+            end
+            if target_name ~= "" then
+                newbuf:Load(true)
+            else
+                local ff = Options.get("fileformat", refwin, newbuf)
+                local ffs = _csv_first(Options.get("fileformats", refwin, refwin.buffer))
+                if ffs ~= "" then
+                    ff = ffs
+                end
+                newbuf.opts.fileformat = ff
+                newbuf:Load(true)
+            end
+
+            local newwin = _window_mod()(newbuf)
+            tabpages[curtp].lastwin = curwin
+            _tabpage_mod()(newwin)
+            enterWindow(newwin.winnr)
+            newwin:cursorSet(1, 1)
+            newwin:mark_redraw()
+            what_redraw["all"] = true
+            need_redraw = true
+            return true
+        elseif cmd == "tabnext" then
+            local target, err = _tab_switch_target(argstr, 1)
+            if not target then error(err) end
+            local ok = _switch_to_tab(target)
+            if ok ~= true then error(ok) end
+            return true
+        elseif cmd == "tabprevious" then
+            local target, err = _tab_switch_target(argstr, -1)
+            if not target then error(err) end
+            local ok = _switch_to_tab(target)
+            if ok ~= true then error(ok) end
+            return true
+        elseif cmd == "tabclose" then
+            local text = strip(argstr)
+            local target = curtp
+            if text ~= "" then
+                if text == "$" then
+                    target = _sorted_tabnrs()[#_sorted_tabnrs()]
+                else
+                    target = tonumber(text)
+                end
+                if not target or not tabpages[target] then
+                    error(Error(475, text))
+                end
+            end
+            if _sorted_tabnrs()[2] == nil then
+                error(Error(784))
+            end
+
+            while tabpages[target] do
+                local tp = tabpages[target]
+                local win = tp.windows[1]
+                local ok = tp:close(win, bang, nil, "autowriteall")
+                if ok ~= true then
+                    error(ok)
+                end
+            end
             return true
         elseif cmd == "drop" then
             local args = split_ws(argstr)
@@ -4920,14 +5859,21 @@ function Runtime.new(init_state, init_opts)
             local ok = _edit_buffer_name(curwin_obj, target_raw, bang)
             if Error.IsError(ok) then
                 if ok.code ~= 37 then error(ok) end
-                if not _split_preflight(0, curwin_obj, false) then
+                local split_opts = _split_command_options(0, false)
+                if
+                    not _split_preflight(
+                        split_opts.target_winnr,
+                        curwin_obj,
+                        split_opts.vertical,
+                        split_opts.place_after)
+                then
                     error(Error(36))
                 end
                 local newbuf = _buffer_mod()(true, false)
                 newbuf.name = target_raw
                 newbuf:Load(true)
                 local newwin = _window_mod()(newbuf, curwin_obj)
-                if not _split_real(0, newwin, false) then
+                if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                     error(Error(36))
                 end
                 enterWindow(newwin.winnr)
@@ -4937,7 +5883,8 @@ function Runtime.new(init_state, init_opts)
             return true
         elseif cmd == "split" then
             local refwin = windows[curwin]
-            if not _split_preflight(0, refwin, false) then
+            local split_opts = _split_command_options(0, false)
+            if not _split_preflight(split_opts.target_winnr, refwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
 
@@ -4948,14 +5895,15 @@ function Runtime.new(init_state, init_opts)
                 targetbuf:Load(true)
             end
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, false) then
+            if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
             return true
         elseif cmd == "vsplit" then
             local refwin = windows[curwin]
-            if not _split_preflight(0, refwin, true) then
+            local split_opts = _split_command_options(0, true)
+            if not _split_preflight(split_opts.target_winnr, refwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
 
@@ -4966,7 +5914,7 @@ function Runtime.new(init_state, init_opts)
                 targetbuf:Load(true)
             end
             local newwin = _window_mod()(targetbuf, refwin)
-            if not _split_real(0, newwin, true) then
+            if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
                 error(Error(36))
             end
             enterWindow(newwin.winnr)
@@ -4991,7 +5939,13 @@ function Runtime.new(init_state, init_opts)
                 end
             end
 
-            local rv = windows[curwin]:wincmd(key, count)
+            local opts = {}
+            local equalize_axis = _current_equalize_axis()
+            if key == "=" and equalize_axis then
+                opts.equalize_axis = equalize_axis
+            end
+
+            local rv = windows[curwin]:wincmd(key, count, opts)
             if Error.IsError(rv) then
                 error(rv)
             end
@@ -5214,7 +6168,11 @@ function Runtime.new(init_state, init_opts)
                     target_win = tabwin
                 end
             end
-            if not target_win and not _split_preflight(-1, nil, false) then
+            local split_opts = _split_command_options(-1, false)
+            if
+                not target_win
+                and not _split_preflight(split_opts.target_winnr, nil, split_opts.vertical, split_opts.place_after)
+            then
                 error(Error(36))
             end
             local newbuf = _buffer_mod()(true, false)
@@ -5229,7 +6187,9 @@ function Runtime.new(init_state, init_opts)
                 target_win.buffer = newbuf
             else
                 target_win = _window_mod()(newbuf)
-                if not _split_real(-1, target_win, false) then
+                if
+                    not _split_real(split_opts.target_winnr, target_win, split_opts.vertical, split_opts.place_after)
+                then
                     error(Error(36))
                 end
             end
@@ -5237,7 +6197,7 @@ function Runtime.new(init_state, init_opts)
             target_win:cursorSet(jumpcol, jumpline)
             return true
         elseif cmd == "highlight" then
-            local args = split_ws(argstr)
+            local args = split_ws(strip_trailing_comment(argstr))
             local changed = false
             local hl = _highlight()
             if #args == 0 then
@@ -5263,7 +6223,7 @@ function Runtime.new(init_state, init_opts)
                     if #args ~= 3 then error(Error(471)) end
                     local from, to = args[2], args[3]
                     if is_default and hl.HasGroup(from) then return true end
-                    local rv = hl.Link(from, to)
+                    local rv = hl.Link(from, to, nil, bang)
                     if Error.IsError(rv) then
                         if is_default and rv.code == 414 then return true end
                         error(rv)
@@ -5278,10 +6238,20 @@ function Runtime.new(init_state, init_opts)
                     end
                     for k, v in pairs(params) do
                         if k == "guifg" and v:match("^#%x%x%x%x%x%x$") then
-                            hl.SetGroupColor(args[1], "fg", tonumber("0x" .. v:sub(2)))
+                            hl.SetGroupColor(args[1], "fg", { rgb = tonumber("0x" .. v:sub(2)) })
                             changed = true
                         elseif k == "guibg" and v:match("^#%x%x%x%x%x%x$") then
-                            hl.SetGroupColor(args[1], "bg", tonumber("0x" .. v:sub(2)))
+                            hl.SetGroupColor(args[1], "bg", { rgb = tonumber("0x" .. v:sub(2)) })
+                            changed = true
+                        elseif k == "gui" or k == "cterm" then
+                            local reverse = false
+                            for attr in tostring(v):lower():gmatch("[^,]+") do
+                                local word = strip(attr)
+                                if word == "reverse" or word == "inverse" or word == "standout" then
+                                    reverse = true
+                                end
+                            end
+                            hl.SetGroupReverse(args[1], reverse)
                             changed = true
                         end
                     end
@@ -5368,7 +6338,7 @@ function Runtime.new(init_state, init_opts)
                 line2,
                 range
             )
-            return self:exec_script(script)
+            return self:exec_user_command_script(def, script)
         end
 
         local dispatch_cmd = spec.dispatch
@@ -5404,7 +6374,7 @@ function Runtime.new(init_state, init_opts)
                 line2,
                 range
             )
-            return self:exec_script(script)
+            return self:exec_user_command_script(global, script)
         end
         if type(global.handler) == "function" then
             return global.handler({
@@ -5430,9 +6400,17 @@ function Runtime.new(init_state, init_opts)
                 line2,
                 range
             )
-            return self:exec_script(script)
+            return self:exec_user_command_script(global, script)
         end
         return true
+    end
+
+    function rt:invoke_compiled_builtin_command(dispatch_cmd, spec)
+        local win = windows[curwin]
+        local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec)
+        local rv = self:_invoke_builtin(dispatch_cmd, spec.qargs, not not spec.bang, cmdctx)
+        if rv == nil then return true end
+        return rv
     end
 
     function rt:invoke_command(name, argstr, bang)
@@ -5447,6 +6425,10 @@ function Runtime.new(init_state, init_opts)
 end
 
 Runtime.create = Runtime.new
+
+function Runtime.ClearCompiledScriptCache()
+    clear_compiled_script_cache()
+end
 
 function Runtime.CanonicalFunctionName(name, opts)
     return canonical_function_name(name, opts)
@@ -5546,37 +6528,10 @@ end
 
 function Runtime.EvalExpression(expr, opts)
     opts = opts or {}
-    local state = opts.state
-    if type(state) ~= "table" then
-        if type(opts.durable) == "table" then
-            state = Runtime.MakeRuntimeState(opts.durable, opts.v)
-        else
-            state = ensure_state({ v = fresh_v(opts.v) })
-        end
-    end
-    state = ensure_state(state)
-    if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
-        state.script_ctx = opts.script_ctx
-        state.script_sid = script_sid_for_ctx(opts.script_ctx)
-    end
-    if opts.v and type(opts.v) == "table" then
-        state.v = state.v or fresh_v()
-        for k, val in pairs(opts.v) do
-            state.v[k] = val
-        end
-    end
-    local ctrl = opts.ctrl or {}
-
-    local rt = Runtime.new(state)
-    rt:_push_script_ctx()
-    Runtime._CURRENT_STATE = state
-    Runtime._CURRENT_CTRL = ctrl
-    local ok, rv = pcall(function()
+    local state, rt = build_runtime(opts)
+    local ok, rv = with_runtime_script_context(rt, function()
         return rt:eval_expr(tostring(expr or ""))
     end)
-    Runtime._CURRENT_STATE = nil
-    Runtime._CURRENT_CTRL = nil
-    rt:_pop_script_ctx()
 
     if not ok then
         local err = enrich_runtime_error(rv, rt, opts, state, nil, "Runtime.EvalExpresion(...)")
@@ -5588,42 +6543,31 @@ function Runtime.EvalExpression(expr, opts)
     return true, rv
 end
 
+function Runtime.run_compiled(code, opts)
+    opts = opts or {}
+    local state, rt = build_runtime(opts)
+    local fn, load_err = load_compiled_function(code, opts.chunkname or "excmd_compiled")
+    if not fn then
+        local err = enrich_runtime_error(load_err, rt, opts, state, nil, "Runtime.run_compiled(...) load failed")
+        return false, err, "load"
+    end
+
+    local ok, rv = with_runtime_undo_batch(function()
+        return rt:exec_compiled(fn)
+    end)
+    if not ok then
+        local err = enrich_runtime_error(rv, rt, opts, state, nil, "Runtime.run_compiled(...) returned nil!")
+        return false, err, "run"
+    end
+    return true, rv, "run"
+end
+
 function Runtime.run(script, opts)
     opts = opts or {}
-    local state = opts.state
-    if type(state) ~= "table" then
-        if type(opts.durable) == "table" then
-            state = Runtime.MakeRuntimeState(opts.durable, opts.v)
-        else
-            state = ensure_state({ v = fresh_v(opts.v) })
-        end
-    end
-    state = ensure_state(state)
-    if type(opts.script_ctx) == "string" and opts.script_ctx ~= "" then
-        state.script_ctx = opts.script_ctx
-        state.script_sid = script_sid_for_ctx(opts.script_ctx)
-    end
-
-    local prev_state = Runtime._CURRENT_STATE
-    local prev_ctrl = Runtime._CURRENT_CTRL
-    Runtime._CURRENT_STATE = state
-    Runtime._CURRENT_CTRL = opts.ctrl or {}
-
-    local rt = Runtime.new(state)
-    runtime_undo_batch_depth = runtime_undo_batch_depth + 1
-    if runtime_undo_batch_depth == 1 then
-        runtime_undo_batch_begin()
-    end
-    local ok, rv = pcall(function()
+    local state, rt = build_runtime(opts)
+    local ok, rv = with_runtime_undo_batch(function()
         return rt:exec_script(tostring(script or ""))
     end)
-    if runtime_undo_batch_depth == 1 then
-        runtime_undo_batch_end()
-    end
-    runtime_undo_batch_depth = runtime_undo_batch_depth - 1
-
-    Runtime._CURRENT_STATE = prev_state
-    Runtime._CURRENT_CTRL = prev_ctrl
 
     if not ok then
         local err = enrich_runtime_error(rv, rt, opts, state, script, "Runtime.run(...) returned nil!")

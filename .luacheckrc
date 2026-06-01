@@ -16,11 +16,13 @@ globals = {
     "LOG_DEBUG",
     "LOG_ERROR",
     "LOG_INTERNAL",
+    "arg",
     "apply_terminal_resize",
     "bit",
     "bit32",
     "buffers",
     "ccvim_path",
+    "ccvimversion_str",
     "colors",
     "copcall",
     "coxpcall",
@@ -36,9 +38,11 @@ globals = {
     "keys",
     "lazyredraw_block",
     "lazyredraw_force",
+    "loadstring",
     "loadModule",
     "mock",
     "need_redraw",
+    "no_cache",
     "options",
     "registers",
     "remaining",
@@ -58,11 +62,9 @@ globals = {
     "window",
     "windows",
     "writestartup",
-}
-
-read_globals = {
     math = {
         fields = {
+            "clamp",
             "type",
         },
     },
@@ -74,6 +76,9 @@ read_globals = {
             "startTimer",
         },
     },
+}
+
+read_globals = {
     table = {
         fields = {
             "move",

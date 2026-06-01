@@ -96,7 +96,7 @@ local function num_coerce_or_error(v)
 end
 local function to_string_simple(v)
     local t = type(v)
-    if t == "nil" then return "null" end
+    if t == "nil" then return "v:null" end
     if t == "boolean" then return v and "true" or "false" end
     return tostring(v)
 end
@@ -183,13 +183,115 @@ local function resolve_vlua_path(path)
 end
 
 -- -------- tokenizer --------
+local TOKEN_MULTI_OPS = {
+    "==#",
+    "==?",
+    "!=#",
+    "!=?",
+    ">=",
+    "<=",
+    "=~#",
+    "=~?",
+    "!~#",
+    "!~?",
+    "==",
+    "!=",
+    "=~",
+    "!~",
+    "&&",
+    "||",
+    "<<",
+    ">>",
+    "->",
+    ".."
+}
+
+local TOKEN_WORD_OPS = {
+    "isnot#",
+    "isnot?",
+    "isnot",
+    "is#",
+    "is?",
+    "is",
+}
+
+local TOKEN_MULTI_OPS_BY_BYTE = {}
+for i = 1, #TOKEN_MULTI_OPS do
+    local op = TOKEN_MULTI_OPS[i]
+    local b = op:byte(1)
+    local bucket = TOKEN_MULTI_OPS_BY_BYTE[b]
+    if not bucket then
+        bucket = {}
+        TOKEN_MULTI_OPS_BY_BYTE[b] = bucket
+    end
+    bucket[#bucket + 1] = op
+end
+
+local TOKEN_WORD_OPS_BY_BYTE = {}
+for i = 1, #TOKEN_WORD_OPS do
+    local op = TOKEN_WORD_OPS[i]
+    local b = op:byte(1)
+    local bucket = TOKEN_WORD_OPS_BY_BYTE[b]
+    if not bucket then
+        bucket = {}
+        TOKEN_WORD_OPS_BY_BYTE[b] = bucket
+    end
+    bucket[#bucket + 1] = op
+end
+
+local DOUBLE_QUOTE_ESCAPES = {
+    n = "\n",
+    r = "\r",
+    t = "\t",
+    b = "\b",
+    e = string.char(27),
+    f = string.char(12),
+    ['\\'] = "\\",
+    ['"'] = '"',
+}
+
+local function is_space_byte(b)
+    return b == 32 or b == 9 or b == 10 or b == 13 or b == 12 or b == 11
+end
+
+local function is_digit_byte(b)
+    return b and b >= 48 and b <= 57
+end
+
+local function is_alpha_byte(b)
+    return b and ((b >= 65 and b <= 90) or (b >= 97 and b <= 122))
+end
+
+local function is_word_byte(b)
+    return b and ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b == 95)
+end
+
+local function is_ident_byte(b)
+    return b and (
+        (b >= 48 and b <= 57)
+        or (b >= 65 and b <= 90)
+        or (b >= 97 and b <= 122)
+        or b == 95
+        or b == 35
+    )
+end
+
 local function tokenize(input)
     local i, n, toks = 1, #input, {}
     local function peek(k)
         k = k or 0; local j = i + k; return j <= n and input:sub(j, j) or ""
     end
     local function adv(k) i = i + (k or 1) end
-    local function add(typ, val, pos, raw) toks[#toks + 1] = { typ = typ, val = val, pos = pos, raw = raw } end
+    local function add(typ, val, pos, raw, endpos)
+        if endpos == nil then
+            local text = raw
+            if text == nil then
+                text = val
+            end
+            endpos = pos + #tostring(text or "") - 1
+        end
+        toks[#toks + 1] = { typ = typ, val = val, pos = pos, raw = raw, endpos = endpos }
+    end
     local function consume(pred)
         local j = i
         while j <= n and pred(input:sub(j, j)) do j = j + 1 end
@@ -227,62 +329,58 @@ local function tokenize(input)
         return nil
     end
     while i <= n do
-        local c = peek()
-        if c:match("%s") then
-            adv(1)
+        local c = input:sub(i, i)
+        local cb = input:byte(i)
+        if is_space_byte(cb) then
+            i = i + 1
             goto cont
         end
         local start = i
 
         -- number: int or simple float
-        if c:match("%d") then
-            local num = consume(function(ch) return ch:match("%d") end)
-            if peek() == "." and peek(1):match("%d") then
-                num = num .. consume(function(ch) return ch == "." or ch:match("%d") end)
+        if is_digit_byte(cb) then
+            local j = i
+            while is_digit_byte(input:byte(j)) do j = j + 1 end
+            if input:sub(j, j) == "." and is_digit_byte(input:byte(j + 1)) then
+                j = j + 1
+                while is_digit_byte(input:byte(j)) do j = j + 1 end
             end
-            add("NUM", tonumber(num), start, num); goto cont
+            local num = input:sub(i, j - 1)
+            i = j
+            add("NUM", tonumber(num), start, num, j - 1); goto cont
         end
 
         -- string (single or double quoted)
         if c == "'" then
-            adv(1)
+            i = i + 1
             local buf = {}
             while i <= n do
-                local ch = peek(); adv(1)
+                local ch = input:sub(i, i); i = i + 1
                 if ch == "'" then
                     -- Vimscript single-quote escaping: '' -> literal '
                     if peek() == "'" then
                         buf[#buf + 1] = "'"
-                        adv(1)
+                        i = i + 1
                     else
                         break
                     end
                 elseif ch == "\\" and peek() == '"' then
                     -- In Vimscript single-quoted strings, \" yields a literal ".
                     buf[#buf + 1] = '"'
-                    adv(1)
+                    i = i + 1
                 else
                     buf[#buf + 1] = ch
                 end
             end
-            add("STR", table.concat(buf), start); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1); goto cont
         end
         if c == '"' then
-            adv(1)
+            i = i + 1
             local buf, esc = {}, false
             while i <= n do
-                local ch = peek(); adv(1)
+                local ch = input:sub(i, i); i = i + 1
                 if esc then
-                    local decoded = ({
-                        n = "\n",
-                        r = "\r",
-                        t = "\t",
-                        b = "\b",
-                        e = string.char(27),
-                        f = string.char(12),
-                        ['\\'] = "\\",
-                        ['"'] = '"',
-                    })[ch]
+                    local decoded = DOUBLE_QUOTE_ESCAPES[ch]
                     if decoded == nil and ch == "<" then
                         local j = i
                         while j <= n and input:sub(j, j) ~= ">" do
@@ -317,7 +415,7 @@ local function tokenize(input)
                 -- Trailing backslash in a double-quoted string is literal.
                 buf[#buf + 1] = "\\"
             end
-            add("STR", table.concat(buf), start); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1); goto cont
         end
 
         -- environment variable: $NAME or ${NAME}
@@ -325,14 +423,14 @@ local function tokenize(input)
             -- $'...' single-quoted string.
             -- Parse as one string token so splitExpressions() can segment
             -- execute arguments without being confused by interpolation text.
-            adv(2) -- skip $'
+            i = i + 2 -- skip $'
             local buf = {}
             while i <= n do
-                local ch = peek(); adv(1)
+                local ch = input:sub(i, i); i = i + 1
                 if ch == "'" then
                     if peek() == "'" then
                         buf[#buf + 1] = "'"
-                        adv(1)
+                        i = i + 1
                     else
                         break
                     end
@@ -340,45 +438,55 @@ local function tokenize(input)
                     buf[#buf + 1] = ch
                 end
             end
-            add("STR", table.concat(buf), start); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1); goto cont
         end
         if c == "$" then
-            adv(1)
+            local nxt = peek(1)
+            if nxt ~= "{" and not (is_alpha_byte(input:byte(i + 1)) or nxt == "_") then
+                i = i + 1
+                add("DOLLAR", "$", start, nil, start)
+                goto cont
+            end
+            i = i + 1
             local name
             if peek() == "{" then
-                adv(1) -- skip '{'
+                i = i + 1 -- skip '{'
                 local j = i
-                while j <= n and input:sub(j, j):match("[%w_]") do j = j + 1 end
+                while j <= n and is_word_byte(input:byte(j)) do j = j + 1 end
                 name = input:sub(i, j - 1)
                 i = j
                 if peek() ~= "}" then
                     error(("Unterminated ${ at %d"):format(start))
                 end
-                adv(1) -- skip '}'
+                i = i + 1 -- skip '}'
             else
-                if not peek():match("[%a_]") then
+                local pb = input:byte(i)
+                if not (is_alpha_byte(pb) or pb == 95) then
                     error(("Invalid env var name at %d: %s"):format(start, input:sub(i)))
                 end
-                local ident = consume(function(ch) return ch:match("[%w_]") end)
+                local j = i
+                while is_word_byte(input:byte(j)) do j = j + 1 end
+                local ident = input:sub(i, j - 1)
+                i = j
                 name = ident
             end
-            add("ENV", name, start); goto cont
+            add("ENV", name, start, nil, i - 1); goto cont
         end
 
         -- register: @x or @@
         if c == "@" then
-            adv(1)
+            i = i + 1
             local nxt = peek()
             if nxt == "" then
                 error(("Missing register name at %d"):format(start))
             end
             if nxt == "@" then
-                adv(1)
-                add("REG", "@", start); goto cont
+                i = i + 1
+                add("REG", "@", start, nil, i - 1); goto cont
             end
             if nxt == "{" then
                 -- minimal support for @{name}; read until }
-                adv(1) -- skip '{'
+                i = i + 1 -- skip '{'
                 local j = i
                 while j <= n and input:sub(j, j) ~= "}" do j = j + 1 end
                 if j > n then
@@ -386,44 +494,43 @@ local function tokenize(input)
                 end
                 local name = input:sub(i, j - 1)
                 i = j + 1
-                add("REG", name, start); goto cont
+                add("REG", name, start, nil, i - 1); goto cont
             end
             -- single-character register name
             local reg = nxt
-            adv(1)
-            add("REG", reg, start); goto cont
+            i = i + 1
+            add("REG", reg, start, nil, i - 1); goto cont
         end
 
         -- multi-char operators (longest first)
-        local multi = {
-            "==#",
-            "==?",
-            "!=#",
-            "!=?",
-            ">=",
-            "<=",
-            "=~#",
-            "=~?",
-            "!~#",
-            "!~?",
-            "==",
-            "!=",
-            "=~",
-            "!~",
-            "&&",
-            "||",
-            "<<",
-            ">>",
-            "->",
-            ".."
-        }
         local matched = false
-        for _, op in ipairs(multi) do
-            if input:sub(i, i + #op - 1) == op then
-                add("OP", op, start); adv(#op); matched = true; break
+        local multi_ops = TOKEN_MULTI_OPS_BY_BYTE[cb]
+        if multi_ops then
+            for op_idx = 1, #multi_ops do
+                local op = multi_ops[op_idx]
+                if input:sub(i, i + #op - 1) == op then
+                    local endpos = i + #op - 1
+                    add("OP", op, start, nil, endpos); i = endpos + 1; matched = true; break
+                end
             end
+            if matched then goto cont end
         end
-        if matched then goto cont end
+
+        local word_ops = TOKEN_WORD_OPS_BY_BYTE[cb]
+        if word_ops then
+            for op_idx = 1, #word_ops do
+                local op = word_ops[op_idx]
+                if input:sub(i, i + #op - 1) == op then
+                    local nb = input:byte(i + #op)
+                    local nxt = input:sub(i + #op, i + #op)
+                    if nxt == "" or not (is_ident_byte(nb) or nxt == "?") then
+                        local endpos = i + #op - 1
+                        add("OP", op, start, nil, endpos); i = endpos + 1; matched = true; break
+                    end
+                end
+            end
+            if matched then goto cont end
+        end
 
         -- script-local function names in expression context: <SID>Foo(), <SNR>12_Foo()
         if c == "<" then
@@ -437,40 +544,45 @@ local function tokenize(input)
         if c == "#" and peek(1) == "{" then
             -- Vim literal dictionary syntax: #{ key: value }.
             -- Treat this as a dict-opening brace for parser compatibility.
-            add("LBRACE", "{", start); adv(2); goto cont
+            add("LBRACE", "{", start, nil, start + 1); i = i + 2; goto cont
         end
         if c == "(" then
-            add("LPAREN", "(", start); adv(1); goto cont
+            add("LPAREN", "(", start, nil, start); i = i + 1; goto cont
         end
         if c == ")" then
-            add("RPAREN", ")", start); adv(1); goto cont
+            add("RPAREN", ")", start, nil, start); i = i + 1; goto cont
         end
         if c == "{" then
-            add("LBRACE", "{", start); adv(1); goto cont
+            add("LBRACE", "{", start, nil, start); i = i + 1; goto cont
         end
         if c == "}" then
-            add("RBRACE", "}", start); adv(1); goto cont
+            add("RBRACE", "}", start, nil, start); i = i + 1; goto cont
         end
         if c == "[" then
-            add("LBRACK", "[", start); adv(1); goto cont
+            add("LBRACK", "[", start, nil, start); i = i + 1; goto cont
         end
         if c == "]" then
-            add("RBRACK", "]", start); adv(1); goto cont
+            add("RBRACK", "]", start, nil, start); i = i + 1; goto cont
         end
         if c == "&" then
-            add("AMP", "&", start); adv(1); goto cont
+            add("AMP", "&", start, nil, start); i = i + 1; goto cont
         end
         if c == ":" then
-            add("COLON", ":", start); adv(1); goto cont
+            add("COLON", ":", start, nil, start); i = i + 1; goto cont
         end
-        if c:match("[%+%-%*/%%<>%.%!%?,]") then
-            add("OP", c, start); adv(1); goto cont
+        if c == "+" or c == "-" or c == "*" or c == "/" or c == "%" or c == "<" or c == ">"
+            or c == "." or c == "!" or c == "?" or c == ","
+        then
+            add("OP", c, start, nil, start); i = i + 1; goto cont
         end
 
         -- identifiers
-        if c:match("[%a_]") then
-            local ident = consume(function(ch) return ch:match("[%w_#]") end)
-            add("ID", ident, start); goto cont
+        if is_alpha_byte(cb) or cb == 95 then
+            local j = i + 1
+            while is_ident_byte(input:byte(j)) do j = j + 1 end
+            local ident = input:sub(i, j - 1)
+            i = j
+            add("ID", ident, start, nil, j - 1); goto cont
         end
 
         error(("Unexpected char %q at %d (expr=%q, tail=%q)"):format(c, i, short_expr(input, 120),
@@ -511,6 +623,12 @@ local PREC = {
     ["!~#"] = 2,
     ["=~?"] = 2,
     ["!~?"] = 2,
+    ["is"] = 2,
+    ["is#"] = 2,
+    ["is?"] = 2,
+    ["isnot"] = 2,
+    ["isnot#"] = 2,
+    ["isnot?"] = 2,
     -- pipe
     ["->"] = 5,
     -- concatenation + additive share precedence (left-assoc)
@@ -538,14 +656,17 @@ local function parse(tokens)
         return adv()
     end
     local function tok_text(tok)
-        if tok and tok.raw ~= nil then
+        if tok.raw ~= nil then
             return tostring(tok.raw)
         end
-        return tostring(tok and tok.val or "")
+        return tostring(tok.val or "")
     end
     local function tok_end(tok)
+        if tok.endpos then
+            return tok.endpos
+        end
         local text = tok_text(tok)
-        return (tok and tok.pos or 1) + #text - 1
+        return tok.pos + #text - 1
     end
 
     local expr, unary, apply_postfix
@@ -557,7 +678,15 @@ local function parse(tokens)
                 local save_i = i
                 adv() -- '.'
                 local keytok = peek()
-                if keytok.typ == "ID" and keytok.pos == (t.pos + 1) then
+                local nexttok = tokens[i + 1]
+                local can_index = node.kind ~= "str" and node.kind ~= "num" and node.kind ~= "call"
+                if
+                    can_index
+                    and keytok.typ == "ID"
+                    and keytok.pos == (t.pos + 1)
+                    and not (nexttok and nexttok.typ == "COLON")
+                    and not (nexttok and nexttok.typ == "LPAREN")
+                then
                     local key = adv()
                     node = {
                         kind = "index",
@@ -695,15 +824,19 @@ local function parse(tokens)
                         end
                         error("__not_lambda__")
                     end
-                    params[#params + 1] = parse_param()
-                    while true do
-                        local tk = peek()
-                        if tk.typ == "OP" and tk.val == "," then
-                            adv(); params[#params + 1] = parse_param()
-                        elseif tk.typ == "OP" and tk.val == "->" then
-                            adv(); break
-                        else
-                            error("__not_lambda__")
+                    if peek().typ == "OP" and peek().val == "->" then
+                        adv()
+                    else
+                        params[#params + 1] = parse_param()
+                        while true do
+                            local tk = peek()
+                            if tk.typ == "OP" and tk.val == "," then
+                                adv(); params[#params + 1] = parse_param()
+                            elseif tk.typ == "OP" and tk.val == "->" then
+                                adv(); break
+                            else
+                                error("__not_lambda__")
+                            end
                         end
                     end
                     local body = expr(0)
@@ -750,7 +883,7 @@ local function parse(tokens)
             local id = idtok.val
             local scope = nil
             local endpos = tok_end(idtok)
-            if peek().typ == "COLON" then
+            if peek().typ == "COLON" and peek().pos == (endpos + 1) then
                 local colon = adv()
                 scope = id
                 endpos = tok_end(colon)
@@ -778,11 +911,15 @@ local function parse(tokens)
             local tok = adv()
             return apply_postfix({ kind = "reg", name = tok.val, pos = tok.pos, endpos = tok_end(tok) })
         end
+        if t.typ == "DOLLAR" then
+            local tok = adv()
+            return apply_postfix({ kind = "lastline", pos = tok.pos, endpos = tok_end(tok) })
+        end
         if t.typ == "ID" then
             local id = adv().val
             local endpos = tok_end(tokens[i - 1])
             local scope, name = nil, id
-            if peek().typ == "COLON" then
+            if peek().typ == "COLON" and peek().pos == (endpos + 1) then
                 local colon = adv()
                 endpos = tok_end(colon)
                 local nxt = peek()
@@ -794,12 +931,39 @@ local function parse(tokens)
                     local name_tok = adv()
                     name = tok_text(name_tok)
                     endpos = tok_end(name_tok)
+                elseif nxt.typ == "LBRACE" then
+                    scope = id
+                    name = nil
                 else
                     -- Bare scope dictionary reference, e.g. g: / b: / s: ...
                     scope = id
                     name = nil
                 end
                 scope = scope or id
+            end
+            if scope and name == nil and peek().typ == "LBRACE" then
+                local parts = { { kind = "lit", val = tostring(scope) .. ":" } }
+                while peek().typ == "LBRACE" do
+                    adv() -- '{'
+                    local inner = expr(0)
+                    expect("RBRACE")
+                    parts[#parts + 1] = { kind = "expr", val = inner }
+                    local suffix = {}
+                    while true do
+                        local tk = peek()
+                        if tk.typ == "ID" then
+                            suffix[#suffix + 1] = adv().val
+                        elseif tk.typ == "NUM" then
+                            suffix[#suffix + 1] = tok_text(adv())
+                        else
+                            break
+                        end
+                    end
+                    if #suffix > 0 then
+                        parts[#parts + 1] = { kind = "lit", val = table.concat(suffix) }
+                    end
+                end
+                return apply_postfix({ kind = "varcurly", parts = parts, pos = t.pos, endpos = endpos })
             end
             if scope and name == nil then
                 return apply_postfix({ kind = "scope", scope = scope, pos = t.pos, endpos = endpos })
@@ -1076,7 +1240,7 @@ local function eval_node(node, vim9, env)
     end
     if k == "curlyvar" then
         local pv = eval_node(node.inner, vim9, env); if is_error(pv) then return pv end
-        local full = tostring(pv or "") .. (node.suffix or "")
+        local full = tostring(pv or "") .. node.suffix
         local scope_name, var_name = full:match("^([gsalvbtw]):(.+)$")
         if scope_name then
             return resolve_var(scope_name, var_name)
@@ -1088,7 +1252,7 @@ local function eval_node(node, vim9, env)
         for i = 1, #node.parts do
             local part = node.parts[i]
             if part.kind == "lit" then
-                chunks[#chunks + 1] = part.val or ""
+                chunks[#chunks + 1] = part.val
             else
                 local pv = eval_node(part.val, vim9, env); if is_error(pv) then return pv end
                 chunks[#chunks + 1] = tostring(pv or "")
@@ -1102,7 +1266,7 @@ local function eval_node(node, vim9, env)
         return resolve_var(nil, full)
     end
     if k == "lambda" then
-        local params = node.params or {}
+        local params = node.params
         return function(...)
             local args = { ... }
             local l, a = {}, {}
@@ -1161,8 +1325,8 @@ local function eval_node(node, vim9, env)
         local ok, rv = pcall(f, table.unpack(argv))
         VimFnBuiltins._pop_eval_scope()
         if not ok then
-            if (Error.IsError(rv)) then
-                rv = rv:toString()
+            if Error.IsError(rv) then
+                return rv
             end
             return Error(5108, tostring(rv))
         end
@@ -1302,6 +1466,13 @@ local function eval_node(node, vim9, env)
         end
         if type(regval) == "string" then return regval end
         return tostring(regval)
+    end
+    if k == "lastline" then
+        local f = VimFnBuiltins.fn.line
+        if type(f) == "function" then
+            return f("$")
+        end
+        return "$"
     end
     if k == "unary" then
         local v = eval_node(node.a, vim9, env); if is_error(v) then return v end
@@ -1448,7 +1619,38 @@ local function eval_node(node, vim9, env)
         if op:match("^=~[#?]?$") or op:match("^!~[#?]?$") then
             local case = decide_case(op); if is_error(case) then return case end
             local ok = VimRegex.match(to_string_simple(L), to_string_simple(R), case)
-            local res = op:sub(1, 1) == "!" and (not ok) or ok
+            local res
+            if op:sub(1, 1) == "!" then
+                res = not ok
+            else
+                res = ok
+            end
+            return vim9 and res or (res and 1 or 0)
+        end
+
+        if op:match("^isnot[#?]?$") or op:match("^is[#?]?$") then
+            local neg = op:sub(1, 5) == "isnot"
+            local case = decide_case(op); if is_error(case) then return case end
+            local same
+            if type(L) == "table" or type(R) == "table" then
+                same = rawequal(L, R)
+            elseif type(L) ~= type(R) then
+                same = false
+            elseif type(L) == "string" then
+                if not case then
+                    same = L:lower() == R:lower()
+                else
+                    same = L == R
+                end
+            else
+                same = L == R
+            end
+            local res
+            if neg then
+                res = not same
+            else
+                res = same
+            end
             return vim9 and res or (res and 1 or 0)
         end
 
@@ -1466,6 +1668,21 @@ local function eval_node(node, vim9, env)
 end
 
 -- Public API:
+function M.parse(expr)
+    local ok_tok, toks = pcall(tokenize, tostring(expr or ""))
+    if not ok_tok then
+        return nil, toks
+    end
+    local ok, ast, next_i = pcall(parse, toks)
+    if not ok then
+        return nil, ast
+    end
+    if toks[next_i].typ ~= "EOF" then
+        return nil, Error(0, ("Trailing input at %d"):format(toks[next_i].pos))
+    end
+    return ast
+end
+
 -- Returns value or Error object.
 function M.evaluate(expr, opts)
     opts = opts or {}
@@ -1474,21 +1691,19 @@ function M.evaluate(expr, opts)
         scope = opts.scope,
         funcs = opts.funcs,
     }
-    local toks = tokenize(expr)
-    local ok, ast, next_i = pcall(parse, toks)
-    if not ok then
-        LOG_DEBUG("vimxpr parse error expr=%s err=%s", tostring(expr), tostring(ast))
-        error(ast)
-    end
-    if toks[next_i].typ ~= "EOF" then
-        LOG_DEBUG("vimxpr trailing input expr=%s pos=%d token=%s", tostring(expr), tonumber(toks[next_i].pos),
-            tostring(toks[next_i].typ))
-        return Error(0, ("Trailing input at %d"):format(toks[next_i].pos))
+    local ast, parse_err = M.parse(expr)
+    if not ast then
+        if Error.IsError(parse_err) then
+            LOG_DEBUG("vimxpr trailing input expr=%s err=%s", tostring(expr), tostring(parse_err))
+            return parse_err
+        end
+        LOG_DEBUG("vimxpr parse error expr=%s err=%s", tostring(expr), tostring(parse_err))
+        error(parse_err)
     end
     return eval_node(ast, vim9, env)
 end
 
-function M.splitExpressions(expr_str)
+local function split_expression_items(expr_str, include_ast)
     local expressions = {}
     local current_pos = 1
 
@@ -1500,7 +1715,11 @@ function M.splitExpressions(expr_str)
         if not ok or #toks <= 1 then -- only EOF
             local first_word = sub_expr:match("^%s*([^%s]+)")
             if first_word then
-                expressions[#expressions + 1] = first_word
+                if include_ast then
+                    expressions[#expressions + 1] = { text = first_word }
+                else
+                    expressions[#expressions + 1] = first_word
+                end
                 current_pos = current_pos + (sub_expr:find(first_word, 1, true) + #first_word - 1)
             else
                 break -- Should not happen if not empty
@@ -1508,11 +1727,15 @@ function M.splitExpressions(expr_str)
             goto continue
         end
 
-        local ok_parse, _, end_tok_idx = pcall(parse, toks)
+        local ok_parse, ast, end_tok_idx = pcall(parse, toks)
         if not ok_parse or not end_tok_idx then
             local first_word = sub_expr:match("^%s*([^%s]+)")
             if first_word then
-                expressions[#expressions + 1] = first_word
+                if include_ast then
+                    expressions[#expressions + 1] = { text = first_word }
+                else
+                    expressions[#expressions + 1] = first_word
+                end
                 current_pos = current_pos + (sub_expr:find(first_word, 1, true) + #first_word - 1)
             else
                 break
@@ -1522,17 +1745,29 @@ function M.splitExpressions(expr_str)
 
         -- Use the next token's start to compute the end of the parsed expression.
         -- This preserves original source length (including quotes), avoiding stalls.
-        local next_tok = toks[end_tok_idx]
-        local end_pos = (next_tok and next_tok.pos and (next_tok.pos - 1)) or #sub_expr
+        local end_pos = toks[end_tok_idx].pos - 1
         if end_pos < 1 then end_pos = 1 end
 
-        expressions[#expressions + 1] = sub_expr:sub(1, end_pos)
+        local text = sub_expr:sub(1, end_pos)
+        if include_ast then
+            expressions[#expressions + 1] = { text = text, ast = ast }
+        else
+            expressions[#expressions + 1] = text
+        end
         current_pos = current_pos + end_pos
 
         ::continue::
     end
 
     return expressions
+end
+
+function M.splitExpressions(expr_str)
+    return split_expression_items(expr_str, false)
+end
+
+function M.splitExpressionAsts(expr_str)
+    return split_expression_items(expr_str, true)
 end
 
 return M

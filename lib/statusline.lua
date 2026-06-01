@@ -4,6 +4,7 @@ local Options = loadModule("lib.options")
 local VimFs = loadModule("lib.luaapi.fs")
 local Compiler = loadModule("lib.excmd.compiler")
 local Runtime = loadModule("lib.excmd.runtime")
+local Scopes = loadModule("lib.luaapi.scopes")
 local Utf8 = loadModule("lib.utf8")
 
 -- Highlight mark indicators
@@ -16,6 +17,44 @@ local currfill -- character to use for fill from fillchars
 local function user_group_name(n)
     n = tonumber(n) or 0
     return (n >= 1 and n <= 9) and ("User" .. n) or "StatusLine"
+end
+
+local function eval_statusline_expr(expr, winid)
+    local rt = Runtime.new(Runtime._CURRENT_STATE)
+    local out = ""
+    local prior_winid = Scopes._g.statusline_winid
+    Scopes._g.statusline_winid = winid
+
+    local ok_compile, code = pcall(function()
+        return Compiler.compile_expr(expr, { state = rt.state })
+    end)
+    if ok_compile and type(code) == "string" and code ~= "" then
+        local chunk = load(
+            "return " .. code,
+            "statusline_excmd",
+            "t",
+            setmetatable({ runtime = rt, _G = _G }, { __index = _G })
+        )
+        if chunk then
+            local ok_run, rv = pcall(chunk)
+            if ok_run then
+                out = tostring(rv or "")
+            end
+        end
+    end
+
+    Scopes._g.statusline_winid = prior_winid
+    return out
+end
+
+local function evaluate_top_expr(fmt, window)
+    if type(fmt) ~= "string" then
+        fmt = tostring(fmt or "")
+    end
+    if fmt:sub(1, 2) ~= "%!" then
+        return fmt
+    end
+    return eval_statusline_expr(fmt:sub(3), window.winnr)
 end
 
 
@@ -87,7 +126,7 @@ local function apply_field(s, is_num, left_justify, zero_pad, minwid, maxwid)
 end
 
 -- Parse one segment (no top-level %= split) into chunks:
--- chunks[i] = { kind="text"|"group"|"truncmark"|"hl", s=<string>, hl=<control> }
+-- chunks[i] = { kind="text"|"group"|"truncmark"|"hl"|"click", ... }
 local function parse_segment(fmt, window)
     -- Move the locals in here since they're common
     local byte, sub, upper = string.byte, string.sub, string.upper
@@ -122,10 +161,14 @@ local function parse_segment(fmt, window)
         chunks[#chunks + 1] = { kind = "hl", s = "", hl = { ctrl = ctrl, payload = payload or "" } }
     end
 
+    local function emit_click(mode, click)
+        chunks[#chunks + 1] = { kind = "click", mode = mode, click = click }
+    end
+
     local function parse_flags_and_widths(j)
-        -- Returns: j_after, left_justify, zero_pad, minwid, maxwid
+        -- Returns: j_after, left_justify, zero_pad, minwid, maxwid, raw_minwid
         local left_justify, zero_pad = false, false
-        local minwid, maxwid
+        local minwid, maxwid, raw_minwid
         local n = #fmt
 
         -- flags
@@ -152,6 +195,7 @@ local function parse_segment(fmt, window)
                 end
             end
             if any then
+                raw_minwid = acc
                 minwid = acc
                 if minwid > 50 then minwid = 50 end
             end
@@ -172,7 +216,7 @@ local function parse_segment(fmt, window)
             if any then maxwid = acc end
         end
 
-        return j, left_justify, zero_pad, minwid, maxwid
+        return j, left_justify, zero_pad, minwid, maxwid, raw_minwid
     end
 
     local i, n = 1, #fmt
@@ -182,9 +226,9 @@ local function parse_segment(fmt, window)
             i = i + 1
         else
             local j                                               = i + 1
-            local j_after, left_justify, zero_pad, minwid, maxwid = parse_flags_and_widths(j)
-            local nxtb                                            = byte(fmt, j_after)
-            local nxt                                             = nxtb and sub(fmt, j_after, j_after) or ""
+            local j_after, left_justify, zero_pad, minwid, maxwid, raw_minwid = parse_flags_and_widths(j)
+            local nxtb                                                     = byte(fmt, j_after)
+            local nxt                                                      = nxtb and sub(fmt, j_after, j_after) or ""
 
             if nxt == "" then
                 emit_text("%")
@@ -225,6 +269,28 @@ local function parse_segment(fmt, window)
                     emit_hl(HL_POP, "")
                     i = j_after + 1
                 end
+            elseif nxtb == 84 or nxtb == 88 then -- 'T'/'X'
+                if raw_minwid ~= nil then
+                    emit_click("start", { kind = nxtb == 84 and "tab" or "close_tab", tabnr = raw_minwid })
+                else
+                    emit_click("end")
+                end
+                i = j_after + 1
+            elseif nxtb == 64 then -- '@'
+                local k = j_after + 1
+                local start = k
+                while k <= n and byte(fmt, k) ~= 64 do k = k + 1 end
+                if k <= n then
+                    emit_click("start", {
+                        kind = "function",
+                        func = sub(fmt, start, k - 1),
+                        minwid = raw_minwid or 0,
+                    })
+                    i = k + 1
+                else
+                    emit_text("%@")
+                    i = j_after + 1
+                end
             elseif nxtb == 123 then -- '{'
                 -- %{expr} -> evaluate expression via excmd compiler/runtime
                 local depth, k = 1, j_after + 1
@@ -239,22 +305,7 @@ local function parse_segment(fmt, window)
                 end
                 local inner = sub(fmt, j_after + 1, k - 2) or ""
 
-                local rt = Runtime.new(Runtime._CURRENT_STATE)
-                local out_s = ""
-
-                local ok_compile, code = pcall(function() return Compiler.compile_expr(inner, { state = rt.state }) end)
-                if ok_compile and type(code) == "string" and code ~= "" then
-                    local chunk = load(
-                        "return " .. code,
-                        "statusline_excmd",
-                        "t",
-                        setmetatable({ runtime = rt, _G = _G }, { __index = _G })
-                    )
-                    if chunk then
-                        local ok_run, rv = pcall(chunk)
-                        if ok_run then out_s = tostring(rv or "") end
-                    end
-                end
+                local out_s = eval_statusline_expr(inner, window.winnr)
 
                 emit_text(apply_field(out_s, false, left_justify, zero_pad, minwid, maxwid))
                 i = k
@@ -517,6 +568,18 @@ local function clone_chunks(chunks)
         local ck = chunks[i]
         if ck.kind == "hl" then
             out[i] = { kind = "hl", s = "", hl = { ctrl = ck.hl.ctrl, payload = ck.hl.payload } }
+        elseif ck.kind == "click" then
+            local click = ck.click
+            out[i] = {
+                kind = "click",
+                mode = ck.mode,
+                click = click and {
+                    kind = click.kind,
+                    tabnr = click.tabnr,
+                    func = click.func,
+                    minwid = click.minwid,
+                } or nil,
+            }
         else
             out[i] = { kind = ck.kind, s = ck.s }
         end
@@ -536,14 +599,28 @@ local function drop_left_visible(chunks, n_drop)
                 remain = remain - L
                 -- drop entire text chunk
             else
-                out[#out + 1] = { kind = ck.kind, s = s:sub(remain + 1) }
+                out[#out + 1] = { kind = ck.kind, s = Utf8.sub(s, remain + 1) }
                 remain = 0
             end
         else
             -- keep zero-width controls/marks so HL state stays consistent
-            out[#out + 1] = (ck.kind == "hl") and
-            { kind = "hl", s = "", hl = { ctrl = ck.hl.ctrl, payload = ck.hl.payload } }
-                or { kind = "truncmark", s = ck.s }
+            if ck.kind == "hl" then
+                out[#out + 1] = { kind = "hl", s = "", hl = { ctrl = ck.hl.ctrl, payload = ck.hl.payload } }
+            elseif ck.kind == "click" then
+                local click = ck.click
+                out[#out + 1] = {
+                    kind = "click",
+                    mode = ck.mode,
+                    click = click and {
+                        kind = click.kind,
+                        tabnr = click.tabnr,
+                        func = click.func,
+                        minwid = click.minwid,
+                    } or nil,
+                }
+            else
+                out[#out + 1] = { kind = "truncmark", s = ck.s }
+            end
         end
     end
     return out
@@ -571,8 +648,8 @@ end
 local function ensure_left_trunc_indicator(chunks, width)
     -- Force the first visible char to be '<'
     for _, ck in ipairs(chunks) do
-        if (ck.kind == "text" or ck.kind == "group") and #ck.s > 0 then
-            ck.s = "<" .. ck.s:sub(2)
+        if (ck.kind == "text" or ck.kind == "group") and Utf8.len(ck.s) > 0 then
+            ck.s = "<" .. Utf8.sub(ck.s, 2)
             return chunks
         end
     end
@@ -592,27 +669,39 @@ local function concat_chunk_arrays(...)
     return out
 end
 
-local function to_ascii_cells(s)
-    if not s or s == "" then
-        return ""
-    end
-    local out = {}
-    Utf8.each_codepoint(s, function(cp)
-        out[#out + 1] = Utf8.ascii_cell_for_codepoint(cp)
-    end)
-    return table.concat(out)
-end
-
 -- Turn final chunk stream (no truncmarks) into { {text, group}, ... }
-local function chunks_to_spans(chunks, default_group)
+local function chunks_to_render(chunks, default_group)
     local spans = {}
+    local click_zones = {}
     local group_stack, cur = {}, (default_group or "StatusLine")
+    local click_stack = {}
     local buf = ""
+    local col = 1
 
     local function flush()
         if #buf > 0 then
             spans[#spans + 1] = { buf, cur }
+            col = col + Utf8.len(buf)
             buf = ""
+        end
+    end
+
+    local function close_click_zone(end_col)
+        local active = click_stack[#click_stack]
+        if not active then
+            return
+        end
+        click_stack[#click_stack] = nil
+        local finish = end_col - 1
+        if finish >= active.start_col then
+            click_zones[#click_zones + 1] = {
+                start_col = active.start_col,
+                end_col = finish,
+                kind = active.kind,
+                tabnr = active.tabnr,
+                func = active.func,
+                minwid = active.minwid,
+            }
         end
     end
 
@@ -630,15 +719,35 @@ local function chunks_to_spans(chunks, default_group)
                 cur = group_stack[#group_stack] or (default_group or "StatusLine")
                 group_stack[#group_stack] = nil
             end
+        elseif ck.kind == "click" then
+            flush()
+            if ck.mode == "start" and ck.click then
+                if #click_stack > 0 then
+                    close_click_zone(col)
+                end
+                local click = ck.click
+                click_stack[#click_stack + 1] = {
+                    start_col = col,
+                    kind = click.kind,
+                    tabnr = click.tabnr,
+                    func = click.func,
+                    minwid = click.minwid or 0,
+                }
+            else
+                close_click_zone(col)
+            end
         elseif ck.kind == "text" or ck.kind == "group" then
             if #ck.s > 0 then
-                buf = buf .. to_ascii_cells(ck.s)
+                buf = buf .. ck.s
             end
         end
         -- truncmark ignored
     end
     flush()
-    return spans
+    while #click_stack > 0 do
+        close_click_zone(col)
+    end
+    return spans, click_zones
 end
 
 
@@ -784,14 +893,19 @@ end
 
 
 
-function Statusline.Parse(fmt, window, overrideWidth)
+function Statusline.RenderInfo(fmt, window, overrideWidth, opts)
+    opts = opts or {}
     local width = overrideWidth or window.frame.width
 
-    if window.winnr == curwin then
+    if opts.fillchar ~= nil then
+        currfill = tostring(opts.fillchar)
+    elseif window.winnr == curwin then
         currfill = Options.ParseKeyedCSL(options.get("fillchars", window), { [":"] = true }).stl or " "
     else
         currfill = Options.ParseKeyedCSL(options.get("fillchars", window), { [":"] = true }).stlnc or " "
     end
+
+    fmt = evaluate_top_expr(fmt, window)
 
     -- Split into up to three sections on top-level %=
     local sections = split_on_equals(fmt)
@@ -808,10 +922,20 @@ function Statusline.Parse(fmt, window, overrideWidth)
         append_spaces(final_chunks, width - vis)
     end
 
-    -- Convert to { text, hlgroup } spans with proper push/pop handling
-    local spans = chunks_to_spans(final_chunks, (window.winnr == curwin) and "StatusLine" or "StatusLineNC")
+    local default_group = opts.default_group
+    if not default_group then
+        default_group = (window.winnr == curwin) and "StatusLine" or "StatusLineNC"
+    end
 
-    return spans
+    local spans, click_zones = chunks_to_render(final_chunks, default_group)
+    return {
+        spans = spans,
+        click_zones = click_zones,
+    }
+end
+
+function Statusline.Parse(fmt, window, overrideWidth)
+    return Statusline.RenderInfo(fmt, window, overrideWidth).spans
 end
 
 return Statusline

@@ -2,6 +2,7 @@
 
 local Builtins   = {}
 
+local Backend = loadModule("lib.backend")
 local Error      = loadModule("lib.error")
 local Highlight  = loadModule("lib.highlight")
 local Syntax = loadModule("lib.syntax")
@@ -61,7 +62,7 @@ local function call_vimfunc(name, ...)
             return fr(...)
         end
         LOG_INTERNAL("missing", "vim.fn.%s not implemented", tostring(name))
-        error(Error(117, name):toString())
+        error(Error(117, name))
     end
     local call_name = resolved_name or name
     -- Map args to a:/l: by parameter list (including a:0/a:000 for varargs).
@@ -172,6 +173,46 @@ end
 
 local function _trim(s)
     return tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function _nr_to_utf8(nr)
+    nr = math.floor(tonumber(nr) or 0)
+
+    if nr <= 0x7F then
+        return string.char(nr)
+    end
+
+    local count
+    if nr <= 0x7FF then
+        count = 2
+    elseif nr <= 0xFFFF then
+        count = 3
+    elseif nr <= 0x1FFFFF then
+        count = 4
+    elseif nr <= 0x3FFFFFF then
+        count = 5
+    else
+        count = 6
+    end
+
+    local lead = {
+        [2] = 0xC0,
+        [3] = 0xE0,
+        [4] = 0xF0,
+        [5] = 0xF8,
+        [6] = 0xFC,
+    }
+
+    local bytes = {}
+    local value = nr
+    for i = count, 2, -1 do
+        bytes[i] = 0x80 + (value % 0x40)
+        value = math.floor(value / 0x40)
+    end
+    bytes[1] = lead[count] + value
+
+    local unpack_fn = table.unpack or unpack
+    return string.char(unpack_fn(bytes))
 end
 
 local function _is_abs_or_explicit_rel(path)
@@ -603,7 +644,7 @@ end
 
 function Builtins.winlayout(tabnr, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "winlayout"):toString())
+        error(Error(118, "winlayout"))
     end
 
     local tp
@@ -626,7 +667,7 @@ end
 
 function Builtins.winsaveview(...)
     if select("#", ...) > 0 then
-        error(Error(118, "winsaveview"):toString())
+        error(Error(118, "winsaveview"))
     end
 
     local win = windows[curwin]
@@ -655,7 +696,7 @@ end
 
 function Builtins.winrestview(dict, ...)
     if select("#", ...) > 0 or type(dict) ~= "table" then
-        error(Error(118, "winrestview"):toString())
+        error(Error(118, "winrestview"))
     end
 
     local win = windows[curwin]
@@ -1001,7 +1042,7 @@ function Builtins.fnamemodify(fname, mods, R)
         ::continue::
     end
 
-    return out:gsub("//+", "/")
+    return (out:gsub("//+", "/"))
 end
 
 function Builtins.stdpath(type)
@@ -1097,21 +1138,29 @@ local function _hl_color_hex(color)
     if color == nil then
         return ""
     end
-    local ok, r, g, b = pcall(term.getPaletteColor, color)
-    if not ok or type(r) ~= "number" or type(g) ~= "number" or type(b) ~= "number" then
+    if type(color) ~= "number" then
         return ""
     end
-    if r <= 1 and g <= 1 and b <= 1 then
-        r = r * 255
-        g = g * 255
-        b = b * 255
+    if color > 0xFFFFFF then
+        local slot = 0
+        while slot < 16 do
+            if color == (2 ^ slot) then
+                local r, g, b = screen.get_palette_slot(slot)
+                return string.format("#%02x%02x%02x", r, g, b)
+            end
+            slot = slot + 1
+        end
+        return ""
     end
-    return string.format("#%02x%02x%02x", math.floor(r + 0.5), math.floor(g + 0.5), math.floor(b + 0.5))
+    local r = math.floor(color / 65536) % 256
+    local g = math.floor(color / 256) % 256
+    local b = color % 256
+    return string.format("#%02x%02x%02x", r, g, b)
 end
 
 function Builtins.hlID(name, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "hlID"):toString())
+        error(Error(118, "hlID"))
     end
     local hl_name = tostring(name or "")
     if hl_name == "" then return 0 end
@@ -1120,7 +1169,7 @@ end
 
 function Builtins.synID(lnum, col, trans, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "synID"):toString())
+        error(Error(118, "synID"))
     end
 
     local win = windows[curwin]
@@ -1134,7 +1183,7 @@ end
 
 function Builtins.synstack(lnum, col, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "synstack"):toString())
+        error(Error(118, "synstack"))
     end
 
     local win = windows[curwin]
@@ -1144,7 +1193,7 @@ end
 
 function Builtins.synconcealed(lnum, col, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "synconcealed"):toString())
+        error(Error(118, "synconcealed"))
     end
 
     local win = windows[curwin]
@@ -1154,14 +1203,14 @@ end
 
 function Builtins.getmatches(winid, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "getmatches"):toString())
+        error(Error(118, "getmatches"))
     end
 
     local win = windows[curwin]
     if winid ~= nil and winid ~= 0 then
         local resolved = windows[tonumber(winid) or -1]
         if not resolved then
-            error(Error(5002):toString())
+            error(Error(5002))
         end
         win = resolved
     end
@@ -1171,7 +1220,7 @@ end
 
 function Builtins.synIDtrans(id, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "synIDtrans"):toString())
+        error(Error(118, "synIDtrans"))
     end
 
     local name = _hl_name_from_id(id)
@@ -1182,10 +1231,9 @@ function Builtins.synIDtrans(id, ...)
     return Highlight.IdByName(resolved)
 end
 
--- TODO: Handle mode argument
-function Builtins.synIDattr(syn_id, what, _mode, ...)
+function Builtins.synIDattr(syn_id, what, mode_arg, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "synIDattr"):toString())
+        error(Error(118, "synIDattr"))
     end
 
     local name = _hl_name_from_id(syn_id)
@@ -1198,21 +1246,40 @@ function Builtins.synIDattr(syn_id, what, _mode, ...)
         return name
     end
 
-    local hl = Highlight.For(name)
-    local fg = hl[1]
-    local bg = hl[2]
+    local mode = tostring(mode_arg or ""):lower()
+    local use_gui
+    if mode == "gui" then
+        use_gui = true
+    elseif mode == "cterm" then
+        use_gui = false
+    else
+        use_gui = options.get("termguicolors")
+    end
 
+    local hl = Highlight.AttrsFor(name)
     if attr == "fg" or attr == "foreground" then
-        return fg or ""
+        if use_gui then
+            return _hl_color_hex(hl.fg)
+        end
+        return hl.cterm_fg ~= nil and tostring(hl.cterm_fg) or ""
     end
     if attr == "bg" or attr == "background" then
-        return bg or ""
+        if use_gui then
+            return _hl_color_hex(hl.bg)
+        end
+        return hl.cterm_bg ~= nil and tostring(hl.cterm_bg) or ""
     end
     if attr == "fg#" then
-        return _hl_color_hex(fg)
+        if use_gui then
+            return _hl_color_hex(hl.fg)
+        end
+        return hl.cterm_fg ~= nil and tostring(hl.cterm_fg) or ""
     end
     if attr == "bg#" then
-        return _hl_color_hex(bg)
+        if use_gui then
+            return _hl_color_hex(hl.bg)
+        end
+        return hl.cterm_bg ~= nil and tostring(hl.cterm_bg) or ""
     end
     if attr == "sp#" then
         return ""
@@ -1251,7 +1318,7 @@ Builtins["function"] = function(name, arglist, _dict)
                 script_ctx = Runtime._CURRENT_STATE and Runtime._CURRENT_STATE.script_ctx,
             })
             if not ok or type(rv) ~= "function" then
-                error(Error(474, "function()"):toString())
+                error(Error(474, "function()"))
             end
             direct_fn = rv
             fname = funcref_name_by_fn[rv] or trimmed
@@ -1263,13 +1330,13 @@ Builtins["function"] = function(name, arglist, _dict)
         end
     end
     if type(fname) ~= "string" or fname == "" then
-        error(Error(474, "function()"):toString())
+        error(Error(474, "function()"))
     end
 
     local prefix = {}
     if arglist ~= nil then
         if type(arglist) ~= "table" then
-            error(Error(474, "function()"):toString())
+            error(Error(474, "function()"))
         end
         for i = 1, #arglist do
             prefix[i] = arglist[i]
@@ -1300,7 +1367,7 @@ end
 
 Builtins.call = function(func, args, _dict)
     if type(args) ~= "table" then
-        error(Error(474, "call()"):toString())
+        error(Error(474, "call()"))
     end
 
     if type(func) == "function" then
@@ -1514,7 +1581,7 @@ end
 
 function Builtins.winline(...)
     if select("#", ...) > 0 then
-        error(Error(118, "winline"):toString())
+        error(Error(118, "winline"))
     end
 
     local win = windows[curwin]
@@ -1533,7 +1600,7 @@ end
 
 function Builtins.screenpos(winid, lnum, col, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "screenpos"):toString())
+        error(Error(118, "screenpos"))
     end
 
     local win = resolve_win(winid)
@@ -1567,7 +1634,7 @@ end
 
 function Builtins.getwininfo(winid, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "getwininfo"):toString())
+        error(Error(118, "getwininfo"))
     end
 
     local out = {}
@@ -1672,7 +1739,7 @@ end
 
 function Builtins.setline(lnum, text, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "setline"):toString())
+        error(Error(118, "setline"))
     end
 
     local win = windows[curwin]
@@ -1759,7 +1826,7 @@ end
 
 function Builtins.cursor(lnum, col, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "cursor"):toString())
+        error(Error(118, "cursor"))
     end
     local win = windows[curwin]
     if not win or not win.buffer then
@@ -1771,8 +1838,14 @@ function Builtins.cursor(lnum, col, ...)
         lnum = lnum[1]
     end
 
-    local y = tonumber(lnum or win.cursory) or win.cursory
-    local x = tonumber(col or win.cursorx) or win.cursorx
+    local y = tonumber(lnum)
+    if y == nil or y == 0 then
+        y = win.cursory
+    end
+    local x = tonumber(col)
+    if x == nil then
+        x = win.cursorx
+    end
     local max_y = math.max(1, win.buffer:line_count(true))
     y = math.max(1, math.min(max_y, math.floor(y)))
 
@@ -1790,7 +1863,7 @@ end
 
 function Builtins.feedkeys(keys, mode, escape_ks, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "feedkeys"):toString())
+        error(Error(118, "feedkeys"))
     end
     local Api = loadModule("lib.luaapi.api")
     local esc = not (escape_ks == nil or escape_ks == false or escape_ks == 0)
@@ -1826,16 +1899,79 @@ function Builtins.setcmdline(str, pos)
     return CmdRead.setline(tostring(str or ""), tonumber(pos))
 end
 
+local VIMXPR_LIST_MT = { __vimxpr_kind = "list" }
+
+local function _mark_vim_list(tbl)
+    if type(tbl) ~= "table" then
+        return tbl
+    end
+    local mt = getmetatable(tbl)
+    if mt and mt.__vimxpr_kind == "list" then
+        return tbl
+    end
+    return setmetatable(tbl, VIMXPR_LIST_MT)
+end
+
 -- add(list, item): append item to list and return the list (mutates in place)
 function Builtins.add(lst, item, ...)
     if select('#', ...) > 0 then
-        error(Error(118, 'add'):toString())
+        error(Error(118, 'add'))
     end
     if type(lst) ~= 'table' then
         error('add(): expected List')
     end
     lst[#lst + 1] = item
     return lst
+end
+
+function Builtins.range(expr, max, stride, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "range"))
+    end
+
+    local start
+    local stop
+    local step
+
+    if max == nil then
+        start = 0
+        stop = math.floor(tonumber(expr) or 0) - 1
+        step = 1
+    else
+        start = math.floor(tonumber(expr) or 0)
+        stop = math.floor(tonumber(max) or 0)
+        if stride == nil then
+            step = 1
+        else
+            step = math.floor(tonumber(stride) or 0)
+        end
+    end
+
+    if step == 0 then
+        error(Error(726))
+    end
+
+    local out = {}
+    if step > 0 then
+        if start > stop then
+            if start == stop + 1 then
+                return _mark_vim_list(out)
+            end
+            error(Error(727))
+        end
+    else
+        if start < stop then
+            if start == stop - 1 then
+                return _mark_vim_list(out)
+            end
+            error(Error(727))
+        end
+    end
+
+    for i = start, stop, step do
+        out[#out + 1] = i
+    end
+    return _mark_vim_list(out)
 end
 
 -- strlen(x): return byte length of stringified value (ASCII OK)
@@ -1929,19 +2065,6 @@ local function _glob_matches_for_relative_expr(expr, matches)
     return out
 end
 
-local VIMXPR_LIST_MT = { __vimxpr_kind = "list" }
-
-local function _mark_vim_list(tbl)
-    if type(tbl) ~= "table" then
-        return tbl
-    end
-    local mt = getmetatable(tbl)
-    if mt and mt.__vimxpr_kind == "list" then
-        return tbl
-    end
-    return setmetatable(tbl, VIMXPR_LIST_MT)
-end
-
 local function _glob_return(matches, want_list)
     if want_list then
         return _mark_vim_list(matches)
@@ -1990,7 +2113,7 @@ function Builtins.globpath(path, expr, _nosuf, list, _alllinks)
 end
 function Builtins.strlen(x, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "strlen"):toString())
+        error(Error(118, "strlen"))
     end
     if x == nil then return 0 end
     local s = (type(x) == "string") and x or tostring(x)
@@ -2000,7 +2123,7 @@ end
 -- stridx({haystack}, {needle} [, {start}]): return 0-based byte index, or -1.
 function Builtins.stridx(haystack, needle, start, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "stridx"):toString())
+        error(Error(118, "stridx"))
     end
 
     local h = tostring(haystack or "")
@@ -2253,7 +2376,7 @@ end
 -- search({pattern} [, {flags} [, {stopline} [, {timeout} [, {skip}]]]])
 function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "search"):toString())
+        error(Error(118, "search"))
     end
 
     local win = windows[curwin]
@@ -2621,15 +2744,416 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
     return rv
 end
 
+local function _searchpair_context()
+    local win = windows[curwin]
+    local buf = win.buffer
+    local lines = buf:lines_ref(true)
+    if #lines == 0 then
+        lines = { "" }
+    end
+
+    local line_count = #lines
+    local line_starts = {}
+    local abs_pos = 1
+    for i = 1, line_count do
+        line_starts[i] = abs_pos
+        abs_pos = abs_pos + #(lines[i] or "")
+        if i < line_count then
+            abs_pos = abs_pos + 1
+        end
+    end
+
+    local text = table.concat(lines, "\n")
+    local text_len = #text
+
+    local function abs_to_pos(abs_idx)
+        if abs_idx < 1 then
+            abs_idx = 1
+        elseif abs_idx > text_len + 1 then
+            abs_idx = text_len + 1
+        end
+
+        local lo, hi = 1, line_count
+        local found = 1
+        while lo <= hi do
+            local mid = math.floor((lo + hi) / 2)
+            if line_starts[mid] <= abs_idx then
+                found = mid
+                lo = mid + 1
+            else
+                hi = mid - 1
+            end
+        end
+
+        local line_text = lines[found] or ""
+        local byte_col1 = abs_idx - line_starts[found] + 1
+        local byte_max_col = #line_text + 1
+        if byte_col1 < 1 then
+            byte_col1 = 1
+        elseif byte_col1 > byte_max_col then
+            byte_col1 = byte_max_col
+        end
+        local char_col1 = Utf8.col_from_byte(line_text, byte_col1, true)
+        return found, char_col1, byte_col1
+    end
+
+    local cur_lnum = math.floor(tonumber(win.cursory) or 1)
+    if cur_lnum < 1 then
+        cur_lnum = 1
+    elseif cur_lnum > line_count then
+        cur_lnum = line_count
+    end
+    local cur_col = math.floor(tonumber(win.cursorx) or 1)
+    local cur_max_col = buf:line_len(cur_lnum, true) + 1
+    if cur_col < 1 then
+        cur_col = 1
+    elseif cur_col > cur_max_col then
+        cur_col = cur_max_col
+    end
+    local cur_byte_col = buf:line_byte_index(cur_lnum, cur_col, true, true)
+    local cur_abs = line_starts[cur_lnum] + cur_byte_col - 1
+
+    return {
+        win = win,
+        lines = lines,
+        line_starts = line_starts,
+        line_count = line_count,
+        text = text,
+        text_len = text_len,
+        cur_abs = cur_abs,
+        abs_to_pos = abs_to_pos,
+    }
+end
+
+local function _searchpair_collect(ctx, kind, pat, compiled, case_sensitive, timed_out)
+    if pat == "" or compiled == nil then
+        return {}
+    end
+
+    local matches = {}
+    local newline_aware = pat:find("\\_", 1, true) ~= nil
+        or pat:find("\\n", 1, true) ~= nil
+
+    if not newline_aware then
+        for lnum = 1, ctx.line_count do
+            local line_text = ctx.lines[lnum] or ""
+            local from = 1
+            local max_from = #line_text + 1
+            while from <= max_from do
+                if timed_out() then
+                    return matches
+                end
+                local s, e = VimRegex.find_compiled(line_text, compiled, case_sensitive, from)
+                if not s then
+                    break
+                end
+                local ee = e or s
+                matches[#matches + 1] = {
+                    kind = kind,
+                    s = ctx.line_starts[lnum] + s - 1,
+                    e = ctx.line_starts[lnum] + ee - 1,
+                }
+                local next_from = (ee < s) and (s + 1) or (ee + 1)
+                if next_from <= from then
+                    next_from = from + 1
+                end
+                from = next_from
+            end
+        end
+    else
+        local from = 1
+        while from <= ctx.text_len + 1 do
+            if timed_out() then
+                return matches
+            end
+            local s, e = VimRegex.find_compiled(ctx.text, compiled, case_sensitive, from)
+            if not s then
+                break
+            end
+            matches[#matches + 1] = { kind = kind, s = s, e = e or s }
+            local next_from = s + 1
+            if next_from <= from then
+                next_from = from + 1
+            end
+            from = next_from
+        end
+    end
+
+    return matches
+end
+
+local function _searchpair_eval_skip(ctx, skip, candidate)
+    local skip_kind = type(skip)
+    if not ((skip_kind == "function") or (skip_kind == "string" and skip ~= "")) then
+        return false, nil
+    end
+
+    local line, col = ctx.abs_to_pos(candidate.s)
+    local save_line = ctx.win.cursory
+    local save_col = ctx.win.cursorx
+    ctx.win:_set_cursor_raw(line, col)
+
+    local ok, rv
+    if skip_kind == "function" then
+        ok, rv = pcall(skip)
+        if not ok then
+            ctx.win:_set_cursor_raw(save_line, save_col)
+            return nil, rv
+        end
+    else
+        local rt_ok, eval_ok, eval_rv = pcall(function()
+            return Runtime.EvalExpression(skip, {
+                state = Runtime._CURRENT_STATE,
+                ctrl = Runtime._CURRENT_CTRL,
+            })
+        end)
+        if not rt_ok then
+            ctx.win:_set_cursor_raw(save_line, save_col)
+            return nil, eval_ok
+        end
+        if not eval_ok then
+            ctx.win:_set_cursor_raw(save_line, save_col)
+            return nil, eval_rv
+        end
+        rv = eval_rv
+    end
+
+    ctx.win:_set_cursor_raw(save_line, save_col)
+    return _search_truthy(rv), nil
+end
+
+local function _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, want_pos)
+    local fl = tostring(flags or "")
+    local backward = fl:find("b", 1, true) ~= nil
+    local no_move = fl:find("n", 1, true) ~= nil
+    local repeat_outer = fl:find("r", 1, true) ~= nil
+    local return_count = fl:find("m", 1, true) ~= nil
+
+    local want_wrap
+    if repeat_outer then
+        want_wrap = false
+    elseif fl:find("w", 1, true) then
+        want_wrap = true
+    elseif fl:find("W", 1, true) then
+        want_wrap = false
+    else
+        local ok, rv = pcall(function()
+            return options.get("wrapscan")
+        end)
+        want_wrap = ok and not not rv or true
+    end
+
+    local timeout_ms = tonumber(timeout) or 0
+    timeout_ms = math.floor(timeout_ms)
+    if timeout_ms < 0 then
+        timeout_ms = 0
+    end
+    local started_at = (timeout_ms > 0) and os.clock()
+    local function timed_out()
+        if timeout_ms <= 0 then
+            return false
+        end
+        return (os.clock() - started_at) * 1000 > timeout_ms
+    end
+
+    start_pat = tostring(start_pat or "")
+    middle_pat = tostring(middle_pat or "")
+    end_pat = tostring(end_pat or "")
+    if start_pat == "" or end_pat == "" then
+        return want_pos and { 0, 0 } or 0
+    end
+
+    local start_re, start_case_sensitive, start_err = _prepare_match_pattern(start_pat)
+    if not start_re then
+        error("searchpair(): start pattern compile failed: " .. tostring(start_err))
+    end
+    local end_re, end_case_sensitive, end_err = _prepare_match_pattern(end_pat)
+    if not end_re then
+        error("searchpair(): end pattern compile failed: " .. tostring(end_err))
+    end
+    local middle_re = nil
+    local middle_case_sensitive = true
+    if middle_pat ~= "" then
+        local mid_err
+        middle_re, middle_case_sensitive, mid_err = _prepare_match_pattern(middle_pat)
+        if not middle_re then
+            error("searchpair(): middle pattern compile failed: " .. tostring(mid_err))
+        end
+    end
+
+    local ctx = _searchpair_context()
+    local matches = {}
+    local function append(list)
+        for i = 1, #list do
+            matches[#matches + 1] = list[i]
+        end
+    end
+    append(_searchpair_collect(ctx, "start", start_pat, start_re, start_case_sensitive, timed_out))
+    append(_searchpair_collect(ctx, "end", end_pat, end_re, end_case_sensitive, timed_out))
+    append(_searchpair_collect(ctx, "middle", middle_pat, middle_re, middle_case_sensitive, timed_out))
+
+    table.sort(matches, function(a, b)
+        if a.s == b.s then
+            local rank = { start = 1, middle = 2, ["end"] = 3 }
+            return (rank[a.kind] or 9) < (rank[b.kind] or 9)
+        end
+        return a.s < b.s
+    end)
+
+    local stop = tonumber(stopline) or 0
+    stop = math.floor(stop)
+    if stop < 0 then
+        stop = 0
+    elseif stop > ctx.line_count then
+        stop = ctx.line_count
+    end
+    if stop > 0 then
+        want_wrap = false
+    end
+
+    local function in_stop_range(m)
+        if stop == 0 then
+            return true
+        end
+        local lnum = ctx.abs_to_pos(m.s)
+        if backward then
+            return lnum >= stop
+        end
+        return lnum <= stop
+    end
+
+    local ordered = {}
+    if not backward then
+        for i = 1, #matches do
+            if matches[i].s >= ctx.cur_abs and in_stop_range(matches[i]) then
+                ordered[#ordered + 1] = matches[i]
+            end
+        end
+        if want_wrap then
+            for i = 1, #matches do
+                if matches[i].s < ctx.cur_abs then
+                    ordered[#ordered + 1] = matches[i]
+                end
+            end
+        end
+    else
+        for i = #matches, 1, -1 do
+            if matches[i].s <= ctx.cur_abs and in_stop_range(matches[i]) then
+                ordered[#ordered + 1] = matches[i]
+            end
+        end
+        if want_wrap then
+            for i = #matches, 1, -1 do
+                if matches[i].s > ctx.cur_abs then
+                    ordered[#ordered + 1] = matches[i]
+                end
+            end
+        end
+    end
+
+    local depth = 0
+    local selected = nil
+    local match_count = 0
+    for i = 1, #ordered do
+        if timed_out() then
+            break
+        end
+        local m = ordered[i]
+        local skipped, skip_err = _searchpair_eval_skip(ctx, skip, m)
+        if skip_err ~= nil then
+            return want_pos and { 0, 0 } or -1
+        end
+        if not skipped then
+            if not backward then
+                if m.kind == "start" then
+                    if m.s ~= ctx.cur_abs then
+                        depth = depth + 1
+                    end
+                elseif m.kind == "end" then
+                    if depth == 0 then
+                        selected = m
+                        match_count = match_count + 1
+                        if not repeat_outer then
+                            break
+                        end
+                    else
+                        depth = depth - 1
+                    end
+                elseif m.kind == "middle" and depth == 0 then
+                    selected = m
+                    match_count = match_count + 1
+                    if not repeat_outer then
+                        break
+                    end
+                end
+            else
+                if m.kind == "end" then
+                    if m.s ~= ctx.cur_abs then
+                        depth = depth + 1
+                    end
+                elseif m.kind == "start" then
+                    if depth == 0 then
+                        selected = m
+                        match_count = match_count + 1
+                        if not repeat_outer then
+                            break
+                        end
+                    else
+                        depth = depth - 1
+                    end
+                elseif m.kind == "middle" and depth == 0 then
+                    selected = m
+                    match_count = match_count + 1
+                    if not repeat_outer then
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if not selected then
+        return want_pos and { 0, 0 } or 0
+    end
+
+    local line, col, byte_col = ctx.abs_to_pos(selected.s)
+    if not no_move then
+        ctx.win:_set_cursor_raw(line, col)
+        ctx.win:mark_redraw()
+    end
+
+    if want_pos then
+        return { line, byte_col }
+    end
+    if return_count then
+        return match_count
+    end
+    return line
+end
+
+function Builtins.searchpair(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "searchpair"))
+    end
+    return _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, false)
+end
+
+function Builtins.searchpairpos(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "searchpairpos"))
+    end
+    return _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, stopline, timeout, true)
+end
+
 function Builtins.getcwd(...)
     local argc = select("#", ...)
     local winnr = select(1, ...)
     local tabnr = select(2, ...)
     if argc > 2 then
-        error(Error(118, "getcwd"):toString())
+        error(Error(118, "getcwd"))
     end
     if (argc >= 1 and winnr == nil) or (argc >= 2 and tabnr == nil) then
-        error(Error(474):toString())
+        error(Error(474))
     end
 
     local tabpage = tabpages[(tabnr == 0 or not tabnr) and curtp or tabnr]
@@ -2652,15 +3176,15 @@ end
 function Builtins.chdir(path)
     local target = tostring(path or "")
     if target == "" then
-        error(Error(474):toString())
+        error(Error(474))
     end
 
     local abs = VimFs.abspath(target)
     if not fs.exists(abs) or not fs.isDir(abs) then
-        error(Error(474, target):toString())
+        error(Error(474, target))
     end
 
-    shell.setDir(abs:sub(2))
+    Backend.chdir(abs)
     return 0
 end
 
@@ -2719,27 +3243,27 @@ function Builtins.mkdir(name, flags, _)
             if parents then
                 return 1
             end
-            error(Error(739, raw):toString())
+            error(Error(739, raw))
         end
-        error(Error(739, raw):toString())
+        error(Error(739, raw))
     end
 
     if not parents then
         local parent = _dir_of(path)
         if not fs.exists(parent) or not fs.isDir(parent) then
-            error(Error(739, raw):toString())
+            error(Error(739, raw))
         end
     end
 
     local ok = pcall(fs.makeDir, path)
     if not ok then
-        error(Error(739, raw):toString())
+        error(Error(739, raw))
     end
 
     if fs.exists(path) and fs.isDir(path) then
         return 1
     end
-    error(Error(739, raw):toString())
+    error(Error(739, raw))
 end
 
 function Builtins.isdirectory(path)
@@ -2845,7 +3369,7 @@ function Builtins.readfile(fname, kind, max)
     end
 
     if not handle then
-        error(Error(484, raw):toString())
+        error(Error(484, raw))
     end
 
     local ok_read, data = pcall(function()
@@ -2858,7 +3382,7 @@ function Builtins.readfile(fname, kind, max)
     end)
 
     if not ok_read then
-        error(Error(484, raw):toString())
+        error(Error(484, raw))
     end
 
     local mode = tostring(kind or "")
@@ -2908,13 +3432,13 @@ function Builtins.writefile(lines, fname, flags)
     elseif type(lines) == "string" then
         payload = lines
     else
-        error(Error(474, "writefile()"):toString())
+        error(Error(474, "writefile()"))
     end
 
     local handle
     handle = fs.open(path, binary and "wb" or "w")
     if not handle then
-        error(Error(212):toString())
+        error(Error(212))
     end
 
     local ok_write, write_err = pcall(function()
@@ -2932,7 +3456,7 @@ function Builtins.writefile(lines, fname, flags)
         end
     end)
     if not ok_write then
-        error(Error(212, tostring(write_err)):toString())
+        error(Error(212, tostring(write_err)))
     end
     return 0
 end
@@ -2971,7 +3495,7 @@ function Builtins.json_decode(expr)
         payload = _json_decode_list_input(expr)
     end
     if payload == nil then
-        error(Error(474, "json_decode()"):toString())
+        error(Error(474, "json_decode()"))
     end
 
     local decoded, perr = Json.decode(payload, {
@@ -2979,14 +3503,14 @@ function Builtins.json_decode(expr)
     })
     if decoded == nil then
         local reason = tostring(perr or "json_decode()")
-        error(Error(474, reason):toString())
+        error(Error(474, reason))
     end
     return decoded
 end
 
 function Builtins.menu_info(path, modes, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "menu_info"):toString())
+        error(Error(118, "menu_info"))
     end
 
     local state = Runtime._CURRENT_STATE or Runtime._API_STATE
@@ -3156,10 +3680,24 @@ function Builtins.match(expr, pat, start, count)
     end
 end
 
+-- matchend({expr}, {pat} [, {start} [, {count}]])
+function Builtins.matchend(expr, pat, start, count, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "matchend"))
+    end
+
+    if _is_vim_list_expr(expr) then
+        return Builtins.match(expr, pat, start, count)
+    end
+
+    local pos = Builtins.matchstrpos(expr, pat, start, count)
+    return pos[3]
+end
+
 -- matchstr({expr}, {pat} [, {start} [, {count}]])
 function Builtins.matchstr(expr, pat, start, count, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "matchstr"):toString())
+        error(Error(118, "matchstr"))
     end
 
     local is_list = _is_vim_list_expr(expr)
@@ -3189,7 +3727,7 @@ end
 -- matchstrpos({expr}, {pat} [, {start} [, {count}]])
 function Builtins.matchstrpos(expr, pat, start, count, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "matchstrpos"):toString())
+        error(Error(118, "matchstrpos"))
     end
 
     local compiled, case_sensitive, c_err = _prepare_match_pattern(pat)
@@ -3372,7 +3910,7 @@ end
 -- split({string} [, {pattern} [, {keepempty}]])
 function Builtins.split(str, pattern, keepempty, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "split"):toString())
+        error(Error(118, "split"))
     end
 
     local s = tostring(str or "")
@@ -3512,6 +4050,62 @@ function Builtins.winnr(arg)
     else
         error("unhandled winnr(): " .. arg)
     end
+end
+
+function Builtins.tabpagenr(arg)
+    if arg == nil then
+        return curtp
+    elseif arg == "$" then
+        return tabpages[curtp]:count_all()
+    elseif arg == "#" then
+        return 0
+    end
+
+    local nr = tonumber(arg)
+    if nr and tabpages[nr] then
+        return nr
+    end
+    return 0
+end
+
+function Builtins.tabpagewinnr(tabarg, arg)
+    local tabnr = tonumber(tabarg) or curtp
+    local tp = tabpages[tabnr]
+    if not tp then
+        return 0
+    end
+
+    if arg == "$" then
+        return #tp.windows
+    end
+
+    local target_winnr = tp.lastwin
+    if tabnr == curtp then
+        target_winnr = curwin
+    end
+    if target_winnr ~= nil then
+        for i = 1, #tp.windows do
+            if tp.windows[i].winnr == target_winnr then
+                return i
+            end
+        end
+    end
+
+    return (#tp.windows > 0) and 1 or 0
+end
+
+function Builtins.tabpagebuflist(arg)
+    local tabnr = tonumber(arg) or curtp
+    local tp = tabpages[tabnr]
+    if not tp then
+        return {}
+    end
+
+    local bufs = {}
+    for i = 1, #tp.windows do
+        bufs[#bufs + 1] = tp.windows[i].buffer.bufnr
+    end
+    return bufs
 end
 
 function Builtins.win_getid(winnr, tabnr)
@@ -3951,7 +4545,7 @@ end
 
 function Builtins.getreg(regname, _arg2, list, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "getreg"):toString())
+        error(Error(118, "getreg"))
     end
 
     local reg = tostring(regname or "")
@@ -4018,11 +4612,11 @@ end
 
 local function _require_dict_for_keys_items(dict)
     if type(dict) ~= "table" then
-        error(Error(1206, 1):toString())
+        error(Error(1206, 1))
     end
     local mt = getmetatable(dict)
     if mt and mt.__vimxpr_kind == "list" then
-        error(Error(1206, 1):toString())
+        error(Error(1206, 1))
     end
     if not (mt and mt.__vimxpr_kind == "dict") then
         local has_non_numeric_key = false
@@ -4036,14 +4630,14 @@ local function _require_dict_for_keys_items(dict)
             end
         end
         if not has_non_numeric_key and has_numeric_key then
-            error(Error(1206, 1):toString())
+            error(Error(1206, 1))
         end
     end
 end
 
 function Builtins.keys(dict, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "keys"):toString())
+        error(Error(118, "keys"))
     end
     _require_dict_for_keys_items(dict)
     local out = {}
@@ -4055,7 +4649,7 @@ end
 
 function Builtins.keytrans(str, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "keytrans"):toString())
+        error(Error(118, "keytrans"))
     end
     local Key = loadModule("lib.key")
     return Key.keytrans(tostring(str or ""))
@@ -4063,7 +4657,7 @@ end
 
 function Builtins.items(dict, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "items"):toString())
+        error(Error(118, "items"))
     end
 
     if type(dict) == "string" then
@@ -4076,7 +4670,7 @@ function Builtins.items(dict, ...)
     end
 
     if type(dict) ~= "table" then
-        error(Error(1225, 1):toString())
+        error(Error(1225, 1))
     end
 
     local mt = getmetatable(dict)
@@ -4099,7 +4693,7 @@ end
 
 function Builtins.has_key(dict, key, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "has_key"):toString())
+        error(Error(118, "has_key"))
     end
     if type(dict) ~= "table" then return 0 end
     if key == nil then return 0 end
@@ -4242,7 +4836,7 @@ end
 
 function Builtins.hasmapto(what, mode, abbr, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "hasmapto"):toString())
+        error(Error(118, "hasmapto"))
     end
 
     if _vim_truthy(abbr) then
@@ -4259,7 +4853,7 @@ end
 
 function Builtins.mapcheck(name, mode, abbr, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "mapcheck"):toString())
+        error(Error(118, "mapcheck"))
     end
 
     if _vim_truthy(abbr) then
@@ -4281,7 +4875,7 @@ end
 
 function Builtins.maparg(name, mode, abbr, dict, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "maparg"):toString())
+        error(Error(118, "maparg"))
     end
 
     if _vim_truthy(abbr) then
@@ -4489,7 +5083,7 @@ local function _deepcopy_value(obj, noref_mode, stack, depth)
 
     local next_depth = depth + 1
     if next_depth > 100 then
-        error(Error(698):toString())
+        error(Error(698))
     end
 
     if not noref_mode then
@@ -4513,7 +5107,7 @@ local function _deepcopy_value(obj, noref_mode, stack, depth)
     end
 
     if stack[obj] then
-        error(Error(698):toString())
+        error(Error(698))
     end
     stack[obj] = true
 
@@ -4534,7 +5128,7 @@ end
 
 function Builtins.copy(obj, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "copy"):toString())
+        error(Error(118, "copy"))
     end
     if type(obj) ~= "table" then
         return obj
@@ -4544,7 +5138,7 @@ end
 
 function Builtins.deepcopy(obj, noref, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "deepcopy"):toString())
+        error(Error(118, "deepcopy"))
     end
     return _deepcopy_value(obj, _vim_truthy(noref), {}, 0)
 end
@@ -4662,16 +5256,34 @@ function Builtins.strpart(str, start, len)
     return s:sub(from, from + ln - 1)
 end
 
+function Builtins.nr2char(expr, _utf8, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "nr2char"))
+    end
+
+    local nr = tonumber(expr) or 0
+    if nr < 0 then
+        error(Error(5070))
+    end
+
+    nr = math.floor(nr)
+    if nr == 0 then
+        return ""
+    end
+
+    return _nr_to_utf8(nr)
+end
+
 function Builtins.strchars(str, _skipcc, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "strchars"):toString())
+        error(Error(118, "strchars"))
     end
     return Utf8.len(tostring(str or ""))
 end
 
 function Builtins.strcharpart(str, start, len, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "strcharpart"):toString())
+        error(Error(118, "strcharpart"))
     end
     local s = tostring(str or "")
     local st = tonumber(start) or 0
@@ -4758,7 +5370,7 @@ end
 -- {silent} may be "", "silent", or "silent!" (default: "silent").
 function Builtins.execute(command, silent, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "execute"):toString())
+        error(Error(118, "execute"))
     end
 
     local mode
@@ -4767,7 +5379,7 @@ function Builtins.execute(command, silent, ...)
     else
         mode = tostring(silent)
         if mode ~= "" and mode ~= "silent" and mode ~= "silent!" then
-            error(Error(474, "execute(): invalid {silent} value"):toString())
+            error(Error(474, "execute(): invalid {silent} value"))
         end
     end
 
@@ -4775,7 +5387,7 @@ function Builtins.execute(command, silent, ...)
     if type(command) == "table" and not command.__call then
         for k, _ in pairs(command) do
             if type(k) ~= "number" then
-                error(Error(1098):toString())
+                error(Error(1098))
             end
         end
         local cmds = {}
@@ -4793,7 +5405,7 @@ function Builtins.execute(command, silent, ...)
             script = mode .. " " .. script
         end
     else
-        error(Error(1098):toString())
+        error(Error(1098))
     end
 
     local cap = ExMsg.StartCapture()
@@ -4814,6 +5426,10 @@ function Builtins.execute(command, silent, ...)
     end)
     ExMsg.PopUISuppress()
     local output, last_err = ExMsg.EndCapture(cap)
+
+    if cap and cap.saw_full_line and output ~= "" and output:sub(1, 1) ~= "\n" then
+        output = "\n" .. output
+    end
 
     -- execute() returns captured text without a trailing line break.
     output = output:gsub("\n$", "")
@@ -4932,7 +5548,7 @@ end
 
 function Builtins.histdel(_history, _item, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "histdel"):toString())
+        error(Error(118, "histdel"))
     end
     -- TODO: history backends pending.
     -- TODO: support item deletion.
@@ -5002,7 +5618,7 @@ function Builtins.substitute(expr, pat, sub, flags)
                 elseif nxt == "\\" then
                     out[#out + 1] = "\\"
                 else
-                    out[#out + 1] = nxt
+                    out[#out + 1] = "\\" .. nxt
                 end
                 i = i + 2
             elseif ch == "&" then
@@ -5057,7 +5673,7 @@ end
 -- string({expr}): Convert to an arbitrary input to a string
 function Builtins.string(expr, ...)
     if select("#", ...) > 0 then
-        error(Error(118, "string"):toString())
+        error(Error(118, "string"))
     end
     return vim_string(expr)
 end

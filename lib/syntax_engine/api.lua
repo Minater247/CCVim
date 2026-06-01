@@ -122,15 +122,17 @@ local function compile_match_pattern(raw_pattern)
     return pattern, compiled, case_sensitive, nil
 end
 
-local function normal_blit_for_line(line)
+local function normal_hl_for_line(line)
     local len = #line
     if len == 0 then
-        return { fg = "", bg = "" }
+        return { hl = {} }
     end
-    local normal = Highlight.For("Normal")
-    local fg = string.rep(colors.toBlit(normal[1]), len)
-    local bg = string.rep(colors.toBlit(normal[2]), len)
-    return { fg = fg, bg = bg }
+    local hl_id = Highlight.GetId("Normal")
+    local out = {}
+    for i = 1, len do
+        out[i] = hl_id
+    end
+    return { hl = out }
 end
 
 local function buffer_line_count(buffer)
@@ -141,13 +143,11 @@ local function buffer_get_line(buffer, line_nr)
     return buffer:get_line(line_nr, true) or ""
 end
 
-local function apply_match_slot(line, fg_chars, bg_chars, slot)
+local function apply_match_slot(line, hl_chars, slot)
     local matched = false
     local pos = 1
     local len = #line
-    local hl = Highlight.For(slot.group)
-    local fg = colors.toBlit(hl[1])
-    local bg = colors.toBlit(hl[2])
+    local hl_id = Highlight.GetId(slot.group)
 
     while pos <= len do
         local s, e = VimRegex.find_compiled(line, slot.compiled, slot.case_sensitive, pos)
@@ -157,8 +157,7 @@ local function apply_match_slot(line, fg_chars, bg_chars, slot)
         if e >= s then
             matched = true
             for i = s, e do
-                fg_chars[i] = fg
-                bg_chars[i] = bg
+                hl_chars[i] = hl_id
             end
             pos = e + 1
         else
@@ -181,27 +180,24 @@ local function apply_window_matches(win, buffer, first_line, last_line, blits)
     for ln = first_line, last_line do
         local line = buffer_get_line(buffer, ln)
         if line ~= "" then
-            local entry = out[ln] or normal_blit_for_line(line)
-            local fg_chars = {}
-            local bg_chars = {}
+            local entry = out[ln] or normal_hl_for_line(line)
+            local hl_chars = {}
             for i = 1, #line do
-                fg_chars[i] = entry.fg:sub(i, i)
-                bg_chars[i] = entry.bg:sub(i, i)
+                hl_chars[i] = entry.hl[i]
             end
 
             local any = false
             for slot = 3, 1, -1 do
                 local item = slots[slot]
                 if item then
-                    local matched = apply_match_slot(line, fg_chars, bg_chars, item)
+                    local matched = apply_match_slot(line, hl_chars, item)
                     if matched then any = true end
                 end
             end
 
             if any then
                 out[ln] = {
-                    fg = table.concat(fg_chars),
-                    bg = table.concat(bg_chars),
+                    hl = hl_chars,
                 }
             end
         end

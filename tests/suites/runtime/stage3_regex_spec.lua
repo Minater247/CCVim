@@ -43,6 +43,17 @@ return {
         assert_match("lookahead negative", R, "bar", "\\%(foo\\)\\@!bar", true, 1, 3)
         assert_match("lookbehind positive", R, "foobar", "\\%(foo\\)\\@<=bar", true, 4, 6)
         assert_match("lookbehind negative", R, "xxbar", "\\%(foo\\)\\@<!bar", true, 3, 5)
+        assert_match("counted lookbehind positive", R, "hi! link", "\\a\\@1<=!", true, 3, 3)
+        assert_match("counted lookbehind width", R, "end do label", "\\%(end\\s*do\\s\\+\\)\\@11<=label", true, 8, 12)
+        assert_match(
+            "vm escaped counted repeat branch",
+            R,
+            "- x", "\\%(\\t\\| \\{0,4\\}\\)[-*+]\\%(\\s\\+\\S\\)\\@=",
+            true,
+            1,
+            1
+        )
+        assert_match("vm counted repeat unescaped close", R, "&lt;", "&#\\=[0-9A-Za-z]\\{1,32};", true, 1, 4)
 
         assert_match("zs/ze span", R, "foobarqux", "foo\\zsbar\\zequx", true, 4, 6)
 
@@ -52,13 +63,38 @@ return {
         assert_match("percent group", R, "foobaz", "\\%(foo\\|bar\\)baz", true, 1, 6)
         assert_match("percent optional short", R, "clea", "clea\\%[r]", true, 1, 4)
         assert_match("percent optional full", R, "clear", "clea\\%[r]", true, 1, 5)
+        assert_match("percent column greater", R, "abc", "\\%>1c", true, 2, 1)
+        assert_match("percent column less", R, "abc", "\\%<2c", true, 1, 0)
+        assert_match("percent column exact", R, "abc", "\\%2c", true, 2, 1)
+        assert_match("matchit current-token column guard", R, "(x)", "(\\(\\%>1c.*$\\)\\@=", true, 1, 1)
+        assert_no_match(
+            "matchit current-token column guard after current token",
+            R, "(x)", "(\\(\\%>2c.*$\\)\\@=", true
+        )
         assert_match("underscore class newline", R, "a\nb", "a\\_sb", true, 1, 3)
         assert_match("identifier classes i/I", R, "::cont::", "::\\I\\i*::", true, 1, 8)
         assert_match("alternation earliest branch position", R, "x .. +", "[+]\\|\\.\\{2,3}", true, 3, 4)
         assert_match("simple ignore-case", R, "token123", "\\<Token\\d\\+\\>", false, 1, 8)
+        do
+            local compiled, emsg = R.compile("^foo")
+            if not compiled then
+                error("FAIL compile bol anchor: " .. tostring(emsg))
+            end
+            local s, e = R.find_compiled("xxfoo", compiled, true, 3)
+            Assert.eq("bol anchor mid-search start", s, nil)
+            Assert.eq("bol anchor mid-search end", e, nil)
+        end
         assert_no_match("bclass percent literal", R, "if exists", "#\\d\\+\\|[#%]<\\>", true)
         assert_match("counted repeat open upper", R, "aab", "a\\{2,}", true, 1, 2)
         assert_match("help option pattern repeat", R, "'textwidth'", "'[a-z]\\{2,\\}'", true, 1, 11)
+        do
+            local matchit_pat =
+                "\\%(\\%((\\|)\\|{\\|}\\|\\\\\\\\[\\|\\]\\|<\\|>\\|\\/\\*\\|\\*\\/"
+                .. "\\|#\\s*if\\%(n\\=def\\)\\=\\|#\\s*else\\>\\|#\\s*elif\\%(n\\=def\\)\\=\\>"
+                .. "\\|#\\s*endif\\>\\)\\)$"
+            local compiled, emsg = R.compile(matchit_pat)
+            Assert.truthy("matchit matchpairs pattern compiles", compiled ~= nil, emsg)
+        end
 
         do
             local compiled, emsg = R.compile("[abc")

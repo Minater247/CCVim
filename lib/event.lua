@@ -10,18 +10,26 @@ local ExMsg  = loadModule("lib.excmd.exmsg")
 local Error = loadModule("lib.error")
 local FrameTree = loadModule("lib.frame")
 local Autocmd = loadModule("lib.autocmd")
+local Fn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local TimerUtils = loadModule("lib.luaapi.timerutils")
 
+local function current_backend()
+    return rawget(_ENV, "backend")
+        or rawget(_G, "backend")
+        or rawget(_ENV, "backend_proxy")
+        or rawget(_ENV, "backend_ref")
+end
+
 function Event.StartTimer(time, callback)
-    local id = os.startTimer(time)
+    local id = current_backend().start_timer(time)
     timers[id] = callback
     return id
 end
 
 function Event.CancelTimer(id)
     if not id then return end
-    os.cancelTimer(id)
+    current_backend().cancel_timer(id)
     timers[id] = nil
 end
 
@@ -113,7 +121,7 @@ local function parse_mousescroll_amount(axis)
 end
 
 local function click_count(button, x, y)
-    local now = os.epoch("utc")
+    local now = current_backend().get_epoch()
     local max_gap = math.max(0, math.floor(options.get("mousetime")))
 
     local count = 1
@@ -148,6 +156,56 @@ local function target_window_at(x, y)
     end
 
     return frame.window, frame, local_x, local_row
+end
+
+local function find_click_zone(zones, x)
+    for i = 1, #zones do
+        local zone = zones[i]
+        if x >= zone.start_col and x <= zone.end_col then
+            return zone
+        end
+    end
+    return nil
+end
+
+local function click_zone_at(x, y)
+    local tab = tabpages[curtp]
+
+    if y == 1 then
+        local stal = options.get("showtabline")
+        if stal == 2 or (stal == 1 and tab:count_all() > 1) then
+            local zone = find_click_zone(tab.tabline_click_zones, x)
+            if zone then
+                return zone, windows[curwin], nil, x, y
+            end
+        end
+    end
+
+    if options.get("laststatus") == 3 and y == (tab.winyoff + tab.tree.height + 1) then
+        local zone = find_click_zone(tab.global_statusline_click_zones, x)
+        if zone then
+            return zone, windows[curwin], nil, x, y
+        end
+    end
+
+    local local_y = y - tab.winyoff
+    if local_y < 1 then
+        return nil
+    end
+
+    local frame, local_x, local_row = FrameTree.FrameAtWithLocal(tab.tree, x, local_y)
+    if not frame or not frame.window then
+        return nil
+    end
+
+    if local_row == frame.height then
+        local zone = find_click_zone(frame.window.statusline_click_zones, local_x)
+        if zone then
+            return zone, frame.window, frame, local_x, local_row
+        end
+    end
+
+    return nil, frame.window, frame, local_x, local_row
 end
 
 local function focus_window(win)
@@ -186,7 +244,19 @@ local mouse_kind_suffixes = {
 
 local function mouse_notation_name(kind, button, clicks, direction)
     if kind == "scroll" then
-        return direction == -1 and "ScrollWheelUp" or "ScrollWheelDown"
+        if direction == "up" then
+            return "ScrollWheelUp"
+        end
+        if direction == "down" then
+            return "ScrollWheelDown"
+        end
+        if direction == "left" then
+            return "ScrollWheelLeft"
+        end
+        if direction == "right" then
+            return "ScrollWheelRight"
+        end
+        error("Unknown mouse scroll direction: " .. tostring(direction))
     end
 
     local name = mouse_button_names[button] .. mouse_kind_suffixes[kind]
@@ -202,6 +272,100 @@ local function last_click_count(button)
         return prev.count
     end
     return 1
+end
+
+local _btn_names = {[1]="l", [2]="r", [3]="m"}
+local function click_button_name(button) return _btn_names[button] or "" end
+
+local function click_modifier_string()
+    local c, s, a = current_mod_flags()
+    return (s and "s" or "") .. (c and "c" or "") .. (a and "a" or "")
+end
+
+local function switch_to_tab_from_click(tabnr)
+    local target = tonumber(tabnr)
+    if not target or not tabpages[target] then
+        return false
+    end
+
+    tabpages[curtp].lastwin = curwin
+    curtp = target
+    enterWindow(tabpages[curtp].lastwin or tabpages[curtp].windows[1].winnr)
+    what_redraw["all"] = true
+    need_redraw = true
+    return true
+end
+
+local function close_tab_from_click(tabnr)
+    local target = tonumber(tabnr)
+    if not target then
+        return false
+    end
+    if target == 999 then
+        target = curtp
+    end
+
+    local target_tab = tabpages[target]
+    if not target_tab then
+        return false
+    end
+
+    local prev_tab = curtp
+    local prev_win = curwin
+    local switched = false
+
+    if prev_tab ~= target then
+        tabpages[prev_tab].lastwin = prev_win
+        curtp = target
+        enterWindow(target_tab.lastwin or target_tab.windows[1].winnr)
+        switched = true
+    end
+
+    local ok = tabpages[curtp]:close(windows[curwin], false)
+    if ok ~= true then
+        if switched then
+            curtp = prev_tab
+            enterWindow(prev_win)
+        end
+        return false
+    end
+
+    if switched then
+        curtp = prev_tab
+        enterWindow(prev_win)
+    end
+
+    what_redraw["all"] = true
+    need_redraw = true
+    return true
+end
+
+local function dispatch_click_zone(zone, win, button, clicks)
+    if not zone then
+        return false
+    end
+
+    if zone.kind == "tab" then
+        if button == 1 then
+            return switch_to_tab_from_click(zone.tabnr)
+        elseif button == 3 then
+            return close_tab_from_click(zone.tabnr)
+        end
+        return false
+    elseif zone.kind == "close_tab" then
+        if button == 1 then
+            return close_tab_from_click(zone.tabnr)
+        end
+        return false
+    elseif zone.kind == "function" and type(zone.func) == "string" and zone.func ~= "" then
+        focus_window(win)
+        Fn._call(zone.func, zone.minwid or 0, clicks, click_button_name(button), click_modifier_string())
+        what_redraw["all"] = true
+        need_redraw = true
+        return true
+    end
+
+    return false
 end
 
 local function mouse_key_for_event(kind, button, clicks, direction)
@@ -270,14 +434,13 @@ local function handle_mouse_click(button, x, y)
         return
     end
 
-    local win, _, local_x, local_y = target_window_at(x, y)
+    local zone, win, _, local_x, local_y = click_zone_at(x, y)
     if not win then
         return
     end
 
     local clicks = click_count(button, x, y)
     mouse_down[button] = true
-    focus_window(win)
     set_mouse_vvars(win, button, x, y, clicks)
 
     local click_key = mouse_key_for_event("click", button, clicks, nil)
@@ -285,6 +448,12 @@ local function handle_mouse_click(button, x, y)
         need_redraw = true
         return
     end
+
+    if dispatch_click_zone(zone, win, button, clicks) then
+        return
+    end
+
+    focus_window(win)
 
     local model = options.get("mousemodel")
 
@@ -362,9 +531,6 @@ local function handle_mouse_scroll(direction, x, y)
     if not mouse_enabled_for_current_mode() then
         return
     end
-    if direction ~= -1 and direction ~= 1 then
-        return
-    end
 
     local win = target_window_at(x, y)
     if not win then
@@ -380,17 +546,26 @@ local function handle_mouse_scroll(direction, x, y)
         return
     end
 
-    local amount
-    if shift_is_held() then
-        amount = win:textheight()
+    if direction == "up" or direction == "down" then
+        local amount
+        if shift_is_held() then
+            amount = win:textheight()
+        else
+            amount = parse_mousescroll_amount("ver")
+        end
+        if amount < 1 then
+            return
+        end
+        win:scroll(0, direction == "up" and -amount or amount)
+    elseif direction == "left" or direction == "right" then
+        local amount = parse_mousescroll_amount("hor")
+        if amount < 1 then
+            return
+        end
+        win:scroll(direction == "left" and -amount or amount, 0)
     else
-        amount = parse_mousescroll_amount("ver")
+        error("Unknown mouse scroll direction: " .. tostring(direction))
     end
-    if amount < 1 then
-        return
-    end
-
-    win:scroll(0, direction * amount)
     need_redraw = true
 end
 
@@ -401,7 +576,14 @@ function Event.ProcessEvent(ev)
         if is_modifier(k) then
             mods_down[k] = true
         elseif not ignored_keys[k] then
-            local c, s, a = current_mod_flags()
+            local c, s, a
+            if ev[4] ~= nil or ev[5] ~= nil then
+                c = ev[3] == true
+                s = ev[4] == true
+                a = ev[5] == true
+            else
+                c, s, a = current_mod_flags()
+            end
             local key = Key:new(k, c, s, a)
             local keystr = Key.to_termcode_string(key)
             local discard = OnKey.dispatch(keystr, keystr)
@@ -433,7 +615,10 @@ function Event.ProcessEvent(ev)
             end)
         end
     elseif ev[1] == "monitor_resize" or ev[1] == "term_resize" then
-        local w, h = term.getSize()
+        local w, h = current_backend().size()
+        if type(ev[2]) == "number" and type(ev[3]) == "number" then
+            w, h = ev[2], ev[3]
+        end
         local ok, err = apply_terminal_resize(w, h, ev[1])
         if not ok and err then
             local msg
@@ -450,7 +635,7 @@ function Event.ProcessEvent(ev)
 end
 
 function Event.PullAndProcess(filter)
-    local e1, e2, e3, e4, e5, e6 = os.pullEvent(filter)
+    local e1, e2, e3, e4, e5, e6 = current_backend().pull_event(filter)
     Event.ProcessEvent({ e1, e2, e3, e4, e5, e6 })
     return true
 end

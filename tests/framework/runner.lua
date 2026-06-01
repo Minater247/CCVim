@@ -17,6 +17,13 @@ local function detect_ccvim_path()
     return "."
 end
 
+local function is_runner_option(value)
+    return value == "--backend=lua_editor"
+        or value == "--backend=headless_nvim"
+        or value == "--benchmarks"
+        or value == "--include-benchmarks"
+end
+
 -- Recursively discover test files (files ending in _spec.lua)
 local function discover_test_files(dir_path)
     local files = {}
@@ -42,7 +49,7 @@ local function read_suite_paths(default_paths)
     local out = {}
     if #cli_args > 0 then
         for i = 1, #cli_args do
-            if cli_args[i] ~= "--backend=lua_editor" and cli_args[i] ~= "--backend=headless_nvim" then
+            if not is_runner_option(cli_args[i]) then
                 out[#out + 1] = cli_args[i]
             end
         end
@@ -65,6 +72,16 @@ local function read_backend()
     return "lua_editor"
 end
 
+local function read_include_benchmarks()
+    local cli_args = arg or {}
+    for i = 1, #cli_args do
+        if cli_args[i] == "--benchmarks" or cli_args[i] == "--include-benchmarks" then
+            return true
+        end
+    end
+    return false
+end
+
 local function new_backend(name)
     if name == "headless_nvim" then
         return HeadlessNvimBackend.new()
@@ -74,6 +91,7 @@ end
 
 function Runner.run(default_paths)
     local backend_name = read_backend()
+    local include_benchmarks = read_include_benchmarks()
     local paths = read_suite_paths(default_paths)
 
     local total = 0
@@ -91,6 +109,10 @@ function Runner.run(default_paths)
             local suite = suite_or_err
             if suite.supports and suite.supports[backend_name] == false then
                 print(string.format("SKIP %s (%s unsupported)", suite.id, backend_name))
+                skipped = skipped + 1
+                total = total + 1
+            elseif suite.benchmark and not include_benchmarks then
+                print(string.format("SKIP %s (benchmark; pass --benchmarks to run)", suite.id))
                 skipped = skipped + 1
                 total = total + 1
             else

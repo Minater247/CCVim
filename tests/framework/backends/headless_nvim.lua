@@ -26,6 +26,14 @@ local function run(cmd)
     return false, out
 end
 
+local function make_temp_eval_path(ext)
+    local base = os.tmpname()
+    if ext and ext ~= "" then
+        return base .. "." .. ext
+    end
+    return base
+end
+
 local function ensure_host_dir(path)
     local lfs = require("lfs")
     if path == nil or path == "" or path == "/" then
@@ -429,7 +437,7 @@ function HeadlessNvimBackend.new()
     end
 
     function backend:eval_lua(lua_expr)
-        local tmp = string.format("/tmp/nvim-test-eval-%d.lua", os.time())
+        local tmp = make_temp_eval_path("lua")
         local f = assert(io.open(tmp, "w"))
         -- Write the encoder function
         f:write([[
@@ -544,7 +552,7 @@ end
                 return nil, "eval_vimscript setup must be a string"
             end
 
-            local path = tostring(script_ctx or string.format("/tmp/nvim-test-eval-%d.vim", os.time()))
+            local path = tostring(script_ctx or make_temp_eval_path("vim"))
             local result_var = "__ccvim_test_eval_result"
             local f, open_err = io.open(path, "w")
             if not f then
@@ -577,7 +585,7 @@ end
             return nil, "eval_block expects a string containing Lua code"
         end
         
-        local tmp = string.format("/tmp/nvim-test-eval-%d.lua", os.time())
+        local tmp = make_temp_eval_path("lua")
         local f = assert(io.open(tmp, "w"))
         -- Write the encoder function
         f:write([[

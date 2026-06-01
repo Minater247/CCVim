@@ -47,19 +47,21 @@ return {
             end
 
             local function fg_at(blit, idx)
-                return blit.fg:sub(idx, idx)
+                local attrs = screen.hl_attrs(blit.hl[idx]) or {}
+                return attrs.fg
             end
 
             local function bg_at(blit, idx)
-                return blit.bg:sub(idx, idx)
+                local attrs = screen.hl_attrs(blit.hl[idx]) or {}
+                return attrs.bg
             end
 
-            local normal_fg = colors.toBlit(Highlight.For("Normal")[1])
-            local string_fg = colors.toBlit(Highlight.For("String")[1])
-            local comment_fg = colors.toBlit(Highlight.For("Comment")[1])
-            local structure_fg = colors.toBlit(Highlight.For("Structure")[1])
-            local error_fg = colors.toBlit(Highlight.For("Error")[1])
-            local error_bg = colors.toBlit(Highlight.For("Error")[2])
+            local normal_fg = Highlight.For("Normal")[1]
+            local string_fg = Highlight.For("String")[1]
+            local comment_fg = Highlight.For("Comment")[1]
+            local structure_fg = Highlight.For("Structure")[1]
+            local error_fg = Highlight.For("Error")[1]
+            local error_bg = Highlight.For("Error")[2]
 
             do
                 local ctx_state = mk_ctx({ "keyword String test" })
@@ -151,6 +153,27 @@ return {
             end
 
             do
+                local parsed = Parser.parse(
+                    "region Comment start=/</ matchgroup=Error end=/>/ matchgroup=Structure end=/!/ "
+                )
+                Assert.eq(
+                    "region start before matchgroup keeps plain delimiter",
+                    parsed.patterns.start[1].matchgroup,
+                    nil
+                )
+                Assert.eq(
+                    "first region end captures first matchgroup",
+                    parsed.patterns["end"][1].matchgroup,
+                    "Error"
+                )
+                Assert.eq(
+                    "second region end captures updated matchgroup",
+                    parsed.patterns["end"][2].matchgroup,
+                    "Structure"
+                )
+            end
+
+            do
                 local ctx_state = mk_ctx({ "match Comment +[ab+]+" })
                 local buf = mk_buf({ "+" })
                 local ok_blit, blit = pcall(Runtime.line_to_blit, ctx_state, buf, 1)
@@ -191,6 +214,57 @@ return {
 
             do
                 local ctx_state = mk_ctx({
+                    "region Comment start=/\\w/ end=/$/ contains=String",
+                    "match String /\\w\\+/ contained",
+                })
+                local buf = mk_buf({ "word" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("contained match can start at region start", fg_at(blit, 1), string_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "match Comment transparent /\\<\\d/ contains=String",
+                    "match String /\\d\\+/ contained",
+                })
+                local buf = mk_buf({ "abc 1977 x" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("contained match extends past transparent anchor start", fg_at(blit, 5), string_fg)
+                Assert.eq("contained match extends past transparent anchor end", fg_at(blit, 8), string_fg)
+                Assert.eq("transparent anchor does not leak beyond contained match", fg_at(blit, 9), normal_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "match Comment transparent /x/ contains=String",
+                    "keyword String xray contained",
+                })
+                local buf = mk_buf({ "xray nope" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("contained keyword extends past transparent anchor start", fg_at(blit, 1), string_fg)
+                Assert.eq("contained keyword extends past transparent anchor end", fg_at(blit, 4), string_fg)
+                Assert.eq("transparent keyword anchor does not leak", fg_at(blit, 5), normal_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({ "match String /\\cfoo/" })
+                local buf = mk_buf({ "FOO" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("inline \\c enables ignore-case", fg_at(blit, 1), string_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "case ignore",
+                    "match String /\\Cfoo/",
+                })
+                local buf = mk_buf({ "FOO" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("inline \\C restores case-sensitive match", fg_at(blit, 1), normal_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
                     "match Comment /foo/ nextgroup=String skipwhite",
                     "match String /bar/ contained",
                 })
@@ -220,6 +294,44 @@ return {
                 local blit = Runtime.line_to_blit(ctx_state, buf, 1)
                 Assert.eq("lc nextgroup anchor comment", fg_at(blit, 1), comment_fg)
                 Assert.eq("lc nextgroup anchor string", fg_at(blit, 4), string_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "match Comment /^/ nextgroup=Structure",
+                    "match Structure /#/ contained",
+                    "match String /\\[[^\\]]\\+\\]/",
+                })
+                local buf = mk_buf({ "[link]" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq(
+                    "zero-width nextgroup fallback still allows same-column top-level match",
+                    fg_at(blit, 1),
+                    string_fg
+                )
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "region Comment start=/./ end=/$/ contains=String,Structure",
+                    "match String /foo=/he=e-1 nextgroup=Structure contained",
+                    "match Structure /bar/ contained",
+                })
+                local buf = mk_buf({ "foo=bar" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("he=e-1 match still highlights body", fg_at(blit, 1), string_fg)
+                Assert.eq("he=e-1 leaves separator to container", fg_at(blit, 4), comment_fg)
+                Assert.eq("nextgroup after trimmed suffix still matches", fg_at(blit, 5), structure_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    'match Comment /\\s".*$/lc=1 extend',
+                    'region String start=/[^a-zA-Z>\\\\@]"/lc=1 end=/"/ oneline keepend extend',
+                })
+                local buf = mk_buf({ 'foo " bar' })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("unterminated oneline region yields to same-start match", fg_at(blit, 5), comment_fg)
             end
 
             do
@@ -305,6 +417,16 @@ return {
                 local blit = Runtime.line_to_blit(ctx_state, buf, 1)
                 Assert.eq("transparent plain start stays Normal", fg_at(blit, 1), normal_fg)
                 Assert.eq("transparent plain end stays Normal", fg_at(blit, 2), normal_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
+                    "region Comment start=/</ matchgroup=Error end=/>/",
+                })
+                local buf = mk_buf({ "<x>" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("late region matchgroup does not repaint start delimiter", fg_at(blit, 1), comment_fg)
+                Assert.eq("late region matchgroup still paints end delimiter", fg_at(blit, 3), error_fg)
             end
         end)
 

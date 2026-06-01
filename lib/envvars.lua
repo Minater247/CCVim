@@ -1,4 +1,5 @@
 local M = {}
+local Backend = loadModule("lib.backend")
 
 local defaults = {}
 local overrides = {}
@@ -25,14 +26,7 @@ local function normalize_value(value)
 end
 
 local function infer_home()
-    local d = tostring(shell.dir() or "")
-    if d == "" then
-        return "/"
-    end
-    if d:sub(1, 1) ~= "/" then
-        d = "/" .. d
-    end
-    return d
+    return Backend.cwd()
 end
 
 local function init_defaults()

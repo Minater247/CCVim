@@ -2,15 +2,6 @@
 -- Hybrid Vim-style regex engine:
 --   - Fast path: translate simple subset to Lua patterns (high throughput).
 --   - VM path: backtracking matcher for syntax-oriented constructs.
---
--- VM-supported Stage 3 constructs:
---   lookarounds: \@= \@! \@<= \@<!
---   zero-width span markers: \zs \ze
---   external captures/backrefs: \z(...) \z1..
---   grouping forms: \%(...) and \%[...]
---   generalized \_ classes (newline-inclusive class atoms)
---
--- This module intentionally focuses on syntax-engine needs and guardrails.
 
 local R = {}
 
@@ -1033,9 +1024,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            min_s, max_s, m_all = src:match("^\\{%-(%d+),(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             min_s, max_s, m_all = src:match("^\\{%-(%d+),(%d+)}()")
             if min_s then
                 local q, emsg = vm_parse_quant_fields(min_s, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{%-(%d+),\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, nil, false)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)
@@ -1051,9 +1060,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            max_s, m_all = src:match("^\\{%-,(%d+)\\}()")
+            if max_s then
+                local q, emsg = vm_parse_quant_fields(0, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             max_s, m_all = src:match("^\\{%-,(%d+)}()")
             if max_s then
                 local q, emsg = vm_parse_quant_fields(0, max_s, false)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{%-(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, min_s, false)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)
@@ -1069,9 +1096,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            min_s, max_s, m_all = src:match("^\\{(%d+),(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             min_s, max_s, m_all = src:match("^\\{(%d+),(%d+)}()")
             if min_s then
                 local q, emsg = vm_parse_quant_fields(min_s, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{(%d+),\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, nil, true)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)
@@ -1087,9 +1132,27 @@ local function vm_tokenize(pat)
                 return true
             end
 
+            max_s, m_all = src:match("^\\{,(%d+)\\}()")
+            if max_s then
+                local q, emsg = vm_parse_quant_fields(0, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
             max_s, m_all = src:match("^\\{,(%d+)}()")
             if max_s then
                 local q, emsg = vm_parse_quant_fields(0, max_s, true)
+                if not q then return nil, emsg end
+                add_quant(q.min, q.max, q.greedy)
+                i = i + (m_all - 1)
+                return true
+            end
+
+            min_s, m_all = src:match("^\\{(%d+)\\}()")
+            if min_s then
+                local q, emsg = vm_parse_quant_fields(min_s, min_s, true)
                 if not q then return nil, emsg end
                 add_quant(q.min, q.max, q.greedy)
                 i = i + (m_all - 1)
@@ -1222,6 +1285,20 @@ local function vm_tokenize(pat)
 
             if e == "%" then
                 local e2 = peek(2)
+                local col_op, col_num, after_col = pat:match("^%%([<>]?)(%d+)c()", i + 1)
+                if col_num then
+                    local op = "eq"
+                    if col_op == ">" then
+                        op = "gt"
+                    elseif col_op == "<" then
+                        op = "lt"
+                    end
+                    ntoks = ntoks + 1
+                    toks[ntoks] = { t = "COL", op = op, col = tonumber(col_num) or 0 }
+                    i = after_col
+                    goto cont
+                end
+
                 if e2 == "(" then
                     ntoks = ntoks + 1
                     toks[ntoks] = { t = "LP", kind = "noncap" }
@@ -1263,24 +1340,39 @@ local function vm_tokenize(pat)
             end
 
             if e == "@" then
-                local e2 = peek(2)
+                local j = i + 2
+                local digits = ""
+                while j <= n do
+                    local dj = pat:sub(j, j)
+                    if not dj:match("%d") then
+                        break
+                    end
+                    digits = digits .. dj
+                    j = j + 1
+                end
+                local limit = (digits ~= "") and tonumber(digits) or nil
+                local e2 = pat:sub(j, j)
                 if e2 == "=" then
-                    add("LOOK", "ahead_pos")
-                    i = i + 3
+                    ntoks = ntoks + 1
+                    toks[ntoks] = { t = "LOOK", v = "ahead_pos", limit = limit }
+                    i = j + 1
                     goto cont
                 elseif e2 == "!" then
-                    add("LOOK", "ahead_neg")
-                    i = i + 3
+                    ntoks = ntoks + 1
+                    toks[ntoks] = { t = "LOOK", v = "ahead_neg", limit = limit }
+                    i = j + 1
                     goto cont
                 elseif e2 == "<" then
-                    local e3 = peek(3)
+                    local e3 = pat:sub(j + 1, j + 1)
                     if e3 == "=" then
-                        add("LOOK", "behind_pos")
-                        i = i + 4
+                        ntoks = ntoks + 1
+                        toks[ntoks] = { t = "LOOK", v = "behind_pos", limit = limit }
+                        i = j + 2
                         goto cont
                     elseif e3 == "!" then
-                        add("LOOK", "behind_neg")
-                        i = i + 4
+                        ntoks = ntoks + 1
+                        toks[ntoks] = { t = "LOOK", v = "behind_neg", limit = limit }
+                        i = j + 2
                         goto cont
                     end
                 end
@@ -1341,6 +1433,11 @@ local function vm_tokenize(pat)
         if c == "[" and (mode == "magic" or mode == "verymagic") then
             local raw, after_or_err = read_bracket_class(i)
             if not raw then
+                if after_or_err == "Unterminated [] class" and pat:sub(i + 1, i + 2) == "\\|" then
+                    add("LIT", "[")
+                    i = i + 1
+                    goto cont
+                end
                 return nil, after_or_err
             end
             ntoks = ntoks + 1
@@ -1523,6 +1620,11 @@ local function vm_parse(tokens)
             return { kind = "BREF_EXT", id = t.id }
         end
 
+        if t.t == "COL" then
+            consume()
+            return { kind = "COL", op = t.op, col = t.col }
+        end
+
         if t.t == "PCTOPT" then
             consume()
             return vm_percent_opt_node(t.raw)
@@ -1584,6 +1686,7 @@ local function vm_parse(tokens)
                 atom = {
                     kind = "LOOK",
                     look = t.v,
+                    limit = t.limit,
                     sub = atom,
                 }
             else
@@ -1882,7 +1985,7 @@ local function vm_bounds(node)
         return 0, nil
     end
 
-    if kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or
+    if kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or kind == "COL" or
         kind == "ZS" or kind == "ZE" or kind == "LOOK" then
         return 0, 0
     end
@@ -2044,10 +2147,13 @@ local function vm_make_matcher(ast, hints)
             return ok
         end
 
-        local function check_lookbehind(sub, st)
+        local function check_lookbehind(sub, st, limit)
             local mn, mx = vm_bounds(sub)
             if mn == nil then mn = 0 end
             local max_back = mx
+            if limit ~= nil then
+                max_back = limit
+            end
             if max_back == nil then
                 max_back = VM_LOOKBEHIND_MAX
             end
@@ -2196,6 +2302,21 @@ local function vm_make_matcher(ast, hints)
                 return false
             end
 
+            if kind == "COL" then
+                local ok
+                if node.op == "gt" then
+                    ok = st.pos > node.col
+                elseif node.op == "lt" then
+                    ok = st.pos < node.col
+                else
+                    ok = st.pos == node.col
+                end
+                if ok then
+                    return cont(st)
+                end
+                return false
+            end
+
             if kind == "ZS" then
                 local ns = vm_clone_state(st)
                 ns.zs = st.pos
@@ -2260,9 +2381,9 @@ local function vm_make_matcher(ast, hints)
                 elseif node.look == "ahead_neg" then
                     passed = not check_lookahead(node.sub, st)
                 elseif node.look == "behind_pos" then
-                    passed = check_lookbehind(node.sub, st)
+                    passed = check_lookbehind(node.sub, st, node.limit)
                 else
-                    passed = not check_lookbehind(node.sub, st)
+                    passed = not check_lookbehind(node.sub, st, node.limit)
                 end
 
                 if passed then
@@ -2473,7 +2594,7 @@ local function vm_common_prefix(a, b)
 end
 
 local function vm_is_zero_width_kind(kind)
-    return kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or
+    return kind == "BOL" or kind == "EOL" or kind == "WB_START" or kind == "WB_END" or kind == "COL" or
         kind == "ZS" or kind == "ZE" or kind == "LOOK"
 end
 
@@ -2611,6 +2732,8 @@ local VM_TRIGGER_LITS = {
     "\\z",
     "\\%(",
     "\\%[",
+    "\\%>",
+    "\\%<",
     "\\_",
     "\\=",
     "\\{-",
@@ -2621,6 +2744,12 @@ local function pattern_needs_vm(pat)
         if pat:find(VM_TRIGGER_LITS[i], 1, true) then
             return true
         end
+    end
+    if pat:find("\\@%d+<=") or pat:find("\\@%d+<!") or pat:find("\\@%d+=") or pat:find("\\@%d+!") then
+        return true
+    end
+    if pat:find("\\%%%d+c") then
+        return true
     end
     return false
 end
@@ -2743,7 +2872,11 @@ local function find_in_specs(hay, specs, start_pos)
         if spec.plain ~= nil then
             s, e = str_find(hay, spec.plain, from, true)
         else
-            s, e = str_find(hay, spec.pat, from)
+            if spec.pat:sub(1, 1) == "^" and from > 1 then
+                s, e = nil, nil
+            else
+                s, e = str_find(hay, spec.pat, from)
+            end
         end
         if s then
             if not best_s or s < best_s then
@@ -2893,6 +3026,9 @@ function R.find_compiled(text, compiled, case_sensitive, start_pos)
             if single.plain ~= nil then
                 return str_find(hay, single.plain, from, true)
             end
+            if single.pat:sub(1, 1) == "^" and from > 1 then
+                return nil, nil
+            end
             return str_find(hay, single.pat, from)
         end
         return find_in_specs(hay, get_specs(compiled), from)
@@ -2913,6 +3049,9 @@ function R.find_compiled(text, compiled, case_sensitive, start_pos)
     if f_single then
         if f_single.plain ~= nil then
             return str_find(lowered, f_single.plain, from, true)
+        end
+        if f_single.pat:sub(1, 1) == "^" and from > 1 then
+            return nil, nil
         end
         return str_find(lowered, f_single.pat, from)
     end

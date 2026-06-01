@@ -153,6 +153,14 @@ function TUI.pushMenu(items)
     table.insert(state.stack, menu)
 end
 
+function TUI.replaceMenu(depth, items)
+    if not state.stack[depth] then
+        return
+    end
+
+    state.stack[depth] = buildMenuState(items)
+end
+
 -- leave current menu
 function TUI.popMenu()
     if #state.stack > 1 then

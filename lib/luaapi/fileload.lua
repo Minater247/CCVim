@@ -15,11 +15,11 @@ function M.Bind(env)
     if env._G ~= env then env._G = env end
 
     local function loadfile_bound(path, mode, override_env)
-        return loadfile(normalize_abs(path), mode or "t", override_env or env)
+        return loadfile(normalize_abs(path), mode or "bt", override_env or env)
     end
 
     local function load_bound(chunk, chunkname, mode, override_env)
-        return load(chunk, chunkname or "=(chunk)", mode or "t", override_env or env)
+        return load(chunk, chunkname or "=(chunk)", mode or "bt", override_env or env)
     end
 
     local function dofile_bound(path)

@@ -8,6 +8,7 @@ const DIST = path.join(ROOT, "dist");
 const INCLUDE_PATHS = [
   "instui.lua",
   "nvim.lua",
+  "vim.lua",
   "vim_installer.lua",
   "layout",
   "lib",

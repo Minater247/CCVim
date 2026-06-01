@@ -41,6 +41,20 @@ return {
                 Assert.eq("bytepos line", pos.line, 1)
                 Assert.eq("rendered line", lines[1], "a?")
             end
+
+            do
+                local lines, blits = TexRen.parse(
+                    "",
+                    params,
+                    nil,
+                    { hl = { [1] = 11, [4] = 22 } }
+                )
+                Assert.eq("cc left separator replacement", lines[1], string.char(0x94) .. string.char(0x97))
+                Assert.eq("left separator hl preserved", blits.hl[1][1], 11)
+                Assert.eq("right separator hl preserved", blits.hl[1][2], 22)
+                Assert.eq("left separator keeps colors", blits.swap[1][1], false)
+                Assert.eq("right separator swaps colors", blits.swap[1][2], true)
+            end
         end)
 
         mock.cleanup()

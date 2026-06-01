@@ -11,433 +11,174 @@ local Runtime = loadModule("lib.excmd.runtime")
 
 -- TODO: winhl is currently unhandled anywhere
 
---- Storage for the type of each option. Can be one of:
---- "ltw" -> local to window
---- "ltb" -> local to buffer
---- "ltt" -> local to tabpage
---- "got" -> global or local to tabpage
---- "gow" -> global or local to window
---- "gob" -> global or local to buffer
---- "ggg" -> global
-local opt_locs = {
-    autoindent = "ltb",
-    autoread = "gob",
-    autowrite = "ggg",
-    autowriteall = "ggg",
-    background = "ggg",
-    backspace = "ggg",
-    bomb = "ltb",
-    breakat = "ggg",
-    bufhidden = "ltb",
-    buflisted = "ltb",
-    buftype = "ltb",
-    cedit = "ggg",
-    cindent = "ltb",
-    cinoptions = "ltb",
-    cmdheight = "got",
-    colorcolumn = "ltw",
-    columns = "ggg",
-    comments = "ltb",
-    commentstring = "ltb",
-    completeopt = "gob",
-    completefunc = "ltb",
-    concealcursor = "ltw",
-    conceallevel = "ltw",
-    copyindent = "ltb",
-    cpoptions = "ggg",
-    cursorcolumn = "ltw",
-    cursorline = "ltw",
-    cursorlineopt = "ltw",
-    define = "gob",
-    diff = "ltw",
-    encoding = "ggg",
-    equalalways = "ggg",
-    eventignore = "ggg",
-    expandtab = "ltb",
-    fileencoding = "ltb",
-    fileformat = "ltb",
-    fileformats = "ggg",
-    filetype = "ltb",
-    findfunc = "gob",
-    fillchars = "gow",
-    foldcolumn = "ltw",
-    foldenable = "ltw",
-    foldexpr = "ltw",
-    foldmethod = "ltw",
-    formatoptions = "ltb",
-    gdefault = "ggg",
-    guicursor = "ggg",
-    guioptions = "ggg",
-    hidden = "ggg",
-    include = "gob",
-    includeexpr = "ltb",
-    ignorecase = "ggg",
-    indentexpr = "ltb",
-    indentkeys = "ltb",
-    insertmode = "ggg",
-    iskeyword = "ltb",
-    keywordprg = "gob",
-    lazyredraw = "ggg",
-    linebreak = "ltw",
-    listchars = "gow",
-    laststatus = "ggg",
-    lines = "ggg",
-    list = "ltw",
-    loadplugins = "ggg",
-    magic = "ggg",
-    matchpairs = "ltb",
-    mouse = "ggg",
-    mousemodel = "ggg",
-    mousemoveevent = "ggg",
-    mousescroll = "ggg",
-    mousetime = "ggg",
-    modified = "ltb",
-    modifiable = "ltb",
-    number = "ltw",
-    numberwidth = "ltw",
-    omnifunc = "ltb",
-    operatorfunc = "ggg",
-    packpath = "ggg",
-    path = "gob",
-    previewwindow = "ltw",
-    pumblend = "ggg",
-    pumheight = "ggg",
-    pumwidth = "ggg",
-    quickfixtextfunc = "ggg",
-    readonly = "ltb",
-    relativenumber = "ltw",
-    report = "ggg",
-    runtimepath = "ggg",
-    shell = "ggg",
-    shiftwidth = "ltb",
-    shortmess = "ggg",
-    selectmode = "ggg",
-    selection = "ggg",
-    showcmd = "ggg",
-    showcmdloc = "ggg",
-    showmode = "ggg",
-    showtabline = "ggg",
-    signcolumn = "ltw",
-    smarttab = "ggg",
-    softtabstop = "ltb",
-    spell = "ltw",
-    splitbelow = "ggg",
-    splitright = "ggg",
-    startofline = "ggg",
-    statusline = "gow",
-    syntax = "ltb",
-    swapfile = "ltb",
-    suffixesadd = "ltb",
-    synmaxcol = "ltb",
-    tagfunc = "ltb",
-    tabline = "ggg",
-    tabstop = "ltb",
-    termguicolors = "ggg",
-    thesaurusfunc = "gob",
-    textwidth = "ltb",
-    timeout = "ggg",
-    timeoutlen = "ggg",
-    undofile = "gob",
-    undolevels = "gob",
-    updatecount = "ggg",
-    varsofttabstop = "ltb",
-    vartabstop = "ltb",
-    verbose = "ggg",
-    winblend = "ltw",
-    wildignore = "ggg",
-    winfixheight = "ltw",
-    winfixwidth = "ltw",
-    winheight = "ggg",
-    winhighlight = "ltw",
-    winminheight = "ggg",
-    winminwidth = "ggg",
-    winwidth = "ggg",
-    wrap = "ltw",
-    write = "ggg",
+--- Option definitions: {loc, default, type}
+--- loc: "ltw"=local to window, "ltb"=local to buffer, "ltt"=local to tabpage,
+---      "got"=global or local to tabpage, "gow"=global or local to window,
+---      "gob"=global or local to buffer, "ggg"=global
+local opt_defs = {
+    autoindent    = {"ltb", true,    "boolean"},
+    autoread      = {"gob", true,    "boolean"},
+    autowrite     = {"ggg", false,   "boolean"},
+    autowriteall  = {"ggg", false,   "boolean"},
+    background    = {"ggg", "dark",  "string"},
+    backspace     = {"ggg", "indent,eol,start", "string"},
+    bomb          = {"ltb", false,   "boolean"},
+    breakat       = {"ggg", " \t!@*-+;:,./?", "string"},
+    bufhidden     = {"ltb", "",      "string"},
+    buflisted     = {"ltb", true,    "boolean"},
+    buftype       = {"ltb", "",      "string"},
+    cedit         = {"ggg", "<C-F>", "string"},
+    cindent       = {"ltb", false,   "boolean"},
+    cinoptions    = {"ltb", "",      "string"},
+    cmdheight     = {"got", 1,       "number"},
+    colorcolumn   = {"ltw", "",      "string"},
+    columns       = {"ggg", 80,      "number"},
+    comments      = {"ltb", "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-", "string"},
+    commentstring = {"ltb", "",      "string"},
+    completeopt   = {"gob", "menu,popup", "string"},
+    completefunc  = {"ltb", "",      "stringfunc"},
+    concealcursor = {"ltw", "",      "string"},
+    conceallevel  = {"ltw", 0,       "number"},
+    copyindent    = {"ltb", false,   "boolean"},
+    cpoptions     = {"ggg", "aABceFs_", "string"},
+    cursorcolumn  = {"ltw", false,   "boolean"},
+    cursorline    = {"ltw", false,   "boolean"},
+    cursorlineopt = {"ltw", "both",  "string"},
+    define        = {"gob", "",      "string"},
+    diff          = {"ltw", false,   "boolean"},
+    encoding      = {"ggg", "utf-8", "string"},
+    equalalways   = {"ggg", true,    "boolean"},
+    eventignore   = {"ggg", "",      "string"},
+    expandtab     = {"ltb", false,   "boolean"},
+    fileencoding  = {"ltb", "",      "string"},
+    fileformat    = {"ltb", "unix",  "string"},
+    fileformats   = {"ggg", "unix,dos", "string"},
+    filetype      = {"ltb", "",      "string"},
+    findfunc      = {"gob", "",      "stringfunc"},
+    fillchars     = {"gow", "",      "string"},
+    foldcolumn    = {"ltw", "0",     "string"},
+    foldenable    = {"ltw", true,    "boolean"},
+    foldexpr      = {"ltw", "0",     "string"},
+    foldmethod    = {"ltw", "manual","string"},
+    foldopen      = {"ggg", "block,hor,mark,percent,quickfix,search,tag,undo", "string"},
+    formatoptions = {"ltb", "tcqj",  "string"},
+    gdefault      = {"ggg", false,   "boolean"},
+    guicursor     = {
+        "ggg",
+        "n-v-c-sm:block,i-ci-ve:ver25,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor",
+        "string"
+    },
+    guioptions    = {"ggg", "egmrLT","string"},
+    hidden        = {"ggg", true,    "boolean"},
+    include       = {"gob", "",      "string"},
+    includeexpr   = {"ltb", "",      "string"},
+    ignorecase    = {"ggg", false,   "boolean"},
+    indentexpr    = {"ltb", "",      "string"},
+    indentkeys    = {"ltb", "0{,0},0),0],:,0#,!^F,o,O,e", "string"},
+    insertmode    = {"ggg", false,   "boolean"},
+    iskeyword     = {"ltb", "@,48-57,_,192-255", "string"},
+    keywordprg    = {"gob", ":Man",  "string"},
+    lazyredraw    = {"ggg", false,   "boolean"},
+    linebreak     = {"ltw", false,   "boolean"},
+    listchars     = {"gow", "tab:> ,trail:-,nbsp:+", "string"},
+    laststatus    = {"ggg", 2,       "number"},
+    lines         = {"ggg", 24,      "number"},
+    list          = {"ltw", false,   "boolean"},
+    loadplugins   = {"ggg", true,    "boolean"},
+    magic         = {"ggg", true,    "boolean"},
+    matchpairs    = {"ltb", "(:),{:},[:],<:>", "string"},
+    mouse         = {"ggg", "nvi",   "string"},
+    mousemodel    = {"ggg", "popup_setpos", "string"},
+    mousemoveevent= {"ggg", false,   "boolean"},
+    mousescroll   = {"ggg", "ver:3,hor:6", "string"},
+    mousetime     = {"ggg", 500,     "number"},
+    modified      = {"ltb", false,   "boolean"},
+    modifiable    = {"ltb", true,    "boolean"},
+    number        = {"ltw", false,   "boolean"},
+    numberwidth   = {"ltw", 4,       "number"},
+    omnifunc      = {"ltb", "",      "stringfunc"},
+    operatorfunc  = {"ggg", "",      "stringfunc"},
+    packpath      = {"ggg", ccvim_path .. "/runtime", "string"},
+    path          = {"gob", ".,,",   "string"},
+    previewwindow = {"ltw", false,   "boolean"},
+    pumblend      = {"ggg", 0,       "number"},
+    pumheight     = {"ggg", 0,       "number"},
+    pumwidth      = {"ggg", 15,      "number"},
+    quickfixtextfunc = {"ggg", "",   "stringfunc"},
+    readonly      = {"ltb", false,   "boolean"},
+    relativenumber= {"ltw", false,   "boolean"},
+    report        = {"ggg", 2,       "number"},
+    runtimepath   = {"ggg", ccvim_path .. "/runtime," .. ccvim_path .. "/runtime/after", "string"},
+    shell         = {"ggg", "sh",    "string"},
+    shiftwidth    = {"ltb", 8,       "number"},
+    shortmess     = {"ggg", "ltToOCF", "string"},
+    selectmode    = {"ggg", "",      "string"},
+    selection     = {"ggg", "inclusive", "string"},
+    showcmd       = {"ggg", true,    "boolean"},
+    showcmdloc    = {"ggg", "last",  "string"},
+    showmode      = {"ggg", true,    "boolean"},
+    showtabline   = {"ggg", 1,       "number"},
+    signcolumn    = {"ltw", "auto",  "string"},
+    smartcase     = {"ggg", false,   "boolean"},
+    smarttab      = {"ggg", true,    "boolean"},
+    softtabstop   = {"ltb", 0,       "number"},
+    spell         = {"ltw", false,   "boolean"},
+    splitbelow    = {"ggg", false,   "boolean"},
+    splitright    = {"ggg", false,   "boolean"},
+    startofline   = {"ggg", true,    "boolean"},
+    statusline    = {"gow", "%<%f %h%w%m%r%=%-10.(%l,%c%V%) %P", "string"},
+    syntax        = {"ltb", "",      "string"},
+    swapfile      = {"ltb", true,    "boolean"},
+    suffixesadd   = {"ltb", "",      "string"},
+    synmaxcol     = {"ltb", 3000,    "number"},
+    tagfunc       = {"ltb", "",      "stringfunc"},
+    tabline       = {"ggg", "",      "string"},
+    tabstop       = {"ltb", 8,       "number"},
+    termguicolors = {"ggg", false,   "boolean"},
+    thesaurusfunc = {"gob", "",      "stringfunc"},
+    textwidth     = {"ltb", 0,       "number"},
+    timeout       = {"ggg", true,    "boolean"},
+    timeoutlen    = {"ggg", 1000,    "number"},
+    undofile      = {"gob", false,   "boolean"},
+    undolevels    = {"gob", 1000,    "number"},
+    updatecount   = {"ggg", 200,     "number"},
+    varsofttabstop= {"ltb", "",      "string"},
+    vartabstop    = {"ltb", "",      "string"},
+    verbose       = {"ggg", 0,       "number"},
+    virtualedit   = {"gow", "",      "string"},
+    wildignore    = {"ggg", "",      "string"},
+    winblend      = {"ltw", 0,       "number"},
+    winfixheight  = {"ltw", false,   "boolean"},
+    winfixwidth   = {"ltw", false,   "boolean"},
+    winheight     = {"ggg", 1,       "number"},
+    winhighlight  = {"ltw", "",      "string"},
+    winminheight  = {"ggg", 1,       "number"},
+    winminwidth   = {"ggg", 1,       "number"},
+    winwidth      = {"ggg", 20,      "number"},
+    wrap          = {"ltw", false,   "boolean"},
+    write         = {"ggg", true,    "boolean"},
 }
 
-local opt_defaults = {
-    autoindent = true,
-    autoread = true,
-    autowrite = false,
-    autowriteall = false,
-    background = "dark",
-    backspace = "indent,eol,start",
-    bomb = false,
-    breakat = " \t!@*-+;:,./?",
-    bufhidden = "",
-    buflisted = true,
-    buftype = "",
-    cedit = "<C-F>",
-    cindent = false,
-    cinoptions = "",
-    cmdheight = 1,
-    colorcolumn = "",
-    columns = 80,
-    comments = "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-",
-    commentstring = "",
-    completeopt = "menu,popup",
-    completefunc = "",
-    concealcursor = "",
-    conceallevel = 0,
-    copyindent = false,
-    cpoptions = "aABceFs_",
-    cursorcolumn = false,
-    cursorline = false,
-    cursorlineopt = "both",
-    define = "",
-    diff = false,
-    encoding = "utf-8",
-    equalalways = true,
-    eventignore = "",
-    expandtab = false,
-    fileencoding = "",
-    fileformat = "unix",
-    fileformats = "unix,dos",
-    filetype = "",
-    findfunc = "",
-    fillchars = "",
-    foldcolumn = "0",
-    foldenable = true,
-    foldexpr = "0",
-    foldmethod = "manual",
-    formatoptions = "tcqj",
-    gdefault = false,
-    guicursor = "n-v-c-sm:block,i-ci-ve:ver25,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor",
-    guioptions = "egmrLT",
-    hidden = true,
-    include = "",
-    includeexpr = "",
-    ignorecase = false,
-    indentexpr = "",
-    indentkeys = "0{,0},0),0],:,0#,!^F,o,O,e",
-    insertmode = false,
-    iskeyword = "@,48-57,_,192-255",
-    keywordprg = ":Man",
-    lazyredraw = false,
-    linebreak = false,
-    listchars = "tab:> ,trail:-,nbsp:+",
-    laststatus = 2,
-    lines = 24,
-    list = false,
-    loadplugins = true,
-    magic = true,
-    matchpairs = "(:),{:},[:],<:>",
-    mouse = "nvi",
-    mousemodel = "popup_setpos",
-    mousemoveevent = false,
-    mousescroll = "ver:3,hor:6",
-    mousetime = 500,
-    modifiable = true,
-    modified = false,
-    number = false,
-    numberwidth = 4,
-    omnifunc = "",
-    operatorfunc = "",
-    packpath = ccvim_path .. "/runtime",
-    path = ".,,",
-    previewwindow = false,
-    pumblend = 0,
-    pumheight = 0,
-    pumwidth = 15,
-    quickfixtextfunc = "",
-    readonly = false,
-    relativenumber = false,
-    report = 2,
-    runtimepath = ccvim_path .. "/runtime," .. ccvim_path .. "/runtime/after",
-    shell = "sh",
-    shiftwidth = 8,
-    shortmess = "ltToOCF",
-    selectmode = "",
-    selection = "inclusive",
-    showcmd = true,
-    showcmdloc = "last",
-    showmode = true,
-    showtabline = 1,
-    signcolumn = "auto",
-    smarttab = true,
-    spell = false,
-    splitbelow = false,
-    splitright = false,
-    softtabstop = 0,
-    startofline = true,
-    statusline = "%<%f %h%w%m%r%=%-10.(%l,%c%V%) %P",
-    syntax = "",
-    swapfile = true,
-    suffixesadd = "",
-    synmaxcol = 3000,
-    tagfunc = "",
-    tabline = "",
-    tabstop = 8,
-    termguicolors = false,
-    thesaurusfunc = "",
-    textwidth = 0,
-    timeout = true,
-    timeoutlen = 1000,
-    undofile = false,
-    undolevels = 1000,
-    updatecount = 200,
-    varsofttabstop = "",
-    vartabstop = "",
-    verbose = 0,
-    wildignore = "",
-    winblend = 0,
-    winfixheight = false,
-    winfixwidth = false,
-    winheight = 1,
-    winhighlight = "",
-    winminheight = 1,
-    winminwidth = 1,
-    winwidth = 20,
-    wrap = false,
-    write = true,
-}
+local function option_loc(name)
+    return opt_defs[name][1]
+end
+
+local function option_default(name)
+    return opt_defs[name][2]
+end
+
+local function option_type(name)
+    return opt_defs[name][3]
+end
 
 local opt_defaults_vim = {}
 local opt_defaults_vi = {}
-
-local opt_types = {
-    autoindent = "boolean",
-    autoread = "boolean",
-    autowrite = "boolean",
-    autowriteall = "boolean",
-    background = "string",
-    backspace = "string",
-    bomb = "boolean",
-    breakat = "string",
-    bufhidden = "string",
-    buflisted = "boolean",
-    buftype = "string",
-    cedit = "string",
-    cindent = "boolean",
-    cinoptions = "string",
-    cmdheight = "number",
-    colorcolumn = "string",
-    columns = "number",
-    comments = "string",
-    commentstring = "string",
-    completeopt = "string",
-    completefunc = "stringfunc",
-    concealcursor = "string",
-    conceallevel = "number",
-    copyindent = "boolean",
-    cpoptions = "string",
-    cursorcolumn = "boolean",
-    cursorline = "boolean",
-    cursorlineopt = "string",
-    define = "string",
-    diff = "boolean",
-    encoding = "string",
-    equalalways = "boolean",
-    eventignore = "string",
-    expandtab = "boolean",
-    fileencoding = "string",
-    fileformat = "string",
-    fileformats = "string",
-    filetype = "string",
-    findfunc = "stringfunc",
-    fillchars = "string",
-    foldcolumn = "string",
-    foldenable = "boolean",
-    foldexpr = "string",
-    foldmethod = "string",
-    formatoptions = "string",
-    gdefault = "boolean",
-    guicursor = "string",
-    guioptions = "string",
-    hidden = "boolean",
-    include = "string",
-    includeexpr = "string",
-    ignorecase = "boolean",
-    indentexpr = "string",
-    indentkeys = "string",
-    insertmode = "boolean",
-    iskeyword = "string",
-    keywordprg = "string",
-    lazyredraw = "boolean",
-    linebreak = "boolean",
-    listchars = "string",
-    laststatus = "number",
-    lines = "number",
-    list = "boolean",
-    loadplugins = "boolean",
-    magic = "boolean",
-    matchpairs = "string",
-    mouse = "string",
-    mousemodel = "string",
-    mousemoveevent = "boolean",
-    mousescroll = "string",
-    mousetime = "number",
-    modifiable = "boolean",
-    modified = "boolean",
-    number = "boolean",
-    numberwidth = "number",
-    omnifunc = "stringfunc",
-    operatorfunc = "stringfunc",
-    packpath = "string",
-    path = "string",
-    previewwindow = "boolean",
-    pumblend = "number",
-    pumheight = "number",
-    pumwidth = "number",
-    quickfixtextfunc = "stringfunc",
-    readonly = "boolean",
-    relativenumber = "boolean",
-    report = "number",
-    runtimepath = "string",
-    shell = "string",
-    shiftwidth = "number",
-    shortmess = "string",
-    selectmode = "string",
-    selection = "string",
-    showcmd = "boolean",
-    showcmdloc = "string",
-    showmode = "boolean",
-    showtabline = "number",
-    signcolumn = "string",
-    smarttab = "boolean",
-    spell = "boolean",
-    splitbelow = "boolean",
-    splitright = "boolean",
-    softtabstop = "number",
-    startofline = "boolean",
-    statusline = "string",
-    syntax = "string",
-    swapfile = "boolean",
-    suffixesadd = "string",
-    synmaxcol = "number",
-    tagfunc = "stringfunc",
-    tabline = "string",
-    tabstop = "number",
-    termguicolors = "boolean",
-    thesaurusfunc = "stringfunc",
-    textwidth = "number",
-    timeout = "boolean",
-    timeoutlen = "number",
-    undofile = "boolean",
-    undolevels = "number",
-    updatecount = "number",
-    varsofttabstop = "string",
-    vartabstop = "string",
-    verbose = "number",
-    wildignore = "string",
-    winblend = "number",
-    winfixheight = "boolean",
-    winfixwidth = "boolean",
-    winheight = "number",
-    winhighlight = "string",
-    winminheight = "number",
-    winminwidth = "number",
-    winwidth = "number",
-    wrap = "boolean",
-    write = "boolean",
-}
 
 local function_option_name_by_ref = setmetatable({}, { __mode = "k" })
 local function_option_lambda_counter = 0
 
 local function _expected_option_type(name)
-    local typ = opt_types[name]
+    local typ = option_type(name)
     if typ == "stringfunc" then
         return "string|function"
     end
@@ -445,7 +186,7 @@ local function _expected_option_type(name)
 end
 
 local function _is_valid_option_type(name, value)
-    local typ = opt_types[name]
+    local typ = option_type(name)
     if typ == "stringfunc" then
         local tv = type(value)
         return tv == "string" or tv == "function"
@@ -538,7 +279,7 @@ local function _normalize_option_value(name, value, source_expr)
         return math.floor(value)
     end
 
-    if opt_types[name] == "stringfunc" then
+    if option_type(name) == "stringfunc" then
         if value == nil then
             return ""
         end
@@ -688,6 +429,7 @@ local opt_aliases = {
     fen = "foldenable",
     fde = "foldexpr",
     fdm = "foldmethod",
+    fdo = "foldopen",
     fo = "formatoptions",
     gcr = "guicursor",
     hid = "hidden",
@@ -729,6 +471,7 @@ local opt_aliases = {
     sw = "shiftwidth",
     shm = "shortmess",
     scl = "signcolumn",
+    scs = "smartcase",
     sc = "showcmd",
     sloc = "showcmdloc",
     sel = "selection",
@@ -756,6 +499,7 @@ local opt_aliases = {
     udf = "undofile",
     ul = "undolevels",
     uc = "updatecount",
+    ve = "virtualedit",
     vsts = "varsofttabstop",
     vts = "vartabstop",
     winbl = "winblend",
@@ -945,19 +689,19 @@ end
 
 function Options.resolve_abbrev(name)
     name = tostring(name)
-    if opt_locs[name] or legacy_options[name] or removed_options[name] ~= nil then return name end
+    if opt_defs[name] or legacy_options[name] or removed_options[name] ~= nil then return name end
     if opt_aliases[name] then return opt_aliases[name] end
     return nil
 end
 
 function Options.get_info(name)
     local canon = Options.resolve_abbrev(name)
-    if not canon or not opt_locs[canon] then
+    if not canon or not opt_defs[canon] then
         return nil
     end
 
-    local loc = opt_locs[canon]
-    local typ = opt_types[canon] or "string"
+    local loc = option_loc(canon)
+    local typ = option_type(canon)
     if typ == "stringfunc" then
         typ = "string"
     end
@@ -980,7 +724,7 @@ function Options.get_info(name)
         commalist = append_kind == "csl",
         flaglist = append_kind == "flags",
         type = typ,
-        default = opt_defaults[canon],
+        default = option_default(canon),
         allows_duplicates = append_kind ~= "flags",
         _loc = loc,
     }
@@ -988,7 +732,7 @@ end
 
 function Options.list_all_info_names()
     local out = {}
-    for name, _ in pairs(opt_locs) do
+    for name, _ in pairs(opt_defs) do
         out[#out + 1] = name
     end
     table.sort(out)
@@ -1000,7 +744,7 @@ function Options.has_local_value(name, window, buffer)
     if not canon then
         return false
     end
-    local loc = opt_locs[canon]
+    local loc = opt_defs[canon] and option_loc(canon)
     if not loc then
         return false
     end
@@ -1043,6 +787,24 @@ end
 
 local global_opts = {}
 
+function Options.new_object_local_opts(scope)
+    local out = {}
+    for name, def in pairs(opt_defs) do
+        local loc = def[1]
+        local value = global_opts[name]
+        if value ~= nil then
+            if scope == "buf" and loc == "ltb" then
+                out[name] = value
+            elseif scope == "win" and loc == "ltw" then
+                out[name] = value
+            elseif scope == "tab" and loc == "ltt" then
+                out[name] = value
+            end
+        end
+    end
+    return out
+end
+
 local function first2(a, b)
     if a ~= nil then return a else return b end
 end
@@ -1057,66 +819,77 @@ local function first3(a, b, c)
     end
 end
 
+local function unset_global_local_value(name)
+    local typ = option_type(name)
+    if typ == "string" or typ == "stringfunc" then
+        return ""
+    end
+    if typ == "number" then
+        return -123456
+    end
+    return nil
+end
+
 local getters = {
     ggg = function(n)
-        return first2(global_opts[n], opt_defaults[n])
+        return first2(global_opts[n], option_default(n))
     end,
     got = function(n)
-        return first3(tabpages[curtp].opts[n], global_opts[n], opt_defaults[n])
+        return first3(tabpages[curtp].opts[n], global_opts[n], option_default(n))
     end,
     gow = function(n, win)
-        return first3(win.opts[n], global_opts[n], opt_defaults[n])
+        return first3(win.opts[n], global_opts[n], option_default(n))
     end,
     gob = function(n, _, buf)
-        return first3(buf.opts[n], global_opts[n], opt_defaults[n])
+        return first3(buf.opts[n], global_opts[n], option_default(n))
     end,
     ltw = function(n, win)
-        return first2(win.opts[n], opt_defaults[n])
+        return first2(win.opts[n], option_default(n))
     end,
     ltb = function(n, _, buf)
-        return first2(buf.opts[n], opt_defaults[n])
+        return first2(buf.opts[n], option_default(n))
     end,
     ltt = function(n)
-        return first2(tabpages[curtp].opts[n], opt_defaults[n])
+        return first2(tabpages[curtp].opts[n], option_default(n))
     end,
 }
 
 local local_getters = {
     ggg = function(n)
-        return first2(global_opts[n], opt_defaults[n])
+        return first2(global_opts[n], option_default(n))
     end,
     got = function(n)
-        return first2(tabpages[curtp].opts[n], opt_defaults[n])
+        return first3(tabpages[curtp].opts[n], global_opts[n], option_default(n))
     end,
     gow = function(n, win)
-        return first2(win.opts[n], opt_defaults[n])
+        return first2(win.opts[n], unset_global_local_value(n))
     end,
     gob = function(n, _, buf)
-        return first2(buf.opts[n], opt_defaults[n])
+        return first2(buf.opts[n], unset_global_local_value(n))
     end,
     ltw = function(n, win)
-        return first2(win.opts[n], opt_defaults[n])
+        return first2(win.opts[n], option_default(n))
     end,
     ltb = function(n, _, buf)
-        return first2(buf.opts[n], opt_defaults[n])
+        return first2(buf.opts[n], option_default(n))
     end,
     ltt = function(n)
-        return first2(tabpages[curtp].opts[n], opt_defaults[n])
+        return first2(tabpages[curtp].opts[n], option_default(n))
     end,
 }
 
 local global_getters = {
     ggg = function(n)
-        return first2(global_opts[n], opt_defaults[n])
+        return first2(global_opts[n], option_default(n))
     end,
     got = function(n)
-        return first2(global_opts[n], opt_defaults[n])
+        return first2(global_opts[n], option_default(n))
     end,
     gow = function(n)
-        return first2(global_opts[n], opt_defaults[n])
+        return first2(global_opts[n], option_default(n))
     end,
     gob = function(n)
-        return first2(global_opts[n], opt_defaults[n])
+        return first2(global_opts[n], option_default(n))
     end
 }
 
@@ -1139,7 +912,7 @@ function Options.get(opt_name, window, buffer, getlocal, getglobal)
         return legacy_options[opt_name]
     end
 
-    local kind = opt_locs[opt_name]
+    local kind = option_loc(opt_name)
     if not kind then
         error("DEBUG: UNHANDLED OPTION " .. opt_name)
         return Error(518, opt_name)
@@ -1150,7 +923,7 @@ function Options.get(opt_name, window, buffer, getlocal, getglobal)
     elseif getglobal then
         f = global_getters[kind]
         if not f and (kind == "ltb" or kind == "ltw" or kind == "ltt") then
-            return first2(global_opts[opt_name], opt_defaults[opt_name])
+            return first2(global_opts[opt_name], option_default(opt_name))
         end
     else
         f = getters[kind]
@@ -1444,7 +1217,7 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
         error(Error(519, name))
     end
 
-    local loc = opt_locs[name]
+    local loc = option_loc(name)
 
     if not loc then
         error("UNKNOWN OR UNHANDLED OPTION: " .. name)
@@ -1591,7 +1364,7 @@ local function _apply_value(name, value, mode, window, buffer, source_expr)
     end
     local expr_state = _capture_expr_option_state(name)
 
-    local loc = opt_locs[name]
+    local loc = option_loc(name)
     if loc == "ggg" then
         global_opts[name] = value
         record_option_set(name, "global", 0)
@@ -1759,7 +1532,7 @@ function Options.exset_token(token, mode, window, buffer)
     if removed_options[name] ~= nil or legacy_options[name] ~= nil then
         return Error(519, name)
     end
-    local typ = opt_types[name]
+    local typ = option_type(name)
 
     local is_bare_nonbool = (not op or op == "") and typ ~= "boolean"
     local has_mutating_suffix = to_def or to_glob or toggle_tail or neg_prefix or inv_prefix
@@ -1779,7 +1552,7 @@ function Options.exset_token(token, mode, window, buffer)
 
     -- & default
     if to_def then
-        local defval = (def_kind == "vi" and opt_defaults_vi[name]) or opt_defaults_vim[name] or opt_defaults[name]
+        local defval = (def_kind == "vi" and opt_defaults_vi[name]) or opt_defaults_vim[name] or option_default(name)
         _apply_value(name, defval, mode, window, buffer, origtoken)
         return true
     end

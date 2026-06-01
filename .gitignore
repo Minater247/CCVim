@@ -6,3 +6,5 @@ config/
 .nvimlog
 dist/
 node_modules
+*S.md
+*.ccvim

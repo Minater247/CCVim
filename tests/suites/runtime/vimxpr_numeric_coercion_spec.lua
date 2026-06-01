@@ -38,5 +38,29 @@ return {
             "function('len') + 1",
             "E703"
         )
+
+        Assert.eq(
+            "isnot# parses as a comparison operator",
+            Assert.eval_vim(backend, "string isnot# comparison", "'exclusive' isnot# 'inclusive'"),
+            1
+        )
+
+        Assert.eq(
+            "is? ignores case",
+            Assert.eval_vim(backend, "string is? comparison", "'ABC' is? 'abc'"),
+            1
+        )
+
+        Assert.eq(
+            "!~ returns false when pattern matches",
+            Assert.eval_vim(backend, "negative regex match false", "'abc' !~ 'b'"),
+            0
+        )
+
+        Assert.eq(
+            "isnot# returns false when values match",
+            Assert.eval_vim(backend, "string isnot# false comparison", "'inclusive' isnot# 'inclusive'"),
+            0
+        )
     end,
 }

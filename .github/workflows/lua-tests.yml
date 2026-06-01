@@ -29,6 +29,7 @@ jobs:
         run: |
           luarocks install luafilesystem
           luarocks install lpeg
+          luarocks install luv
 
       - name: Run lua_editor suite
         run: npm test

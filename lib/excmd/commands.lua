@@ -31,13 +31,14 @@ local COMMAND_SPECS = {
     { name = "return", min = 4, comment_mode = "expr" },
     { name = "finish", min = 2, dispatch = true },
     { name = "call", min = 3, comment_mode = "expr" },
-    { name = "execute", min = 3 },
+    { name = "execute", min = 3, comment_mode = "expr" },
     { name = "unlet", min = 3 },
     { name = "command", min = 3, dispatch = true, no_bar_split = true },
     { name = "autocmd", min = 2, no_bar_split = true },
     { name = "syntax", min = 3, dispatch = true, no_bar_split = true },
     { name = "sign", min = 3, dispatch = true, no_bar_split = true },
     { name = "highlight", min = 2, dispatch = true },
+    { name = "colorscheme", min = 4, dispatch = true },
     { name = "runtime", min = 2, dispatch = true },
     { name = "augroup", min = 3, dispatch = true },
     { name = "source", min = 2, dispatch = true },
@@ -174,14 +175,27 @@ local COMMAND_SPECS = {
     { name = "keepjumps", min = 5, dispatch = true },
     { name = "keepalt", min = 5, dispatch = true },
     { name = "keeppatterns", min = 5, dispatch = true },
+    { name = "leftabove", min = 5, dispatch = true },
+    { name = "aboveleft", min = 3, dispatch = true },
+    { name = "rightbelow", min = 6, dispatch = true },
+    { name = "belowright", min = 3, dispatch = true },
+    { name = "topleft", min = 2, dispatch = true },
+    { name = "botright", min = 2, dispatch = true },
+    { name = "vertical", min = 4, dispatch = true },
+    { name = "horizontal", min = 3, dispatch = true },
     { name = "doautocmd", min = 4, dispatch = true },
     { name = "delcommand", min = 4, dispatch = true },
     { name = "comclear", min = 4, dispatch = true },
-    { name = "buffer", min = 2, dispatch = true },
+    { name = "buffer", min = 2, dispatch = true, addr = "count" },
     { name = "enew", min = 3, dispatch = true },
     { name = "find", min = 2, dispatch = true },
     { name = "sfind", min = 3, dispatch = true },
     { name = "tabfind", min = 4, dispatch = true },
+    { name = "tabnew", min = 4, dispatch = true },
+    { name = "tabedit", min = 4, dispatch = true },
+    { name = "tabnext", min = 4, dispatch = true },
+    { name = "tabprevious", min = 7, dispatch = true },
+    { name = "tabclose", min = 4, dispatch = true },
     { name = "drop", min = 2, dispatch = true },
     { name = "help", min = 1, dispatch = true },
     { name = "lcd", min = 2, dispatch = true },
@@ -195,8 +209,9 @@ local COMMAND_SPECS = {
     { name = "redraw", min = 4, dispatch = true },
     { name = "redrawstatus", min = 7, dispatch = true },
     { name = "redrawtabline", min = 7, dispatch = true },
-    { name = "split", min = 2, dispatch = true },
-    { name = "vsplit", min = 2, dispatch = true },
+    { name = "resize", min = 3, dispatch = true, addr = "count", structured_addr = "none" },
+    { name = "split", min = 2, dispatch = true, addr = "line" },
+    { name = "vsplit", min = 2, dispatch = true, addr = "line" },
     { name = "write", min = 1, dispatch = true },
     { name = "wq", min = 2, dispatch = true },
     { name = "syntime", min = 4, dispatch = true },
@@ -209,20 +224,43 @@ local COMMAND_SPECS = {
 }
 
 local SPEC_BY_NAME = {}
-local PARSE_REGISTRY = {}
+local PARSE_REGISTRY_BY_FIRST = {}
 local DISPATCH_MIN_ABBREV = {}
-local DISPATCH_REGISTRY = {}
+local DISPATCH_REGISTRY_BY_FIRST = {}
 local MAP_COMMAND_SPECS = {}
 local MENU_COMMAND_SPECS = {}
+local EMPTY_REGISTRY = {}
+
+local function add_registry(by_first, entry)
+    local first = entry.name:sub(1, 1)
+    local bucket = by_first[first]
+    if not bucket then
+        bucket = {}
+        by_first[first] = bucket
+    end
+    bucket[#bucket + 1] = entry
+end
+
+local function normalize_prefix(raw)
+    local prefix = tostring(raw):lower()
+    local bang_end = #prefix
+    while bang_end > 0 and prefix:byte(bang_end) == 33 do
+        bang_end = bang_end - 1
+    end
+    if bang_end ~= #prefix then
+        prefix = prefix:sub(1, bang_end)
+    end
+    return prefix
+end
 
 for _, spec in ipairs(COMMAND_SPECS) do
     SPEC_BY_NAME[spec.name] = spec
     if spec.min then
-        PARSE_REGISTRY[#PARSE_REGISTRY + 1] = { name = spec.name, min = spec.min }
+        add_registry(PARSE_REGISTRY_BY_FIRST, { name = spec.name, min = spec.min })
     end
     if spec.dispatch then
         DISPATCH_MIN_ABBREV[spec.name] = spec.min
-        DISPATCH_REGISTRY[#DISPATCH_REGISTRY + 1] = { name = spec.name, min = spec.min }
+        add_registry(DISPATCH_REGISTRY_BY_FIRST, { name = spec.name, min = spec.min })
     end
     if spec.map then
         MAP_COMMAND_SPECS[spec.name] = spec.map
@@ -232,66 +270,87 @@ for _, spec in ipairs(COMMAND_SPECS) do
     end
 end
 
-local function resolve_prefix(raw, registry, opts)
-    opts = opts or {}
+local function resolve_prefix(raw, by_first, exact_names, fallback_raw, sort_matches)
     if not raw or raw == "" then
         return nil
     end
-    local prefix = tostring(raw):lower():gsub("!+$", "")
+    local prefix = normalize_prefix(raw)
+    local prefix_len = #prefix
+    if exact_names[prefix] then
+        return prefix
+    end
     local delete_name = "delete"
-    if delete_name:sub(1, #prefix) ~= prefix then
+    if delete_name:find(prefix, 1, true) ~= 1 then
         local tail = prefix:sub(-1)
-        if (tail == "l" or tail == "p") and #prefix > 1 then
+        if (tail == "l" or tail == "p") and prefix_len > 1 then
             local base = prefix:sub(1, -2)
-            if delete_name:sub(1, #base) == base then
+            if delete_name:find(base, 1, true) == 1 then
                 return delete_name
             end
         end
     end
-    local matches = {}
+    local registry = by_first[prefix:sub(1, 1)] or EMPTY_REGISTRY
+    local first
+    local matches
+    local match_count = 0
     for i = 1, #registry do
         local e = registry[i]
-        if #prefix >= e.min and e.name:sub(1, #prefix) == prefix then
-            matches[#matches + 1] = e.name
+        if prefix_len >= e.min and e.name:find(prefix, 1, true) == 1 then
+            match_count = match_count + 1
+            if match_count == 1 then
+                first = e.name
+            else
+                if not matches then
+                    matches = { first }
+                end
+                matches[#matches + 1] = e.name
+            end
         end
     end
-    if #matches == 1 then
-        return matches[1]
+    if match_count == 1 then
+        return first
     end
-    if #matches == 0 then
-        if opts.fallback_raw then
+    if match_count == 0 then
+        if fallback_raw then
             return trim(raw)
         end
         return nil
     end
-    if opts.sort_matches then
+    if sort_matches then
         table.sort(matches)
     end
     return nil, Error(464, prefix, table.concat(matches, ", "))
 end
 
 function Commands.resolve_parse_name(raw)
-    return resolve_prefix(raw, PARSE_REGISTRY, { fallback_raw = true, sort_matches = false })
+    return resolve_prefix(raw, PARSE_REGISTRY_BY_FIRST, SPEC_BY_NAME, true, false)
 end
 
 function Commands.resolve_dispatch_name(prefix)
-    return resolve_prefix(prefix, DISPATCH_REGISTRY, { fallback_raw = false, sort_matches = true })
+    return resolve_prefix(prefix, DISPATCH_REGISTRY_BY_FIRST, DISPATCH_MIN_ABBREV, false, true)
 end
 
 function Commands.mode_and_bar(cmd_raw)
     if not cmd_raw or cmd_raw == "" then
         return "commentable", false
     end
-    local canonical = Commands.resolve_parse_name(cmd_raw)
-    if type(canonical) ~= "string" or canonical == "" then
-        return "commentable", false
+    local spec = SPEC_BY_NAME[normalize_prefix(cmd_raw)]
+    if not spec then
+        local canonical = Commands.resolve_parse_name(cmd_raw)
+        if type(canonical) ~= "string" or canonical == "" then
+            return "commentable", false
+        end
+        spec = SPEC_BY_NAME[canonical]
+        if not spec then
+            return "raw", false
+        end
     end
-    local spec = SPEC_BY_NAME[canonical]
-    local mode = (spec and spec.comment_mode) or "raw"
-    local no_bar = (spec and spec.no_bar_split) and true or false
+    local mode = spec.comment_mode or "raw"
+    local no_bar = spec.no_bar_split == true
     return mode, no_bar
 end
 
+Commands.COMMAND_SPECS = COMMAND_SPECS
 Commands.DISPATCH_MIN_ABBREV = DISPATCH_MIN_ABBREV
 Commands.MAP_COMMAND_SPECS = MAP_COMMAND_SPECS
 Commands.MENU_COMMAND_SPECS = MENU_COMMAND_SPECS

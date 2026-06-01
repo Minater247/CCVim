@@ -1,8 +1,31 @@
 local DEFAULT_BRANCH = "rewrite-2026"
-local APP_VERSION = "0.8"
 local INSTALLER_VERSION = "0.2"
 local COMPRESSED_URL = "https://minater247.github.io/CCVim/"
 local MANIFEST = "nvim.idx"
+local VERSION_FILE = ".version"
+local PREFS_FILE = ".installer_prefs"
+local INSTALLER_FILES = {
+    VERSION_FILE,
+    "instui.lua",
+    "vim_installer.lua",
+}
+
+local label = "CCVIM Installer v" .. INSTALLER_VERSION
+local install_dir = "/vim"
+local git_branch = DEFAULT_BRANCH
+local manifest_tree
+local manifest_branch
+local colorschemes
+local syntaxes
+local ftplugins
+local indents
+local helpfiles
+local keymaps
+local install_tutor
+local install_spellfiles
+local updateBranch
+local openInstallMenu
+local runSavedUpdate
 
 local function httpGet(url)
     local res, err = http.get(url)
@@ -15,9 +38,53 @@ local function httpGet(url)
     return data
 end
 
-local function resolveInstallerFile(relPath)
-    local program = shell.getRunningProgram()
+local function trim(str)
+    return (tostring(str):gsub("^%s+", ""):gsub("%s+$", ""))
+end
 
+local function readFile(path, mode)
+    local fh, err = fs.open(path, mode or "r")
+    if not fh then
+        return nil, err
+    end
+
+    local data = fh.readAll()
+    fh.close()
+    return data
+end
+
+local function writeFile(path, data, mode)
+    local dir = fs.getDir(path)
+    if dir ~= "" then
+        fs.makeDir(dir)
+    end
+
+    local fh, err = fs.open(path, mode or "w")
+    if not fh then
+        return false, err
+    end
+
+    fh.write(data)
+    fh.close()
+    return true
+end
+
+local function baseUrl(branch)
+    return "https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. branch .. "/"
+end
+
+local function parseVersionFile(text)
+    local lines = {}
+    for rawLine in tostring(text or ""):gmatch("[^\r\n]+") do
+        lines[#lines + 1] = trim(rawLine)
+    end
+
+    return lines[1], lines[2] or lines[1]
+end
+
+local function resolveInstallerFile(relPath)
+    local source = debug.getinfo(1, "S").source
+    local program = source:sub(1, 1) == "@" and source:sub(2) or ((arg and arg[0]) or "")
     local dir = fs.getDir(program)
     if dir and dir ~= "" then
         return fs.combine(dir, relPath)
@@ -26,37 +93,146 @@ local function resolveInstallerFile(relPath)
     return relPath
 end
 
+local function readLocalInstallerVersion()
+    local text = readFile(resolveInstallerFile(VERSION_FILE))
+    if text then
+        local _, installerVersion = parseVersionFile(text)
+        if installerVersion ~= "" then
+            return installerVersion
+        end
+    end
+
+    return INSTALLER_VERSION
+end
+
+local function downloadInstallerFile(relPath, data)
+    local fileData = data
+    if not fileData then
+        local err
+        fileData, err = httpGet(baseUrl(DEFAULT_BRANCH) .. relPath)
+        if not fileData then
+            return false, ("failed to GET %s: %s"):format(relPath, tostring(err))
+        end
+    end
+
+    local localPath = resolveInstallerFile(relPath)
+    local ok, err = writeFile(localPath, fileData)
+    if not ok then
+        return false, ("failed to write %s: %s"):format(localPath, tostring(err))
+    end
+
+    return true
+end
+
+local function pauseForKey(messageLines)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    for i = 1, #messageLines do
+        print(messageLines[i])
+    end
+
+    while true do
+        local event = os.pullEvent()
+        if event == "key" or event == "char" then
+            return
+        end
+    end
+end
+
+local function promptInstallerUpdate(localVersion, remoteVersion)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
+    term.clear()
+    term.setCursorPos(1, 1)
+
+    print(label)
+    print("")
+    print("A newer installer is available.")
+    print("Installed: " .. localVersion)
+    print("Latest:    " .. remoteVersion)
+    print("")
+    print("Press Y to update or Q to quit.")
+
+    while true do
+        local event, param = os.pullEvent()
+        if event == "char" then
+            local ch = param:lower()
+            if ch == "y" then
+                return true
+            end
+            if ch == "q" then
+                return false
+            end
+        end
+    end
+end
+
+local function restartInstaller()
+    dofile(resolveInstallerFile("vim_installer.lua"))
+    os.exit()
+end
+
+local function ensureLatestInstaller()
+    local versionText, err = httpGet(baseUrl(DEFAULT_BRANCH) .. VERSION_FILE)
+    if not versionText then
+        pauseForKey({
+            label,
+            "",
+            "Could not check for installer updates.",
+            tostring(err),
+            "",
+            "Press any key to continue.",
+        })
+        return
+    end
+
+    local _, remoteInstallerVersion = parseVersionFile(versionText)
+    local localInstallerVersion = readLocalInstallerVersion()
+    if remoteInstallerVersion == localInstallerVersion then
+        return
+    end
+
+    if not promptInstallerUpdate(localInstallerVersion, remoteInstallerVersion) then
+        os.exit()
+    end
+
+    for i = 1, #INSTALLER_FILES do
+        local relPath = INSTALLER_FILES[i]
+        local ok, updateErr = downloadInstallerFile(relPath, relPath == VERSION_FILE and versionText or nil)
+        if not ok then
+            error(updateErr, 0)
+        end
+    end
+
+    restartInstaller()
+end
+
 local function ensureInstallerDependency(relPath)
     local localPath = resolveInstallerFile(relPath)
     if fs.exists(localPath) then
         return localPath
     end
 
-    local data, err = httpGet("https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. DEFAULT_BRANCH .. "/" .. relPath)
+    local data, err = httpGet(baseUrl(DEFAULT_BRANCH) .. relPath)
     if not data then
         error(("failed to download %s: %s"):format(relPath, tostring(err)))
     end
 
-    local fh, ferr = fs.open(localPath, "w")
-    if not fh then
+    local ok, ferr = writeFile(localPath, data)
+    if not ok then
         error(("failed to open %s for writing: %s"):format(localPath, tostring(ferr)))
     end
-    fh.write(data)
-    fh.close()
 
     return localPath
 end
 
+ensureLatestInstaller()
+
 local TUI = assert(dofile(ensureInstallerDependency("instui.lua")))
 assert(TUI)
-
-local label = "CCVIM Installer v" .. INSTALLER_VERSION
-
-local BASE_URL = "https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. DEFAULT_BRANCH .. "/"
-local install_dir = "/vim"
-local git_branch = DEFAULT_BRANCH
-
-local manifest_tree
 
 local function parseManifest(text)
     --   directory = table
@@ -101,7 +277,7 @@ end
 local doRelease = true
 
 local function downloadFile(relPath)
-    local url = BASE_URL .. relPath
+    local url = baseUrl(git_branch) .. relPath
     local localPath = fs.combine(install_dir, relPath)
 
     local dir = fs.getDir(localPath)
@@ -132,10 +308,112 @@ local function downloadFile(relPath)
     return true
 end
 
+local function copySelectionTable(source)
+    local copy = {}
+    for k, v in pairs(source) do
+        copy[k] = not not v
+    end
+    return copy
+end
+
+local function replaceSelectionTable(target, source)
+    for k in pairs(target) do
+        target[k] = nil
+    end
+    for k, v in pairs(source) do
+        target[k] = not not v
+    end
+end
+
+local function savedPreferencesPath()
+    return resolveInstallerFile(PREFS_FILE)
+end
+
+local function hasSavedPreferences()
+    return fs.exists(savedPreferencesPath())
+end
+
+local function capturePreferences()
+    return {
+        install_dir = install_dir,
+        git_branch = git_branch,
+        doRelease = doRelease,
+        colorschemes = copySelectionTable(colorschemes),
+        syntaxes = copySelectionTable(syntaxes),
+        ftplugins = copySelectionTable(ftplugins),
+        indents = copySelectionTable(indents),
+        helpfiles = copySelectionTable(helpfiles),
+        keymaps = copySelectionTable(keymaps),
+        install_tutor = install_tutor,
+        install_spellfiles = install_spellfiles,
+    }
+end
+
+local function applyPreferences(preferences)
+    install_dir = preferences.install_dir
+    git_branch = preferences.git_branch
+    doRelease = preferences.doRelease
+    replaceSelectionTable(colorschemes, preferences.colorschemes)
+    replaceSelectionTable(syntaxes, preferences.syntaxes)
+    replaceSelectionTable(ftplugins, preferences.ftplugins)
+    replaceSelectionTable(indents, preferences.indents)
+    replaceSelectionTable(helpfiles, preferences.helpfiles)
+    replaceSelectionTable(keymaps, preferences.keymaps)
+    install_tutor = preferences.install_tutor
+    install_spellfiles = preferences.install_spellfiles
+    manifest_tree = nil
+    manifest_branch = nil
+end
+
+local function savePreferences()
+    local ok, err = writeFile(savedPreferencesPath(), textutils.serialize(capturePreferences()))
+    if not ok then
+        return false, ("failed to save installer preferences: %s"):format(tostring(err))
+    end
+    return true
+end
+
+local function loadPreferences()
+    local text, err = readFile(savedPreferencesPath())
+    if not text then
+        return nil, ("failed to read saved installer preferences: %s"):format(tostring(err))
+    end
+
+    local preferences = textutils.unserialize(text)
+    if type(preferences) ~= "table" then
+        return nil, "failed to parse saved installer preferences"
+    end
+
+    applyPreferences(preferences)
+    return preferences
+end
+
+local function ensureManifestLoaded()
+    if manifest_tree and manifest_branch == git_branch then
+        return true
+    end
+
+    local text, err = httpGet(baseUrl(git_branch) .. MANIFEST)
+    if not text then
+        return false, err
+    end
+
+    manifest_tree = parseManifest(text)
+    manifest_branch = git_branch
+
+    for k, v in pairs(manifest_tree.runtime.doc) do
+        if v == true and helpfiles[k] == nil then
+            helpfiles[k] = true
+        end
+    end
+
+    return true
+end
+
 
 
 --#region Components pages
-local colorschemes = {}
+colorschemes = {}
 
 local function buildColorschemesMenu()
     local tui = {
@@ -168,7 +446,7 @@ local function buildColorschemesMenu()
     return tui
 end
 
-local syntaxes = {
+syntaxes = {
     ["lua.vim"] = true,
     ["vim.vim"] = true,
     ["help.vim"] = true,
@@ -208,7 +486,7 @@ local function buildSyntaxesMenu()
     return tui
 end
 
-local ftplugins = {
+ftplugins = {
     ["lua.lua"] = true,
     ["lua.vim"] = true,
     ["vim.vim"] = true,
@@ -251,7 +529,7 @@ local function buildFtpluginsMenu()
     return tui
 end
 
-local indents = {
+indents = {
     ["lua.vim"] = true,
     ["vim.vim"] = true,
     ["json.vim"] = true,
@@ -289,7 +567,7 @@ local function buildIndentsMenu()
 end
 
 -- These are either not applicable or unimplemented
-local helpfiles = {
+helpfiles = {
     ["news-0.10.txt"] = false,
     ["news.txt"] = false,
     ["news-0.9.txt"] = false,
@@ -363,7 +641,7 @@ local function buildHelpfilesMenu()
     return tui
 end
 
-local keymaps = {}
+keymaps = {}
 
 local function buildKeymapsMenu()
     local tui = {
@@ -397,27 +675,17 @@ local function buildKeymapsMenu()
 end
 
 -- Unfortunately only ASCII is supported by ComputerCraft so ja/zh won't work
-local install_tutor = true
+install_tutor = true
 
-local install_spellfiles = false
+install_spellfiles = false
 
 local function buildComponentsMenu()
-    if not manifest_tree then
-        local text, err = httpGet(BASE_URL .. MANIFEST)
-        if not text then
-            return {
-                TUI.Components.text("Failed to download manifest: "),
-                TUI.Components.info(tostring(err))
-            }
-        end
-
-        manifest_tree = parseManifest(text)
-
-        for k, v in pairs(manifest_tree.runtime.doc) do
-            if v == true and helpfiles[k] == nil then
-                helpfiles[k] = true
-            end
-        end
+    local ok, err = ensureManifestLoaded()
+    if not ok then
+        return {
+            TUI.Components.text("Failed to download manifest:"),
+            TUI.Components.info(tostring(err))
+        }
     end
 
     return {
@@ -467,6 +735,31 @@ local installerBox = TUI.Components.messageBox{
 
 local progressBackItem
 
+local function buildRootMenu()
+    local menu = {
+        TUI.Components.info(label),
+        TUI.Components.separator(),
+
+        TUI.Components.textbox("Install branch", updateBranch, git_branch),
+
+        TUI.Components.separator(),
+
+        TUI.Components.option("Install CCVIM", openInstallMenu),
+    }
+
+    if hasSavedPreferences() then
+        menu[#menu + 1] = TUI.Components.option("Update CCVIM", runSavedUpdate)
+    else
+        menu[#menu + 1] = TUI.Components.disabledOption("Update CCVIM")
+    end
+
+    menu[#menu + 1] = TUI.Components.disabledOption("Add to universal path")
+    menu[#menu + 1] = TUI.Components.separator()
+    menu[#menu + 1] = TUI.Components.option("Exit", TUI.HaltLoop)
+
+    return menu
+end
+
 local function buildInstallProgressMenu()
     TUI.clearMessages(installerBox)
     TUI.addMessage(installerBox, "Beginning install...")
@@ -485,18 +778,16 @@ local function buildInstallProgressMenu()
 end
 
 local function runInstall()
-    if not manifest_tree then
+    if not manifest_tree or manifest_branch ~= git_branch then
         TUI.addMessage(installerBox, "Downloading manifest from:")
-        TUI.addMessage(installerBox, BASE_URL .. MANIFEST)
+        TUI.addMessage(installerBox, baseUrl(git_branch) .. MANIFEST)
 
-        local text, err = httpGet(BASE_URL .. MANIFEST)
-        if not text then
+        local ok, err = ensureManifestLoaded()
+        if not ok then
             TUI.addMessage(installerBox, "ERROR: Could not download manifest:")
             TUI.addMessage(installerBox, "        " .. tostring(err))
             return
         end
-
-        manifest_tree = parseManifest(text)
     end
     TUI.addMessage(installerBox, "Manifest downloaded. Walking files...")
     
@@ -512,7 +803,12 @@ local function runInstall()
         return n
     end
 
-    local base_count = 1 + countFiles(manifest_tree.lib) + countFiles(manifest_tree.layout)
+    local root_files = {
+        "nvim.lua",
+        "vim.lua",
+    }
+
+    local base_count = #root_files + countFiles(manifest_tree.lib) + countFiles(manifest_tree.layout)
     TUI.addMessage(installerBox, ("Core runtime: %d files to install"):format(base_count))
 
     local function downwalk(entry, parents, state, total)
@@ -553,11 +849,15 @@ local function runInstall()
     end
 
     local state = { done = 0 }
-    state.done = state.done + 1
-    TUI.addMessage(installerBox, ("[%d/%d] %s"):format(state.done, base_count, "nvim.lua"))
-    local ok, err = downloadFile("nvim.lua")
-    if not ok then
-        return failure(err)
+    local ok, err
+    for i = 1, #root_files do
+        local file = root_files[i]
+        state.done = state.done + 1
+        TUI.addMessage(installerBox, ("[%d/%d] %s"):format(state.done, base_count, file))
+        ok, err = downloadFile(file)
+        if not ok then
+            return failure(err)
+        end
     end
     ok, err = downwalk(manifest_tree.lib, { "lib" }, state, base_count)
     if not ok then
@@ -747,11 +1047,9 @@ local function runInstall()
         if not ok then return failure(err) end
     end
 
-    TUI.addMessage(installerBox, "Downloading installer metadata...")
+    TUI.addMessage(installerBox, "Downloading version metadata...")
     local metadata_files = {
         ".version",
-        "instui.lua",
-        "vim_installer.lua",
     }
     for i, f in ipairs(metadata_files) do
         TUI.addMessage(installerBox, ("[%d/%d] %s"):format(i, #metadata_files, f))
@@ -761,6 +1059,14 @@ local function runInstall()
 
 
     TUI.addMessage(installerBox, "All files downloaded successfully.")
+    local saved, saveErr = savePreferences()
+    if not saved then
+        TUI.addMessage(installerBox, "ERROR: " .. tostring(saveErr))
+        TUI.addMessage(installerBox, "The update option will remain unavailable.")
+        return
+    end
+    TUI.replaceMenu(1, buildRootMenu())
+    TUI.addMessage(installerBox, "Saved installer preferences.")
     TUI.addMessage(installerBox, "Installation complete.")
 end
 -- #endregion Install progress page
@@ -770,8 +1076,17 @@ local function updateInstallDir(dir)
     install_dir = dir
 end
 
+local function beginInstallFlow()
+    TUI.setQuitEnabled(false)
+    TUI.pushMenu(buildInstallProgressMenu())
+    runInstall()
+    TUI.setQuitEnabled(true)
+    TUI.enableOption(progressBackItem, function()
+        TUI.popMenu()
+    end)
+end
+
 local function buildInstallMenu()
-    BASE_URL = "https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/" .. git_branch .. "/"
     return {
         TUI.Components.info(label),
         
@@ -785,15 +1100,7 @@ local function buildInstallMenu()
         TUI.Components.checkbox("Install compressed (Release)", doRelease, function(newval)
             doRelease = newval
         end),
-        TUI.Components.option("Begin Install / Update", function()
-            TUI.setQuitEnabled(false)
-            TUI.pushMenu(buildInstallProgressMenu())
-            runInstall()
-            TUI.setQuitEnabled(true)
-            TUI.enableOption(progressBackItem, function()
-                TUI.popMenu()
-            end)
-        end),
+        TUI.Components.option("Begin Install / Update", beginInstallFlow),
 
         TUI.Components.separator(),
 
@@ -805,28 +1112,31 @@ end
 -- #endregion Main install page
 
 -- Root installer menu
-local function updateBranch(branchname)
+function updateBranch(branchname)
     git_branch = branchname
 end
 
-local function openInstallMenu()
+function openInstallMenu()
     TUI.pushMenu(buildInstallMenu())
 end
 
-local menu = {
-    TUI.Components.info(label),
-    TUI.Components.separator(),
+function runSavedUpdate()
+    local _, err = loadPreferences()
+    if err then
+        TUI.pushMenu({
+            TUI.Components.info(label),
+            TUI.Components.separator(),
+            TUI.Components.text("Failed to load saved update preferences."),
+            TUI.Components.info(tostring(err)),
+            TUI.Components.separator(),
+            TUI.Components.option("Back", function()
+                TUI.popMenu()
+            end),
+        })
+        return
+    end
 
-    TUI.Components.textbox("Install branch", updateBranch, git_branch),
+    beginInstallFlow()
+end
 
-    TUI.Components.separator(),
-
-    TUI.Components.option("Install CCVIM", openInstallMenu),
-    TUI.Components.disabledOption("Add to universal path"),
-
-    TUI.Components.separator(),
-
-    TUI.Components.option("Exit", TUI.HaltLoop),
-}
-
-TUI.run(menu)
+TUI.run(buildRootMenu())

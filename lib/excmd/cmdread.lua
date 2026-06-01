@@ -1,10 +1,10 @@
 local CmdRead = {}
 
-local Highlight = loadModule("lib.highlight")
 local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
 local ExMsg = loadModule("lib.excmd.exmsg")
 local Runtime = loadModule("lib.excmd.runtime")
+local ScreenDraw = loadModule("lib.screendraw")
 local scopes = loadModule("lib.luaapi.scopes")
 
 local pendingcmd = {}
@@ -87,10 +87,8 @@ function CmdRead.drawCmdline()
 
     -- TODO: wrap this around on cmdheight > 1
     if cmdheight == 1 then
-        Highlight.SetFor("MsgArea")
-        term.setCursorPos(1, screen.height)
         local start = math.max(#cmd - screen.width + 1, 1)
-        term.write(cmd:sub(start))
+        ScreenDraw.put_text(screen.height - 1, 0, cmd:sub(start), "MsgArea")
     else
         error("UNHANDLED: MULTILINE CMDHEIGHT")
     end

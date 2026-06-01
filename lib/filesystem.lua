@@ -39,7 +39,7 @@ function Filesystem.ExpandWildcards(path)
     -- Returns a list (table) of absolute paths matching the pattern.
     -- Examples:
     --   ExpandWildcards("/foo/*.vim") -> {"/foo/a.vim", "/foo/b.vim", ...}
-    --   ExpandWildcards("foo/bar?.lua") -> matches under current shell dir
+    --   ExpandWildcards("foo/bar?.lua") -> matches under cwd
     -- Notes:
     --   - Supports '*', '?', '[...]', and '**' (zero-or-more directories).
     --   - Supports simple/nested brace expansion: "{a,b}".
@@ -209,6 +209,34 @@ function Filesystem.ExpandWildcards(path)
         local segs = {}
         for seg in expanded_path:gmatch("[^/]+") do segs[#segs + 1] = seg end
 
+        local first_glob = nil
+        for i = 1, #segs do
+            if segs[i] == "**" or has_glob(segs[i]) then
+                first_glob = i
+                break
+            end
+        end
+
+        if not first_glob then
+            if fs.exists(expanded_path) then
+                results[#results + 1] = expanded_path
+            end
+            goto continue_expanded_path
+        end
+
+        local start_base = "/"
+        if first_glob > 1 then
+            local prefix = {}
+            for i = 1, first_glob - 1 do
+                prefix[#prefix + 1] = segs[i]
+            end
+            start_base = "/" .. table.concat(prefix, "/")
+        end
+
+        if not fs.isDir(start_base) then
+            goto continue_expanded_path
+        end
+
         local function expand_from(base, idx)
             if idx > #segs then
                 results[#results + 1] = base
@@ -260,7 +288,8 @@ function Filesystem.ExpandWildcards(path)
             end
         end
 
-        expand_from("/", 1)
+        expand_from(start_base, first_glob)
+        ::continue_expanded_path::
     end
 
     if #results == 0 then

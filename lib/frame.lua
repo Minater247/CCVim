@@ -546,6 +546,34 @@ local function replace_in_parent(parent, old_child, new_child)
     new_child.parent = parent
 end
 
+local function clone_frame_tree(node, map)
+    local copy = {
+        parent = nil,
+        window = node.window,
+        width = node.width,
+        height = node.height,
+        split_type = node.split_type,
+    }
+    map[node] = copy
+
+    if node.children then
+        local left = clone_frame_tree(node.children[1], map)
+        local right = clone_frame_tree(node.children[2], map)
+        left.parent = copy
+        right.parent = copy
+        copy.children = { left, right }
+    end
+
+    return copy
+end
+
+local function root_for(node)
+    while node and node.parent do
+        node = node.parent
+    end
+    return node
+end
+
 local function subtree_min_width(node)
     if not node.split_type then
         return node.window:minwidth()
@@ -743,12 +771,96 @@ FrameTree.HorizontalSplit = function(node, new_win, place_bottom)
     end
 end
 
+local function ensure_split_space(frame, new_win, vertical)
+    local grew_for_split = false
+    if options.get("equalalways") and frame.window then
+        if vertical then
+            local needed_width = frame.window:minwidth() + new_win:minwidth()
+            if frame.width < needed_width then
+                if not FrameTree.ResizeWidth(frame, needed_width - frame.width) or frame.width < needed_width then
+                    return false
+                end
+                grew_for_split = true
+            end
+        else
+            local needed_height = frame.window:minheight() + new_win:minheight()
+            if frame.height < needed_height then
+                if not FrameTree.ResizeHeight(frame, needed_height - frame.height) or frame.height < needed_height then
+                    return false
+                end
+                grew_for_split = true
+            end
+        end
+    end
+
+    return true, grew_for_split
+end
+
+function FrameTree.CanSplit(root, node, new_win, vertical, opts)
+    opts = opts or {}
+    if not root or not node then
+        return false
+    end
+
+    local frame_map = {}
+    local root_clone = clone_frame_tree(root, frame_map)
+    local probe_frame = frame_map[node]
+    if not probe_frame then
+        return false
+    end
+
+    local probe_new_win = {
+        minwidth = function()
+            return new_win:minwidth()
+        end,
+        minheight = function()
+            return new_win:minheight()
+        end,
+    }
+
+    local ok = ensure_split_space(probe_frame, probe_new_win, vertical)
+    if not ok then
+        return false
+    end
+
+    local split_ok, split_anchor
+    if vertical then
+        split_ok, split_anchor = FrameTree.VerticalSplit(probe_frame, probe_new_win, opts.place_after == true)
+    else
+        split_ok, split_anchor = FrameTree.HorizontalSplit(probe_frame, probe_new_win, opts.place_after == true)
+    end
+    if not split_ok then
+        return false
+    end
+
+    local root_after = root_for(split_anchor or probe_frame or root_clone)
+    if not root_after then
+        return false
+    end
+
+    if opts.validate then
+        return opts.validate(root_after)
+    end
+
+    return true
+end
+
 --- Attempt to equalize sizes throughout a subtree, best effort.
 --- Returns true if it made progress (or nothing needed), false if the split
 --- is infeasible even for minima (children minima exceed container).
-function FrameTree.Equalize(node)
+function FrameTree.Equalize(node, axis)
     if not node or not node.split_type then
         return true
+    end
+
+    if axis == "vertical" and node.split_type ~= "h" then
+        local ok_a = FrameTree.Equalize(node.children[1], axis)
+        local ok_b = FrameTree.Equalize(node.children[2], axis)
+        return ok_a and ok_b
+    elseif axis == "horizontal" and node.split_type ~= "v" then
+        local ok_a = FrameTree.Equalize(node.children[1], axis)
+        local ok_b = FrameTree.Equalize(node.children[2], axis)
+        return ok_a and ok_b
     end
 
     local function columns(nd)
@@ -786,7 +898,7 @@ function FrameTree.Equalize(node)
         local minA = subtree_min_width(a)
         local minB = subtree_min_width(b)
         if minA + minB > total then
-            FrameTree.Equalize(a); FrameTree.Equalize(b)
+            FrameTree.Equalize(a, axis); FrameTree.Equalize(b, axis)
             return false
         end
 
@@ -813,7 +925,7 @@ function FrameTree.Equalize(node)
             end
         end
 
-        FrameTree.Equalize(a); FrameTree.Equalize(b)
+        FrameTree.Equalize(a, axis); FrameTree.Equalize(b, axis)
         return true
     elseif node.split_type == "h" then
         local a, b = node.children[1], node.children[2]
@@ -822,7 +934,7 @@ function FrameTree.Equalize(node)
         local minA = subtree_min_height(a)
         local minB = subtree_min_height(b)
         if minA + minB > total then
-            FrameTree.Equalize(a); FrameTree.Equalize(b)
+            FrameTree.Equalize(a, axis); FrameTree.Equalize(b, axis)
             return false
         end
 
@@ -848,8 +960,8 @@ function FrameTree.Equalize(node)
             end
         end
 
-        FrameTree.Equalize(a)
-        FrameTree.Equalize(b)
+        FrameTree.Equalize(a, axis)
+        FrameTree.Equalize(b, axis)
         return true
     end
 
@@ -948,6 +1060,82 @@ FrameTree.GetFrameAt = function(node, x, y)
         -- Leaf frame - no further splits, so this is the frame that covers (x,y)
         return node
     end
+end
+
+function FrameTree.AdjacentFrame(root, frame, direction, anchor)
+    if not root or not frame then
+        return nil
+    end
+
+    local x1, y1 = FrameTree.GetXY(frame)
+    local x2 = x1 + frame.width - 1
+    local y2 = y1 + frame.height - 1
+    local anchor_pos = math.floor(tonumber(anchor) or 1)
+    local probe_x, probe_y
+
+    if direction == "left" then
+        if x1 <= 1 then
+            return nil
+        end
+        probe_x = x1 - 1
+        probe_y = math.clamp(anchor_pos, 1, root.height)
+    elseif direction == "right" then
+        if x2 >= root.width then
+            return nil
+        end
+        probe_x = x2 + 1
+        probe_y = math.clamp(anchor_pos, 1, root.height)
+    elseif direction == "up" then
+        if y1 <= 1 then
+            return nil
+        end
+        probe_x = math.clamp(anchor_pos, 1, root.width)
+        probe_y = y1 - 1
+    elseif direction == "down" then
+        if y2 >= root.height then
+            return nil
+        end
+        probe_x = math.clamp(anchor_pos, 1, root.width)
+        probe_y = y2 + 1
+    else
+        return nil
+    end
+
+    local next_frame = FrameTree.GetFrameAt(root, probe_x, probe_y)
+    if next_frame == frame then
+        return nil
+    end
+
+    return next_frame
+end
+
+function FrameTree.FindDirectionalFrame(root, frame, direction, anchor, count, accept)
+    if not root or not frame then
+        return nil
+    end
+
+    local steps = math.max(1, math.floor(tonumber(count) or 1))
+    local current_frame = frame
+
+    for _ = 1, steps do
+        local probe = current_frame
+        local found
+
+        while true do
+            probe = FrameTree.AdjacentFrame(root, probe, direction, anchor)
+            if not probe then
+                return current_frame
+            end
+            if not accept or accept(probe) then
+                found = probe
+                break
+            end
+        end
+
+        current_frame = found
+    end
+
+    return current_frame
 end
 
 FrameTree.Close = function(node)

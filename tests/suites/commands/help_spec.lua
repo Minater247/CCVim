@@ -1,6 +1,6 @@
 return {
     id = "commands.help",
-    description = "Ports :help tag resolution, whitespace-only :help, and the bare :help! E478 behavior through a generated runtimepath.",
+    description = "Ports :help tag resolution, whitespace-only :help, and bare :help! E478 behavior.",
 
     run = function(ctx)
         local backend = ctx.backend

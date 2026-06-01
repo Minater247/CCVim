@@ -51,3 +51,9 @@ Any compatibility notes will be listed in `plugin_compat/<plugin-name>`. Most pl
 Please try your config and see if it works! If anything behaves even slightly differently to how Neovim behaves, that is grounds for opening an issue.
 
 If you want to help with development, contributions are welcomed! I will be working on documenting the code properly in the near future as the codebase begins to stabilize.
+
+## Planned Projects
+- Rewrite of UI interfaces to allow ports to OpenComputers of native Lua
+- Implementation of an LSP for completion or tooling analysis
+- Integration with existing `git` repository handlers for ComputerCraft
+- Vimscript JIT output optimization

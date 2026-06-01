@@ -1,47 +1,10 @@
 local Utf8 = {}
 
-local translations = {
-    [0x2713] = "v",
-    [0x2714] = "v",
-    [0x2611] = "v",
-    [0x2715] = "x",
-    [0x2717] = "x",
-    [0x2718] = "x",
-    [0x00D7] = "x",
-    [0x2191] = "\x18",
-    [0x2193] = "\x19",
-    [0x2190] = "\x1b",
-    [0x2192] = "\x1a",
-    [0xE0B0] = "\x7f",
-    [0xE0B2] = "\x7f",
-    [0x2518] = "/",
-    [0x2500] = "-",
-    [0x2514] = "\\",
-    [0x2502] = "|",
-    [0x2510] = "\\",
-    [0x250C] = "/",
-    [0x2019] = "'",
-    [0x201C] = "\"",
-}
-
-local function _ascii_cell_for_codepoint(cp)
-    if cp >= 32 and cp <= 127 then
+function Utf8.char_for_codepoint(cp)
+    if cp <= 255 then
         return string.char(cp)
     end
-
-    -- DEBUG
-    if translations[cp] then
-        return translations[cp]
-    else
-        LOG_DEBUG("UNKNOWN CODEPOINT: 0x%X", cp)
-        return "?"
-    end
-
-    -- return translations[cp] or "?"
-end
-
-function Utf8.ascii_cell_for_codepoint(cp)
-    return _ascii_cell_for_codepoint(cp)
+    return utf8.char(cp)
 end
 
 function Utf8.len(s)
@@ -215,14 +178,14 @@ function Utf8.format_sign_text(text)
 
     if utf8 and utf8.codes then
         for _, cp in utf8.codes(s) do
-            out[#out + 1] = _ascii_cell_for_codepoint(cp)
+            out[#out + 1] = Utf8.char_for_codepoint(cp)
             if #out >= width then
                 break
             end
         end
     else
         for i = 1, #s do
-            out[#out + 1] = _ascii_cell_for_codepoint(s:byte(i))
+            out[#out + 1] = Utf8.char_for_codepoint(s:byte(i))
             if #out >= width then
                 break
             end

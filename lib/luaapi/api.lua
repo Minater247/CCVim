@@ -23,36 +23,54 @@ local OnKey = loadModule("lib.luaapi.on_key")
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
 local COLOR_ALIASES = {
-    black = colors.black,
-    red = colors.red,
-    green = colors.green,
-    blue = colors.blue,
-    yellow = colors.yellow,
-    orange = colors.orange,
-    brown = colors.brown,
-    magenta = colors.magenta,
-    purple = colors.purple,
-    cyan = colors.cyan,
-    white = colors.white,
-    gray = colors.gray,
-    grey = colors.gray,
-    darkgray = colors.gray,
-    darkgrey = colors.gray,
-    lightgray = colors.lightGray,
-    lightgrey = colors.lightGray,
-    lightblue = colors.lightBlue,
-    lightgreen = colors.lime,
-    lime = colors.lime,
-    pink = colors.pink,
+    black = 0x111111,
+    red = 0xCC4C4C,
+    green = 0x57A64E,
+    blue = 0x3366CC,
+    yellow = 0xDEDE6C,
+    orange = 0xF2B233,
+    brown = 0x7F664C,
+    magenta = 0xE57FD8,
+    purple = 0xB266E5,
+    cyan = 0x4C99B2,
+    white = 0xF0F0F0,
+    gray = 0x4C4C4C,
+    grey = 0x4C4C4C,
+    darkgray = 0x4C4C4C,
+    darkgrey = 0x4C4C4C,
+    lightgray = 0x999999,
+    lightgrey = 0x999999,
+    lightblue = 0x99B2F2,
+    lightgreen = 0x7FCC19,
+    lime = 0x7FCC19,
+    pink = 0xF2B2CC,
 }
 
 local function rgb_for_palette_index(idx)
-    local r, g, b = term.getPaletteColor(idx)
-    return colors.packRGB(r, g, b)
+    if type(idx) ~= "number" then
+        return nil
+    end
+    local slot = 0
+    while slot < 16 do
+        if idx == (2 ^ slot) then
+            local r, g, b = screen.get_palette_slot(slot)
+            return r * 65536 + g * 256 + b
+        end
+        slot = slot + 1
+    end
+    return idx
 end
 
 local function api_color_value(raw_value, palette_value)
     if raw_value ~= nil then
+        if type(raw_value) == "table" then
+            if type(raw_value.rgb) == "number" then
+                return raw_value.rgb
+            end
+            if type(raw_value.palette) == "number" then
+                return raw_value.palette
+            end
+        end
         return raw_value
     end
     if palette_value ~= nil then
@@ -77,6 +95,13 @@ local function normalize_color_value(val)
         if alias then
             return alias
         end
+    end
+    return nil
+end
+
+local function normalize_cterm_color_value(val)
+    if type(val) == "number" then
+        return val
     end
     return nil
 end
@@ -569,7 +594,6 @@ function api.nvim_list_wins()
     return rv
 end
 
--- TODO: updatw Tabpage:WinSplit to handle things like "left" for split type
 -- TODO: Z-indexing, various config fields
 function api.nvim_open_win(buffer, enter, config)
     config = config or {}
@@ -886,7 +910,23 @@ function api.nvim_buf_set_keymap(buffer, mode, lhs, rhs, opts)
 
     if opts.callback then
         local cb = ScriptSource.wrap(nil, opts.callback)
-        Command.map_callback(mode, lhs, cb, { buffer = buf })
+        Command.map_callback(mode, lhs, cb, {
+            buffer = buf,
+            expr = opts.expr == true,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        })
+    elseif opts.expr then
+        local map_opts = {
+            buffer = buf,
+            expr = true,
+            expr_rhs = rhs_text,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        }
+        if opts.noremap then
+            Command.noremap_keys(mode, lhs, nil, map_opts)
+        else
+            Command.remap_keys(mode, lhs, nil, map_opts)
+        end
     else
         rhs = Key.strtoseq(rhs_text)
         if opts.noremap then
@@ -907,7 +947,21 @@ function api.nvim_set_keymap(mode, lhs, rhs, opts)
 
     if opts.callback then
         local cb = ScriptSource.wrap(nil, opts.callback)
-        Command.map_callback(mode, lhs, cb)
+        Command.map_callback(mode, lhs, cb, {
+            expr = opts.expr == true,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        })
+    elseif opts.expr then
+        local map_opts = {
+            expr = true,
+            expr_rhs = rhs_text,
+            replace_keycodes = opts.replace_keycodes ~= false,
+        }
+        if opts.noremap then
+            Command.noremap_keys(mode, lhs, nil, map_opts)
+        else
+            Command.remap_keys(mode, lhs, nil, map_opts)
+        end
     else
         rhs = Key.strtoseq(rhs_text)
         if opts.noremap then
@@ -1066,6 +1120,10 @@ end
 
 function api.nvim_set_option_value(name, value, opts)
     opts = opts or {}
+    local scope = opts.scope
+    if scope == nil and opts.buf ~= nil then
+        scope = "local"
+    end
 
     local win, buf
     if opts.win ~= nil then
@@ -1079,7 +1137,7 @@ function api.nvim_set_option_value(name, value, opts)
         buf = win.buffer
     end
 
-    return options.set(name, value, opts.scope == "local", win, buf, opts.scope == "global")
+    return options.set(name, value, scope == "local", win, buf, scope == "global")
 end
 
 api.nvim_set_option = api.nvim_set_option_value
@@ -1087,6 +1145,10 @@ api.nvim_set_option = api.nvim_set_option_value
 -- TODO: opts.filetype
 function api.nvim_get_option_value(name, opts)
     opts = opts or {}
+    local scope = opts.scope
+    if scope == nil and opts.buf ~= nil then
+        scope = "local"
+    end
 
     local win, buf
     if opts.win ~= nil then
@@ -1100,7 +1162,7 @@ function api.nvim_get_option_value(name, opts)
         buf = win.buffer
     end
 
-    return options.get(name, win, buf, opts.scope == "local", opts.scope == "global")
+    return options.get(name, win, buf, scope == "local", scope == "global")
 end
 
 function api.nvim_get_option_info2(name, opts)
@@ -1436,9 +1498,6 @@ function api.nvim_exec_autocmds(events, opts)
     end
 end
 
--- temp: TODO: check semantics
-api.nvim_command = api.nvim_exec2
-
 -- TODO: namespaces
 function api.nvim_get_hl(ns_id, opts)
     opts = opts or {}
@@ -1474,6 +1533,12 @@ function api.nvim_get_hl(ns_id, opts)
     local bg = api_color_value(raw._raw_bg, hl[2])
     if bg ~= nil then
         out.bg = bg
+    end
+    if raw._cterm_fg ~= nil then
+        out.ctermfg = raw._cterm_fg
+    end
+    if raw._cterm_bg ~= nil then
+        out.ctermbg = raw._cterm_bg
     end
     return out
 end
@@ -1513,6 +1578,8 @@ function api.nvim_set_hl(ns_id, name, val)
     local hlval = {
         fg = normalize_color_value(val.fg),
         bg = normalize_color_value(val.bg),
+        cterm_fg = normalize_cterm_color_value(val.ctermfg),
+        cterm_bg = normalize_cterm_color_value(val.ctermbg),
         link = val.link,
         reverse = val.reverse or val.standout,
     }
@@ -1778,6 +1845,19 @@ function api.nvim_buf_get_name(bufnr)
     return buf.name or ""
 end
 
+local function builtin_ui_info()
+    local width, height = screen.get_size()
+    local depth = screen.color_depth()
+    return {
+        width = width,
+        height = height,
+        rgb = depth == "rgb",
+        chan = 1,
+        stdin_tty = true,
+        stdout_tty = true,
+    }
+end
+
 function api.nvim_list_bufs()
     local bufs = {}
     for _, v in pairs(buffers) do
@@ -1787,7 +1867,7 @@ function api.nvim_list_bufs()
 end
 
 function api.nvim_buf_is_valid(bufnr)
-    return buf_for_bufnr(bufnr) ~= nil -- TODO: wrong semantics, this is not what valid means!
+    return buf_for_bufnr(bufnr) ~= nil
 end
 
 function api.nvim_buf_set_var(buffer, name, value)
@@ -2240,6 +2320,10 @@ function api.nvim_list_tabpages()
     return out
 end
 
+function api.nvim_list_uis()
+    return { builtin_ui_info() }
+end
+
 function api.nvim_win_get_height(window)
     local win = win_for_id(window)
     if win.frame then
@@ -2345,8 +2429,65 @@ function api.nvim_command(command)
     return rv.output or ""
 end
 
-local _term_next_chan_id = 1
+local _term_next_chan_id = 3
 local _term_channels = {}
+
+local function channel_info_for_id(chan)
+    if chan == 1 then
+        return {
+            id = 1,
+            stream = "stdio",
+            mode = "bytes",
+            client = {
+                name = "nvim-tui",
+                type = "ui",
+            },
+        }
+    end
+    if chan == 2 then
+        return {
+            id = 2,
+            stream = "stderr",
+            mode = "bytes",
+        }
+    end
+    local entry = _term_channels[chan]
+    if entry then
+        return {
+            id = chan,
+            stream = "job",
+            mode = "terminal",
+            buffer = entry.bufnr,
+        }
+    end
+    return {}
+end
+
+function api.nvim_get_chan_info(chan)
+    if chan == 0 then
+        chan = 1
+    end
+    if type(chan) ~= "number" then
+        error("nvim_get_chan_info: chan must be number", 2)
+    end
+    return channel_info_for_id(chan)
+end
+
+function api.nvim_list_chans()
+    local chans = {
+        channel_info_for_id(1),
+        channel_info_for_id(2),
+    }
+    local ids = {}
+    for chan in pairs(_term_channels) do
+        ids[#ids + 1] = chan
+    end
+    table.sort(ids)
+    for i = 1, #ids do
+        chans[#chans + 1] = channel_info_for_id(ids[i])
+    end
+    return chans
+end
 
 function api.nvim_open_term(buffer, opts)
     local bufnr = (buffer == 0) and windows[curwin].buffer.bufnr or buffer
@@ -2360,6 +2501,15 @@ function api.nvim_open_term(buffer, opts)
 end
 
 function api.nvim_chan_send(chan, data)
+    local text = tostring(data or "")
+    if chan == 1 then
+        io.stdout:write(text)
+        return #text
+    end
+    if chan == 2 then
+        io.stderr:write(text)
+        return #text
+    end
     local entry = _term_channels[chan]
     if not entry then
         return 0
@@ -2368,7 +2518,6 @@ function api.nvim_chan_send(chan, data)
     if not buf then
         return 0
     end
-    local text = tostring(data or "")
     buf:ensure_loaded(true)
     local buflines = buf:lines_ref(true)
     if #buflines == 1 and buflines[1] == "" then
@@ -2443,6 +2592,7 @@ function api.nvim_cmd(cmd, opts)
         lname = name:lower(),
         qargs = argstr,
         bang = not not cmd.bang,
+        structured = true,
         ws_args = ws_args,
         count = cmd.count,
         range = cmd.range,

@@ -17,6 +17,13 @@ return {
         Assert.write_file(backend, metadata_path, "{\n  \"title\": \"Tutor\"\n}\n")
 
         local result = Assert.eval_block(backend, "readfile scenarios", string.format([=[
+            local function err_string(err)
+                if type(err) == "table" and type(err.toString) == "function" then
+                    return err:toString()
+                end
+                return tostring(err or "")
+            end
+
             local function same_list(a, b)
                 if #a ~= #b then
                     return false
@@ -47,7 +54,7 @@ return {
                 tail2,
                 zero,
                 missing_ok,
-                tostring(missing_err or ""),
+                err_string(missing_err),
                 vim.b.tutor_metadata.title,
                 same_list(plain, { "alpha", "beta", "mu", "nu" }),
                 same_list(binary, { "%salpha\r", "beta", "mu", "nu", "" }),

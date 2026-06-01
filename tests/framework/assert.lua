@@ -60,7 +60,9 @@ end
 function Assert.expect_error(backend, label, expr, error_pattern)
     local code = string.format(
         "(function() local ok, err = pcall(function() return %s end); "
-        .. "return {ok, err and tostring(err):find('%s') ~= nil or false} end)()",
+        .. "local msg = (type(err) == 'table' and type(err.toString) =="
+        .. " 'function') and err:toString() or tostring(err or ''); "
+        .. "return {ok, err and msg:find('%s') ~= nil or false} end)()",
         expr, error_pattern)
     local result = Assert.eval(backend, "eval " .. label, code)
     Assert.table_eq(label, result, {false, true})
@@ -69,7 +71,9 @@ end
 function Assert.expect_error_block(backend, label, code, error_pattern)
     local wrapped = string.format(
         "local ok, err = pcall(function()\n%s\nend)\n"
-        .. "return {ok, err and tostring(err):find(%q, 1, true) ~= nil or false}",
+        .. "local msg = (type(err) == 'table' and type(err.toString) =="
+        .. "'function') and err:toString() or tostring(err or '')\n"
+        .. "return {ok, err and msg:find(%q, 1, true) ~= nil or false}",
         code, error_pattern)
     local result = Assert.eval_block(backend, "eval " .. label, wrapped)
     Assert.table_eq(label, result, {false, true})
@@ -104,7 +108,9 @@ end
 function Assert.expect_error_code(backend, label, expr, expected_code)
     local code = string.format(
         "(function() local ok, err = pcall(function() return %s end); "
-        .. "return {ok, tostring(err or '')} end)()",
+        .. "local msg = (type(err) == 'table' and type(err.toString) =="
+        .. "'function') and err:toString() or tostring(err or ''); "
+        .. "return {ok, msg} end)()",
         expr)
     local result = Assert.eval(backend, "eval " .. label, code)
     Assert.eq(label .. " result", result[1], false)
@@ -114,7 +120,9 @@ end
 function Assert.expect_error_code_block(backend, label, code, expected_code)
     local wrapped = string.format(
         "local ok, err = pcall(function()\n%s\nend)\n"
-        .. "return {ok, tostring(err or '')}",
+        .. "local msg = (type(err) == 'table' and type(err.toString) =="
+        .. "'function') and err:toString() or tostring(err or '')\n"
+        .. "return {ok, msg}",
         code)
     local result = Assert.eval_block(backend, "eval " .. label, wrapped)
     Assert.eq(label .. " result", result[1], false)

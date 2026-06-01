@@ -19,6 +19,8 @@ local VimExpr = loadModule("lib.excmd.vimxpr")
 local VimFn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local CmdRead = loadModule("lib.excmd.cmdread")
+local ScreenDraw = loadModule("lib.screendraw")
+local Options = loadModule("lib.options")
 
 local curr_winno = 1
 
@@ -48,11 +50,12 @@ local curr_winno = 1
 ---@param buffer Buffer A buffer to initialize the window with, if one is ready.
 ---@param refwin Window A window to reference when setting up a new window. Used for window splitting.
 function Window:new(buffer, refwin)
+    local opts = Options.new_object_local_opts("win")
     local obj = setmetatable({
         winnr     = curr_winno,
         buffer    = buffer or Buffer(true, false, true),
         altbuf    = refwin and refwin.altbuf,
-        opts      = {},
+        opts      = opts,
         scrollx   = refwin and refwin.scrollx or 1,
         scrolly   = refwin and { refwin.scrolly[1], refwin.scrolly[2] } or { 1, 0 },
         cursorx   = refwin and refwin.cursorx or 1,
@@ -69,6 +72,7 @@ function Window:new(buffer, refwin)
         style     = nil,
 
         focusable = true,
+        statusline_click_zones = {},
     }, Window)
 
     windows[curr_winno] = obj
@@ -83,6 +87,35 @@ function Window:new(buffer, refwin)
 
     curr_winno = curr_winno + 1
     return obj
+end
+
+function Window.SwitchBuffer(win, newbuf, opts)
+    opts = opts or {}
+    if win.buffer == newbuf then
+        return false
+    end
+
+    local oldbuf = win.buffer
+    if not opts.keepalt then
+        win.altbuf = oldbuf
+    end
+    if not opts.skip_leave then
+        Autocmd.Run("BufLeave", { bufnr = oldbuf.bufnr, bufname = oldbuf.name })
+    end
+    if opts.update_refcount then
+        oldbuf.refcount = math.max(0, (oldbuf.refcount or 0) - 1)
+        newbuf.refcount = (newbuf.refcount or 0) + 1
+    end
+
+    win.buffer = newbuf
+    Syntax.OnWindowBufferChanged(win)
+    Scopes.w.current_syntax = nil
+
+    if not opts.skip_enter then
+        Autocmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
+    end
+
+    return true
 end
 
 function Window:minwidth()
@@ -135,17 +168,25 @@ local function parse_signcolumn(spec)
 end
 
 local function _format_sign_text(text)
-    return Utf8.format_sign_text(text)
-end
-
-local function _iter_extmarks(buf, visitor)
-    Decoration.iter_extmarks(buf, visitor)
+    local width = 2
+    local out = {}
+    Utf8.each_codepoint(text, function(cp)
+        if #out >= width then
+            return
+        end
+        local ch = screen.normalize_codepoint(cp)
+        out[#out + 1] = ch
+    end)
+    while #out < width do
+        out[#out + 1] = " "
+    end
+    return table.concat(out, "", 1, width)
 end
 
 local function _extmark_max_signs_per_line(buf)
     local by_line = {}
     local max = 0
-    _iter_extmarks(buf, function(_, _, mark)
+    Decoration.iter_extmarks(buf, function(_, _, mark)
         local opts = mark.opts or {}
         if opts.sign_text ~= nil and not opts.invalid then
             local lnum = (mark.line or 0) + 1
@@ -165,7 +206,7 @@ local function _extmark_decorations_for_line(buf, lnum)
     local numhl, numhl_prio = nil, -math.huge
     local linehl, linehl_prio = nil, -math.huge
 
-    _iter_extmarks(buf, function(ns, id, mark)
+    Decoration.iter_extmarks(buf, function(ns, id, mark)
         if (mark.line or 0) ~= line0 then
             return
         end
@@ -212,27 +253,20 @@ end
 
 local function _to_char_array(s)
     local out = {}
-    for i = 1, #s do
-        out[i] = s:sub(i, i)
-    end
-    return out
-end
-
-local function _to_blit_array(s, n, fill)
-    local out = {}
-    for i = 1, n do
-        local ch = s:sub(i, i)
-        out[i] = (ch ~= "") and ch or fill
-    end
-    return out
-end
-
-local function _ascii_cells(text)
-    local out = {}
-    Utf8.each_codepoint(tostring(text or ""), function(cp)
-        out[#out + 1] = Utf8.ascii_cell_for_codepoint(cp)
+    Utf8.each_codepoint(s, function(cp)
+        out[#out + 1] = Utf8.char_for_codepoint(cp)
     end)
     return out
+end
+
+local function _display_cells(text)
+    local out, swap = {}, {}
+    Utf8.each_codepoint(text, function(cp)
+        local ch, swapped = screen.normalize_codepoint(cp)
+        out[#out + 1] = ch
+        swap[#swap + 1] = swapped == true
+    end)
+    return out, swap
 end
 
 local function _resolve_hl_group_name(hl)
@@ -251,8 +285,8 @@ local function _resolve_hl_group_name(hl)
     return nil
 end
 
-local function _virt_text_cells(chunks, default_fg, default_bg)
-    local text_cells, fg_cells, bg_cells = {}, {}, {}
+local function _virt_text_cells(chunks, default_hl)
+    local text_cells, hl_cells, swap_cells = {}, {}, {}
     local list = (type(chunks) == "table") and chunks or {}
 
     for i = 1, #list do
@@ -266,23 +300,20 @@ local function _virt_text_cells(chunks, default_fg, default_bg)
             text = tostring(chunk or "")
         end
 
-        local cells = _ascii_cells(text)
-        local fg = default_fg
-        local bg = default_bg
+        local cells, swaps = _display_cells(text)
+        local hl_id = default_hl
         if hl_group then
-            local hl = Highlight.For(hl_group)
-            fg = colors.toBlit(hl[1])
-            bg = colors.toBlit(hl[2])
+            hl_id = Highlight.GetId(hl_group)
         end
 
         for c = 1, #cells do
             text_cells[#text_cells + 1] = cells[c]
-            fg_cells[#fg_cells + 1] = fg
-            bg_cells[#bg_cells + 1] = bg
+            hl_cells[#hl_cells + 1] = hl_id
+            swap_cells[#swap_cells + 1] = swaps[c]
         end
     end
 
-    return text_cells, fg_cells, bg_cells
+    return text_cells, hl_cells, swap_cells
 end
 
 local function _extmark_text_effects_for_line(buf, lnum, line_str)
@@ -296,7 +327,7 @@ local function _extmark_text_effects_for_line(buf, lnum, line_str)
     }
     local has_effect = false
 
-    _iter_extmarks(buf, function(ns, id, mark)
+    Decoration.iter_extmarks(buf, function(ns, id, mark)
         local opts = mark.opts or {}
         if opts.invalid then
             return
@@ -401,15 +432,27 @@ local function _extmark_text_effects_for_line(buf, lnum, line_str)
     return out
 end
 
-local function _ensure_row_at(rows_t, rows_fg, rows_bg, row)
+local function _ensure_row_at(rows_t, rows_hl, row)
     while #rows_t < row do
         rows_t[#rows_t + 1] = {}
-        rows_fg[#rows_fg + 1] = {}
-        rows_bg[#rows_bg + 1] = {}
+        rows_hl[#rows_hl + 1] = {}
     end
     rows_t[row] = rows_t[row] or {}
-    rows_fg[row] = rows_fg[row] or {}
-    rows_bg[row] = rows_bg[row] or {}
+    rows_hl[row] = rows_hl[row] or {}
+end
+
+local function _place_cells_at(rows_t, rows_hl, rows_swap, row, col, cells_t, cells_hl, cells_swap, default_hl, keep)
+    for c = 1, #cells_t do
+        local idx = col + c - 1
+        while #rows_t[row] < idx - 1 do
+            rows_t[row][#rows_t[row]+1] = " "
+            rows_hl[row][#rows_hl[row]+1] = default_hl
+            rows_swap[row][#rows_swap[row]+1] = false
+        end
+        rows_t[row][idx] = cells_t[c]
+        rows_hl[row][idx] = cells_hl[c] or (keep and rows_hl[row][idx]) or default_hl
+        rows_swap[row][idx] = cells_swap[c] or false
+    end
 end
 
 local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, effects, line_str, text_w)
@@ -417,19 +460,21 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
         return rendered, blitLines
     end
 
-    local normal = Highlight.For("Normal")
-    local default_fg = colors.toBlit(normal[1])
-    local default_bg = colors.toBlit(normal[2])
+    local default_hl = Highlight.GetId("Normal")
 
-    local rows_t, rows_fg, rows_bg = {}, {}, {}
+    local rows_t, rows_hl, rows_swap = {}, {}, {}
     local row_count = math.max(1, #rendered)
     for row = 1, row_count do
         local row_text = rendered[row] or ""
         rows_t[row] = _to_char_array(row_text)
-        local fg_line = (blitLines and blitLines.fg and blitLines.fg[row]) or ""
-        local bg_line = (blitLines and blitLines.bg and blitLines.bg[row]) or ""
-        rows_fg[row] = _to_blit_array(fg_line, #rows_t[row], default_fg)
-        rows_bg[row] = _to_blit_array(bg_line, #rows_t[row], default_bg)
+        local hl_line = (blitLines and blitLines.hl and blitLines.hl[row]) or {}
+        local swap_line = (blitLines and blitLines.swap and blitLines.swap[row]) or {}
+        rows_hl[row] = {}
+        rows_swap[row] = {}
+        for i = 1, #rows_t[row] do
+            rows_hl[row][i] = hl_line[i] or default_hl
+            rows_swap[row][i] = swap_line[i] or false
+        end
     end
 
     local byte_to_pos = {}
@@ -449,9 +494,7 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
 
     for i = 1, #effects.hl_ranges do
         local hr = effects.hl_ranges[i]
-        local hl = Highlight.For(hr.hl_group)
-        local hl_fg = colors.toBlit(hl[1])
-        local hl_bg = colors.toBlit(hl[2])
+        local hl_id = Highlight.GetId(hr.hl_group)
 
         if ranges and gsrc then
             for row = 1, #ranges do
@@ -461,8 +504,7 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
                         local bidx = gsrc[k]
                         if bidx and bidx >= hr.start_byte and bidx < hr.end_byte_excl then
                             local col = k - rr.i + 1
-                            rows_fg[row][col] = hl_fg
-                            rows_bg[row][col] = hl_bg
+                            rows_hl[row][col] = hl_id
                         end
                     end
                 end
@@ -473,7 +515,7 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
     local line_bytes = #line_str
     for i = 1, #effects.virt_text do
         local vt = effects.virt_text[i]
-        local cells_t, cells_fg, cells_bg = _virt_text_cells(vt.chunks, default_fg, default_bg)
+        local cells_t, cells_hl, cells_swap = _virt_text_cells(vt.chunks, default_hl)
         if #cells_t > 0 then
             local row, col
 
@@ -503,78 +545,63 @@ local function _apply_extmark_text_effects(rendered, blitLines, ranges, gsrc, ef
                 end
             end
 
-            _ensure_row_at(rows_t, rows_fg, rows_bg, row, default_fg, default_bg)
+            _ensure_row_at(rows_t, rows_hl, row)
+            rows_swap[row] = rows_swap[row] or {}
 
             if vt.pos == "inline" then
                 col = math.max(1, col)
                 for c = #cells_t, 1, -1 do
                     table.insert(rows_t[row], col, cells_t[c])
-                    table.insert(rows_fg[row], col, cells_fg[c] or default_fg)
-                    table.insert(rows_bg[row], col, cells_bg[c] or default_bg)
+                    table.insert(rows_hl[row], col, cells_hl[c] or default_hl)
+                    table.insert(rows_swap[row], col, cells_swap[c] or false)
                 end
             elseif vt.pos == "overlay" then
-                for c = 1, #cells_t do
-                    local idx = col + c - 1
-                    while #rows_t[row] < idx - 1 do
-                        rows_t[row][#rows_t[row] + 1] = " "
-                        rows_fg[row][#rows_fg[row] + 1] = default_fg
-                        rows_bg[row][#rows_bg[row] + 1] = default_bg
-                    end
-                    rows_t[row][idx] = cells_t[c]
-                    rows_fg[row][idx] = cells_fg[c] or rows_fg[row][idx] or default_fg
-                    rows_bg[row][idx] = cells_bg[c] or rows_bg[row][idx] or default_bg
-                end
+                _place_cells_at(
+                    rows_t,
+                    rows_hl,
+                    rows_swap,
+                    row, col,
+                    cells_t,
+                    cells_hl,
+                    cells_swap,
+                    default_hl,
+                    true
+                )
             elseif vt.pos == "right_align" or vt.pos == "eol_right_align" then
                 local want_col = math.max(1, (text_w or 0) - #cells_t + 1)
-                if vt.pos == "eol_right_align" then
-                    col = math.max(col, want_col)
-                else
-                    col = want_col
-                end
-                for c = 1, #cells_t do
-                    local idx = col + c - 1
-                    while #rows_t[row] < idx - 1 do
-                        rows_t[row][#rows_t[row] + 1] = " "
-                        rows_fg[row][#rows_fg[row] + 1] = default_fg
-                        rows_bg[row][#rows_bg[row] + 1] = default_bg
-                    end
-                    rows_t[row][idx] = cells_t[c]
-                    rows_fg[row][idx] = cells_fg[c] or default_fg
-                    rows_bg[row][idx] = cells_bg[c] or default_bg
-                end
+                col = vt.pos == "eol_right_align" and math.max(col, want_col) or want_col
+                _place_cells_at(rows_t, rows_hl, rows_swap, row, col, cells_t, cells_hl, cells_swap, default_hl)
             else
                 for c = 1, #cells_t do
                     rows_t[row][#rows_t[row] + 1] = cells_t[c]
-                    rows_fg[row][#rows_fg[row] + 1] = cells_fg[c] or default_fg
-                    rows_bg[row][#rows_bg[row] + 1] = cells_bg[c] or default_bg
+                    rows_hl[row][#rows_hl[row] + 1] = cells_hl[c] or default_hl
+                    rows_swap[row][#rows_swap[row] + 1] = cells_swap[c] or false
                 end
             end
         end
     end
 
     for i = #effects.virt_lines_above, 1, -1 do
-        local cells_t, cells_fg, cells_bg = _virt_text_cells(effects.virt_lines_above[i], default_fg, default_bg)
-        table.insert(rows_t, 1, cells_t)
-        table.insert(rows_fg, 1, cells_fg)
-        table.insert(rows_bg, 1, cells_bg)
+        local t, hl, swap = _virt_text_cells(effects.virt_lines_above[i], default_hl)
+        table.insert(rows_t, 1, t)
+        table.insert(rows_hl, 1, hl)
+        table.insert(rows_swap, 1, swap)
     end
     for i = 1, #effects.virt_lines_below do
-        local cells_t, cells_fg, cells_bg = _virt_text_cells(effects.virt_lines_below[i], default_fg, default_bg)
-        rows_t[#rows_t + 1] = cells_t
-        rows_fg[#rows_fg + 1] = cells_fg
-        rows_bg[#rows_bg + 1] = cells_bg
+        local t, hl, swap = _virt_text_cells(effects.virt_lines_below[i], default_hl)
+        rows_t[#rows_t+1] = t
+        rows_hl[#rows_hl+1] = hl
+        rows_swap[#rows_swap+1] = swap
     end
 
-    local out_rendered = {}
-    local out_fg = {}
-    local out_bg = {}
+    local out_rendered, out_hl, out_swap = {}, {}, {}
     for row = 1, #rows_t do
         out_rendered[row] = table.concat(rows_t[row] or {})
-        out_fg[row] = table.concat(rows_fg[row] or {})
-        out_bg[row] = table.concat(rows_bg[row] or {})
+        out_hl[row] = rows_hl[row] or {}
+        out_swap[row] = rows_swap[row] or {}
     end
 
-    return out_rendered, { fg = out_fg, bg = out_bg }
+    return out_rendered, { hl = out_hl, swap = out_swap }
 end
 
 -- Map a desired visual column to a character column.
@@ -1354,28 +1381,42 @@ function Window:render(xoff, yoff)
     end
     baseheight = height
 
+    local draw_x = 1
+    local draw_y = 1
+    local active_group = "Normal"
+
     local function setPos(rx, ry)
         local ax = (xoff or 1) + rx - 1
         local ay = (yoff or 1) + ry - 1
-        term.setCursorPos(ax, ay)
+        draw_x = ax
+        draw_y = ay
+    end
+
+    local function setGroup(group)
+        active_group = group
+    end
+
+    local function writeText(text)
+        ScreenDraw.put_text(draw_y - 1, draw_x - 1, text, active_group)
+        draw_x = draw_x + Utf8.len(text)
     end
 
     -- Clear this window's drawable region first
-    Highlight.SetFor("Normal")
+    setGroup("Normal")
     for i = 1, height do
         setPos(1, i)
-        term.write(string.rep(" ", width))
+        writeText(string.rep(" ", width))
     end
 
     local has_sep = self:hasHorizontalSeparator()
     local dostatus = self:hasLocalStatusline()
     if frame and FrameTree.IsLeftChild(frame) then
-        Highlight.SetFor("VertSplit")
+        setGroup("VertSplit")
         local fc = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).vert or "|"
         local split_rows = height - (has_sep and 1 or 0)
         for i = 1, split_rows do
             setPos(width, i)
-            term.write(fc)
+            writeText(fc)
         end
         width = width - 1
     end
@@ -1422,15 +1463,15 @@ function Window:render(xoff, yoff)
             if sig then
                 local txt = sign_entry_text(sig)
                 local hl = sign_entry_hl(sig, cursorline_active) or base_hl
-                Highlight.SetFor(hl)
-                term.write(txt)
+                setGroup(hl)
+                writeText(txt)
                 idx = idx + 1
             else
-                Highlight.SetFor(base_hl)
-                term.write("  ")
+                setGroup(base_hl)
+                writeText("  ")
             end
         end
-        Highlight.SetFor("Normal")
+        setGroup("Normal")
     end
 
     local function draw_gutter(row_y, label, iscursor, needs_right, numhl, sign_text, sign_hl)
@@ -1447,7 +1488,7 @@ function Window:render(xoff, yoff)
         else
             hlgroup = "LineNr"
         end
-        Highlight.SetFor(hlgroup)
+        setGroup(hlgroup)
 
         local s   = sign_text or label or ""
         local len = #s
@@ -1478,8 +1519,8 @@ function Window:render(xoff, yoff)
             end
         end
 
-        term.write(s)
-        Highlight.SetFor("Normal")
+        writeText(s)
+        setGroup("Normal")
     end
 
     -- Horizontal scroll (1-based)
@@ -1585,7 +1626,7 @@ function Window:render(xoff, yoff)
             )
         end
 
-        local have_blit = blitLines and blitLines.fg and blitLines.bg
+        local have_hl = blitLines and blitLines.hl
 
         local cursor_virtual = false
         if show_cursor and iscursor_line and cursorPos then
@@ -1594,7 +1635,7 @@ function Window:render(xoff, yoff)
             elseif self.opts.wrap and (vimmode == "insert") then
                 if self.cursorx == (Utf8.len(line_str) + 1) then
                     local last = rendered[#rendered] or ""
-                    if (text_w > 0) and (#last == text_w) then
+                    if (text_w > 0) and (Utf8.len(last) == text_w) then
                         cursor_virtual = true
                     end
                 end
@@ -1654,37 +1695,41 @@ function Window:render(xoff, yoff)
             local x1 = hscroll
             local x2 = hscroll + math.max(0, text_w) - 1
             if x2 < x1 then x2 = x1 - 1 end
-            local vis_text = (x2 >= x1) and text:sub(x1, x2) or ""
+            local vis_text = (x2 >= x1) and Utf8.sub(text, x1, x2) or ""
+            local vis_len = Utf8.len(vis_text)
 
-            local fg_slice, bg_slice
-            if have_blit then
-                local fg_line = blitLines.fg[j] or ""
-                local bg_line = blitLines.bg[j] or ""
-                fg_slice = (x2 >= x1) and fg_line:sub(x1, x2) or ""
-                bg_slice = (x2 >= x1) and bg_line:sub(x1, x2) or ""
+            local hl_slice
+            local swap_slice
+            if have_hl then
+                local hl_line = blitLines.hl[j] or {}
+                local swap_line = blitLines.swap and blitLines.swap[j] or {}
+                hl_slice = {}
+                swap_slice = {}
+                if x2 >= x1 then
+                    for idx = x1, x2 do
+                        hl_slice[#hl_slice + 1] = hl_line[idx]
+                        swap_slice[#swap_slice + 1] = swap_line[idx] or false
+                    end
+                end
             end
 
             if linehl and text_w > 0 then
-                if #vis_text < text_w then
-                    local missing = text_w - #vis_text
+                if vis_len < text_w then
+                    local missing = text_w - vis_len
                     vis_text = vis_text .. string.rep(" ", missing)
-                    if have_blit then
-                        local normal_hl = Highlight.For("Normal")
-                        local pad_fg = colors.toBlit(normal_hl[1])
-                        local pad_bg = colors.toBlit(normal_hl[2])
-                        fg_slice = (fg_slice or "") .. string.rep(pad_fg, missing)
-                        bg_slice = (bg_slice or "") .. string.rep(pad_bg, missing)
+                    vis_len = vis_len + missing
+                    if have_hl then
+                        local normal_hl = Highlight.GetId("Normal")
+                        for _ = 1, missing do
+                            hl_slice[#hl_slice + 1] = normal_hl
+                            swap_slice[#swap_slice + 1] = false
+                        end
                     end
                 end
-                local row_hl = Highlight.For(linehl)
-                local fg_col = row_hl[1]
-                local bg_col = row_hl[2]
-                if have_blit then
-                    if fg_col then
-                        fg_slice = string.rep(colors.toBlit(fg_col), #vis_text)
-                    end
-                    if bg_col then
-                        bg_slice = string.rep(colors.toBlit(bg_col), #vis_text)
+                if have_hl then
+                    local row_hl = Highlight.GetId(linehl)
+                    for idx = 1, vis_len do
+                        hl_slice[idx] = row_hl
                     end
                 end
             end
@@ -1692,19 +1737,21 @@ function Window:render(xoff, yoff)
             -- Draw text/blit
             if text_w > 0 then
                 setPos(text_x, 1 + visual_y)
-                if have_blit and #fg_slice == #vis_text and #bg_slice == #vis_text then
-                    term.blit(vis_text, fg_slice, bg_slice)
+                local wraps_to_next = self.opts.wrap and j < #rendered and visual_y + 1 < max_rows
+                if have_hl and #hl_slice == vis_len then
+                    ScreenDraw.put_hl_text(draw_y - 1, draw_x - 1, vis_text, hl_slice, wraps_to_next, swap_slice)
+                    draw_x = draw_x + vis_len
                 else
                     if linehl then
-                        Highlight.SetFor(linehl)
+                        setGroup(linehl)
                     else
-                        Highlight.SetFor("Normal")
+                        setGroup("Normal")
                     end
-                    term.write(vis_text)
-                    if linehl and #vis_text < text_w then
-                        term.write(string.rep(" ", text_w - #vis_text))
+                    writeText(vis_text)
+                    if linehl and vis_len < text_w then
+                        writeText(string.rep(" ", text_w - vis_len))
                     end
-                    Highlight.SetFor("Normal")
+                    setGroup("Normal")
                 end
             end
 
@@ -1720,14 +1767,14 @@ function Window:render(xoff, yoff)
                 local cx_abs = cursorPos.column       -- 1-based in wrapped piece
                 local cx_vis = cx_abs - (hscroll - 1) -- 1-based in visible slice
 
-                if cx_vis >= 1 and cx_vis <= math.max(1, math.min(text_w, #vis_text + 1)) then
+                if cx_vis >= 1 and cx_vis <= math.max(1, math.min(text_w, vis_len + 1)) then
                     local screen_x = text_x + (cx_vis - 1)
                     local screen_y = 1 + visual_y
                     local ch = cursorPos.ch or " "
                     setPos(screen_x, screen_y)
-                    Highlight.SetFor("Cursor")
-                    term.write(ch)
-                    Highlight.SetFor("Normal")
+                    setGroup("Cursor")
+                    writeText(ch)
+                    setGroup("Normal")
                 end
             end
 
@@ -1753,9 +1800,9 @@ function Window:render(xoff, yoff)
         end
         if text_w > 0 then
             setPos(text_x, 1 + visual_y)
-            Highlight.SetFor("EndOfBuffer")
-            term.write(options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).eob or "~")
-            Highlight.SetFor("Normal")
+            setGroup("EndOfBuffer")
+            writeText(options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).eob or "~")
+            setGroup("Normal")
         end
         visual_y = visual_y + 1
     end
@@ -1778,9 +1825,9 @@ function Window:render(xoff, yoff)
                     local x1 = hscroll
                     local x2 = hscroll + math.max(0, text_w) - 1
                     if x2 < x1 then x2 = x1 - 1 end
-                    local vis_text = (x2 >= x1) and row_str:sub(x1, x2) or ""
-                    if cx_vis >= 1 and cx_vis <= #vis_text then
-                        ch = vis_text:sub(cx_vis, cx_vis)
+                    local vis_text = (x2 >= x1) and Utf8.sub(row_str, x1, x2) or ""
+                    if cx_vis >= 1 and cx_vis <= Utf8.len(vis_text) then
+                        ch = Utf8.char_at(vis_text, cx_vis)
                     else
                         ch = " "
                     end
@@ -1788,9 +1835,9 @@ function Window:render(xoff, yoff)
                 local screen_x = text_x + (cx_vis - 1)
                 local screen_y = 1 + row_offset
                 setPos(screen_x, screen_y)
-                Highlight.SetFor("Cursor")
-                term.write(ch)
-                Highlight.SetFor("Normal")
+                setGroup("Cursor")
+                writeText(ch)
+                setGroup("Normal")
             end
         end
     end
@@ -1802,32 +1849,27 @@ function Window:render(xoff, yoff)
     -- Statusline
     if dostatus and not self.floatpos then
         setPos(1, baseheight)
-        local spans = Statusline.Parse(options.get("statusline", self), self)
-        for s = 1, #spans do
-            Highlight.SetFor(spans[s][2])
-            term.write(spans[s][1])
-        end
-        Highlight.SetFor("Normal")
+        local info = Statusline.RenderInfo(options.get("statusline", self), self)
+        self.statusline_click_zones = info.click_zones
+        ScreenDraw.put_spans(draw_y - 1, draw_x - 1, info.spans)
+        setGroup("Normal")
     elseif has_sep and not self.floatpos then
+        self.statusline_click_zones = {}
         local fcs = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true })
         local hc = fcs.horiz or "-"
-        Highlight.SetFor("VertSplit")
+        setGroup("VertSplit")
         setPos(1, baseheight)
-        term.write(string.rep(hc, math.max(0, width)))
-        Highlight.SetFor("Normal")
+        writeText(string.rep(hc, math.max(0, width)))
+        setGroup("Normal")
+    else
+        self.statusline_click_zones = {}
     end
 end
 
 function Window:drawStatus(xoff, yoff)
-    term.setCursorPos(xoff, yoff + self.frame.height - 1)
-
-    local spans = Statusline.Parse(options.get("statusline", self), self)
-    for s = 1, #spans do
-        Highlight.SetFor(spans[s][2])
-        term.write(spans[s][1])
-    end
-
-    Highlight.SetFor("Normal")
+    local info = Statusline.RenderInfo(options.get("statusline", self), self)
+    self.statusline_click_zones = info.click_zones
+    ScreenDraw.put_spans(yoff + self.frame.height - 2, xoff - 1, info.spans)
 end
 
 function Window:matchPairs()
@@ -2519,7 +2561,7 @@ end
 
 function Window:markUpdate(line)
     local buf = self.buffer
-    Syntax.ParseLinetypes(buf, math.max(1, (line or 1) - 1))
+    Syntax.ParseLinetypes(buf, math.max(1, line or 1))
     buf.opts.modified = true
 
     for _, win in pairs(windows) do
@@ -2543,19 +2585,59 @@ end
 
 function Window:resizeWidth(delta)
     if self.frame then
+        if not self.frame.parent then
+            return true
+        end
+        if delta < 0 then
+            local max_shrink = math.max(0, self.frame.width - self:minwidth())
+            if -delta > max_shrink then
+                delta = -max_shrink
+            end
+        end
         return FrameTree.ResizeWidth(self.frame, delta)
     elseif self.floatpos then
         self.floatpos.w = math.max(1, self.floatpos.w + delta)
+        return true
     end
     return false
 end
 
+local function current_tab_displayheight()
+    local height = screen.height - options.get("cmdheight")
+    local stal = options.get("showtabline")
+    if stal == 2 or (stal == 1 and tabpages[curtp]:count_all() > 1) then
+        height = height - 1
+    end
+    if options.get("laststatus") == 3 then
+        height = height - 1
+    end
+    return math.max(1, height)
+end
+
 function Window:resizeHeight(delta)
     if self.frame then
+        if not self.frame.parent then
+            local tabp = tabpages[self.tabpagenr or curtp]
+            local root = tabp.tree
+
+            local max_height = current_tab_displayheight(tabp)
+            local target = math.max(self:minheight(), math.min(max_height, root.height + delta))
+            tabp._manual_root_height = target
+            if target == root.height then
+                return true
+            end
+            return FrameTree.RootResizeHeight(root, target - root.height)
+        end
+        if delta < 0 then
+            local max_shrink = math.max(0, self.frame.height - self:minheight())
+            if -delta > max_shrink then
+                delta = -max_shrink
+            end
+        end
         return FrameTree.ResizeHeight(self.frame, delta)
     end
     self.floatpos.h = math.max(1, self.floatpos.h + delta)
-    return false
+    return true
 end
 
 local function cleanup_failed_split_window(win)
@@ -2571,32 +2653,81 @@ local function cleanup_failed_split_window(win)
     end
 end
 
+local function current_window_anchor(win)
+    local frame = win.frame
+    if not frame then
+        return 1, 1
+    end
+
+    local local_y = win:cursorScreenRow() + 1
+    local _, text_x = win:textwidth()
+    local local_x
+
+    if win.opts.wrap then
+        local _, params = win:_wrap_params()
+        local _, col_in_row = win:_wrap_cursor_pos(params)
+        local_x = text_x + col_in_row - 1
+    else
+        local line = win.buffer:get_line(win.cursory, true) or ""
+        local visual_col = Tab.vcol_of_prefix(line, win.cursorx, Tab.get_tab_config(win.buffer))
+        if visual_col < 1 then
+            visual_col = 1
+        end
+        local_x = text_x + (visual_col - win.scrollx)
+    end
+
+    local_x = math.clamp(local_x, 1, frame.width)
+    local_y = math.clamp(local_y, 1, frame.height)
+
+    return local_x, local_y
+end
+
+local function directional_target_window(win, direction, count)
+    local tabp = tabpages[curtp]
+    local root = tabp and tabp.tree
+    local frame = win.frame
+    if not root or not frame then
+        return nil
+    end
+
+    local local_x, local_y = current_window_anchor(win)
+    local frame_x, frame_y = FrameTree.GetXY(frame)
+
+    local anchor
+    if direction == "left" or direction == "right" then
+        anchor = frame_y + local_y - 1
+    else
+        anchor = frame_x + local_x - 1
+    end
+
+    local current_frame = FrameTree.FindDirectionalFrame(root, frame, direction, anchor, count, function(candidate)
+        return candidate.window and candidate.window.focusable
+    end)
+
+    return current_frame and current_frame.window or nil
+end
+
+local function split_place_after(vertical)
+    if vertical then
+        return options.get("splitright")
+    end
+    return options.get("splitbelow")
+end
+
 -- Functions for moving around windows.
-function Window:wincmd(command, count)
+function Window:wincmd(command, count, opts)
+    opts = opts or {}
     local tp = tabpages[curtp]
 
-    if command == "s" then
+    if command == "s" or command == "v" then
+        local vert = command == "v"
         local probe = tp:MakeSplitProbe(self)
-        if not tp:WinSplit(0, probe, false, { dry_run = true }) then
+        if not tp:WinSplit(0, probe, vert, {dry_run = true, place_after = split_place_after(vert)}) then
             return Error(36)
         end
-
         -- TODO: set-width split
         local newwin = Window(self.buffer, self)
-        if not tp:WinSplit(0, newwin, false) then
-            cleanup_failed_split_window(newwin)
-            return Error(36)
-        end
-        enterWindow(newwin.winnr)
-    elseif command == "v" then
-        local probe = tp:MakeSplitProbe(self)
-        if not tp:WinSplit(0, probe, true, { dry_run = true }) then
-            return Error(36)
-        end
-
-        -- TODO: set-width split
-        local newwin = Window(self.buffer, self)
-        if not tp:WinSplit(0, newwin, true) then
+        if not tp:WinSplit(0, newwin, vert, {place_after = split_place_after(vert)}) then
             cleanup_failed_split_window(newwin)
             return Error(36)
         end
@@ -2657,6 +2788,17 @@ function Window:wincmd(command, count)
         if next then newi = next end
 
         enterWindow(tabwins[newi].winnr)
+    elseif command == "h" or command == "j" or command == "k" or command == "l" then
+        local direction = ({
+            h = "left",
+            j = "down",
+            k = "up",
+            l = "right",
+        })[command]
+        local target = directional_target_window(self, direction, count)
+        if target then
+            enterWindow(target.winnr)
+        end
     elseif command == "T" then
         local tabp = tabpages[curtp]
         if #tabp.windows <= 1 then
@@ -2670,7 +2812,7 @@ function Window:wincmd(command, count)
 
         curtp = ntp.tabnr
     elseif command == "=" then
-        tabpages[curtp]:equalize()
+        tabpages[curtp]:equalize(opts.equalize_axis)
     elseif command == ">" then
         self:resizeWidth(count or 1)
     elseif command == "<" then
@@ -2679,10 +2821,25 @@ function Window:wincmd(command, count)
         self:resizeHeight(count or 1)
     elseif command == "-" then
         self:resizeHeight(count and -count or -1)
+    elseif command == "_" then
+        local current = (self.frame and self.frame.height) or (self.floatpos and self.floatpos.h)
+        if count then
+            self:resizeHeight(count - current)
+        elseif self.frame and not self.frame.parent then
+            local max_height = current_tab_displayheight(tabpages[curtp])
+            self:resizeHeight(max_height - current)
+        else
+            while self:resizeHeight(1) do end
+        end
+    elseif command == "|" then
+        if count then
+            self:resizeWidth(count - (self.frame and self.frame.width) or (self.floatpos and self.floatpos.w))
+        elseif self.frame and not self.frame.parent then
+            return
+        else
+            while self:resizeWidth(1) do end
+        end
     elseif command == "H" then
-        -- TODO: Create functions to set up a mock tree and
-        --       check if this works before committing to it
-
         local tabp = tabpages[curtp]
         local win = windows[curwin]
 
