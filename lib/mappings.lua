@@ -12,6 +12,7 @@ local Backend = loadModule("lib.backend")
 local Visual = loadModule("lib.visual")
 local RegisterUtil = loadModule("lib.registers")
 local Scopes = loadModule("lib.luaapi.scopes")
+local Tab = loadModule("lib.tab")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 
@@ -333,6 +334,176 @@ local function _transform_visual_selection(transform)
     win:mark_redraw()
 end
 
+local function _replace_visual_selection(char)
+    _transform_visual_selection(function(text)
+        return string.rep(char, Utf8.len(text))
+    end)
+end
+
+local function _read_visual_replace_char()
+    Command.override_emitter[#Command.override_emitter + 1] = function(key)
+        table.remove(Command.override_emitter)
+        table.remove(Command.emitter_names)
+        local char = key:emittable()
+        if char then
+            _replace_visual_selection(char)
+        end
+    end
+    Command.emitter_names[#Command.emitter_names + 1] = "Visual.replace_char"
+end
+
+local function _shift_visual_selection(right, count)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local buf = win.buffer
+    local shift = Tab.shiftwidth_effective(buf) * (count or 1)
+    local tcfg = Tab.get_tab_config(buf)
+    for lnum = selection.start.lnum, selection.finish.lnum do
+        local line = buf:get_line(lnum, true)
+        local first_non_blank = 1
+        while first_non_blank <= Utf8.len(line) do
+            local char = Utf8.char_at(line, first_non_blank)
+            if char ~= " " and char ~= "\t" then
+                break
+            end
+            first_non_blank = first_non_blank + 1
+        end
+        local indent = Tab.vcol_of_prefix(line, first_non_blank, tcfg)
+        if right then
+            indent = indent + shift
+        else
+            indent = math.max(0, indent - shift)
+        end
+        win:reindentLine(lnum, indent, selection.start.col)
+    end
+    win:cursorSet(selection.start.col, selection.start.lnum)
+    setMode("normal")
+    win:mark_redraw()
+end
+
+local function _join_visual_selection(raw)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    if selection.finish.lnum == selection.start.lnum then
+        setMode("normal")
+        return
+    end
+
+    local buf = win.buffer
+    local first = buf:get_line(selection.start.lnum, true)
+    local first_len = Utf8.len(first)
+    local joined = first
+    for lnum = selection.start.lnum + 1, selection.finish.lnum do
+        local next_line = buf:get_line(lnum, true)
+        if raw then
+            joined = joined .. next_line
+        else
+            local tail = next_line:gsub("^[ \t]+", "")
+            if tail ~= "" and not joined:match("[ \t]$") then
+                joined = joined .. " "
+            end
+            joined = joined .. tail
+        end
+    end
+    buf:set_line(selection.start.lnum, joined, true)
+    buf:remove_lines(selection.start.lnum + 1, selection.finish.lnum)
+    local finish_col
+    if raw then
+        finish_col = first_len + selection.finish.col
+    else
+        finish_col = first_len + 1
+    end
+    buf.marks[">"] = { lnum = selection.start.lnum, col = finish_col }
+    Syntax.ParseLinetypes(buf, selection.start.lnum)
+    win:cursorSet(first_len + 1, selection.start.lnum)
+    setMode("normal")
+    win:mark_redraw()
+end
+
+local function _select_visual_word(around, isWORD)
+    local win = windows[curwin]
+    local lnum, start_col, finish_col = WordNav.wordUnder(win, isWORD, win.cursory, win.cursorx)
+    if not lnum then
+        return
+    end
+    if around then
+        local line = win.buffer:get_line(lnum, true)
+        if isWORD then
+            while finish_col < Utf8.len(line) do
+                local char = Utf8.char_at(line, finish_col + 1)
+                if char ~= " " and char ~= "\t" then
+                    break
+                end
+                finish_col = finish_col + 1
+            end
+        else
+            while start_col > 1 do
+                local char = Utf8.char_at(line, start_col - 1)
+                if char ~= " " and char ~= "\t" then
+                    break
+                end
+                start_col = start_col - 1
+            end
+            if start_col == 1 then
+                while finish_col < Utf8.len(line) do
+                    local char = Utf8.char_at(line, finish_col + 1)
+                    if char ~= " " and char ~= "\t" then
+                        break
+                    end
+                    finish_col = finish_col + 1
+                end
+            end
+        end
+    end
+    win.visual_kind = "char"
+    win.visual_anchor = { lnum = lnum, col = start_col }
+    win:cursorSet(finish_col, lnum)
+    win:mark_redraw()
+end
+
+local function _select_visual_pair(around, open, close)
+    local win = windows[curwin]
+    local line = win.buffer:get_line(win.cursory, true)
+    local stack = {}
+    for col = 1, win.cursorx do
+        local char = Utf8.char_at(line, col)
+        if char == open then
+            stack[#stack + 1] = col
+        elseif char == close and #stack > 0 then
+            table.remove(stack)
+        end
+    end
+    local start_col = stack[#stack]
+    if not start_col then
+        return
+    end
+    local depth = 0
+    local finish_col
+    for col = start_col, Utf8.len(line) do
+        local char = Utf8.char_at(line, col)
+        if char == open then
+            depth = depth + 1
+        elseif char == close then
+            depth = depth - 1
+            if depth == 0 then
+                finish_col = col
+                break
+            end
+        end
+    end
+    if not finish_col then
+        return
+    end
+    if not around then
+        start_col = start_col + 1
+        finish_col = finish_col - 1
+    end
+    win.visual_kind = "char"
+    win.visual_anchor = { lnum = win.cursory, col = start_col }
+    win:cursorSet(finish_col, win.cursory)
+    win:mark_redraw()
+end
+
 local function _start_or_switch_visual(kind, count)
     local win = windows[curwin]
     if vimmode == "visual" then
@@ -453,6 +624,43 @@ Command.vmap_builtin_callback({ K(keys.u) }, function()
 end)
 Command.vmap_builtin_callback({ K(keys.grave, false, true) }, function()
     _transform_visual_selection(_toggle_case)
+end)
+Command.vmap_builtin_callback({ K(keys.r) }, _read_visual_replace_char)
+Command.vmap_builtin_callback({ K(keys.period, false, true) }, function(count)
+    _shift_visual_selection(true, count)
+end)
+Command.vmap_builtin_callback({ K(keys.comma, false, true) }, function(count)
+    _shift_visual_selection(false, count)
+end)
+Command.vmap_builtin_callback({ K(keys.j, false, true) }, function()
+    _join_visual_selection(false)
+end)
+Command.vmap_builtin_callback({ K(keys.g), K(keys.j, false, true) }, function()
+    _join_visual_selection(true)
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.w) }, function()
+    _select_visual_word(false, false)
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.w) }, function()
+    _select_visual_word(true, false)
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.w, false, true) }, function()
+    _select_visual_word(false, true)
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.w, false, true) }, function()
+    _select_visual_word(true, true)
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.b) }, function()
+    _select_visual_pair(false, "(", ")")
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.b) }, function()
+    _select_visual_pair(true, "(", ")")
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.leftBracket) }, function()
+    _select_visual_pair(false, "[", "]")
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.leftBracket) }, function()
+    _select_visual_pair(true, "[", "]")
 end)
 
 Command.nmap_builtin_callback({ K(keys.g), K(keys.v) }, function()

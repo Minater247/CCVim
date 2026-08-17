@@ -13,6 +13,7 @@ local Autocmd = loadModule("lib.autocmd")
 local Fn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local TimerUtils = loadModule("lib.luaapi.timerutils")
+local Visual = loadModule("lib.visual")
 
 local function current_backend()
     return rawget(_ENV, "backend")
@@ -52,6 +53,12 @@ local mouse_down = {
     [1] = false,
     [2] = false,
     [3] = false,
+}
+
+local mouse_down_pos = {
+    [1] = nil,
+    [2] = nil,
+    [3] = nil,
 }
 
 local mouse_click_state = {
@@ -416,6 +423,28 @@ local function place_cursor_from_click(win, local_x, local_y)
     return true
 end
 
+local function point_distance(a, b)
+    return math.abs(a.lnum - b.lnum) + math.abs(a.col - b.col)
+end
+
+local function place_visual_endpoint(win, local_x, local_y, choose_nearest)
+    local anchor
+    local cursor
+    if choose_nearest and vimmode == "visual" and win.visual_anchor then
+        anchor = { lnum = win.visual_anchor.lnum, col = win.visual_anchor.col }
+        cursor = { lnum = win.cursory, col = win.cursorx }
+    end
+    if not place_cursor_from_click(win, local_x, local_y) then
+        return false
+    end
+    if anchor and point_distance(anchor, { lnum = win.cursory, col = win.cursorx })
+        <= point_distance(cursor, { lnum = win.cursory, col = win.cursorx })
+    then
+        win.visual_anchor = cursor
+    end
+    return true
+end
+
 local function fire_menu_popup(win, button, x, y, clicks)
     Autocmd.Run("MenuPopup", {
         bufnr = win.buffer.bufnr,
@@ -456,21 +485,48 @@ local function handle_mouse_click(button, x, y)
     focus_window(win)
 
     local model = options.get("mousemodel")
+    local _, shifted, alted = current_mod_flags()
+    local was_visual = vimmode == "visual" and win.visual_anchor ~= nil
 
     if button == 1 then
-        place_cursor_from_click(win, local_x, local_y)
+        if (model == "popup" or model == "popup_setpos") and (shifted or alted) then
+            if vimmode == "normal" then
+                Visual.begin(win, alted and "block" or "char")
+                setMode("visual")
+            end
+            place_visual_endpoint(win, local_x, local_y, was_visual)
+        elseif vimmode == "visual" then
+            setMode("normal")
+            place_cursor_from_click(win, local_x, local_y)
+        else
+            place_cursor_from_click(win, local_x, local_y)
+        end
     elseif button == 2 then
         if model == "popup_setpos" then
+            local selection = was_visual and Visual.selection(win) or nil
             place_cursor_from_click(win, local_x, local_y)
+            if selection then
+                if Visual.contains(selection, win.cursory, win.cursorx) then
+                    win:cursorSet(selection.cursor.col, selection.cursor.lnum)
+                else
+                    setMode("normal")
+                end
+            end
             fire_menu_popup(win, button, x, y, clicks)
         elseif model == "popup" then
             fire_menu_popup(win, button, x, y, clicks)
         else
-            place_cursor_from_click(win, local_x, local_y)
+            if vimmode == "normal" then
+                Visual.begin(win, alted and "block" or "char")
+                setMode("visual")
+            end
+            place_visual_endpoint(win, local_x, local_y, was_visual)
         end
     elseif button == 3 then
         place_cursor_from_click(win, local_x, local_y)
     end
+
+    mouse_down_pos[button] = { lnum = win.cursory, col = win.cursorx }
 
     need_redraw = true
 end
@@ -498,21 +554,26 @@ local function handle_mouse_drag(button, x, y)
         return
     end
 
+    if button == 1 and vimmode == "normal" then
+        local start = mouse_down_pos[button]
+        if start then
+            win:cursorSet(start.col, start.lnum)
+            Visual.begin(win, "char")
+            setMode("visual")
+        end
+    end
+
     if button == 1 or button == 2 then
-        place_cursor_from_click(win, local_x, local_y)
+        place_visual_endpoint(win, local_x, local_y, button == 2)
     end
     need_redraw = true
 end
 
 local function handle_mouse_up(button, x, y)
     mouse_down[button] = false
-    local win
-    local t = target_window_at(x, y)
-    if t then
-        win = t
-    else
-        win = windows[curwin]
-    end
+    mouse_down_pos[button] = nil
+    local win, _, local_x, local_y = target_window_at(x, y)
+    if not win then win = windows[curwin] end
 
     local clicks = last_click_count(button)
     set_mouse_vvars(win, button, x, y, clicks)
@@ -523,6 +584,11 @@ local function handle_mouse_up(button, x, y)
             need_redraw = true
             return
         end
+    end
+    if button == 2 and vimmode == "visual" and options.get("mousemodel") == "extend"
+        and local_x and local_y
+    then
+        place_visual_endpoint(win, local_x, local_y, true)
     end
     need_redraw = true
 end
