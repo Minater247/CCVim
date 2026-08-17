@@ -91,6 +91,15 @@ function Visual.finish(win)
         return nil
     end
 
+    Visual.set_marks(win, selection)
+    Visual.remember(win, selection)
+    win.visual_anchor = nil
+    win.visual_kind = nil
+    win:mark_redraw()
+    return selection
+end
+
+function Visual.set_marks(win, selection)
     local buf = win.buffer
     if selection.kind == "block" then
         buf.marks["<"] = { lnum = selection.anchor.lnum, col = selection.anchor.col }
@@ -99,12 +108,11 @@ function Visual.finish(win)
         buf.marks["<"] = { lnum = selection.start.lnum, col = selection.start.col }
         buf.marks[">"] = { lnum = selection.finish.lnum, col = selection.finish.col }
     end
+end
+
+function Visual.remember(win, selection)
     win.last_visual = copy_selection(selection)
     win.last_visual_mode = Visual.mode_char(selection.kind)
-    win.visual_anchor = nil
-    win.visual_kind = nil
-    win:mark_redraw()
-    return selection
 end
 
 function Visual.record_operation(win, selection)
