@@ -185,6 +185,7 @@ local COMMAND_SPECS = {
     { name = "horizontal", min = 3, dispatch = true },
     { name = "doautocmd", min = 4, dispatch = true },
     { name = "delcommand", min = 4, dispatch = true },
+    { name = "delfunction", min = 4, dispatch = true },
     { name = "comclear", min = 4, dispatch = true },
     { name = "buffer", min = 2, dispatch = true, addr = "count" },
     { name = "enew", min = 3, dispatch = true },

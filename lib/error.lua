@@ -22,6 +22,7 @@ local errStrings = {
     [45] = "'readonly' option is set (add ! to override)",
     [117] = function(params) return "Unknown Function: " .. params[1] end,
     [118] = function(params) return "Too many or invalid arguments for: " .. params[1] end,
+    [130] = function(params) return "Unknown function: " .. params[1] end,
     [134] = "Cannot move a range of lines into itself",
     [142] = "File not written: Writing is disabled by 'write' option",
     [149] = function(params) return "Sorry, no help for " .. params[1] end,

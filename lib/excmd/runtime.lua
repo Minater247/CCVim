@@ -4660,6 +4660,34 @@ function Runtime.new(init_state, init_opts)
         return true
     end
 
+    function rt:delfunction(raw, bang)
+        local name = strip(raw)
+        if name == "" then error(Error(471)) end
+        if name:find("%s") then error(Error(474, raw)) end
+
+        local canonical = canonical_function_name(name, { state = self.state })
+        local def = self.state.funcs[name]
+            or (canonical and self.state.funcs[canonical])
+            or Runtime._FUNCS[name]
+            or (canonical and Runtime._FUNCS[canonical])
+        if not def then
+            if bang then return true end
+            error(Error(130, name))
+        end
+
+        local function remove_definition(funcs)
+            for key, value in pairs(funcs) do
+                if value == def then
+                    funcs[key] = nil
+                end
+            end
+        end
+
+        remove_definition(self.state.funcs)
+        remove_definition(Runtime._FUNCS)
+        return true
+    end
+
     function rt:comclear()
         Runtime._USER_COMMANDS = {}
         self.state.commands = {}
@@ -5970,6 +5998,8 @@ function Runtime.new(init_state, init_opts)
             return self:define_command(argstr, bang)
         elseif cmd == "delcommand" then
             return self:delcommand(argstr)
+        elseif cmd == "delfunction" then
+            return self:delfunction(argstr, bang)
         elseif cmd == "comclear" then
             return self:comclear()
         elseif cmd == "echo" or cmd == "echoerr" or cmd == "echomsg" or cmd == "echon" then

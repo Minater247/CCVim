@@ -1168,7 +1168,7 @@ function Builtins.hlID(name, ...)
     return Highlight.IdByName(hl_name)
 end
 
-function Builtins.synID(lnum, col, trans, ...)
+function Builtins.synID(lnum, col, _trans, ...)
     if select("#", ...) > 0 then
         error(Error(118, "synID"))
     end
@@ -1176,9 +1176,6 @@ function Builtins.synID(lnum, col, trans, ...)
     local win = windows[curwin]
     local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     local id = q.top_id or 0
-    if trans and trans ~= 0 and trans ~= false then
-        id = Builtins.synIDtrans(id)
-    end
     return id
 end
 
@@ -5596,6 +5593,7 @@ function Builtins.substitute(expr, pat, sub, flags)
     if p == "" then return s end
     local g = f:find("g", 1, true) ~= nil
     local ic = f:find("i", 1, true) ~= nil
+    local replacement_expr = r:match("^\\=(.*)$")
 
     local compiled = VimRegex.compile(p)
     if not compiled then
@@ -5632,6 +5630,17 @@ function Builtins.substitute(expr, pat, sub, flags)
     end
 
     local function repl(match, caps)
+        if replacement_expr ~= nil then
+            local ok, value = Runtime.EvalExpression(replacement_expr, {
+                state = Runtime._CURRENT_STATE,
+                ctrl = Runtime._CURRENT_CTRL,
+            })
+            if not ok then
+                error(value)
+            end
+            return value == nil and "" or tostring(value)
+        end
+
         local out = {}
         local i, n = 1, #r
         while i <= n do
