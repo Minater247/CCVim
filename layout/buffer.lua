@@ -1119,10 +1119,13 @@ function Buffer:write(force, newname)
         return Error(142)
     end
 
+    local was_unnamed = self.name == nil or self.name == ""
     local name
     if newname and newname ~= "" then
         name = newname
-        self.name = newname
+        if was_unnamed then
+            self.name = newname
+        end
     else
         name = self.name
     end
@@ -1142,6 +1145,7 @@ function Buffer:write(force, newname)
                 return Error(676)
             end
             self.opts.modified = false
+            _request_full_redraw()
             return true
         end
         return Error(382)
@@ -1169,6 +1173,14 @@ function Buffer:write(force, newname)
     f.close()
 
     self.opts.modified = false
+    _request_full_redraw()
+
+    if was_unnamed and newname and newname ~= "" then
+        AutoCmd.Run("BufNewFile", {
+            bufnr = self.bufnr,
+            bufname = self.name,
+        })
+    end
 
     ExMsg.echo("\"" .. self.name .. "\" " .. #self.lines .. "L, " .. writesz .. "B")
 

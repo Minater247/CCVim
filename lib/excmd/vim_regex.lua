@@ -139,7 +139,7 @@ local function tokenize_simple(pat)
         elseif mode == "nomagic" then
             return ch == "^" or ch == "$"
         elseif mode == "verynomagic" then
-            return ch == "." or ch == "^" or ch == "$"
+            return false
         else
             return ch:match("[%.%*%[%]^$]") ~= nil
         end
@@ -156,6 +156,11 @@ local function tokenize_simple(pat)
             i = i + 1
             if c == "\\" then
                 if i <= n then i = i + 1 end
+            elseif c == "[" and peek() == ":" then
+                local close = pat:find(":]", i + 1, true)
+                if close then
+                    i = close + 2
+                end
             elseif c == "]" then
                 closed = true
                 break
@@ -302,6 +307,10 @@ local function tokenize_simple(pat)
                 i = i + 2
                 goto cont
             end
+            if e == "c" or e == "C" then
+                i = i + 2
+                goto cont
+            end
             if e == "" then
                 add("LIT", "\\")
                 i = i + 1
@@ -376,8 +385,14 @@ local function tokenize_simple(pat)
         end
 
         if c == "[" and (mode == "magic" or mode == "verymagic") then
+            local start = i
             local bclass, berr = read_bracket_class()
             if not bclass then
+                if berr == "Unterminated [] class" and mode == "verymagic" then
+                    i = start + 1
+                    add("LIT", "[")
+                    goto cont
+                end
                 return nil, berr
             end
             add("BCLASS", bclass)
@@ -918,7 +933,7 @@ local function vm_is_magic_char(mode, ch)
     elseif mode == "nomagic" then
         return ch == "^" or ch == "$"
     elseif mode == "verynomagic" then
-        return ch == "." or ch == "^" or ch == "$"
+        return false
     else
         return ch:match("[%.%*%[%]^$]") ~= nil
     end
@@ -986,6 +1001,11 @@ local function vm_tokenize(pat)
             j = j + 1
             if ch == "\\" then
                 if j <= n then j = j + 1 end
+            elseif ch == "[" and pat:sub(j, j) == ":" then
+                local close = pat:find(":]", j + 1, true)
+                if close then
+                    j = close + 2
+                end
             elseif ch == "]" then
                 return pat:sub(start_idx, j - 1), j
             end
@@ -1239,6 +1259,10 @@ local function vm_tokenize(pat)
                 i = i + 2
                 goto cont
             end
+            if e == "c" or e == "C" then
+                i = i + 2
+                goto cont
+            end
 
             if e == "n" then
                 add("LIT", "\n")
@@ -1303,6 +1327,11 @@ local function vm_tokenize(pat)
                     ntoks = ntoks + 1
                     toks[ntoks] = { t = "LP", kind = "noncap" }
                     i = i + 3
+                    goto cont
+                elseif e2 == "\\" and peek(3) == "(" then
+                    ntoks = ntoks + 1
+                    toks[ntoks] = { t = "LP", kind = "noncap" }
+                    i = i + 4
                     goto cont
                 elseif e2 == "[" then
                     local raw, after_or_err = read_percent_opt(i + 3)
@@ -1433,7 +1462,11 @@ local function vm_tokenize(pat)
         if c == "[" and (mode == "magic" or mode == "verymagic") then
             local raw, after_or_err = read_bracket_class(i)
             if not raw then
-                if after_or_err == "Unterminated [] class" and pat:sub(i + 1, i + 2) == "\\|" then
+                if after_or_err == "Unterminated [] class" and mode == "verymagic" then
+                    add("LIT", "[")
+                    i = i + 1
+                    goto cont
+                elseif after_or_err == "Unterminated [] class" and pat:sub(i + 1, i + 2) == "\\|" then
                     add("LIT", "[")
                     i = i + 1
                     goto cont
@@ -1833,9 +1866,9 @@ local function vm_match_class_token(code, ch, case_sensitive)
     elseif e == "F" then
         matched = ch:match("[%a_]") == nil
     elseif e == "p" then
-        matched = ch:match("%p") ~= nil
+        matched = ch:match("[%g ]") ~= nil
     elseif e == "P" then
-        matched = ch:match("%p") == nil
+        matched = ch:match("[%g ]") == nil
     else
         matched = vm_char_equal(ch, e, case_sensitive)
     end
@@ -1872,7 +1905,19 @@ local function vm_parse_bracket(raw)
             local c = raw:sub(idx, idx)
             if c == "\\" and idx < (n - 1) then
                 local e = raw:sub(idx + 1, idx + 1)
-                if VM_CLASS_CODES[e] then
+                local unicode_hex = raw:sub(idx + 2, idx + 5)
+                if e == "u" and unicode_hex:match("^%x%x%x%x$") then
+                    local cp = tonumber(unicode_hex, 16)
+                    local first_byte
+                    if cp <= 0x7F then
+                        first_byte = cp
+                    elseif cp <= 0x7FF then
+                        first_byte = 0xC0 + math.floor(cp / 0x40)
+                    else
+                        first_byte = 0xE0 + math.floor(cp / 0x1000)
+                    end
+                    return { kind = "char", a = string.char(first_byte) }, idx + 6
+                elseif VM_CLASS_CODES[e] then
                     return { kind = "class", cls = "\\" .. e }, idx + 2
                 elseif e == "n" then
                     return { kind = "char", a = "\n" }, idx + 2
@@ -2731,6 +2776,7 @@ local VM_TRIGGER_LITS = {
     "\\ze",
     "\\z",
     "\\%(",
+    "\\%\\(",
     "\\%[",
     "\\%>",
     "\\%<",

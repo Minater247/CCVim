@@ -18,6 +18,7 @@ local Decoration = loadModule("lib.decoration")
 local PopupMenu = loadModule("lib.popupmenu")
 local ScreenDraw = loadModule("lib.screendraw")
 local Options = loadModule("lib.options")
+local Visual = loadModule("lib.visual")
 
 local function all_tabpage_ids()
     local ids = {}
@@ -643,6 +644,12 @@ function Tabpage:render()
         if options.get("showtabline") and cmdheight > 0 then
             if vimmode == "insert" then
                 ScreenDraw.put_text(screen.height - 1, 0, "-- INSERT --", "ModeMsg")
+            elseif vimmode == "visual" then
+                local mode = Visual.mode_char(windows[curwin].visual_kind)
+                local label = (mode == "V" and "-- VISUAL LINE --")
+                    or (mode == string.char(22) and "-- VISUAL BLOCK --")
+                    or "-- VISUAL --"
+                ScreenDraw.put_text(screen.height - 1, 0, label, "ModeMsg")
             elseif vimmode ~= "normal" then
                 error("Unknown mode!")
             end

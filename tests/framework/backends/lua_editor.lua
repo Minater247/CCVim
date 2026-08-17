@@ -263,6 +263,17 @@ function LuaEditorBackend.new(opts)
         return normalize_result(rv, api.vim.NIL), nil
     end
 
+    function backend:eval_ui_block(setup, query)
+        if type(setup) ~= "string" or type(query) ~= "string" then
+            return nil, "eval_ui_block expects setup and query Lua strings"
+        end
+        local _, setup_err = self:eval_block(setup)
+        if setup_err then
+            return nil, setup_err
+        end
+        return self:eval_block(query)
+    end
+
     function backend:is_nil(value)
         return value == self.NIL
     end

@@ -77,7 +77,7 @@ return {
 
             Event.ProcessEvent({ "mouse_click", 1, 10, 3 })
             Assert.eq("left click row offset", cursor_calls[#cursor_calls].row_offset, 2)
-            Assert.eq("left click screen col", cursor_calls[#cursor_calls].screen_col, 7)
+            Assert.eq("left click screen col", cursor_calls[#cursor_calls].screen_col, 8)
 
             Event.ProcessEvent({ "mouse_click", 2, 9, 2 })
             Assert.eq("right click popup event count", #autocmd_calls, 1)
@@ -109,6 +109,98 @@ return {
             local scroll_before_horizontal = #scroll_calls
             Event.ProcessEvent({ "mouse_scroll", "right", 12, 2 })
             Assert.eq("horizontal scroll uses hor amount", scroll_calls[scroll_before_horizontal + 1].dx, 6)
+
+            Options.set("mouse", "nv", false, win, buf, true)
+            Options.set("mousemodel", "extend", false, win, buf, true)
+            Assert.eq("extend mousemodel applies", options.get("mousemodel"), "extend")
+            mock.globals().vimmode = "normal"
+            win.cursory = 1
+            win.cursorx = 1
+            win.scrollx = 1
+            Event.ProcessEvent({ "mouse_click", 2, 9, 2 })
+            Assert.eq("right click starts Visual mode in extend model", mock.globals().vimmode, "visual")
+            Assert.deep_eq("right click keeps the old cursor as Visual anchor", win.visual_anchor, {
+                lnum = 1,
+                col = 1,
+            })
+            Assert.eq("right click moves the Visual endpoint row", win.cursory, 2)
+            Assert.eq("right click moves the Visual endpoint column", win.cursorx, 5)
+
+            Event.ProcessEvent({ "mouse_click", 1, 10, 3 })
+            Assert.eq("left click cancels Visual mode", mock.globals().vimmode, "normal")
+
+            mock.globals().vimmode = "normal"
+            win.cursory = 1
+            win.cursorx = 1
+            Event.ProcessEvent({ "mouse_click", 1, 6, 1 })
+            Event.ProcessEvent({ "mouse_drag", 1, 9, 2 })
+            Assert.eq("left drag starts Visual mode in extend model", mock.globals().vimmode, "visual")
+            Assert.deep_eq("left drag anchors at mouse-down position", win.visual_anchor, {
+                lnum = 1,
+                col = 2,
+            })
+            Assert.eq("left drag moves the Visual endpoint row", win.cursory, 2)
+            Assert.eq("left drag moves the Visual endpoint column", win.cursorx, 5)
+            Event.ProcessEvent({ "mouse_up", 1, 9, 2 })
+
+            mock.globals().vimmode = "visual"
+            win.visual_kind = "char"
+            win.visual_anchor = { lnum = 1, col = 1 }
+            win.cursory = 3
+            win.cursorx = 3
+            Event.ProcessEvent({ "mouse_click", 2, 6, 1 })
+            Assert.deep_eq("right click moves the nearest Visual endpoint", win.visual_anchor, {
+                lnum = 3,
+                col = 3,
+            })
+            Assert.eq("right click moves the selected nearest endpoint row", win.cursory, 1)
+            Assert.eq("right click moves the selected nearest endpoint column", win.cursorx, 2)
+            Event.ProcessEvent({ "mouse_up", 2, 6, 1 })
+
+            Options.set("mousemodel", "popup", false, win, buf, true)
+            mock.globals().vimmode = "normal"
+            win.cursory = 1
+            win.cursorx = 1
+            Event.ProcessEvent({ "key", keys.leftShift })
+            Event.ProcessEvent({ "mouse_click", 1, 9, 2 })
+            Event.ProcessEvent({ "key_up", keys.leftShift })
+            Assert.eq("popup Shift-left starts Visual mode", mock.globals().vimmode, "visual")
+            Assert.deep_eq("popup Shift-left anchors at the old cursor", win.visual_anchor, {
+                lnum = 1,
+                col = 1,
+            })
+            Assert.eq("popup Shift-left moves the Visual endpoint row", win.cursory, 2)
+            Assert.eq("popup Shift-left moves the Visual endpoint column", win.cursorx, 5)
+            Event.ProcessEvent({ "mouse_up", 1, 9, 2 })
+
+            Options.set("mousemodel", "extend", false, win, buf, true)
+            mock.globals().vimmode = "normal"
+            win.cursory = 1
+            win.cursorx = 1
+            Event.ProcessEvent({ "key", keys.leftAlt })
+            Event.ProcessEvent({ "mouse_click", 2, 9, 2 })
+            Event.ProcessEvent({ "key_up", keys.leftAlt })
+            Assert.eq("Alt-right starts blockwise Visual mode", win.visual_kind, "block")
+            Event.ProcessEvent({ "mouse_up", 2, 9, 2 })
+
+            Options.set("mousemodel", "popup_setpos", false, win, buf, true)
+            mock.globals().vimmode = "visual"
+            win.visual_kind = "char"
+            win.visual_anchor = { lnum = 1, col = 1 }
+            win.cursory = 1
+            win.cursorx = 2
+            Event.ProcessEvent({ "mouse_click", 2, 9, 3 })
+            Assert.eq("popup_setpos right click outside selection exits Visual mode", mock.globals().vimmode, "normal")
+            Event.ProcessEvent({ "mouse_up", 2, 9, 3 })
+
+            Options.set("mousemodel", "extend", false, win, buf, true)
+            mock.globals().vimmode = "normal"
+            win.cursory = 1
+            win.cursorx = 1
+            Event.ProcessEvent({ "mouse_click", 2, 6, 1 })
+            Event.ProcessEvent({ "mouse_up", 2, 9, 2 })
+            Assert.eq("right release extends the Visual endpoint row", win.cursory, 2)
+            Assert.eq("right release extends the Visual endpoint column", win.cursorx, 5)
 
             Options.set("mouse", "", false, win, buf, true)
             local cursor_before_disabled = #cursor_calls

@@ -24,6 +24,11 @@ return {
             local concealed = vim.fn.synconcealed(1, 1)
             local hl_id = vim.fn.hlID("String")
 
+            vim.cmd("syntax clear")
+            vim.cmd("syntax match TestLinked /foo/")
+            vim.cmd("highlight default link TestLinked Comment")
+            local linked_syntax_name = vim.fn.synIDattr(vim.fn.synID(1, 1, 1), "name")
+
             vim.cmd("enew!")
             vim.api.nvim_buf_set_lines(0, 0, -1, false, { "foo" })
             local left_win = vim.api.nvim_get_current_win()
@@ -51,6 +56,7 @@ return {
                 trans = trans,
                 concealed = concealed,
                 hl_id = hl_id,
+                linked_syntax_name = linked_syntax_name,
                 left_name = left_name,
                 right_name = right_name,
             }
@@ -70,6 +76,11 @@ return {
         Assert.eq("synconcealed has 3 fields", #result.concealed, 3)
         Assert.eq("synconcealed not concealed", result.concealed[1], 0)
         Assert.truthy("hlID(String) non-zero", result.hl_id > 0, result.hl_id)
+        Assert.eq(
+            "synID keeps a non-transparent syntax group despite its highlight link",
+            result.linked_syntax_name,
+            "TestLinked"
+        )
 
         Assert.eq("shared buffer regular window keeps buffer syntax", result.left_name, "Comment")
         Assert.eq("shared buffer ownsyntax window uses override syntax", result.right_name, "String")

@@ -28,6 +28,7 @@ local Commands = loadModule("lib.excmd.commands")
 local Json = loadModule("lib.luaapi.json")
 local ScriptSource = loadModule("lib.scriptsource")
 local ApiBuild = loadModule("lib.luaapi.apibuild")
+local Visual = loadModule("lib.visual")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -1167,7 +1168,7 @@ function Builtins.hlID(name, ...)
     return Highlight.IdByName(hl_name)
 end
 
-function Builtins.synID(lnum, col, trans, ...)
+function Builtins.synID(lnum, col, _trans, ...)
     if select("#", ...) > 0 then
         error(Error(118, "synID"))
     end
@@ -1175,9 +1176,6 @@ function Builtins.synID(lnum, col, trans, ...)
     local win = windows[curwin]
     local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     local id = q.top_id or 0
-    if trans and trans ~= 0 and trans ~= false then
-        id = Builtins.synIDtrans(id)
-    end
     return id
 end
 
@@ -1419,10 +1417,10 @@ function Builtins.getpos(expr)
         return { 0, windows[curwin].buffer:line_count(true), 1, 0 }
     elseif type(expr) == "string" and expr:sub(1, 1) == "'" and #expr == 2 then
         local ch = expr:sub(2, 2)
-        if ch:match("^[a-z'\".`]$") then
+        if ch:match("^[a-z'\".`<>]$") then
             local m = windows[curwin].buffer.marks[ch]
             if m then
-                return { windows[curwin].buffer.bufnr, m.lnum, m.col, 0 }
+                return { 0, m.lnum, m.col, 0 }
             end
         elseif ch:match("^[A-Z]$") then
             local m = global_marks[ch]
@@ -1435,6 +1433,25 @@ function Builtins.getpos(expr)
     end
 
     return { 0, 0, 0, 0 }
+end
+
+function Builtins.mode(_full)
+    if vimmode == "normal" then
+        return "n"
+    elseif vimmode == "insert" then
+        return "i"
+    elseif vimmode == "visual" then
+        return Visual.mode_char(windows[curwin].visual_kind)
+    end
+    return vimmode
+end
+
+function Builtins.visualmode()
+    local win = windows[curwin]
+    if vimmode == "visual" then
+        return Visual.mode_char(win.visual_kind)
+    end
+    return win.last_visual_mode or ""
 end
 
 local function _resolve_buf_for_marklist(expr)
@@ -4581,6 +4598,19 @@ function Builtins.getreg(regname, _arg2, list, ...)
     return RegisterUtil.entry_to_text(entry)
 end
 
+function Builtins.getregtype(regname)
+    local entry = RegisterUtil.get_entry(regname)
+    if not entry then
+        return ""
+    end
+    if entry[1] == "linewise" then
+        return "V"
+    elseif entry[1] == "blockwise" then
+        return string.char(22) .. tostring(entry[3])
+    end
+    return "v"
+end
+
 function Builtins.reg_recording()
     return Command.reg_recording()
 end
@@ -5563,6 +5593,7 @@ function Builtins.substitute(expr, pat, sub, flags)
     if p == "" then return s end
     local g = f:find("g", 1, true) ~= nil
     local ic = f:find("i", 1, true) ~= nil
+    local replacement_expr = r:match("^\\=(.*)$")
 
     local compiled = VimRegex.compile(p)
     if not compiled then
@@ -5599,6 +5630,17 @@ function Builtins.substitute(expr, pat, sub, flags)
     end
 
     local function repl(match, caps)
+        if replacement_expr ~= nil then
+            local ok, value = Runtime.EvalExpression(replacement_expr, {
+                state = Runtime._CURRENT_STATE,
+                ctrl = Runtime._CURRENT_CTRL,
+            })
+            if not ok then
+                error(value)
+            end
+            return value == nil and "" or tostring(value)
+        end
+
         local out = {}
         local i, n = 1, #r
         while i <= n do

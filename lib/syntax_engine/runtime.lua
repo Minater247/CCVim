@@ -428,7 +428,9 @@ local function build_plan(ir)
         keyword_cs_by_first = {},
         keyword_ci_by_first = {},
         non_keyword_context_cache = {},
+        non_keyword_nextgroup_cache = {},
         keyword_context_cache = {},
+        keyword_nextgroup_cache = {},
         group_blit_cache = {},
         group_has_non_keyword = {},
         has_ignore_case = false,
@@ -858,7 +860,22 @@ end
 
 local function non_keyword_candidates(plan, top, pending_next)
     if pending_next then
-        return plan.non_keyword_order
+        local bits = pending_next.bits
+        local cached = plan.non_keyword_nextgroup_cache[bits]
+        if cached then
+            return cached
+        end
+
+        local out = {}
+        for i = 1, #plan.non_keyword_order do
+            local item_id = plan.non_keyword_order[i]
+            local item = plan.items[item_id]
+            if bit_has(bits, item.group_id) then
+                out[#out + 1] = item_id
+            end
+        end
+        plan.non_keyword_nextgroup_cache[bits] = out
+        return out
     end
 
     local key = context_cache_key(top)
@@ -881,7 +898,33 @@ end
 
 local function keyword_context_buckets(plan, top, pending_next)
     if pending_next then
-        return plan.keyword_cs_by_first, plan.keyword_ci_by_first, false
+        local bits = pending_next.bits
+        local cached = plan.keyword_nextgroup_cache[bits]
+        if cached then
+            return cached.cs, cached.ci, true
+        end
+
+        local cs = {}
+        local ci = {}
+        for i = 1, #plan.keyword_items do
+            local item = plan.keyword_items[i]
+            if bit_has(bits, item.group_id) then
+                local first = item.ignore_case and string.byte(item.keyword_lower, 1) or string.byte(item.keyword, 1)
+                if first then
+                    local dst = item.ignore_case and ci or cs
+                    local bucket = dst[first]
+                    if not bucket then
+                        bucket = {}
+                        dst[first] = bucket
+                    end
+                    bucket[#bucket + 1] = item
+                end
+            end
+        end
+
+        cached = { cs = cs, ci = ci }
+        plan.keyword_nextgroup_cache[bits] = cached
+        return cs, ci, true
     end
 
     local key = context_cache_key(top)
@@ -1845,9 +1888,10 @@ local function highlight_line(plan, state_in, line, syn_limit)
                     if entry.oneline then
                         local from_pos = region_end_search_pos(anchored, pos)
                         local has_end = find_region_end_event(
-                            entry, line, lower_line, from_pos, max_col, line_cache
+                            entry, line, lower_line, from_pos, max_col + 1, line_cache
                         ) ~= nil
                         if not has_end then
+                            state.pending_next = nil
                             excluded_item_id = item.id
                             excluded_pos = anchored.match_start
                             pos = anchored.match_start
@@ -1963,6 +2007,7 @@ local function highlight_line(plan, state_in, line, syn_limit)
             else
                 if start_ev.kind ~= "region"
                     and top
+                    and not top.keepend
                     and start_ev.item.options.flags.contained
                     and container_allows(start_ev.item, top)
                     and start_ev.match_end > end_ev.match_end
@@ -2026,8 +2071,11 @@ local function highlight_line(plan, state_in, line, syn_limit)
                 entry.hash_token = region_entry_hash_token(entry)
                 if entry.oneline then
                     local from_pos = region_end_search_pos(event, pos)
-                    local has_end = find_region_end_event(entry, line, lower_line, from_pos, max_col, line_cache) ~= nil
+                    local has_end = find_region_end_event(
+                        entry, line, lower_line, from_pos, max_col + 1, line_cache
+                    ) ~= nil
                     if not has_end then
+                        state.pending_next = nil
                         excluded_item_id = item.id
                         excluded_pos = event.match_start
                         pos = event.match_start

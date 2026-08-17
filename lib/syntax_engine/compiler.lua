@@ -141,6 +141,21 @@ end
 
 local function add_item(state, kind, group_name, options, payload)
     local group_id = ensure_group(state, group_name)
+    if options and options.matchgroup then
+        ensure_group(state, options.matchgroup)
+    end
+    if payload then
+        for _, specs in pairs(payload) do
+            if type(specs) == "table" then
+                for i = 1, #specs do
+                    local spec = specs[i]
+                    if type(spec) == "table" and spec.matchgroup then
+                        ensure_group(state, spec.matchgroup)
+                    end
+                end
+            end
+        end
+    end
     local id = #state.items + 1
     local item = {
         id = id,

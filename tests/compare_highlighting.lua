@@ -1029,59 +1029,6 @@ local function load_syntax_commands(ft, opts)
     return commands, syntax_file
 end
 
-local function group_name_from_id(ir, group_id)
-    if type(group_id) == "number" then
-        local g = ir.groups and ir.groups[group_id]
-        return (g and g.name) or ("#" .. tostring(group_id))
-    end
-    if type(group_id) == "string" and group_id ~= "" then
-        return group_id
-    end
-    return "Normal"
-end
-
-local function paint_line_groups(line_text, spans, ir)
-    local len = #line_text
-    local groups = {}
-    local priorities = {}
-    for i = 1, len do
-        groups[i] = "Normal"
-        priorities[i] = -1
-    end
-
-    for i = 1, #spans do
-        local span = spans[i]
-        local name = group_name_from_id(ir, span.group_id)
-        local priority = span.priority or 0
-        local s = math.max(1, span.s or 1)
-        local e = math.min(len, span.e or len)
-        for col = s, e do
-            if priority >= priorities[col] then
-                groups[col] = name
-                priorities[col] = priority
-            end
-        end
-    end
-
-    return groups
-end
-
-local function groups_to_segments(groups)
-    local out = {}
-    local n = #groups
-    local i = 1
-    while i <= n do
-        local g = groups[i]
-        local j = i + 1
-        while j <= n and groups[j] == g do
-            j = j + 1
-        end
-        out[#out + 1] = { s = i, e = j - 1, group = g }
-        i = j
-    end
-    return out
-end
-
 local function segments_to_groups(len, segments)
     local groups = {}
     for i = 1, len do
@@ -1099,51 +1046,67 @@ local function segments_to_groups(len, segments)
 end
 
 local function collect_lua_segments(path, ft, opts)
-    init_lua_engine_runtime()
-
-    local Runtime = loadModule("lib.syntax_engine.runtime")
-    local Compiler = loadModule("lib.syntax_engine.compiler")
-    local State = loadModule("lib.syntax_engine.state")
-
-    local commands, syntax_file_or_err = load_syntax_commands(ft, opts)
-    if not commands then
-        return nil, syntax_file_or_err
-    end
-
     local lines = read_lines(path)
-    local buf = {
-        lines = lines,
-    }
-    function buf:line_count(_load_if_unloaded)
-        return #self.lines
-    end
-    function buf:get_line(line_nr, _load_if_unloaded)
-        return self.lines[line_nr]
-    end
-
-    local ctx = State.new_context({
-        syntax = ft,
-        synmaxcol = opts.synmaxcol or 3000,
-    })
-    ctx.syntax_commands = commands
-    ctx.syntax_ir = Compiler.compile(commands)
-    ctx.syntax_ir_dirty = false
-
     local out = {
-        syntax_file = syntax_file_or_err,
+        syntax_file = normalize_path(join(RUNTIME_ROOT, "syntax/" .. tostring(ft) .. ".vim")),
         segments = {},
         lines = lines,
     }
 
-    Runtime.lines_to_blit(ctx, buf, 1, #lines)
-    for ln = 1, #lines do
-        local cache = ctx.span_cache[ln]
-        if cache and cache.spans then
-            local painted = paint_line_groups(lines[ln], cache.spans, ctx.syntax_ir)
-            out.segments[ln] = groups_to_segments(painted)
+    local MockEnv = require("tests.test_mocks")
+    local mock = MockEnv.setup({
+        ccvim_path = REPO_ROOT,
+        bootstrap_default_editor = true,
+    })
+    local ok, err = pcall(function()
+        local Event = mock.loadModule("lib.event")
+        Event.LoadCommandModule()
+
+        local ApiBuild = mock.loadModule("lib.luaapi.apibuild")
+        local vim = ApiBuild.Build().vim
+        local G = mock.globals()
+        local buffer = G.windows[G.curwin].buffer
+        buffer.name = path
+        buffer.lines = lines
+        buffer.loaded = true
+
+        vim.cmd("filetype on")
+        vim.cmd("syntax on")
+        if opts.ft and opts.ft ~= "" then
+            vim.bo.filetype = opts.ft
         else
-            out.segments[ln] = {}
+            vim.cmd("filetype detect")
         end
+
+        out.syntax_file = normalize_path(join(RUNTIME_ROOT, "syntax/" .. tostring(vim.bo.syntax or ft) .. ".vim"))
+        for ln = 1, #lines do
+            local text = lines[ln]
+            local segments = {}
+            local col = 1
+            while col <= #text do
+                local group = vim.fn.synIDattr(vim.fn.synID(ln, col, 1), "name")
+                if group == "" then group = "Normal" end
+                local last = col + 1
+                while last <= #text do
+                    local next_group = vim.fn.synIDattr(vim.fn.synID(ln, last, 1), "name")
+                    if next_group == "" then next_group = "Normal" end
+                    if next_group ~= group then break end
+                    last = last + 1
+                end
+                segments[#segments + 1] = {
+                    s = col,
+                    e = last - 1,
+                    group = group,
+                }
+                col = last
+            end
+            out.segments[ln] = segments
+        end
+    end)
+    mock.cleanup()
+
+    if not ok then
+        return nil, tostring(err)
     end
 
     return out
@@ -1312,6 +1275,10 @@ local M = {
     collect_lua_segments = collect_lua_segments,
     collect_nvim_segments = collect_nvim_segments,
     collect_nvim_segments_many = collect_nvim_segments_many,
+    collect_static_commands = function(ft, opts)
+        init_lua_engine_runtime()
+        return load_syntax_commands(ft, opts or {})
+    end,
     normalize_path = normalize_path,
 }
 

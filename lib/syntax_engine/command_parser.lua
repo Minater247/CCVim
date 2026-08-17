@@ -164,6 +164,37 @@ local function tokenize(raw)
         return nil
     end
 
+    local function scan_bare(pos)
+        local j = pos
+        local esc = false
+        local in_class = false
+        while j <= n do
+            local ch = raw:sub(j, j)
+            if esc then
+                esc = false
+            elseif ch == "\\" then
+                esc = true
+            elseif in_class then
+                if ch == "[" and raw:sub(j + 1, j + 1) == ":" then
+                    local close = raw:find(":]", j + 2, true)
+                    if close then
+                        j = close + 2
+                        goto continue_bare
+                    end
+                elseif ch == "]" then
+                    in_class = false
+                end
+            elseif ch == "[" then
+                in_class = true
+            elseif ch:match("%s") then
+                return j
+            end
+            j = j + 1
+            ::continue_bare::
+        end
+        return j
+    end
+
     while i <= n do
         while i <= n and raw:sub(i, i):match("%s") do
             i = i + 1
@@ -212,10 +243,7 @@ local function tokenize(raw)
                 end
             end
 
-            local j = i
-            while j <= n and not raw:sub(j, j):match("%s") do
-                j = j + 1
-            end
+            local j = scan_bare(i)
             out[#out + 1] = raw:sub(i, j - 1)
             i = j
         end

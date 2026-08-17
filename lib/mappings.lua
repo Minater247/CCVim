@@ -9,6 +9,10 @@ local CmdRead = loadModule("lib.excmd.cmdread")
 local ExMsg = loadModule("lib.excmd.exmsg")
 local Utf8 = loadModule("lib.utf8")
 local Backend = loadModule("lib.backend")
+local Visual = loadModule("lib.visual")
+local RegisterUtil = loadModule("lib.registers")
+local Scopes = loadModule("lib.luaapi.scopes")
+local Tab = loadModule("lib.tab")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 
@@ -33,6 +37,512 @@ local function _mov_rt(n)
     windows[curwin]:cursorMove(n or 1, 0)
 end
 
+local function _set_visual_register(kind, value, width)
+    local entry
+    if kind == "line" then
+        entry = { "linewise", value }
+    elseif kind == "block" then
+        entry = { "blockwise", value, width }
+    else
+        entry = { "charwise", value }
+    end
+    registers["unnamed"] = entry
+    registers[0] = entry
+end
+
+local function _selection_text(win, selection)
+    local buf = win.buffer
+    if selection.kind == "line" then
+        local out = {}
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            out[#out + 1] = buf:get_line(lnum, true)
+        end
+        return out
+    elseif selection.kind == "block" then
+        local out = {}
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            out[#out + 1] = Visual.slice_block_line(selection, buf:get_line(lnum, true))
+        end
+        return out
+    end
+
+    local out = {}
+    for lnum = selection.start.lnum, selection.finish.lnum do
+        local line = buf:get_line(lnum, true)
+        if selection.start.lnum == selection.finish.lnum then
+            out[#out + 1] = Utf8.sub(line, selection.start.col, selection.finish.col)
+        elseif lnum == selection.start.lnum then
+            out[#out + 1] = Utf8.sub(line, selection.start.col)
+        elseif lnum == selection.finish.lnum then
+            out[#out + 1] = Utf8.sub(line, 1, selection.finish.col)
+        else
+            out[#out + 1] = line
+        end
+    end
+    return table.concat(out, "\n")
+end
+
+local function _linewise_selection(selection)
+    return {
+        kind = "line",
+        anchor = selection.anchor,
+        cursor = selection.cursor,
+        start = { lnum = selection.start.lnum, col = 1 },
+        finish = { lnum = selection.finish.lnum, col = Scopes.MAXCOL },
+    }
+end
+
+local function _yank_visual_selection(force_linewise)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    if force_linewise then
+        selection = _linewise_selection(selection)
+    end
+    Visual.record_operation(win, selection)
+    _set_visual_register(
+        selection.kind,
+        _selection_text(win, selection),
+        selection.width
+    )
+    win:cursorSet(selection.start.col, selection.start.lnum)
+    setMode("normal")
+end
+
+local function _delete_visual_selection(insert_after, extend_block_to_eol, force_linewise)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local visual_selection = selection
+    if force_linewise then
+        selection = _linewise_selection(selection)
+    end
+    Visual.record_operation(win, selection)
+    if extend_block_to_eol then
+        local end_col = selection.finish.col
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            end_col = math.max(end_col, Utf8.len(win.buffer:get_line(lnum, true)))
+        end
+        selection.finish.col = end_col
+        selection.width = end_col - selection.start.col + 1
+    end
+    local buf = win.buffer
+    _set_visual_register(
+        selection.kind,
+        _selection_text(win, selection),
+        selection.width
+    )
+
+    if selection.kind == "line" then
+        buf:remove_lines(selection.start.lnum, selection.finish.lnum)
+        if insert_after then
+            buf:insert_line(selection.start.lnum, "", true)
+        elseif buf:line_count(true) == 0 then
+            buf:insert_line(1, "", true)
+        end
+    elseif selection.kind == "block" then
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            local line = buf:get_line(lnum, true)
+            local len = Utf8.len(line)
+            if len >= selection.start.col then
+                buf:set_line(
+                    lnum,
+                    Utf8.sub(line, 1, selection.start.col - 1)
+                        .. Utf8.sub(line, selection.finish.col + 1),
+                    true
+                )
+            end
+        end
+    else
+        local first = buf:get_line(selection.start.lnum, true)
+        local last = buf:get_line(selection.finish.lnum, true)
+        if selection.start.lnum == selection.finish.lnum then
+            buf:set_line(
+                selection.start.lnum,
+                Utf8.sub(first, 1, selection.start.col - 1)
+                    .. Utf8.sub(first, selection.finish.col + 1),
+                true
+            )
+        else
+            buf:set_line(
+                selection.start.lnum,
+                Utf8.sub(first, 1, selection.start.col - 1)
+                    .. Utf8.sub(last, selection.finish.col + 1),
+                true
+            )
+            buf:remove_lines(selection.start.lnum + 1, selection.finish.lnum)
+        end
+    end
+
+    if selection.kind == "char" then
+        Visual.update_marks_after_charwise_join(win, selection)
+    end
+    Syntax.ParseLinetypes(buf, selection.start.lnum)
+    if insert_after then
+        if selection.kind == "block" then
+            Visual.begin_block_change(win, selection)
+        end
+        setMode("insert", selection.start.col, selection.start.lnum)
+    else
+        local cursor_col = force_linewise and visual_selection.finish.col or selection.start.col
+        win:cursorSet(cursor_col, selection.start.lnum)
+        setMode("normal")
+    end
+    win:mark_redraw()
+end
+
+local function _block_insert(append)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local col = append and (selection.finish.col + 1) or selection.start.col
+    Visual.begin_block_insert(win, selection, col)
+    setMode("insert", col, selection.start.lnum)
+end
+
+local function _put_visual_selection(preserve_register)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local entry = registers.unnamed
+    if not entry then
+        return
+    end
+
+    local buf = win.buffer
+    local selected_text = _selection_text(win, selection)
+    local put_selection
+    if selection.kind == "char" and entry[1] == "charwise" then
+        local line = buf:get_line(selection.start.lnum, true)
+        buf:set_line(
+            selection.start.lnum,
+            Utf8.sub(line, 1, selection.start.col - 1)
+                .. RegisterUtil.entry_to_text(entry)
+                .. Utf8.sub(line, selection.finish.col + 1),
+            true
+        )
+        put_selection = {
+            kind = "char",
+            anchor = { lnum = selection.start.lnum, col = selection.start.col },
+            cursor = {
+                lnum = selection.start.lnum,
+                col = selection.start.col + Utf8.len(RegisterUtil.entry_to_text(entry)) - 1,
+            },
+            start = { lnum = selection.start.lnum, col = selection.start.col },
+            finish = {
+                lnum = selection.start.lnum,
+                col = selection.start.col + Utf8.len(RegisterUtil.entry_to_text(entry)) - 1,
+            },
+        }
+    elseif selection.kind == "line" and entry[1] == "linewise" then
+        buf:remove_lines(selection.start.lnum, selection.finish.lnum)
+        local lines = entry[2]
+        for i = #lines, 1, -1 do
+            buf:insert_line(selection.start.lnum, lines[i], true)
+        end
+        put_selection = {
+            kind = "line",
+            anchor = { lnum = selection.start.lnum, col = 1 },
+            cursor = { lnum = selection.start.lnum + #lines - 1, col = Scopes.MAXCOL },
+            start = { lnum = selection.start.lnum, col = 1 },
+            finish = { lnum = selection.start.lnum + #lines - 1, col = Scopes.MAXCOL },
+        }
+    elseif selection.kind == "block" and entry[1] == "charwise" then
+        local text = RegisterUtil.entry_to_text(entry)
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            local line = buf:get_line(lnum, true)
+            buf:set_line(
+                lnum,
+                Utf8.sub(line, 1, selection.start.col - 1)
+                    .. text
+                    .. Utf8.sub(line, selection.finish.col + 1),
+                true
+            )
+        end
+        put_selection = {
+            kind = "block",
+            anchor = { lnum = selection.start.lnum, col = selection.start.col },
+            cursor = {
+                lnum = selection.start.lnum,
+                col = selection.start.col + Utf8.len(text) - 1,
+            },
+            start = { lnum = selection.start.lnum, col = selection.start.col },
+            finish = {
+                lnum = selection.start.lnum,
+                col = selection.start.col + Utf8.len(text) - 1,
+            },
+            width = Utf8.len(text),
+        }
+    else
+        return
+    end
+
+    if not preserve_register then
+        _set_visual_register(selection.kind, selected_text, selection.width)
+    end
+    Visual.set_marks(win, put_selection)
+    Visual.remember(win, put_selection)
+    Syntax.ParseLinetypes(buf, selection.start.lnum)
+    if put_selection.kind == "line" then
+        win:cursorSet(put_selection.start.col, put_selection.start.lnum)
+    else
+        win:cursorSet(put_selection.finish.col, put_selection.finish.lnum)
+    end
+    setMode("normal")
+    win:mark_redraw()
+end
+
+local function _toggle_case(text)
+    return (text:gsub("%a", function(ch)
+        if ch == string.lower(ch) then
+            return string.upper(ch)
+        end
+        return string.lower(ch)
+    end))
+end
+
+local function _transform_visual_selection(transform)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local buf = win.buffer
+    for lnum = selection.start.lnum, selection.finish.lnum do
+        local line = buf:get_line(lnum, true)
+        local first_col, last_col
+        if selection.kind == "line" then
+            first_col, last_col = 1, Utf8.len(line)
+        elseif selection.kind == "block" then
+            first_col = selection.start.col
+            last_col = math.min(selection.finish.col, Utf8.len(line))
+        elseif selection.start.lnum == selection.finish.lnum then
+            first_col, last_col = selection.start.col, selection.finish.col
+        elseif lnum == selection.start.lnum then
+            first_col, last_col = selection.start.col, Utf8.len(line)
+        elseif lnum == selection.finish.lnum then
+            first_col, last_col = 1, selection.finish.col
+        else
+            first_col, last_col = 1, Utf8.len(line)
+        end
+        if first_col <= last_col then
+            buf:set_line(
+                lnum,
+                Utf8.sub(line, 1, first_col - 1)
+                    .. transform(Utf8.sub(line, first_col, last_col))
+                    .. Utf8.sub(line, last_col + 1),
+                true
+            )
+        end
+    end
+    Syntax.ParseLinetypes(buf, selection.start.lnum)
+    win:cursorSet(selection.start.col, selection.start.lnum)
+    setMode("normal")
+    win:mark_redraw()
+end
+
+local function _replace_visual_selection(char)
+    _transform_visual_selection(function(text)
+        return string.rep(char, Utf8.len(text))
+    end)
+end
+
+local function _read_visual_replace_char()
+    Command.override_emitter[#Command.override_emitter + 1] = function(key)
+        table.remove(Command.override_emitter)
+        table.remove(Command.emitter_names)
+        local char = key:emittable()
+        if char then
+            _replace_visual_selection(char)
+        end
+    end
+    Command.emitter_names[#Command.emitter_names + 1] = "Visual.replace_char"
+end
+
+local function _shift_visual_selection(right, count)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local buf = win.buffer
+    local shift = Tab.shiftwidth_effective(buf) * (count or 1)
+    local tcfg = Tab.get_tab_config(buf)
+    for lnum = selection.start.lnum, selection.finish.lnum do
+        local line = buf:get_line(lnum, true)
+        local first_non_blank = 1
+        while first_non_blank <= Utf8.len(line) do
+            local char = Utf8.char_at(line, first_non_blank)
+            if char ~= " " and char ~= "\t" then
+                break
+            end
+            first_non_blank = first_non_blank + 1
+        end
+        local indent = Tab.vcol_of_prefix(line, first_non_blank, tcfg)
+        if right then
+            indent = indent + shift
+        else
+            indent = math.max(0, indent - shift)
+        end
+        win:reindentLine(lnum, indent, selection.start.col)
+    end
+    win:cursorSet(selection.start.col, selection.start.lnum)
+    setMode("normal")
+    win:mark_redraw()
+end
+
+local function _join_visual_selection(raw)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    if selection.finish.lnum == selection.start.lnum then
+        setMode("normal")
+        return
+    end
+
+    local buf = win.buffer
+    local first = buf:get_line(selection.start.lnum, true)
+    local first_len = Utf8.len(first)
+    local joined = first
+    for lnum = selection.start.lnum + 1, selection.finish.lnum do
+        local next_line = buf:get_line(lnum, true)
+        if raw then
+            joined = joined .. next_line
+        else
+            local tail = next_line:gsub("^[ \t]+", "")
+            if tail ~= "" and not joined:match("[ \t]$") then
+                joined = joined .. " "
+            end
+            joined = joined .. tail
+        end
+    end
+    buf:set_line(selection.start.lnum, joined, true)
+    buf:remove_lines(selection.start.lnum + 1, selection.finish.lnum)
+    local finish_col
+    if raw then
+        finish_col = first_len + selection.finish.col
+    else
+        finish_col = first_len + 1
+    end
+    buf.marks[">"] = { lnum = selection.start.lnum, col = finish_col }
+    Syntax.ParseLinetypes(buf, selection.start.lnum)
+    win:cursorSet(first_len + 1, selection.start.lnum)
+    setMode("normal")
+    win:mark_redraw()
+end
+
+local function _select_visual_word(around, isWORD)
+    local win = windows[curwin]
+    local lnum, start_col, finish_col = WordNav.wordUnder(win, isWORD, win.cursory, win.cursorx)
+    if not lnum then
+        return
+    end
+    if around then
+        local line = win.buffer:get_line(lnum, true)
+        if isWORD then
+            while finish_col < Utf8.len(line) do
+                local char = Utf8.char_at(line, finish_col + 1)
+                if char ~= " " and char ~= "\t" then
+                    break
+                end
+                finish_col = finish_col + 1
+            end
+        else
+            while start_col > 1 do
+                local char = Utf8.char_at(line, start_col - 1)
+                if char ~= " " and char ~= "\t" then
+                    break
+                end
+                start_col = start_col - 1
+            end
+            if start_col == 1 then
+                while finish_col < Utf8.len(line) do
+                    local char = Utf8.char_at(line, finish_col + 1)
+                    if char ~= " " and char ~= "\t" then
+                        break
+                    end
+                    finish_col = finish_col + 1
+                end
+            end
+        end
+    end
+    win.visual_kind = "char"
+    win.visual_anchor = { lnum = lnum, col = start_col }
+    win:cursorSet(finish_col, lnum)
+    win:mark_redraw()
+end
+
+local function _select_visual_pair(around, open, close)
+    local win = windows[curwin]
+    local line = win.buffer:get_line(win.cursory, true)
+    local stack = {}
+    for col = 1, win.cursorx do
+        local char = Utf8.char_at(line, col)
+        if char == open then
+            stack[#stack + 1] = col
+        elseif char == close and #stack > 0 then
+            table.remove(stack)
+        end
+    end
+    local start_col = stack[#stack]
+    if not start_col then
+        return
+    end
+    local depth = 0
+    local finish_col
+    for col = start_col, Utf8.len(line) do
+        local char = Utf8.char_at(line, col)
+        if char == open then
+            depth = depth + 1
+        elseif char == close then
+            depth = depth - 1
+            if depth == 0 then
+                finish_col = col
+                break
+            end
+        end
+    end
+    if not finish_col then
+        return
+    end
+    if not around then
+        start_col = start_col + 1
+        finish_col = finish_col - 1
+    end
+    win.visual_kind = "char"
+    win.visual_anchor = { lnum = win.cursory, col = start_col }
+    win:cursorSet(finish_col, win.cursory)
+    win:mark_redraw()
+end
+
+local function _start_or_switch_visual(kind, count)
+    local win = windows[curwin]
+    if vimmode == "visual" then
+        if win.visual_kind == kind then
+            setMode("normal")
+        else
+            win.visual_kind = kind
+            win:mark_redraw()
+        end
+        return
+    end
+
+    count = tonumber(count)
+    local previous = count and win.last_visual_operation
+    if previous then
+        kind = previous.kind
+    end
+    Visual.begin(win, kind)
+    setMode("visual")
+    if previous and count then
+        if kind == "line" then
+            local height = previous.finish.lnum - previous.start.lnum + 1
+            win:cursorMove(0, height * count - 1)
+        elseif kind == "block" then
+            local height = previous.finish.lnum - previous.start.lnum + 1
+            win:cursorMove(previous.width * count - 1, height * count - 1)
+        elseif previous.start.lnum == previous.finish.lnum then
+            local width = previous.finish.col - previous.start.col + 1
+            win:cursorMove(width * count - 1, 0)
+        end
+    elseif count and count > 1 then
+        if kind == "line" then
+            win:cursorMove(0, count - 1)
+        elseif kind == "char" then
+            win:cursorMove(count - 1, 0)
+        end
+    end
+end
+
 Command.nimap_builtin_callback({ K(keys.down) }, _mov_dn)
 Command.nimap_builtin_callback({ K(keys.up) }, _mov_up)
 Command.nimap_builtin_callback({ K(keys.left) }, _mov_lt)
@@ -44,6 +554,124 @@ Command.nmap_builtin_callback({ K(keys.l) }, _mov_rt)
 Command.nmap_builtin_callback({ K(keys.p, true) }, _mov_up)
 Command.nmap_builtin_callback({ K(keys.j, true) }, _mov_dn)
 Command.nmap_builtin_callback({ K(keys.n, true) }, _mov_dn)
+
+-- Visual mode is a single mode with a selection kind stored on the window.
+-- Keeping all kinds on this path lets mappings and motion handling stay shared.
+Command.count_modes.visual = true
+Command.nmap_builtin_callback({ K(keys.v) }, function(count) _start_or_switch_visual("char", count) end)
+Command.nmap_builtin_callback(
+    { K(keys.v, false, true) },
+    function(count) _start_or_switch_visual("line", count) end
+)
+Command.nmap_builtin_callback({ K(keys.v, true) }, function(count) _start_or_switch_visual("block", count) end)
+
+Command.vmap_builtin_callback({ K(keys.v) }, function(count) _start_or_switch_visual("char", count) end)
+Command.vmap_builtin_callback(
+    { K(keys.v, false, true) },
+    function(count) _start_or_switch_visual("line", count) end
+)
+Command.vmap_builtin_callback({ K(keys.v, true) }, function(count) _start_or_switch_visual("block", count) end)
+Command.vmap_builtin_callback({ K(keys.h) }, _mov_lt)
+Command.vmap_builtin_callback({ K(keys.j) }, _mov_dn)
+Command.vmap_builtin_callback({ K(keys.k) }, _mov_up)
+Command.vmap_builtin_callback({ K(keys.l) }, _mov_rt)
+Command.vmap_builtin_callback({ K(keys.left) }, _mov_lt)
+Command.vmap_builtin_callback({ K(keys.down) }, _mov_dn)
+Command.vmap_builtin_callback({ K(keys.up) }, _mov_up)
+Command.vmap_builtin_callback({ K(keys.right) }, _mov_rt)
+Command.vmap_builtin_callback({ K(keys.y) }, _yank_visual_selection)
+Command.vmap_builtin_callback({ K(keys.d) }, function() _delete_visual_selection(false) end)
+Command.vmap_builtin_callback({ K(keys.x) }, function() _delete_visual_selection(false) end)
+Command.vmap_builtin_callback({ K(keys.c) }, function() _delete_visual_selection(true) end)
+Command.vmap_builtin_callback({ K(keys.s) }, function() _delete_visual_selection(true) end)
+Command.vmap_builtin_callback({ K(keys.c, false, true) }, function()
+    if windows[curwin].visual_kind == "block" then
+        _delete_visual_selection(true, true)
+    else
+        _delete_visual_selection(true, false, true)
+    end
+end)
+Command.vmap_builtin_callback({ K(keys.i, false, true) }, function() _block_insert(false) end)
+Command.vmap_builtin_callback({ K(keys.a, false, true) }, function() _block_insert(true) end)
+Command.vmap_builtin_callback({ K(keys.leftBracket, true) }, function() setMode("normal") end)
+Command.vmap_builtin_callback({ K(keys.c, true) }, function() setMode("normal") end)
+if Backend.current().kind == "cc" then
+    Command.vmap_builtin_callback({ K(keys.tab, true) }, function() setMode("normal") end)
+end
+Command.vmap_builtin_callback({ K(keys.o) }, function()
+    Visual.other_end(windows[curwin])
+end)
+Command.vmap_builtin_callback({ K(keys.o, false, true) }, function()
+    Visual.other_block_corner(windows[curwin])
+end)
+Command.vmap_builtin_callback({ K(keys.d, false, true) }, function()
+    if windows[curwin].visual_kind == "block" then
+        _delete_visual_selection(false, true)
+    else
+        _delete_visual_selection(false, false, true)
+    end
+end)
+Command.vmap_builtin_callback({ K(keys.y, false, true) }, function()
+    _yank_visual_selection(true)
+end)
+Command.vmap_builtin_callback({ K(keys.p) }, function() _put_visual_selection(false) end)
+Command.vmap_builtin_callback({ K(keys.p, false, true) }, function() _put_visual_selection(true) end)
+Command.vmap_builtin_callback({ K(keys.u, false, true) }, function()
+    _transform_visual_selection(string.upper)
+end)
+Command.vmap_builtin_callback({ K(keys.u) }, function()
+    _transform_visual_selection(string.lower)
+end)
+Command.vmap_builtin_callback({ K(keys.grave, false, true) }, function()
+    _transform_visual_selection(_toggle_case)
+end)
+Command.vmap_builtin_callback({ K(keys.r) }, _read_visual_replace_char)
+Command.vmap_builtin_callback({ K(keys.period, false, true) }, function(count)
+    _shift_visual_selection(true, count)
+end)
+Command.vmap_builtin_callback({ K(keys.comma, false, true) }, function(count)
+    _shift_visual_selection(false, count)
+end)
+Command.vmap_builtin_callback({ K(keys.j, false, true) }, function()
+    _join_visual_selection(false)
+end)
+Command.vmap_builtin_callback({ K(keys.g), K(keys.j, false, true) }, function()
+    _join_visual_selection(true)
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.w) }, function()
+    _select_visual_word(false, false)
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.w) }, function()
+    _select_visual_word(true, false)
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.w, false, true) }, function()
+    _select_visual_word(false, true)
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.w, false, true) }, function()
+    _select_visual_word(true, true)
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.b) }, function()
+    _select_visual_pair(false, "(", ")")
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.b) }, function()
+    _select_visual_pair(true, "(", ")")
+end)
+Command.vmap_builtin_callback({ K(keys.i), K(keys.leftBracket) }, function()
+    _select_visual_pair(false, "[", "]")
+end)
+Command.vmap_builtin_callback({ K(keys.a), K(keys.leftBracket) }, function()
+    _select_visual_pair(true, "[", "]")
+end)
+
+Command.nmap_builtin_callback({ K(keys.g), K(keys.v) }, function()
+    local win = windows[curwin]
+    if Visual.restore_last(win) then
+        setMode("visual")
+    end
+end)
+Command.vmap_builtin_callback({ K(keys.g), K(keys.v) }, function()
+    Visual.swap_with_last(windows[curwin])
+end)
 
 Command.nmap_builtin_callback(
     { K(keys.g), K(keys.g) },

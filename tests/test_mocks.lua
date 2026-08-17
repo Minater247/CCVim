@@ -2265,6 +2265,23 @@ function MockEnv.setup(opts)
     end
     _G.enterWindow = globals.enterWindow
 
+    local Visual = load_module("lib.visual")
+    local function leave_insert_cursor(win)
+        local start = win.insert_curs_start
+        if not start then
+            return
+        end
+        if win.cursory < start[2] or (win.cursory == start[2] and win.cursorx <= start[1]) then
+            return
+        end
+        if win.cursorx > 1 then
+            win:cursorMove(-1, 0)
+        else
+            local previous_line = win.cursory - 1
+            win:cursorSet(win.buffer:line_len(previous_line, true), previous_line)
+        end
+    end
+
     globals.setMode = function(newmode, newx, newy)
         local oldmode = globals.vimmode
         local win = globals.windows[globals.curwin]
@@ -2278,11 +2295,19 @@ function MockEnv.setup(opts)
         local PopupMenu = load_module("lib.popupmenu")
 
         if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+            Visual.complete_block_change(win)
             win.buffer:undo_end(win)
             AutoCmd.Run("InsertLeavePre", buf_ctx)
         end
 
+        if mode_changed and oldmode == "visual" and newmode ~= "visual" and win.visual_anchor then
+            Visual.finish(win)
+        end
+
         globals.vimmode = newmode
+        if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+            leave_insert_cursor(win)
+        end
         if newy then
             win:cursorSetY(newy)
         end

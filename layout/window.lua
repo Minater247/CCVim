@@ -21,6 +21,7 @@ local Scopes = loadModule("lib.luaapi.scopes")
 local CmdRead = loadModule("lib.excmd.cmdread")
 local ScreenDraw = loadModule("lib.screendraw")
 local Options = loadModule("lib.options")
+local Visual = loadModule("lib.visual")
 
 local curr_winno = 1
 
@@ -613,10 +614,10 @@ function Window:_col1_for_visual_col(line, want_vx, insert_mode)
         return 1
     end
 
-    local best_i, best_v = 1, Tab.vcol_of_prefix(line, 1, tcfg)
+    local best_i, best_v = 1, Tab.vcol_of_prefix(line, 1, tcfg) + 1
 
     for i = 1, n + 1 do
-        local v = Tab.vcol_of_prefix(line, i, tcfg)
+        local v = Tab.vcol_of_prefix(line, i, tcfg) + 1
 
         if v <= want_vx then
             best_i, best_v = i, v
@@ -911,7 +912,7 @@ function Window:_set_cursor_raw(line_idx, col1)
     if newx < 1 then
         newx = 1
     else
-        if vimmode == "normal" then
+        if vimmode == "normal" or vimmode == "visual" then
             if newx > ll then newx = math.max(1, ll) end
         elseif vimmode == "insert" then
             if newx > ll + 1 then newx = math.max(1, ll + 1) end
@@ -1012,7 +1013,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
     if (deltax == 0) and had_y_move and (self._held_vx == nil) and (not force_reset_held_x) then
         local tcfg    = Tab.get_tab_config(self.buffer)
         local line    = self.buffer:get_line(self.cursory, true) or ""
-        self._held_vx = Tab.vcol_of_prefix(line, self.cursorx, tcfg)
+        self._held_vx = Tab.vcol_of_prefix(line, self.cursorx, tcfg) + 1
         if self._held_vx < 1 then self._held_vx = 1 end
     end
 
@@ -1042,6 +1043,14 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
         if vimmode == "normal" then
             if newx > ll then
                 newx = math.max(1, ll)
+            end
+        elseif vimmode == "visual" then
+            local max_col = ll
+            if self.visual_kind == "block" then
+                max_col = ll + 1
+            end
+            if newx > max_col then
+                newx = math.max(1, max_col)
             end
         elseif vimmode == "insert" then
             if newx > ll + 1 then
@@ -1535,6 +1544,7 @@ function Window:render(xoff, yoff)
     local visual_y = 0
     local pending_cursor = nil
     local show_cursor = (self.winnr == curwin) and (not CmdRead.is_active())
+    local visual_selection = Visual.active(self) and Visual.selection(self)
     local last_visible_idx = math.min(linecnt, start_idx + max_rows - 1)
     local top0 = math.max(0, start_idx - 1)
     local bot0 = math.max(top0, last_visible_idx - 1)
@@ -1732,6 +1742,28 @@ function Window:render(xoff, yoff)
                         hl_slice[idx] = row_hl
                     end
                 end
+            end
+
+            if visual_selection and vis_len > 0 then
+                if not hl_slice then
+                    hl_slice, swap_slice = {}, {}
+                    local normal_hl = Highlight.GetId("Normal")
+                    for idx = 1, vis_len do
+                        hl_slice[idx] = normal_hl
+                        swap_slice[idx] = false
+                    end
+                end
+                local visual_hl = Highlight.GetId("Visual")
+                local range = ranges and ranges[j]
+                local range_start = (range and range.i) or 1
+                for idx = 1, vis_len do
+                    local source_byte = gsrc and gsrc[range_start + x1 + idx - 2]
+                    local source_col = source_byte and Utf8.col_from_byte(line_str, source_byte, true)
+                    if source_col and Visual.contains(visual_selection, i, source_col) then
+                        hl_slice[idx] = visual_hl
+                    end
+                end
+                have_hl = true
             end
 
             -- Draw text/blit

@@ -1,5 +1,7 @@
 local Scopes = {}
 
+Scopes.MAXCOL = 2147483647
+
 -- Backing stores
 Scopes._g = {}
 Scopes._v = {}
@@ -10,6 +12,7 @@ Scopes._v.count = 0
 Scopes._v.count1 = 1
 Scopes._v.prevcount = 0
 Scopes._v.stderr = 2
+Scopes._v.maxcol = Scopes.MAXCOL
 Scopes._v["true"] = true
 Scopes._v["false"] = false
 Scopes._b_by_buf = {}
