@@ -391,6 +391,17 @@ return {
 
             do
                 local ctx_state = mk_ctx({
+                    "region Structure start=/(/ end=/)/ contains=String keepend",
+                    "match String /)\\S*/ contained",
+                })
+                local buf = mk_buf({ "(url)!" })
+                local blit = Runtime.line_to_blit(ctx_state, buf, 1)
+                Assert.eq("keepend delimiter beats same-pos contained match", fg_at(blit, 5), structure_fg)
+                Assert.eq("keepend region does not leak past delimiter", fg_at(blit, 6), normal_fg)
+            end
+
+            do
+                local ctx_state = mk_ctx({
                     "region Comment start=/\\<if\\>/ end=/\\<then\\>/me=e-4 nextgroup=String",
                     "match String /\\<then\\>/ contained",
                 })
