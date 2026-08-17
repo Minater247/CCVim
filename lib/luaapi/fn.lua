@@ -1423,7 +1423,7 @@ function Builtins.getpos(expr)
         if ch:match("^[a-z'\".`<>]$") then
             local m = windows[curwin].buffer.marks[ch]
             if m then
-                return { windows[curwin].buffer.bufnr, m.lnum, m.col, 0 }
+                return { 0, m.lnum, m.col, 0 }
             end
         elseif ch:match("^[A-Z]$") then
             local m = global_marks[ch]

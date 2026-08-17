@@ -30,6 +30,27 @@ function Assert.table_eq(label, got, want)
     end
 end
 
+function Assert.deep_eq(label, got, want)
+    local function compare(path, actual, expected)
+        Assert.eq(path .. " type", type(actual), type(expected))
+        if type(expected) ~= "table" then
+            Assert.eq(path, actual, expected)
+            return
+        end
+
+        for key, value in pairs(expected) do
+            compare(path .. "[" .. tostring(key) .. "]", actual[key], value)
+        end
+        for key, _ in pairs(actual) do
+            if expected[key] == nil then
+                fail(path .. " has unexpected key " .. tostring(key))
+            end
+        end
+    end
+
+    compare(label, got, want)
+end
+
 function Assert.contains_pair(label, rows, key, value)
     for i = 1, #rows do
         local row = rows[i]

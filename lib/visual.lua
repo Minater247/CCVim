@@ -19,6 +19,17 @@ local function before_or_equal(a, b)
     return a.lnum < b.lnum or (a.lnum == b.lnum and a.col <= b.col)
 end
 
+local function copy_selection(selection)
+    return {
+        kind = selection.kind,
+        anchor = copy_pos(selection.anchor),
+        cursor = copy_pos(selection.cursor),
+        start = copy_pos(selection.start),
+        finish = copy_pos(selection.finish),
+        width = selection.width,
+    }
+end
+
 function Visual.mode_char(kind)
     local mode = MODE_CHAR[kind]
     assert(mode, "invalid Visual selection kind")
@@ -81,21 +92,33 @@ function Visual.finish(win)
     end
 
     local buf = win.buffer
-    buf.marks["<"] = { lnum = selection.start.lnum, col = selection.start.col }
-    buf.marks[">"] = { lnum = selection.finish.lnum, col = selection.finish.col }
-    win.last_visual = {
-        kind = selection.kind,
-        anchor = copy_pos(selection.anchor),
-        cursor = copy_pos(selection.cursor),
-        start = copy_pos(selection.start),
-        finish = copy_pos(selection.finish),
-        width = selection.width,
-    }
+    if selection.kind == "block" then
+        buf.marks["<"] = { lnum = selection.anchor.lnum, col = selection.anchor.col }
+        buf.marks[">"] = { lnum = selection.cursor.lnum, col = selection.cursor.col }
+    else
+        buf.marks["<"] = { lnum = selection.start.lnum, col = selection.start.col }
+        buf.marks[">"] = { lnum = selection.finish.lnum, col = selection.finish.col }
+    end
+    win.last_visual = copy_selection(selection)
     win.last_visual_mode = Visual.mode_char(selection.kind)
     win.visual_anchor = nil
     win.visual_kind = nil
     win:mark_redraw()
     return selection
+end
+
+function Visual.record_operation(win, selection)
+    win.last_visual_operation = copy_selection(selection)
+end
+
+function Visual.update_marks_after_charwise_join(win, selection)
+    if selection.start.lnum == selection.finish.lnum then
+        return
+    end
+    win.buffer.marks[">"] = {
+        lnum = selection.start.lnum,
+        col = selection.start.col + selection.finish.col - 1,
+    }
 end
 
 function Visual.restore_last(win)
@@ -108,6 +131,49 @@ function Visual.restore_last(win)
     win:cursorSet(previous.cursor.col, previous.cursor.lnum)
     win:mark_redraw()
     return true
+end
+
+function Visual.swap_with_last(win)
+    local previous = win.last_visual
+    if not previous then
+        return false
+    end
+
+    local current = Visual.selection(win)
+    if not current then
+        return false
+    end
+
+    win.last_visual = copy_selection(current)
+    win.last_visual_mode = Visual.mode_char(current.kind)
+    win.visual_anchor = copy_pos(previous.anchor)
+    win.visual_kind = previous.kind
+    win:cursorSet(previous.cursor.col, previous.cursor.lnum)
+    win:mark_redraw()
+    return true
+end
+
+function Visual.other_end(win)
+    local anchor = win.visual_anchor
+    win.visual_anchor = { lnum = win.cursory, col = win.cursorx }
+    win:cursorSet(anchor.col, anchor.lnum)
+    win:mark_redraw()
+end
+
+function Visual.other_block_corner(win)
+    local selection = Visual.selection(win)
+    if selection.kind ~= "block" then
+        Visual.other_end(win)
+        return
+    end
+
+    local cursor = selection.cursor
+    local start, finish = selection.start, selection.finish
+    local cursor_col = (cursor.col == start.col) and finish.col or start.col
+    local anchor_lnum = (cursor.lnum == start.lnum) and finish.lnum or start.lnum
+    win.visual_anchor = { lnum = anchor_lnum, col = cursor.col }
+    win:cursorSet(cursor_col, cursor.lnum)
+    win:mark_redraw()
 end
 
 function Visual.contains(selection, lnum, col)
@@ -153,6 +219,25 @@ function Visual.begin_block_change(win, selection)
     win.visual_block_change = { rows = rows }
 end
 
+function Visual.begin_block_insert(win, selection, col)
+    local rows = {}
+    for lnum = selection.start.lnum, selection.finish.lnum do
+        local line = win.buffer:get_line(lnum, true)
+        if Utf8.len(line) >= col then
+            rows[#rows + 1] = {
+                lnum = lnum,
+                prefix = Utf8.sub(line, 1, col - 1),
+                suffix = Utf8.sub(line, col),
+            }
+        end
+    end
+    win.visual_block_change = {
+        rows = rows,
+        exit_col = selection.start.col,
+        exit_lnum = selection.start.lnum,
+    }
+end
+
 function Visual.complete_block_change(win)
     local state = win.visual_block_change
     if not state then
@@ -175,6 +260,9 @@ function Visual.complete_block_change(win)
     for i = 2, #state.rows do
         local row = state.rows[i]
         win.buffer:set_line(row.lnum, row.prefix .. inserted .. row.suffix, true)
+    end
+    if state.exit_col then
+        win:cursorSet(state.exit_col, state.exit_lnum)
     end
     return true
 end

@@ -458,6 +458,22 @@ local PopupMenu = loadModule("lib.popupmenu")
 local Visual = loadModule("lib.visual")
 _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
+local function leave_insert_cursor(win)
+    local start = win.insert_curs_start
+    if not start then
+        return
+    end
+    if win.cursory < start[2] or (win.cursory == start[2] and win.cursorx <= start[1]) then
+        return
+    end
+    if win.cursorx > 1 then
+        win:cursorMove(-1, 0)
+    else
+        local previous_line = win.cursory - 1
+        win:cursorSet(win.buffer:line_len(previous_line, true), previous_line)
+    end
+end
+
 function _V.setMode(newmode, newx, newy)
     local oldmode = _V.vimmode
     local win = _V.windows[_V.curwin]
@@ -478,6 +494,9 @@ function _V.setMode(newmode, newx, newy)
     end
 
     _V.vimmode = newmode
+    if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+        leave_insert_cursor(win)
+    end
     if newy then
         win:cursorSetY(newy)
     end

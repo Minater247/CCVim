@@ -614,10 +614,10 @@ function Window:_col1_for_visual_col(line, want_vx, insert_mode)
         return 1
     end
 
-    local best_i, best_v = 1, Tab.vcol_of_prefix(line, 1, tcfg)
+    local best_i, best_v = 1, Tab.vcol_of_prefix(line, 1, tcfg) + 1
 
     for i = 1, n + 1 do
-        local v = Tab.vcol_of_prefix(line, i, tcfg)
+        local v = Tab.vcol_of_prefix(line, i, tcfg) + 1
 
         if v <= want_vx then
             best_i, best_v = i, v
@@ -1013,7 +1013,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
     if (deltax == 0) and had_y_move and (self._held_vx == nil) and (not force_reset_held_x) then
         local tcfg    = Tab.get_tab_config(self.buffer)
         local line    = self.buffer:get_line(self.cursory, true) or ""
-        self._held_vx = Tab.vcol_of_prefix(line, self.cursorx, tcfg)
+        self._held_vx = Tab.vcol_of_prefix(line, self.cursorx, tcfg) + 1
         if self._held_vx < 1 then self._held_vx = 1 end
     end
 
@@ -1040,9 +1040,17 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
         newx = 1
     else
         local ll = self.buffer:line_len(newy, true)
-        if vimmode == "normal" or vimmode == "visual" then
+        if vimmode == "normal" then
             if newx > ll then
                 newx = math.max(1, ll)
+            end
+        elseif vimmode == "visual" then
+            local max_col = ll
+            if self.visual_kind == "block" then
+                max_col = ll + 1
+            end
+            if newx > max_col then
+                newx = math.max(1, max_col)
             end
         elseif vimmode == "insert" then
             if newx > ll + 1 then

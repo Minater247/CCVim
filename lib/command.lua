@@ -953,8 +953,7 @@ function Command.mapping_to_dict(node, is_buffer_local, lhs_seq)
     }
 end
 
--- Convenience wrappers continue to work; add an optional opts:
--- opts is an array with either buffer_local = true (current buffer) or buffer = some_buf_obj (specific buf)
+-- Convenience wrappers for mappings
 function Command.nmap_callback(lhs_seq, cb, opts) return Command.map_callback("normal", lhs_seq, cb, opts) end
 
 function Command.imap_callback(lhs_seq, cb, opts) return Command.map_callback("insert", lhs_seq, cb, opts) end
@@ -966,6 +965,8 @@ function Command.nmap_builtin_callback(lhs_seq, cb) return Command.map_builtin_c
 function Command.imap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("insert", lhs_seq, cb) end
 
 function Command.nimap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("ni", lhs_seq, cb) end
+
+function Command.vmap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("visual", lhs_seq, cb) end
 
 function Command.nnoremap_keys(lhs, rhs, opts) return Command.noremap_keys("normal", lhs, rhs, opts) end
 

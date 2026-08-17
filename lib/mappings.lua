@@ -82,6 +82,7 @@ end
 local function _yank_visual_selection()
     local win = windows[curwin]
     local selection = Visual.finish(win)
+    Visual.record_operation(win, selection)
     _set_visual_register(
         selection.kind,
         _selection_text(win, selection),
@@ -91,9 +92,18 @@ local function _yank_visual_selection()
     setMode("normal")
 end
 
-local function _delete_visual_selection(insert_after)
+local function _delete_visual_selection(insert_after, extend_block_to_eol)
     local win = windows[curwin]
     local selection = Visual.finish(win)
+    Visual.record_operation(win, selection)
+    if extend_block_to_eol then
+        local end_col = selection.finish.col
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            end_col = math.max(end_col, Utf8.len(win.buffer:get_line(lnum, true)))
+        end
+        selection.finish.col = end_col
+        selection.width = end_col - selection.start.col + 1
+    end
     local buf = win.buffer
     _set_visual_register(
         selection.kind,
@@ -142,17 +152,28 @@ local function _delete_visual_selection(insert_after)
         end
     end
 
+    if selection.kind == "char" then
+        Visual.update_marks_after_charwise_join(win, selection)
+    end
     Syntax.ParseLinetypes(buf, selection.start.lnum)
-    win:cursorSet(selection.start.col, selection.start.lnum)
     if insert_after then
         if selection.kind == "block" then
             Visual.begin_block_change(win, selection)
         end
-        setMode("insert", win.cursorx, win.cursory)
+        setMode("insert", selection.start.col, selection.start.lnum)
     else
+        win:cursorSet(selection.start.col, selection.start.lnum)
         setMode("normal")
     end
     win:mark_redraw()
+end
+
+local function _block_insert(append)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local col = append and (selection.finish.col + 1) or selection.start.col
+    Visual.begin_block_insert(win, selection, col)
+    setMode("insert", col, selection.start.lnum)
 end
 
 local function _start_or_switch_visual(kind, count)
@@ -167,10 +188,25 @@ local function _start_or_switch_visual(kind, count)
         return
     end
 
+    count = tonumber(count)
+    local previous = count and win.last_visual_operation
+    if previous then
+        kind = previous.kind
+    end
     Visual.begin(win, kind)
     setMode("visual")
-    count = tonumber(count)
-    if count and count > 1 then
+    if previous and count then
+        if kind == "line" then
+            local height = previous.finish.lnum - previous.start.lnum + 1
+            win:cursorMove(0, height * count - 1)
+        elseif kind == "block" then
+            local height = previous.finish.lnum - previous.start.lnum + 1
+            win:cursorMove(previous.width * count - 1, height * count - 1)
+        elseif previous.start.lnum == previous.finish.lnum then
+            local width = previous.finish.col - previous.start.col + 1
+            win:cursorMove(width * count - 1, 0)
+        end
+    elseif count and count > 1 then
         if kind == "line" then
             win:cursorMove(0, count - 1)
         elseif kind == "char" then
@@ -201,36 +237,40 @@ Command.nmap_builtin_callback(
 )
 Command.nmap_builtin_callback({ K(keys.v, true) }, function(count) _start_or_switch_visual("block", count) end)
 
-Command.map_builtin_callback("visual", { K(keys.v) }, function(count) _start_or_switch_visual("char", count) end)
-Command.map_builtin_callback(
-    "visual",
+Command.vmap_builtin_callback({ K(keys.v) }, function(count) _start_or_switch_visual("char", count) end)
+Command.vmap_builtin_callback(
     { K(keys.v, false, true) },
     function(count) _start_or_switch_visual("line", count) end
 )
-Command.map_builtin_callback("visual", { K(keys.v, true) }, function(count) _start_or_switch_visual("block", count) end)
-Command.map_builtin_callback("visual", { K(keys.h) }, _mov_lt)
-Command.map_builtin_callback("visual", { K(keys.j) }, _mov_dn)
-Command.map_builtin_callback("visual", { K(keys.k) }, _mov_up)
-Command.map_builtin_callback("visual", { K(keys.l) }, _mov_rt)
-Command.map_builtin_callback("visual", { K(keys.left) }, _mov_lt)
-Command.map_builtin_callback("visual", { K(keys.down) }, _mov_dn)
-Command.map_builtin_callback("visual", { K(keys.up) }, _mov_up)
-Command.map_builtin_callback("visual", { K(keys.right) }, _mov_rt)
-Command.map_builtin_callback("visual", { K(keys.y) }, _yank_visual_selection)
-Command.map_builtin_callback("visual", { K(keys.d) }, function() _delete_visual_selection(false) end)
-Command.map_builtin_callback("visual", { K(keys.x) }, function() _delete_visual_selection(false) end)
-Command.map_builtin_callback("visual", { K(keys.c) }, function() _delete_visual_selection(true) end)
-Command.map_builtin_callback("visual", { K(keys.s) }, function() _delete_visual_selection(true) end)
-Command.map_builtin_callback("visual", { K(keys.leftBracket, true) }, function() setMode("normal") end)
-Command.map_builtin_callback("visual", { K(keys.c, true) }, function() setMode("normal") end)
+Command.vmap_builtin_callback({ K(keys.v, true) }, function(count) _start_or_switch_visual("block", count) end)
+Command.vmap_builtin_callback({ K(keys.h) }, _mov_lt)
+Command.vmap_builtin_callback({ K(keys.j) }, _mov_dn)
+Command.vmap_builtin_callback({ K(keys.k) }, _mov_up)
+Command.vmap_builtin_callback({ K(keys.l) }, _mov_rt)
+Command.vmap_builtin_callback({ K(keys.left) }, _mov_lt)
+Command.vmap_builtin_callback({ K(keys.down) }, _mov_dn)
+Command.vmap_builtin_callback({ K(keys.up) }, _mov_up)
+Command.vmap_builtin_callback({ K(keys.right) }, _mov_rt)
+Command.vmap_builtin_callback({ K(keys.y) }, _yank_visual_selection)
+Command.vmap_builtin_callback({ K(keys.d) }, function() _delete_visual_selection(false) end)
+Command.vmap_builtin_callback({ K(keys.x) }, function() _delete_visual_selection(false) end)
+Command.vmap_builtin_callback({ K(keys.c) }, function() _delete_visual_selection(true) end)
+Command.vmap_builtin_callback({ K(keys.s) }, function() _delete_visual_selection(true) end)
+Command.vmap_builtin_callback({ K(keys.c, false, true) }, function()
+    _delete_visual_selection(true, true)
+end)
+Command.vmap_builtin_callback({ K(keys.i, false, true) }, function() _block_insert(false) end)
+Command.vmap_builtin_callback({ K(keys.a, false, true) }, function() _block_insert(true) end)
+Command.vmap_builtin_callback({ K(keys.leftBracket, true) }, function() setMode("normal") end)
+Command.vmap_builtin_callback({ K(keys.c, true) }, function() setMode("normal") end)
 if Backend.current().kind == "cc" then
-    Command.map_builtin_callback("visual", { K(keys.tab, true) }, function() setMode("normal") end)
+    Command.vmap_builtin_callback({ K(keys.tab, true) }, function() setMode("normal") end)
 end
-Command.map_builtin_callback("visual", { K(keys.o) }, function()
-    local win = windows[curwin]
-    local old_anchor = win.visual_anchor
-    win.visual_anchor = { lnum = win.cursory, col = win.cursorx }
-    win:cursorSet(old_anchor.col, old_anchor.lnum)
+Command.vmap_builtin_callback({ K(keys.o) }, function()
+    Visual.other_end(windows[curwin])
+end)
+Command.vmap_builtin_callback({ K(keys.o, false, true) }, function()
+    Visual.other_block_corner(windows[curwin])
 end)
 
 Command.nmap_builtin_callback({ K(keys.g), K(keys.v) }, function()
@@ -238,6 +278,9 @@ Command.nmap_builtin_callback({ K(keys.g), K(keys.v) }, function()
     if Visual.restore_last(win) then
         setMode("visual")
     end
+end)
+Command.vmap_builtin_callback({ K(keys.g), K(keys.v) }, function()
+    Visual.swap_with_last(windows[curwin])
 end)
 
 Command.nmap_builtin_callback(

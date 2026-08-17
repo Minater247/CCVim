@@ -35,6 +35,7 @@ return {
                 finish = vim.fn.getpos("'>"),
             }
 
+            vim.cmd("xnoremap <C-Tab> <Esc>")
             reset({ "alpha" }, 1, 1)
             feed("vl<C-Tab>")
             local exited_with_ctrl_tab = {
@@ -70,6 +71,18 @@ return {
                 lines = vim.api.nvim_buf_get_lines(0, 0, -1, false),
             }
 
+            reset({ "alpha", "bravo", "charlie" }, 1, 2)
+            feed("vjlcX<Esc>")
+            local charwise_multiline_change = {
+                mode = vim.api.nvim_get_mode().mode,
+                cursor = vim.api.nvim_win_get_cursor(0),
+                start = vim.fn.getpos("'<"),
+                finish = vim.fn.getpos("'>"),
+                register = vim.fn.getreg('"'),
+                register_type = vim.fn.getregtype('"'),
+                lines = vim.api.nvim_buf_get_lines(0, 0, -1, false),
+            }
+
             reset({ "alpha" }, 1, 1)
             feed("vllcX<Esc>")
             local charwise_change = {
@@ -92,8 +105,15 @@ return {
 
             vim.cmd("inoremap <C-Tab> <Esc>")
             reset({ "" }, 1, 0)
-            feed("itype<Space>this<C-Tab>v<Left><Left><Left>cX<Esc>")
+            feed("itype<Space>this<C-Tab>")
+            local insert_exit_before_visual = {
+                mode = vim.api.nvim_get_mode().mode,
+                cursor = vim.api.nvim_win_get_cursor(0),
+                lines = vim.api.nvim_buf_get_lines(0, 0, -1, false),
+            }
+            feed("v<Left><Left><Left>cX<Esc>")
             local insert_to_reverse_visual_change = {
+                insert_exit_before_visual = insert_exit_before_visual,
                 lines = vim.api.nvim_buf_get_lines(0, 0, -1, false),
                 register = vim.fn.getreg('"'),
                 start = vim.fn.getpos("'<"),
@@ -180,6 +200,7 @@ return {
                 exited_with_ctrl_tab,
                 charwise_yank,
                 charwise_multiline_delete,
+                charwise_multiline_change,
                 charwise_change,
                 forward_charwise_change,
                 reverse_charwise_change,
@@ -194,27 +215,27 @@ return {
             }
         ]])
 
-        Assert.table_eq("active characterwise mode and cursor", result[1], {
+        Assert.deep_eq("active characterwise mode and cursor", result[1], {
             mode = "v",
             cursor = { 1, 3 },
             start = { 0, 0, 0, 0 },
             finish = { 0, 0, 0, 0 },
         })
-        Assert.table_eq("exiting characterwise mode persists marks", result[2], {
+        Assert.deep_eq("exiting characterwise mode persists marks", result[2], {
             mode = "n",
             visualmode = "v",
             cursor = { 1, 3 },
             start = { 0, 1, 2, 0 },
             finish = { 0, 1, 4, 0 },
         })
-        Assert.table_eq("Ctrl-Tab exits characterwise mode", result[3], {
+        Assert.deep_eq("Ctrl-Tab exits characterwise mode", result[3], {
             mode = "n",
             visualmode = "v",
             cursor = { 1, 2 },
             start = { 0, 1, 2, 0 },
             finish = { 0, 1, 3, 0 },
         })
-        Assert.table_eq("characterwise yank is inclusive", result[4], {
+        Assert.deep_eq("characterwise yank is inclusive", result[4], {
             mode = "n",
             visualmode = "v",
             cursor = { 1, 1 },
@@ -223,17 +244,26 @@ return {
             register = "lph",
             register_type = "v",
         })
-        Assert.table_eq("multiline characterwise delete", result[5], {
+        Assert.deep_eq("multiline characterwise delete", result[5], {
             mode = "n",
             visualmode = "v",
             cursor = { 1, 2 },
             start = { 0, 1, 3, 0 },
-            finish = { 0, 2, 4, 0 },
+            finish = { 0, 1, 6, 0 },
             register = "pha\nbrav",
             register_type = "v",
             lines = { "alo", "charlie" },
         })
-        Assert.table_eq("characterwise change", result[6], {
+        Assert.deep_eq("multiline characterwise change", result[6], {
+            mode = "n",
+            cursor = { 1, 2 },
+            start = { 0, 1, 3, 0 },
+            finish = { 0, 1, 6, 0 },
+            register = "pha\nbrav",
+            register_type = "v",
+            lines = { "alXo", "charlie" },
+        })
+        Assert.deep_eq("characterwise change", result[7], {
             mode = "n",
             visualmode = "v",
             cursor = { 1, 1 },
@@ -243,15 +273,26 @@ return {
             register_type = "v",
             lines = { "aXa" },
         })
-        Assert.table_eq("forward characterwise change preserves prefix", result[7], { "01X45" })
-        Assert.table_eq("reverse characterwise change preserves prefix", result[8], { "01X45" })
-        Assert.table_eq("Insert-to-reverse-Visual change", result[9], {
+        Assert.deep_eq("forward characterwise change preserves prefix", result[8], { "01X45" })
+        Assert.deep_eq("reverse characterwise change preserves prefix", result[9], { "01X45" })
+        Assert.deep_eq("Insert exit before Visual", result[10].insert_exit_before_visual, {
+            mode = "n",
+            cursor = { 1, 8 },
+            lines = { "type this" },
+        })
+        Assert.eq("Insert-to-reverse-Visual change register", result[10].register, "this")
+        Assert.deep_eq("Insert-to-reverse-Visual change", result[10], {
+            insert_exit_before_visual = {
+                mode = "n",
+                cursor = { 1, 8 },
+                lines = { "type this" },
+            },
             lines = { "type X" },
             register = "this",
             start = { 0, 1, 6, 0 },
             finish = { 0, 1, 9, 0 },
         })
-        Assert.table_eq("linewise change", result[10], {
+        Assert.deep_eq("linewise change", result[11], {
             mode = "n",
             cursor = { 1, 0 },
             start = { 0, 1, 1, 0 },
@@ -260,7 +301,7 @@ return {
             register_type = "V",
             lines = { "X", "charlie" },
         })
-        Assert.table_eq("blockwise change", result[11], {
+        Assert.deep_eq("blockwise change", result[12], {
             mode = "n",
             cursor = { 1, 2 },
             start = { 0, 1, 3, 0 },
@@ -269,7 +310,7 @@ return {
             register_type = string.char(22) .. "2",
             lines = { "alXa", "brXo", "charlie" },
         })
-        Assert.table_eq("linewise yank shape", result[12], {
+        Assert.deep_eq("linewise yank shape", result[13], {
             mode = "n",
             visualmode = "V",
             cursor = { 1, 0 },
@@ -278,7 +319,7 @@ return {
             register = "alpha\nbravo\n",
             register_type = "V",
         })
-        Assert.table_eq("blockwise delete shape", result[13], {
+        Assert.deep_eq("blockwise delete shape", result[14], {
             mode = "n",
             visualmode = string.char(22),
             cursor = { 1, 2 },
@@ -288,7 +329,7 @@ return {
             register_type = string.char(22) .. "2",
             lines = { "ala", "bro", "charlie" },
         })
-        Assert.table_eq("short block line preserves width", result[14], {
+        Assert.deep_eq("short block line preserves width", result[15], {
             visualmode = string.char(22),
             start = { 0, 1, 3, 0 },
             finish = { 0, 2, 2, 0 },
@@ -296,12 +337,12 @@ return {
             register_list = { "bc", "" },
             register_type = string.char(22) .. "2",
         })
-        Assert.table_eq("visual mapping dispatch", result[15], {
+        Assert.deep_eq("visual mapping dispatch", result[16], {
             mode = "n",
             visualmode = "v",
             register = "lp",
             register_type = "v",
         })
-        Assert.table_eq("v:maxcol", result[16], { 2147483647, 2147483647 })
+        Assert.deep_eq("v:maxcol", result[17], { 2147483647, 2147483647 })
     end,
 }
