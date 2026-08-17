@@ -2391,6 +2391,10 @@ function api.nvim_feedkeys(keys, mode, _escape_ks)
     end
 end
 
+function api.nvim_input_mouse(button, action, modifier, grid, row, col)
+    return Event.InputMouse(button, action, modifier, grid, row, col)
+end
+
 -- TODO: Handle opts argument
 function api.nvim_select_popupmenu_item(item, insert, finish, _opts)
     PopupMenu.select(item, insert, finish)

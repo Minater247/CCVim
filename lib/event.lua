@@ -416,7 +416,7 @@ local function place_cursor_from_click(win, local_x, local_y)
     end
 
     if not win.opts.wrap then
-        vis_col = vis_col + (win.scrollx - 1) - 1
+        vis_col = vis_col + (win.scrollx - 1)
     end
 
     win:cursorSetScreenRow(row_offset, { screen_col = vis_col })
@@ -698,6 +698,56 @@ function Event.ProcessEvent(ev)
     end
 
     ExMsg.Finalize()
+end
+
+function Event.InputMouse(button, action, modifier, grid, row, col)
+    if grid ~= 0 then
+        error("Only grid 0 is supported", 2)
+    end
+
+    if type(row) ~= "number" or type(col) ~= "number" then
+        error("Mouse row and column must be numbers", 2)
+    end
+
+    local normalized_modifier = tostring(modifier or ""):upper()
+    local saved_modifiers = {
+        [keys.leftShift] = mods_down[keys.leftShift],
+        [keys.leftCtrl] = mods_down[keys.leftCtrl],
+        [keys.leftAlt] = mods_down[keys.leftAlt],
+    }
+    mods_down[keys.leftShift] = normalized_modifier:find("S", 1, true) ~= nil
+    mods_down[keys.leftCtrl] = normalized_modifier:find("C", 1, true) ~= nil
+    mods_down[keys.leftAlt] = normalized_modifier:find("A", 1, true) ~= nil
+
+    local x = math.floor(col) + 1
+    local y = math.floor(row) + 1
+    local button_num = ({ left = 1, right = 2, middle = 3 })[button]
+
+    local ok, err = pcall(function()
+        if button == "wheel" then
+            if action ~= "up" and action ~= "down" and action ~= "left" and action ~= "right" then
+                error("Invalid wheel action: " .. tostring(action), 2)
+            end
+            Event.ProcessEvent({ "mouse_scroll", action, x, y })
+        elseif button_num == nil then
+            error("Unsupported mouse button: " .. tostring(button), 2)
+        elseif action == "press" then
+            Event.ProcessEvent({ "mouse_click", button_num, x, y })
+        elseif action == "drag" then
+            Event.ProcessEvent({ "mouse_drag", button_num, x, y })
+        elseif action == "release" then
+            Event.ProcessEvent({ "mouse_up", button_num, x, y })
+        else
+            error("Invalid mouse action: " .. tostring(action), 2)
+        end
+    end)
+
+    mods_down[keys.leftShift] = saved_modifiers[keys.leftShift]
+    mods_down[keys.leftCtrl] = saved_modifiers[keys.leftCtrl]
+    mods_down[keys.leftAlt] = saved_modifiers[keys.leftAlt]
+    if not ok then
+        error(err, 0)
+    end
 end
 
 function Event.PullAndProcess(filter)

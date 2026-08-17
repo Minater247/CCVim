@@ -1,4 +1,5 @@
 local HeadlessNvimBackend = {}
+local NvimUiClient = require("vim.tests.framework.nvim_ui_client")
 
 -- Metatable marker for empty dictionaries
 local EMPTY_DICT_MT = {}
@@ -688,6 +689,13 @@ end
             return nil, nil
         end
         return json_decode(json_result)
+    end
+
+    function backend:eval_ui_block(setup, query)
+        if type(setup) ~= "string" or type(query) ~= "string" then
+            return nil, "eval_ui_block expects setup and query Lua strings"
+        end
+        return NvimUiClient.eval(setup, query)
     end
 
     function backend:is_nil(value)

@@ -77,7 +77,7 @@ return {
 
             Event.ProcessEvent({ "mouse_click", 1, 10, 3 })
             Assert.eq("left click row offset", cursor_calls[#cursor_calls].row_offset, 2)
-            Assert.eq("left click screen col", cursor_calls[#cursor_calls].screen_col, 7)
+            Assert.eq("left click screen col", cursor_calls[#cursor_calls].screen_col, 8)
 
             Event.ProcessEvent({ "mouse_click", 2, 9, 2 })
             Assert.eq("right click popup event count", #autocmd_calls, 1)
@@ -124,7 +124,7 @@ return {
                 col = 1,
             })
             Assert.eq("right click moves the Visual endpoint row", win.cursory, 2)
-            Assert.eq("right click moves the Visual endpoint column", win.cursorx, 4)
+            Assert.eq("right click moves the Visual endpoint column", win.cursorx, 5)
 
             Event.ProcessEvent({ "mouse_click", 1, 10, 3 })
             Assert.eq("left click cancels Visual mode", mock.globals().vimmode, "normal")
@@ -137,10 +137,10 @@ return {
             Assert.eq("left drag starts Visual mode in extend model", mock.globals().vimmode, "visual")
             Assert.deep_eq("left drag anchors at mouse-down position", win.visual_anchor, {
                 lnum = 1,
-                col = 1,
+                col = 2,
             })
             Assert.eq("left drag moves the Visual endpoint row", win.cursory, 2)
-            Assert.eq("left drag moves the Visual endpoint column", win.cursorx, 4)
+            Assert.eq("left drag moves the Visual endpoint column", win.cursorx, 5)
             Event.ProcessEvent({ "mouse_up", 1, 9, 2 })
 
             mock.globals().vimmode = "visual"
@@ -154,7 +154,7 @@ return {
                 col = 3,
             })
             Assert.eq("right click moves the selected nearest endpoint row", win.cursory, 1)
-            Assert.eq("right click moves the selected nearest endpoint column", win.cursorx, 1)
+            Assert.eq("right click moves the selected nearest endpoint column", win.cursorx, 2)
             Event.ProcessEvent({ "mouse_up", 2, 6, 1 })
 
             Options.set("mousemodel", "popup", false, win, buf, true)
@@ -170,7 +170,7 @@ return {
                 col = 1,
             })
             Assert.eq("popup Shift-left moves the Visual endpoint row", win.cursory, 2)
-            Assert.eq("popup Shift-left moves the Visual endpoint column", win.cursorx, 4)
+            Assert.eq("popup Shift-left moves the Visual endpoint column", win.cursorx, 5)
             Event.ProcessEvent({ "mouse_up", 1, 9, 2 })
 
             Options.set("mousemodel", "extend", false, win, buf, true)
@@ -200,7 +200,7 @@ return {
             Event.ProcessEvent({ "mouse_click", 2, 6, 1 })
             Event.ProcessEvent({ "mouse_up", 2, 9, 2 })
             Assert.eq("right release extends the Visual endpoint row", win.cursory, 2)
-            Assert.eq("right release extends the Visual endpoint column", win.cursorx, 4)
+            Assert.eq("right release extends the Visual endpoint column", win.cursorx, 5)
 
             Options.set("mouse", "", false, win, buf, true)
             local cursor_before_disabled = #cursor_calls
