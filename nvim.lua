@@ -455,6 +455,7 @@ loadModule("lib.mappings", { immediate = true })
 
 local AutoCmd = loadModule("lib.autocmd")
 local PopupMenu = loadModule("lib.popupmenu")
+local Visual = loadModule("lib.visual")
 _V.apply_terminal_resize = FrameTree.ApplyTerminalResize
 
 function _V.setMode(newmode, newx, newy)
@@ -467,8 +468,13 @@ function _V.setMode(newmode, newx, newy)
     }
 
     if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+        Visual.complete_block_change(win)
         win.buffer:undo_end(win)
         AutoCmd.Run("InsertLeavePre", buf_ctx)
+    end
+
+    if mode_changed and oldmode == "visual" and newmode ~= "visual" and win.visual_anchor then
+        Visual.finish(win)
     end
 
     _V.vimmode = newmode

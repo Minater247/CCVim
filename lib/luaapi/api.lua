@@ -19,6 +19,7 @@ local PopupMenu = loadModule("lib.popupmenu")
 local Event = loadModule("lib.event")
 local BufAttach = loadModule("lib.bufattach")
 local OnKey = loadModule("lib.luaapi.on_key")
+local Visual = loadModule("lib.visual")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -1242,6 +1243,8 @@ function api.nvim_get_mode()
         return { mode = "n" }
     elseif vimmode == "insert" then
         return { mode = "i" }
+    elseif vimmode == "visual" then
+        return { mode = Visual.mode_char(windows[curwin].visual_kind) }
     else
         error("unhandled mode in nvim_get_mode")
     end

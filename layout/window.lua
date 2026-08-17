@@ -21,6 +21,7 @@ local Scopes = loadModule("lib.luaapi.scopes")
 local CmdRead = loadModule("lib.excmd.cmdread")
 local ScreenDraw = loadModule("lib.screendraw")
 local Options = loadModule("lib.options")
+local Visual = loadModule("lib.visual")
 
 local curr_winno = 1
 
@@ -911,7 +912,7 @@ function Window:_set_cursor_raw(line_idx, col1)
     if newx < 1 then
         newx = 1
     else
-        if vimmode == "normal" then
+        if vimmode == "normal" or vimmode == "visual" then
             if newx > ll then newx = math.max(1, ll) end
         elseif vimmode == "insert" then
             if newx > ll + 1 then newx = math.max(1, ll + 1) end
@@ -1039,7 +1040,7 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
         newx = 1
     else
         local ll = self.buffer:line_len(newy, true)
-        if vimmode == "normal" then
+        if vimmode == "normal" or vimmode == "visual" then
             if newx > ll then
                 newx = math.max(1, ll)
             end
@@ -1535,6 +1536,7 @@ function Window:render(xoff, yoff)
     local visual_y = 0
     local pending_cursor = nil
     local show_cursor = (self.winnr == curwin) and (not CmdRead.is_active())
+    local visual_selection = Visual.active(self) and Visual.selection(self)
     local last_visible_idx = math.min(linecnt, start_idx + max_rows - 1)
     local top0 = math.max(0, start_idx - 1)
     local bot0 = math.max(top0, last_visible_idx - 1)
@@ -1732,6 +1734,28 @@ function Window:render(xoff, yoff)
                         hl_slice[idx] = row_hl
                     end
                 end
+            end
+
+            if visual_selection and vis_len > 0 then
+                if not hl_slice then
+                    hl_slice, swap_slice = {}, {}
+                    local normal_hl = Highlight.GetId("Normal")
+                    for idx = 1, vis_len do
+                        hl_slice[idx] = normal_hl
+                        swap_slice[idx] = false
+                    end
+                end
+                local visual_hl = Highlight.GetId("Visual")
+                local range = ranges and ranges[j]
+                local range_start = (range and range.i) or 1
+                for idx = 1, vis_len do
+                    local source_byte = gsrc and gsrc[range_start + x1 + idx - 2]
+                    local source_col = source_byte and Utf8.col_from_byte(line_str, source_byte, true)
+                    if source_col and Visual.contains(visual_selection, i, source_col) then
+                        hl_slice[idx] = visual_hl
+                    end
+                end
+                have_hl = true
             end
 
             -- Draw text/blit

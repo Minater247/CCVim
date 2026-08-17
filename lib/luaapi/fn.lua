@@ -28,6 +28,7 @@ local Commands = loadModule("lib.excmd.commands")
 local Json = loadModule("lib.luaapi.json")
 local ScriptSource = loadModule("lib.scriptsource")
 local ApiBuild = loadModule("lib.luaapi.apibuild")
+local Visual = loadModule("lib.visual")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -1419,7 +1420,7 @@ function Builtins.getpos(expr)
         return { 0, windows[curwin].buffer:line_count(true), 1, 0 }
     elseif type(expr) == "string" and expr:sub(1, 1) == "'" and #expr == 2 then
         local ch = expr:sub(2, 2)
-        if ch:match("^[a-z'\".`]$") then
+        if ch:match("^[a-z'\".`<>]$") then
             local m = windows[curwin].buffer.marks[ch]
             if m then
                 return { windows[curwin].buffer.bufnr, m.lnum, m.col, 0 }
@@ -1435,6 +1436,25 @@ function Builtins.getpos(expr)
     end
 
     return { 0, 0, 0, 0 }
+end
+
+function Builtins.mode(_full)
+    if vimmode == "normal" then
+        return "n"
+    elseif vimmode == "insert" then
+        return "i"
+    elseif vimmode == "visual" then
+        return Visual.mode_char(windows[curwin].visual_kind)
+    end
+    return vimmode
+end
+
+function Builtins.visualmode()
+    local win = windows[curwin]
+    if vimmode == "visual" then
+        return Visual.mode_char(win.visual_kind)
+    end
+    return win.last_visual_mode or ""
 end
 
 local function _resolve_buf_for_marklist(expr)
@@ -4579,6 +4599,19 @@ function Builtins.getreg(regname, _arg2, list, ...)
         return RegisterUtil.entry_to_lines(entry)
     end
     return RegisterUtil.entry_to_text(entry)
+end
+
+function Builtins.getregtype(regname)
+    local entry = RegisterUtil.get_entry(regname)
+    if not entry then
+        return ""
+    end
+    if entry[1] == "linewise" then
+        return "V"
+    elseif entry[1] == "blockwise" then
+        return string.char(22) .. tostring(entry[3])
+    end
+    return "v"
 end
 
 function Builtins.reg_recording()

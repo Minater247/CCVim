@@ -2265,6 +2265,7 @@ function MockEnv.setup(opts)
     end
     _G.enterWindow = globals.enterWindow
 
+    local Visual = load_module("lib.visual")
     globals.setMode = function(newmode, newx, newy)
         local oldmode = globals.vimmode
         local win = globals.windows[globals.curwin]
@@ -2278,8 +2279,13 @@ function MockEnv.setup(opts)
         local PopupMenu = load_module("lib.popupmenu")
 
         if mode_changed and oldmode == "insert" and newmode ~= "insert" then
+            Visual.complete_block_change(win)
             win.buffer:undo_end(win)
             AutoCmd.Run("InsertLeavePre", buf_ctx)
+        end
+
+        if mode_changed and oldmode == "visual" and newmode ~= "visual" and win.visual_anchor then
+            Visual.finish(win)
         end
 
         globals.vimmode = newmode

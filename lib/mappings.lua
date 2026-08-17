@@ -9,6 +9,7 @@ local CmdRead = loadModule("lib.excmd.cmdread")
 local ExMsg = loadModule("lib.excmd.exmsg")
 local Utf8 = loadModule("lib.utf8")
 local Backend = loadModule("lib.backend")
+local Visual = loadModule("lib.visual")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 
@@ -33,6 +34,151 @@ local function _mov_rt(n)
     windows[curwin]:cursorMove(n or 1, 0)
 end
 
+local function _set_visual_register(kind, value, width)
+    local entry
+    if kind == "line" then
+        entry = { "linewise", value }
+    elseif kind == "block" then
+        entry = { "blockwise", value, width }
+    else
+        entry = { "charwise", value }
+    end
+    registers["unnamed"] = entry
+    registers[0] = entry
+end
+
+local function _selection_text(win, selection)
+    local buf = win.buffer
+    if selection.kind == "line" then
+        local out = {}
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            out[#out + 1] = buf:get_line(lnum, true)
+        end
+        return out
+    elseif selection.kind == "block" then
+        local out = {}
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            out[#out + 1] = Visual.slice_block_line(selection, buf:get_line(lnum, true))
+        end
+        return out
+    end
+
+    local out = {}
+    for lnum = selection.start.lnum, selection.finish.lnum do
+        local line = buf:get_line(lnum, true)
+        if selection.start.lnum == selection.finish.lnum then
+            out[#out + 1] = Utf8.sub(line, selection.start.col, selection.finish.col)
+        elseif lnum == selection.start.lnum then
+            out[#out + 1] = Utf8.sub(line, selection.start.col)
+        elseif lnum == selection.finish.lnum then
+            out[#out + 1] = Utf8.sub(line, 1, selection.finish.col)
+        else
+            out[#out + 1] = line
+        end
+    end
+    return table.concat(out, "\n")
+end
+
+local function _yank_visual_selection()
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    _set_visual_register(
+        selection.kind,
+        _selection_text(win, selection),
+        selection.width
+    )
+    win:cursorSet(selection.start.col, selection.start.lnum)
+    setMode("normal")
+end
+
+local function _delete_visual_selection(insert_after)
+    local win = windows[curwin]
+    local selection = Visual.finish(win)
+    local buf = win.buffer
+    _set_visual_register(
+        selection.kind,
+        _selection_text(win, selection),
+        selection.width
+    )
+
+    if selection.kind == "line" then
+        buf:remove_lines(selection.start.lnum, selection.finish.lnum)
+        if insert_after then
+            buf:insert_line(selection.start.lnum, "", true)
+        elseif buf:line_count(true) == 0 then
+            buf:insert_line(1, "", true)
+        end
+    elseif selection.kind == "block" then
+        for lnum = selection.start.lnum, selection.finish.lnum do
+            local line = buf:get_line(lnum, true)
+            local len = Utf8.len(line)
+            if len >= selection.start.col then
+                buf:set_line(
+                    lnum,
+                    Utf8.sub(line, 1, selection.start.col - 1)
+                        .. Utf8.sub(line, selection.finish.col + 1),
+                    true
+                )
+            end
+        end
+    else
+        local first = buf:get_line(selection.start.lnum, true)
+        local last = buf:get_line(selection.finish.lnum, true)
+        if selection.start.lnum == selection.finish.lnum then
+            buf:set_line(
+                selection.start.lnum,
+                Utf8.sub(first, 1, selection.start.col - 1)
+                    .. Utf8.sub(first, selection.finish.col + 1),
+                true
+            )
+        else
+            buf:set_line(
+                selection.start.lnum,
+                Utf8.sub(first, 1, selection.start.col - 1)
+                    .. Utf8.sub(last, selection.finish.col + 1),
+                true
+            )
+            buf:remove_lines(selection.start.lnum + 1, selection.finish.lnum)
+        end
+    end
+
+    Syntax.ParseLinetypes(buf, selection.start.lnum)
+    win:cursorSet(selection.start.col, selection.start.lnum)
+    if insert_after then
+        if selection.kind == "block" then
+            Visual.begin_block_change(win, selection)
+        end
+        setMode("insert", win.cursorx, win.cursory)
+    else
+        setMode("normal")
+    end
+    win:mark_redraw()
+end
+
+local function _start_or_switch_visual(kind, count)
+    local win = windows[curwin]
+    if vimmode == "visual" then
+        if win.visual_kind == kind then
+            setMode("normal")
+        else
+            win.visual_kind = kind
+            win:mark_redraw()
+        end
+        return
+    end
+
+    Visual.begin(win, kind)
+    setMode("visual")
+    count = tonumber(count)
+    if count and count > 1 then
+        if kind == "line" then
+            win:cursorMove(0, count - 1)
+        elseif kind == "char" then
+            win:cursorMove(count - 1, 0)
+        end
+    end
+end
+
 Command.nimap_builtin_callback({ K(keys.down) }, _mov_dn)
 Command.nimap_builtin_callback({ K(keys.up) }, _mov_up)
 Command.nimap_builtin_callback({ K(keys.left) }, _mov_lt)
@@ -44,6 +190,55 @@ Command.nmap_builtin_callback({ K(keys.l) }, _mov_rt)
 Command.nmap_builtin_callback({ K(keys.p, true) }, _mov_up)
 Command.nmap_builtin_callback({ K(keys.j, true) }, _mov_dn)
 Command.nmap_builtin_callback({ K(keys.n, true) }, _mov_dn)
+
+-- Visual mode is a single mode with a selection kind stored on the window.
+-- Keeping all kinds on this path lets mappings and motion handling stay shared.
+Command.count_modes.visual = true
+Command.nmap_builtin_callback({ K(keys.v) }, function(count) _start_or_switch_visual("char", count) end)
+Command.nmap_builtin_callback(
+    { K(keys.v, false, true) },
+    function(count) _start_or_switch_visual("line", count) end
+)
+Command.nmap_builtin_callback({ K(keys.v, true) }, function(count) _start_or_switch_visual("block", count) end)
+
+Command.map_builtin_callback("visual", { K(keys.v) }, function(count) _start_or_switch_visual("char", count) end)
+Command.map_builtin_callback(
+    "visual",
+    { K(keys.v, false, true) },
+    function(count) _start_or_switch_visual("line", count) end
+)
+Command.map_builtin_callback("visual", { K(keys.v, true) }, function(count) _start_or_switch_visual("block", count) end)
+Command.map_builtin_callback("visual", { K(keys.h) }, _mov_lt)
+Command.map_builtin_callback("visual", { K(keys.j) }, _mov_dn)
+Command.map_builtin_callback("visual", { K(keys.k) }, _mov_up)
+Command.map_builtin_callback("visual", { K(keys.l) }, _mov_rt)
+Command.map_builtin_callback("visual", { K(keys.left) }, _mov_lt)
+Command.map_builtin_callback("visual", { K(keys.down) }, _mov_dn)
+Command.map_builtin_callback("visual", { K(keys.up) }, _mov_up)
+Command.map_builtin_callback("visual", { K(keys.right) }, _mov_rt)
+Command.map_builtin_callback("visual", { K(keys.y) }, _yank_visual_selection)
+Command.map_builtin_callback("visual", { K(keys.d) }, function() _delete_visual_selection(false) end)
+Command.map_builtin_callback("visual", { K(keys.x) }, function() _delete_visual_selection(false) end)
+Command.map_builtin_callback("visual", { K(keys.c) }, function() _delete_visual_selection(true) end)
+Command.map_builtin_callback("visual", { K(keys.s) }, function() _delete_visual_selection(true) end)
+Command.map_builtin_callback("visual", { K(keys.leftBracket, true) }, function() setMode("normal") end)
+Command.map_builtin_callback("visual", { K(keys.c, true) }, function() setMode("normal") end)
+if Backend.current().kind == "cc" then
+    Command.map_builtin_callback("visual", { K(keys.tab, true) }, function() setMode("normal") end)
+end
+Command.map_builtin_callback("visual", { K(keys.o) }, function()
+    local win = windows[curwin]
+    local old_anchor = win.visual_anchor
+    win.visual_anchor = { lnum = win.cursory, col = win.cursorx }
+    win:cursorSet(old_anchor.col, old_anchor.lnum)
+end)
+
+Command.nmap_builtin_callback({ K(keys.g), K(keys.v) }, function()
+    local win = windows[curwin]
+    if Visual.restore_last(win) then
+        setMode("visual")
+    end
+end)
 
 Command.nmap_builtin_callback(
     { K(keys.g), K(keys.g) },
