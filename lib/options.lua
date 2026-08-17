@@ -8,6 +8,7 @@ local Fn = loadModule("lib.luaapi.fn")
 local VimExpr = loadModule("lib.excmd.vimxpr")
 local ScriptSource = loadModule("lib.scriptsource")
 local Runtime = loadModule("lib.excmd.runtime")
+local TblUtils = loadModule("lib.luaapi.tblutils")
 
 -- TODO: winhl is currently unhandled anywhere
 
@@ -731,12 +732,7 @@ function Options.get_info(name)
 end
 
 function Options.list_all_info_names()
-    local out = {}
-    for name, _ in pairs(opt_defs) do
-        out[#out + 1] = name
-    end
-    table.sort(out)
-    return out
+    return TblUtils.sorted_keys(opt_defs)
 end
 
 function Options.has_local_value(name, window, buffer)

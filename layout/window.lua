@@ -2736,7 +2736,7 @@ local function directional_target_window(win, direction, count)
         return candidate.window and candidate.window.focusable
     end)
 
-    return current_frame and current_frame.window or nil
+    return current_frame and current_frame.window
 end
 
 local function split_place_after(vertical)

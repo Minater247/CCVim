@@ -169,7 +169,7 @@ function Benchmark.run(opts)
                             filetype = stats.filetype,
                             mismatch_lines = stats.mismatch_lines,
                             mismatch_cols = stats.mismatch_cols,
-                            first_line = stats.reports[1] and stats.reports[1].line or nil,
+                            first_line = stats.reports[1] and stats.reports[1].line,
                         }
                     end
                 end

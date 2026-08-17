@@ -185,7 +185,7 @@ function ExMsg.EndRedir()
 
     local ok, rv = pcall(ctx.on_close, table.concat(ctx.out))
     if not ok then
-        return false, rv
+        error(rv)
     end
     if rv ~= nil and rv ~= true then
         return false, rv

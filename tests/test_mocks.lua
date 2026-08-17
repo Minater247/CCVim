@@ -2425,7 +2425,7 @@ function MockEnv.setup(opts)
 
     function mock.create_tabpage(tabnr, wins, opts_tab)
         local Tabpage = load_module("layout.tabpage")
-        local first = wins and wins[1] or nil
+        local first = wins and wins[1]
         local tp = Tabpage(first)
         if tabnr then
             tp.tabnr = tabnr

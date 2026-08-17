@@ -8,8 +8,8 @@ local function trim(s)
 end
 
 local COMMAND_SPECS = {
-    { name = "silent", min = 3, dispatch = true },
-    { name = "unsilent", min = 3, dispatch = true },
+    { name = "silent", min = 3, dispatch = true, wrapper = true },
+    { name = "unsilent", min = 3, dispatch = true, wrapper = true },
     { name = "let", min = 3, comment_mode = "expr" },
     { name = "if", min = 2, comment_mode = "expr" },
     { name = "elseif", min = 5, comment_mode = "expr" },
@@ -46,7 +46,7 @@ local COMMAND_SPECS = {
     { name = "doautoall", min = 7, dispatch = true },
     { name = "set", min = 2 },
     { name = "packadd", min = 2, dispatch = true },
-    { name = "verbose", min = 4 },
+    { name = "verbose", min = 4, wrapper = true },
     { name = "echo", min = 2, dispatch = true, addr = "none" },
     { name = "echoerr", min = 5, dispatch = true, addr = "none" },
     { name = "echohl", min = 5, dispatch = true, addr = "none" },
@@ -72,7 +72,7 @@ local COMMAND_SPECS = {
     { name = "xunmap", min = 2, dispatch = true, map = { action = "unmap", modes = "x", min_abbrev = 2 } },
     { name = "ounmap", min = 2, dispatch = true, map = { action = "unmap", modes = "o", min_abbrev = 2 } },
     { name = "defer", min = 4 },
-    { name = "noautocmd", min = 3 },
+    { name = "noautocmd", min = 3, wrapper = true },
     { name = "windo", min = 4, dispatch = true, no_bar_split = true },
     { name = "quit", min = 1, dispatch = true, addr = "none" },
     { name = "close", min = 3, dispatch = true, addr = "count" },
@@ -172,17 +172,17 @@ local COMMAND_SPECS = {
     { name = "tunmenu", min = 2, dispatch = true, menu = { action = "tooltip_remove", modes = "t" } },
     { name = "menutranslate", min = 5, dispatch = true, menu = { action = "translate", modes = "" } },
 
-    { name = "keepjumps", min = 5, dispatch = true },
-    { name = "keepalt", min = 5, dispatch = true },
+    { name = "keepjumps", min = 5, dispatch = true, wrapper = true },
+    { name = "keepalt", min = 5, dispatch = true, wrapper = true },
     { name = "keeppatterns", min = 5, dispatch = true },
-    { name = "leftabove", min = 5, dispatch = true },
-    { name = "aboveleft", min = 3, dispatch = true },
-    { name = "rightbelow", min = 6, dispatch = true },
-    { name = "belowright", min = 3, dispatch = true },
-    { name = "topleft", min = 2, dispatch = true },
-    { name = "botright", min = 2, dispatch = true },
-    { name = "vertical", min = 4, dispatch = true },
-    { name = "horizontal", min = 3, dispatch = true },
+    { name = "leftabove", min = 5, dispatch = true, wrapper = true },
+    { name = "aboveleft", min = 3, dispatch = true, wrapper = true },
+    { name = "rightbelow", min = 6, dispatch = true, wrapper = true },
+    { name = "belowright", min = 3, dispatch = true, wrapper = true },
+    { name = "topleft", min = 2, dispatch = true, wrapper = true },
+    { name = "botright", min = 2, dispatch = true, wrapper = true },
+    { name = "vertical", min = 4, dispatch = true, wrapper = true },
+    { name = "horizontal", min = 3, dispatch = true, wrapper = true },
     { name = "doautocmd", min = 4, dispatch = true },
     { name = "delcommand", min = 4, dispatch = true },
     { name = "delfunction", min = 4, dispatch = true },
@@ -226,10 +226,7 @@ local COMMAND_SPECS = {
 
 local SPEC_BY_NAME = {}
 local PARSE_REGISTRY_BY_FIRST = {}
-local DISPATCH_MIN_ABBREV = {}
 local DISPATCH_REGISTRY_BY_FIRST = {}
-local MAP_COMMAND_SPECS = {}
-local MENU_COMMAND_SPECS = {}
 local EMPTY_REGISTRY = {}
 
 local function add_registry(by_first, entry)
@@ -257,27 +254,21 @@ end
 for _, spec in ipairs(COMMAND_SPECS) do
     SPEC_BY_NAME[spec.name] = spec
     if spec.min then
-        add_registry(PARSE_REGISTRY_BY_FIRST, { name = spec.name, min = spec.min })
+        add_registry(PARSE_REGISTRY_BY_FIRST, spec)
     end
     if spec.dispatch then
-        DISPATCH_MIN_ABBREV[spec.name] = spec.min
-        add_registry(DISPATCH_REGISTRY_BY_FIRST, { name = spec.name, min = spec.min })
-    end
-    if spec.map then
-        MAP_COMMAND_SPECS[spec.name] = spec.map
-    end
-    if spec.menu then
-        MENU_COMMAND_SPECS[spec.name] = spec.menu
+        add_registry(DISPATCH_REGISTRY_BY_FIRST, spec)
     end
 end
 
-local function resolve_prefix(raw, by_first, exact_names, fallback_raw, sort_matches)
+local function resolve_prefix(raw, by_first, dispatch_only, fallback_raw, sort_matches)
     if not raw or raw == "" then
         return nil
     end
     local prefix = normalize_prefix(raw)
     local prefix_len = #prefix
-    if exact_names[prefix] then
+    local exact = SPEC_BY_NAME[prefix]
+    if exact and (not dispatch_only or exact.dispatch) then
         return prefix
     end
     local delete_name = "delete"
@@ -324,11 +315,11 @@ local function resolve_prefix(raw, by_first, exact_names, fallback_raw, sort_mat
 end
 
 function Commands.resolve_parse_name(raw)
-    return resolve_prefix(raw, PARSE_REGISTRY_BY_FIRST, SPEC_BY_NAME, true, false)
+    return resolve_prefix(raw, PARSE_REGISTRY_BY_FIRST, false, true, false)
 end
 
 function Commands.resolve_dispatch_name(prefix)
-    return resolve_prefix(prefix, DISPATCH_REGISTRY_BY_FIRST, DISPATCH_MIN_ABBREV, false, true)
+    return resolve_prefix(prefix, DISPATCH_REGISTRY_BY_FIRST, true, false, true)
 end
 
 function Commands.mode_and_bar(cmd_raw)
@@ -351,16 +342,34 @@ function Commands.mode_and_bar(cmd_raw)
     return mode, no_bar
 end
 
-Commands.COMMAND_SPECS = COMMAND_SPECS
-Commands.DISPATCH_MIN_ABBREV = DISPATCH_MIN_ABBREV
-Commands.MAP_COMMAND_SPECS = MAP_COMMAND_SPECS
-Commands.MENU_COMMAND_SPECS = MENU_COMMAND_SPECS
-
 function Commands.get_spec(name)
     if type(name) ~= "string" then
         return nil
     end
     return SPEC_BY_NAME[name:lower()]
+end
+
+function Commands.is_builtin(name)
+    if type(name) ~= "string" then return false end
+    local spec = SPEC_BY_NAME[name]
+    return spec ~= nil and spec.dispatch == true
+end
+
+function Commands.get_map_spec(name)
+    if type(name) ~= "string" then return nil end
+    local spec = SPEC_BY_NAME[name]
+    return spec and spec.map
+end
+
+function Commands.get_menu_spec(name)
+    if type(name) ~= "string" then return nil end
+    local spec = SPEC_BY_NAME[name]
+    return spec and spec.menu
+end
+
+function Commands.is_wrapper(name)
+    local spec = type(name) == "string" and SPEC_BY_NAME[name]
+    return spec ~= nil and spec.wrapper == true
 end
 
 return Commands

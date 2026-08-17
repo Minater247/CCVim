@@ -566,7 +566,7 @@ function Buffer:undo_end(win)
         before_cursor = pending.before_cursor,
         after_cursor = after_cursor,
         changed_start = changed_start,
-        changed_end = changed_start and math.max(before_end, after_end) or nil,
+        changed_end = changed_start and math.max(before_end, after_end),
     }
     if changed_start then
         entry.before_count = before_end - changed_start + 1
@@ -774,7 +774,7 @@ function Buffer:undo_line(win, noauto)
         end
         local changed_start, before_end, after_end = _line_diff_bounds(entry.before_lines, self.lines)
         entry.changed_start = changed_start
-        entry.changed_end = changed_start and math.max(before_end, after_end) or nil
+        entry.changed_end = changed_start and math.max(before_end, after_end)
         if changed_start then
             entry.before_count = before_end - changed_start + 1
             entry.after_chunk = _copy_lines(self.lines, changed_start, after_end)

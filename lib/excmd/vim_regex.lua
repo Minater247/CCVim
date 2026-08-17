@@ -373,6 +373,14 @@ local function tokenize_simple(pat)
                 add("LIT", "{")
                 i = i + 2
                 goto cont
+            elseif e == "=" then
+                add("Q", "?")
+                i = i + 2
+                goto cont
+            elseif e == "%" and peek(2) == "(" then
+                add("LP", "\\%(")
+                i = i + 3
+                goto cont
             end
 
             if e:match("%a") then
@@ -757,10 +765,6 @@ local function apply_quant_group_alts(alts, quant)
         return alts
     end
 
-    if #alts == 1 then
-        return apply_quant_single(alts[1], quant)
-    end
-
     if quant.t == "Q" then
         local q = quant.v
         if q == "?" then
@@ -774,6 +778,10 @@ local function apply_quant_group_alts(alts, quant)
             return out
         end
         return nil, ("Group alternation with '%s' quantifier is unsupported"):format(tostring(q))
+    end
+
+    if #alts == 1 then
+        return apply_quant_single(alts[1], quant)
     end
 
     if quant.t == "QCOUNT" then
@@ -1379,7 +1387,7 @@ local function vm_tokenize(pat)
                     digits = digits .. dj
                     j = j + 1
                 end
-                local limit = (digits ~= "") and tonumber(digits) or nil
+                local limit = tonumber(digits)
                 local e2 = pat:sub(j, j)
                 if e2 == "=" then
                     ntoks = ntoks + 1
@@ -2155,6 +2163,8 @@ end
 local function vm_make_matcher(ast, hints)
     local lead_literal = hints and hints.lead_literal
     local lead_literal_lower = lead_literal and lead_literal:lower()
+    local required_literal = hints and hints.required_literal
+    local required_literal_lower = required_literal and required_literal:lower()
     local ic_hay, ic_lower = nil, nil
 
     local function find_vm(hay, case_sensitive, ext_in, start_pos)
@@ -2165,6 +2175,24 @@ local function vm_make_matcher(ast, hints)
             search_from = 1
         elseif search_from > n + 1 then
             search_from = n + 1
+        end
+
+        if required_literal and required_literal ~= "" then
+            local scan_hay = hay
+            local needle = required_literal
+            if not case_sensitive then
+                if ic_hay == hay and ic_lower ~= nil then
+                    scan_hay = ic_lower
+                else
+                    scan_hay = hay:lower()
+                    ic_hay = hay
+                    ic_lower = scan_hay
+                end
+                needle = required_literal_lower
+            end
+            if not str_find(scan_hay, needle, search_from, true) then
+                return nil, nil, nil
+            end
         end
 
         local steps = 0
@@ -2732,6 +2760,79 @@ local function vm_extract_lead_literal(node, depth)
     return nil
 end
 
+local function vm_extract_required_literal(node, depth)
+    depth = depth or 0
+    if depth > 24 or not node then
+        return nil
+    end
+
+    local kind = node.kind
+    if kind == "LIT" then
+        return node.text
+    end
+    if kind == "GROUP" then
+        return vm_extract_required_literal(node.sub, depth + 1)
+    end
+    if kind == "QUANT" then
+        if (node.min or 0) < 1 then
+            return nil
+        end
+        return vm_extract_required_literal(node.sub, depth + 1)
+    end
+    if kind == "ALT" then
+        local common
+        for i = 1, #node.branches do
+            local lit = vm_extract_required_literal(node.branches[i], depth + 1)
+            if not lit or lit == "" then
+                return nil
+            end
+            if common == nil then
+                common = lit
+            elseif common ~= lit then
+                return nil
+            end
+        end
+        return common
+    end
+    if kind == "SEQ" then
+        local best
+        local adjacent = {}
+        local adjacent_len = 0
+
+        local function finish_adjacent()
+            if adjacent_len > 0 then
+                local lit = table.concat(adjacent)
+                if best == nil or #lit > #best then
+                    best = lit
+                end
+                adjacent = {}
+                adjacent_len = 0
+            end
+        end
+
+        for i = 1, #node.nodes do
+            local sub = node.nodes[i]
+            if sub.kind == "LIT" then
+                adjacent[#adjacent + 1] = sub.text
+                adjacent_len = adjacent_len + #sub.text
+            else
+                local bridges_literal_run = vm_is_zero_width_kind(sub.kind) and sub.kind ~= "LOOK"
+                if not bridges_literal_run then
+                    finish_adjacent()
+                    local lit = vm_extract_required_literal(sub, depth + 1)
+                    if lit and (best == nil or #lit > #best) then
+                        best = lit
+                    end
+                end
+            end
+        end
+        finish_adjacent()
+        return best
+    end
+
+    return nil
+end
+
 compile_vm_uncached = function(vim_pat)
     local toks, tmsg = vm_tokenize(vim_pat)
     if not toks then
@@ -2754,6 +2855,7 @@ compile_vm_uncached = function(vim_pat)
     end
     local prefilter = {
         lead_literal = lead_lit,
+        required_literal = lead_lit and nil or vm_extract_required_literal(ast),
     }
 
     local vm_find = vm_make_matcher(ast, prefilter)
@@ -2775,13 +2877,11 @@ local VM_TRIGGER_LITS = {
     "\\zs",
     "\\ze",
     "\\z",
-    "\\%(",
     "\\%\\(",
     "\\%[",
     "\\%>",
     "\\%<",
     "\\_",
-    "\\=",
     "\\{-",
 }
 
@@ -2794,10 +2894,7 @@ local function pattern_needs_vm(pat)
     if pat:find("\\@%d+<=") or pat:find("\\@%d+<!") or pat:find("\\@%d+=") or pat:find("\\@%d+!") then
         return true
     end
-    if pat:find("\\%%%d+c") then
-        return true
-    end
-    return false
+    return pat:find("\\%%%d+c") ~= nil
 end
 
 local function compile_uncached(vim_pat)

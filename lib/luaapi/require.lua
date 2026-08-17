@@ -1,18 +1,12 @@
 local package = loadModule("lib.luaapi.package")
 local RuntimePath = loadModule("lib.runtimepath")
-
-local function join_path(base, sub)
-    if base:sub(-1) == "/" then
-        return base .. sub
-    end
-    return base .. "/" .. sub
-end
+local FsUtil = loadModule("lib.fsutil")
 
 local function find_module_path(dotpath)
     local modpath = dotpath:gsub("%.", "/")
     local rtp = RuntimePath.get_list()
     for _, base in ipairs(rtp) do
-        local lua_base = join_path(base, "lua/" .. modpath)
+        local lua_base = FsUtil.join(base, "lua/" .. modpath)
         if fs.exists(lua_base .. ".lua") then
             return lua_base .. ".lua"
         end

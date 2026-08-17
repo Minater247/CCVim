@@ -1,4 +1,5 @@
 local Compiler = {}
+local TblUtils = loadModule("lib.luaapi.tblutils")
 
 local function copy_array(src)
     if not src then return nil end
@@ -36,20 +37,6 @@ end
 
 local function looks_like_pattern(name)
     return name:find("[%*%[%]%.%^%$%+%?]") ~= nil
-end
-
-local function sorted_ids_from_set(set)
-    local ids = {}
-    for id in pairs(set) do ids[#ids + 1] = id end
-    table.sort(ids)
-    return ids
-end
-
-local function set_to_array(set)
-    local out = {}
-    for id in pairs(set) do out[#out + 1] = id end
-    table.sort(out)
-    return out
 end
 
 local function ids_to_bitset(ids)
@@ -504,19 +491,19 @@ local function decorate_options_with_resolved_ids(state, options, resolve_cluste
 
     if out.contains then
         local contains_set = resolve_contains_specs(state, out.contains, resolve_cluster)
-        out.contains_ids = sorted_ids_from_set(contains_set)
+        out.contains_ids = TblUtils.sorted_keys(contains_set)
         out.contains_bits = ids_to_bitset(out.contains_ids)
     end
 
     if out.containedin then
         local containedin_set = resolve_contains_specs(state, out.containedin, resolve_cluster)
-        out.containedin_ids = sorted_ids_from_set(containedin_set)
+        out.containedin_ids = TblUtils.sorted_keys(containedin_set)
         out.containedin_bits = ids_to_bitset(out.containedin_ids)
     end
 
     if out.nextgroup then
         local nextgroup_set = resolve_contains_specs(state, out.nextgroup, resolve_cluster)
-        out.nextgroup_ids = sorted_ids_from_set(nextgroup_set)
+        out.nextgroup_ids = TblUtils.sorted_keys(nextgroup_set)
         out.nextgroup_bits = ids_to_bitset(out.nextgroup_ids)
     end
 
@@ -616,7 +603,7 @@ function Compiler.compile(parsed_commands)
     local cluster_id_map = {}
     for id, cluster in pairs(state.clusters) do
         local members_set = cluster_members_cache[cluster.name] or {}
-        local member_ids = set_to_array(members_set)
+        local member_ids = TblUtils.sorted_keys(members_set)
         clusters[id] = {
             id = id,
             name = cluster.name,

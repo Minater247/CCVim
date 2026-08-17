@@ -9,6 +9,7 @@ local Scopes        = loadModule("lib.luaapi.scopes")
 local Key           = loadModule("lib.key")
 local VimFnBuiltins = loadModule("lib.luaapi.fn")
 local ApiBuild = loadModule("lib.luaapi.apibuild")
+local EMPTY_TABLE = {}
 -- =========================================================
 
 -- -------- helpers --------
@@ -44,9 +45,9 @@ local function table_kind(v)
         return nil
     end
 
-    local mt = getmetatable(v)
-    if mt and (mt.__vimxpr_kind == "list" or mt.__vimxpr_kind == "dict") then
-        return mt.__vimxpr_kind
+    local kind = (getmetatable(v) or EMPTY_TABLE).__vimxpr_kind
+    if kind == "list" or kind == "dict" then
+        return kind
     end
 
     local maxk = 0
@@ -67,6 +68,12 @@ end
 
 local function numeric_coercion_error(v)
     local t = type(v)
+    if t == "string" then
+        return Error(1030, v)
+    end
+    if t == "boolean" then
+        return Error(1138)
+    end
     if t == "function" then
         return Error(703)
     end
@@ -76,7 +83,14 @@ local function numeric_coercion_error(v)
         end
         return Error(728)
     end
-    return Error(0, "Invalid numeric coercion! Type=" .. type(v))
+    return Error(1012, "number", t)
+end
+
+local function boolean_coercion_error(v)
+    local t = type(v)
+    if t == "number" then return Error(1023, v) end
+    if t == "string" then return Error(1135, v) end
+    return Error(1012, "bool", table_kind(v) or t)
 end
 local function num_coerce(v)
     if type(v) == "number" then return v end
@@ -1478,7 +1492,7 @@ local function eval_node(node, vim9, env)
         local v = eval_node(node.a, vim9, env); if is_error(v) then return v end
         if node.op == "!" then
             if vim9 then
-                if type(v) ~= "boolean" then return Error(0, "Expected boolean for ! in Vim9") end
+                if type(v) ~= "boolean" then return boolean_coercion_error(v) end
                 return not v
             else
                 return as_bool_legacy(v) and 0 or 1
@@ -1486,7 +1500,7 @@ local function eval_node(node, vim9, env)
         end
         local n
         if vim9 then
-            if type(v) ~= "number" then return Error(0, "Unary on non-number") end
+            if type(v) ~= "number" then return numeric_coercion_error(v) end
             n = v
         else
             local nerr
@@ -1537,8 +1551,7 @@ local function eval_node(node, vim9, env)
             local a, b = L, R
             if vim9 then
                 if type(a) ~= "number" or type(b) ~= "number" then
-                    return Error(0,
-                        "Type error: arithmetic on non-numbers")
+                    return Error(op == "%" and 1035 or 1036, op)
                 end
             else
                 local aerr, berr
@@ -1557,7 +1570,7 @@ local function eval_node(node, vim9, env)
                     and type(b) == "number"
                     and (math.type and (math.type(a) == "float" or math.type(b) == "float"))
                 then
-                    return Error(0, "Float modulo")
+                    return Error(804)
                 end
                 return a % b
             end
@@ -1565,7 +1578,7 @@ local function eval_node(node, vim9, env)
 
         -- concatenation
         if op == "." or op == ".." then
-            if vim9 and op == "." then return Error(0, "'.' not allowed in Vim9") end
+            if vim9 and op == "." then return Error(15, "'.' not allowed in Vim9") end
             return to_string_simple(L) .. to_string_simple(R)
         end
 
@@ -1654,7 +1667,7 @@ local function eval_node(node, vim9, env)
             return vim9 and res or (res and 1 or 0)
         end
 
-        return Error(0, "Unknown operator: " .. op)
+        error("Unknown expression operator: " .. tostring(op))
     end
     if k == "ternary" then
         local cond = eval_node(node.cond, vim9, env); if is_error(cond) then return cond end
@@ -1664,21 +1677,50 @@ local function eval_node(node, vim9, env)
         end
         return eval_node(node.f, vim9, env)
     end
-    return Error(0, "Unknown node: " .. tostring(k or "eval_node got nil!"))
+    error("Unknown expression node: " .. tostring(k or "nil"))
 end
 
 -- Public API:
+local EVAL_PARSE_CACHE_MAX = 256
+local eval_parse_cache = {}
+local eval_parse_keys = {}
+local eval_parse_head = 1
+local eval_parse_size = 0
+
+local function cache_eval_ast(source, ast)
+    if eval_parse_cache[source] ~= nil then
+        return
+    end
+
+    local index
+    if eval_parse_size < EVAL_PARSE_CACHE_MAX then
+        index = ((eval_parse_head + eval_parse_size - 2) % EVAL_PARSE_CACHE_MAX) + 1
+        eval_parse_size = eval_parse_size + 1
+    else
+        index = eval_parse_head
+        local evicted = eval_parse_keys[index]
+        if evicted ~= nil then
+            eval_parse_cache[evicted] = nil
+        end
+        eval_parse_head = (eval_parse_head % EVAL_PARSE_CACHE_MAX) + 1
+    end
+
+    eval_parse_keys[index] = source
+    eval_parse_cache[source] = ast
+end
+
 function M.parse(expr)
-    local ok_tok, toks = pcall(tokenize, tostring(expr or ""))
+    local source = tostring(expr or "")
+    local ok_tok, toks = pcall(tokenize, source)
     if not ok_tok then
-        return nil, toks
+        return nil, Error(15, source)
     end
     local ok, ast, next_i = pcall(parse, toks)
     if not ok then
-        return nil, ast
+        return nil, Error(15, source)
     end
     if toks[next_i].typ ~= "EOF" then
-        return nil, Error(0, ("Trailing input at %d"):format(toks[next_i].pos))
+        return nil, Error(488, tostring(expr):sub(toks[next_i].pos))
     end
     return ast
 end
@@ -1691,7 +1733,15 @@ function M.evaluate(expr, opts)
         scope = opts.scope,
         funcs = opts.funcs,
     }
-    local ast, parse_err = M.parse(expr)
+    local source = tostring(expr or "")
+    local ast = eval_parse_cache[source]
+    local parse_err
+    if ast == nil then
+        ast, parse_err = M.parse(source)
+        if ast then
+            cache_eval_ast(source, ast)
+        end
+    end
     if not ast then
         if Error.IsError(parse_err) then
             LOG_DEBUG("vimxpr trailing input expr=%s err=%s", tostring(expr), tostring(parse_err))

@@ -13,6 +13,7 @@ local options = loadModule("lib.options")
 local scopes = loadModule("lib.luaapi.scopes")
 local package = loadModule("lib.luaapi.package")
 local Highlight = loadModule("lib.highlight")
+local TblUtils = loadModule("lib.luaapi.tblutils")
 
 local parser_by_buf = {}
 local query_overrides = {}
@@ -29,10 +30,7 @@ local function copy_list(src)
 end
 
 local function resolve_bufnr(bufnr)
-    if bufnr == nil or bufnr == 0 then
-        return api.nvim_get_current_buf()
-    end
-    return bufnr
+    return (bufnr == nil or bufnr == 0) and api.nvim_get_current_buf() or bufnr
 end
 
 local function get_buffer(bufnr)
@@ -139,9 +137,6 @@ end
 
 function language.get_lang(filetype)
     local ft = tostring(filetype or "")
-    if ft == "" then
-        return ""
-    end
     return lang_by_filetype[ft] or ft
 end
 
@@ -151,10 +146,7 @@ function language.get_filetypes(lang)
     if list then
         return copy_list(list)
     end
-    if name ~= "" then
-        return { name }
-    end
-    return {}
+    return name ~= "" and { name } or {}
 end
 
 function language.add(lang, _)
@@ -1263,21 +1255,11 @@ function query.add_directive(name, handler)
 end
 
 function query.list_predicates()
-    local out = {}
-    for name in pairs(predicates) do
-        out[#out + 1] = name
-    end
-    table.sort(out)
-    return out
+    return TblUtils.sorted_keys(predicates)
 end
 
 function query.list_directives()
-    local out = {}
-    for name in pairs(directives) do
-        out[#out + 1] = name
-    end
-    table.sort(out)
-    return out
+    return TblUtils.sorted_keys(directives)
 end
 
 local function resolve_capture_hl_group(capture, lang)
@@ -1652,16 +1634,9 @@ function M.node_contains(node, node_or_range)
     if not nsr or not tsr then
         return false
     end
-    if tsr < nsr or ter > ner then
-        return false
-    end
-    if tsr == nsr and tsc < nsc then
-        return false
-    end
-    if ter == ner and tec > nec then
-        return false
-    end
-    return true
+    return not (tsr < nsr or ter > ner
+        or (tsr == nsr and tsc < nsc)
+        or (ter == ner and tec > nec))
 end
 
 function M.get_node(opts)

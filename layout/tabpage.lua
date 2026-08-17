@@ -327,7 +327,7 @@ local function _first_other_modified_buf(current_buf)
             first_bufnr = bufnr
         end
     end
-    return first_bufnr and buffers[first_bufnr] or nil
+    return first_bufnr and buffers[first_bufnr]
 end
 
 local function _surface_halting_buffer(buf)

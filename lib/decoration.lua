@@ -1,17 +1,9 @@
 local Decoration = {}
+local TblUtils = loadModule("lib.luaapi.tblutils")
 
 local providers = {}
 local redraw_tick = 0
 local active_state = nil
-
-local function provider_ids_sorted()
-    local ids = {}
-    for ns_id, _ in pairs(providers) do
-        ids[#ids + 1] = ns_id
-    end
-    table.sort(ids)
-    return ids
-end
 
 local function callback_for(ns_id, name)
     local provider = providers[ns_id]
@@ -84,7 +76,7 @@ function Decoration.begin_redraw()
 
     local state = {
         tick = redraw_tick,
-        ids = provider_ids_sorted(),
+        ids = TblUtils.sorted_keys(providers),
         disabled = {},
         seen_buf = {},
         win_skip_line = {},

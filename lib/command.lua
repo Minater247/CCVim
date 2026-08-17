@@ -356,6 +356,12 @@ end
 -- =========================
 local user_global_mappings = {} -- user_global_mappings[mode_fullname] = root node
 local builtin_mappings = {}     -- builtin_mappings[mode_fullname] = root node
+local mapping_generation = 0
+local composite_cache = setmetatable({}, { __mode = "k" })
+
+local function mappings_changed()
+    mapping_generation = mapping_generation + 1
+end
 
 local function root_for_mode(storage, mode_full)
     local r = storage[mode_full]
@@ -470,12 +476,28 @@ end
 -- Composite *active* root for the current buffer+mode.
 -- Precedence: buffer-local user > global user > builtin.
 local function composite_root_for_mode(mode_full)
+    local buf = windows[curwin].buffer
+    local by_mode = composite_cache[buf]
+    if by_mode then
+        local cached = by_mode[mode_full]
+        if cached and cached.generation == mapping_generation then
+            return cached.root
+        end
+    else
+        by_mode = {}
+        composite_cache[buf] = by_mode
+    end
+
     local builtin = builtin_mappings[mode_full] or { children = {} }
     local global_user = user_global_mappings[mode_full] or { children = {} }
-    local buf  = windows[curwin].buffer
     local local_user = buf.local_mappings and buf.local_mappings[mode_full]
     local global_root = _composite_node(global_user, builtin)
-    return _composite_node(local_user, global_root)
+    local root = _composite_node(local_user, global_root)
+    by_mode[mode_full] = {
+        generation = mapping_generation,
+        root = root,
+    }
+    return root
 end
 
 local function _get_user_insert_root(mode_full, opts)
@@ -593,6 +615,7 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
         tostring(callback),
         scope_suffix
     )
+    mappings_changed()
 end
 
 local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
@@ -611,6 +634,7 @@ local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
     node.rhs_seq   = nil
     node.recursive = nil
     Command.Log("map-builtin-callback mode=%s seq=%s cb=%s", mode_full, seq_tostring(seq_nums), tostring(callback))
+    mappings_changed()
 end
 
 local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts)
@@ -660,6 +684,7 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
         tostring(node.recursive),
         scope_suffix
     )
+    mappings_changed()
 end
 
 local function _seq_to_map_text(seq)
@@ -709,14 +734,19 @@ function Command.unmap_keys(modes, lhs_seq, opts)
     local lhs = normalize_seq(lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
         local root = _get_existing_user_root(m, opts)
-        _delete_mapping(root, lhs)
+        if _delete_mapping(root, lhs) then
+            mappings_changed()
+        end
     end
 end
 
 function Command.clear_mappings(modes, opts)
     for _, m in ipairs(expand_modes(modes)) do
         local root = _get_existing_user_root(m, opts)
-        _clear_root(root)
+        if root then
+            _clear_root(root)
+            mappings_changed()
+        end
     end
 end
 
@@ -1028,6 +1058,7 @@ local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_sp
             add_motion(item.lhs, item.name)
         end
     end
+    mappings_changed()
     return node
 end
 

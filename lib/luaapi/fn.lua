@@ -35,6 +35,7 @@ local funcref_fn_by_name = {}
 local _jobs = {}
 local _next_job_id = 1
 local eval_scope_stack = {}
+local EMPTY_TABLE = {}
 
 -- Helper: call a Vimscript function by name (user-defined via runtime registry) or a builtin here.
 local function call_vimfunc(name, ...)
@@ -485,10 +486,6 @@ end
 
 local function _is_vim_list_expr(expr)
     return type(expr) == "table" and not expr.__call
-end
-
-local function _syntax_mod()
-    return Syntax
 end
 
 local function _prepare_match_pattern(pat, use_ignorecase_opt)
@@ -1174,7 +1171,7 @@ function Builtins.synID(lnum, col, _trans, ...)
     end
 
     local win = windows[curwin]
-    local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
+    local q = Syntax.Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     local id = q.top_id or 0
     return id
 end
@@ -1185,7 +1182,7 @@ function Builtins.synstack(lnum, col, ...)
     end
 
     local win = windows[curwin]
-    local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
+    local q = Syntax.Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     return q.ids or {}
 end
 
@@ -1195,7 +1192,7 @@ function Builtins.synconcealed(lnum, col, ...)
     end
 
     local win = windows[curwin]
-    local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
+    local q = Syntax.Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     return { q.conceal or 0, q.cchar or "", q.top_id or 0 }
 end
 
@@ -1213,7 +1210,7 @@ function Builtins.getmatches(winid, ...)
         win = resolved
     end
 
-    return _syntax_mod().MatchGet(win)
+    return Syntax.MatchGet(win)
 end
 
 function Builtins.synIDtrans(id, ...)
@@ -1390,11 +1387,11 @@ function Builtins.type(expr)
     elseif t == "nil" then
         return 7
     elseif t == "table" then
-        local mt = getmetatable(expr)
-        if mt and mt.__vimxpr_kind == "list" then
+        local kind = (getmetatable(expr) or EMPTY_TABLE).__vimxpr_kind
+        if kind == "list" then
             return 3
         end
-        if mt and mt.__vimxpr_kind == "dict" then
+        if kind == "dict" then
             return 4
         end
         -- treat as list if only numeric keys, else dict
@@ -1922,8 +1919,7 @@ local function _mark_vim_list(tbl)
     if type(tbl) ~= "table" then
         return tbl
     end
-    local mt = getmetatable(tbl)
-    if mt and mt.__vimxpr_kind == "list" then
+    if (getmetatable(tbl) or EMPTY_TABLE).__vimxpr_kind == "list" then
         return tbl
     end
     return setmetatable(tbl, VIMXPR_LIST_MT)
@@ -2058,10 +2054,7 @@ local function _glob_expr_is_absolute(expr)
     if e:match("^%a[%w+.-]*://") then
         return true
     end
-    if e:sub(1, 1) == "~" then
-        return true
-    end
-    return false
+    return e:sub(1, 1) == "~"
 end
 
 local function _glob_matches_for_relative_expr(expr, matches)
@@ -2221,7 +2214,7 @@ function Builtins.exists(expr)
                     j = j + 1
                 end
                 if depth ~= 0 then
-                    return Error(0, "Unterminated { in variable name")
+                    return Error(475, "Unterminated { in variable name")
                 end
                 local inner = raw:sub(i + 1, j - 1)
                 local ok, val = Runtime.EvalExpression(inner, {
@@ -2269,8 +2262,8 @@ function Builtins.exists(expr)
         if eval_scope and eval_scope.s and eval_scope.s[key] ~= nil then
             return 1
         end
-        local st = Runtime._CURRENT_STATE
-        if st and st.s then
+        local st = Runtime._CURRENT_STATE or EMPTY_TABLE
+        if st.s then
             local ok = (st.s[key] ~= nil) and 1 or 0
             if key == "vimentered" then
                 LOG_DEBUG("exists(s:vimentered) state=%s val=%s -> %s", tostring(st), tostring(st.s[key]),
@@ -2341,8 +2334,7 @@ function Builtins.exists(expr)
             return 0
         end
         local key = cname:lower()
-        local state = Runtime._CURRENT_STATE or Runtime._API_STATE
-        if (state and state.commands and state.commands[key]) or Runtime._USER_COMMANDS[key] then
+        if Runtime._USER_COMMANDS[key] then
             return 2
         end
         if Commands.resolve_dispatch_name(cname) then
@@ -2379,8 +2371,8 @@ end
 -- did_filetype(): true if filetype was set by detection (or already set)
 function Builtins.did_filetype()
     local bnr = windows[curwin].buffer.bufnr
-    local bt = scopes._b_by_buf[bnr]
-    if bt and bt.did_filetype then
+    local bt = scopes._b_by_buf[bnr] or EMPTY_TABLE
+    if bt.did_filetype then
         return 1
     end
     local ft = options.get("filetype", nil, windows[curwin].buffer)
@@ -3260,27 +3252,27 @@ function Builtins.mkdir(name, flags, _)
             if parents then
                 return 1
             end
-            error(Error(739, raw))
+            error(Error(739, raw, "file already exists"))
         end
-        error(Error(739, raw))
+        error(Error(739, raw, "file already exists"))
     end
 
     if not parents then
         local parent = _dir_of(path)
         if not fs.exists(parent) or not fs.isDir(parent) then
-            error(Error(739, raw))
+            error(Error(739, raw, "No such file or directory"))
         end
     end
 
-    local ok = pcall(fs.makeDir, path)
+    local ok, mkdir_err = pcall(fs.makeDir, path)
     if not ok then
-        error(Error(739, raw))
+        error(Error(739, raw, tostring(mkdir_err)))
     end
 
     if fs.exists(path) and fs.isDir(path) then
         return 1
     end
-    error(Error(739, raw))
+    error(Error(739, raw, "Unknown error"))
 end
 
 function Builtins.isdirectory(path)
@@ -3455,7 +3447,7 @@ function Builtins.writefile(lines, fname, flags)
     local handle
     handle = fs.open(path, binary and "wb" or "w")
     if not handle then
-        error(Error(212))
+        error(Error(212, raw))
     end
 
     local ok_write, write_err = pcall(function()
@@ -3473,7 +3465,7 @@ function Builtins.writefile(lines, fname, flags)
         end
     end)
     if not ok_write then
-        error(Error(212, tostring(write_err)))
+        error(Error(212, raw .. ": " .. tostring(write_err)))
     end
     return 0
 end
@@ -4644,11 +4636,11 @@ local function _require_dict_for_keys_items(dict)
     if type(dict) ~= "table" then
         error(Error(1206, 1))
     end
-    local mt = getmetatable(dict)
-    if mt and mt.__vimxpr_kind == "list" then
+    local kind = (getmetatable(dict) or EMPTY_TABLE).__vimxpr_kind
+    if kind == "list" then
         error(Error(1206, 1))
     end
-    if not (mt and mt.__vimxpr_kind == "dict") then
+    if kind ~= "dict" then
         local has_non_numeric_key = false
         local has_numeric_key = false
         for k, _ in pairs(dict) do
@@ -5074,11 +5066,11 @@ local function _copy_table_kind(tbl)
     if type(tbl) ~= "table" then
         return nil
     end
-    local mt = getmetatable(tbl)
-    if mt and mt.__vimxpr_kind == "list" then
+    local kind = (getmetatable(tbl) or EMPTY_TABLE).__vimxpr_kind
+    if kind == "list" then
         return "list"
     end
-    if mt and mt.__vimxpr_kind == "dict" then
+    if kind == "dict" then
         return "dict"
     end
     return RegisterUtil.is_list(tbl) and "list" or "dict"
@@ -5475,8 +5467,7 @@ function Builtins.execute(command, silent, ...)
         if mode == "silent!" then
             return output
         end
-        local emsg = last_err or ((rv and rv.toString) and rv:toString()) or tostring(rv)
-        error(emsg)
+        error(last_err or tostring(rv))
     end
 
     return output

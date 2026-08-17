@@ -132,6 +132,7 @@ Options:
   --ft=<filetype>          Force filetype instead of nvim detection.
   --runs=<n>               Number of runs per engine (default: 3).
   --mode=<full|target>     full=blit every line, target=blit only last line.
+  --profile                Print Lua syntax matcher profiling for the last run.
   --vim9                   Include "Vim9 ..." prefixed syntax commands.
   --help                   Show this help.
 
@@ -151,6 +152,7 @@ local function parse_args(argv)
         ft = nil,
         runs = 3,
         mode = "full",
+        profile = false,
         include_vim9 = false,
     }
 
@@ -175,6 +177,8 @@ local function parse_args(argv)
             end
         elseif a == "--vim9" then
             opts.include_vim9 = true
+        elseif a == "--profile" then
+            opts.profile = true
         elseif starts_with(a, "--") then
             error("Unknown option: " .. a)
         elseif not opts.file_set then
@@ -349,6 +353,14 @@ local function init_lua_engine_runtime()
         getPaletteColor = function(_) return 0, 0, 0 end,
         setTextColor = function(_) end,
         setBackgroundColor = function(_) end,
+    }
+    _G.screen = {
+        get_palette_slot = function(_) return 0, 0, 0 end,
+        hl_attrs = function(_) return {} end,
+        default_colors_set = function() end,
+        hl_id_for = function(_) return 0 end,
+        hl_group_set = function() end,
+        set_palette_slot = function() end,
     }
     _G.LOG_ERROR = function() end
     _G.LOG_DEBUG = function() end
@@ -819,6 +831,7 @@ local function collect_lua_timing(path, ft, opts)
 
     local Runtime = loadModule("lib.syntax_engine.runtime")
     local Compiler = loadModule("lib.syntax_engine.compiler")
+    local Profile = loadModule("lib.syntax_engine.profile")
     local State = loadModule("lib.syntax_engine.state")
 
     local commands, syntax_file_or_err = load_syntax_commands(ft, opts)
@@ -828,6 +841,12 @@ local function collect_lua_timing(path, ft, opts)
 
     local lines = read_lines(path)
     local buf = { lines = lines }
+    function buf:line_count()
+        return #self.lines
+    end
+    function buf:get_line(line_nr)
+        return self.lines[line_nr]
+    end
 
     local ctx = State.new_context({
         syntax = ft,
@@ -836,6 +855,7 @@ local function collect_lua_timing(path, ft, opts)
     ctx.syntax_commands = commands
     ctx.syntax_ir = Compiler.compile(commands)
     ctx.syntax_ir_dirty = false
+    Profile.set_enabled(ctx, opts.profile)
 
     local setup_ms = (now_seconds() - t0) * 1000
 
@@ -852,14 +872,14 @@ local function collect_lua_timing(path, ft, opts)
         end
         for ln = 1, #lines do
             local b = blits[ln]
-            if b and b.fg and b.bg then
-                checksum = checksum + #b.fg + #b.bg
+            if b and b.hl then
+                checksum = checksum + #b.hl
                 line_hits = line_hits + 1
             end
         end
-        if #lines > 0 and (line_hits ~= #lines or checksum ~= (expected_chars * 2)) then
+        if #lines > 0 and (line_hits ~= #lines or checksum ~= expected_chars) then
             error(("Runtime.lines_to_blit incomplete output (hits=%d/%d checksum=%d expected=%d)")
-            :format(line_hits, #lines, checksum, expected_chars * 2))
+            :format(line_hits, #lines, checksum, expected_chars))
         end
     end
     local highlight_ms = (now_seconds() - h0) * 1000
@@ -869,6 +889,7 @@ local function collect_lua_timing(path, ft, opts)
         highlight_ms = highlight_ms,
         line_count = #lines,
         syntax_file = syntax_file_or_err,
+        profile = opts.profile and Profile.report(ctx) or nil,
     }
 end
 
@@ -981,6 +1002,11 @@ local function main(argv)
 
     print_engine_runs("Neovim", nvim_runs)
     print_engine_runs("Lua engine", lua_runs)
+    local profile = lua_runs[#lua_runs] and lua_runs[#lua_runs].profile
+    if profile then
+        io.write("\nLua matcher profile:\n")
+        io.write(table.concat(profile, "\n"), "\n")
+    end
 end
 
 main(arg)

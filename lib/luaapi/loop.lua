@@ -1,4 +1,5 @@
 local loop = {}
+local FsUtil = loadModule("lib.fsutil")
 
 local Backend = loadModule("lib.backend")
 local Event = loadModule("lib.event")
@@ -99,16 +100,6 @@ end
 function loop.fs_lstat(path, callback)
     -- CC/OC have no links
     return loop.fs_stat(path, callback)
-end
-
-local function join_path(base, name)
-    if base == "/" then
-        return "/" .. tostring(name)
-    end
-    if base:sub(-1) == "/" then
-        return base .. tostring(name)
-    end
-    return base .. "/" .. tostring(name)
 end
 
 function loop.fs_opendir(path, a2, a3)
@@ -212,7 +203,7 @@ function loop.fs_readdir(handle, callback)
             break
         end
         state._idx = state._idx + 1
-        local abs = join_path(state._path, name)
+        local abs = FsUtil.join(state._path, name)
         out[#out + 1] = {
             name = name,
             type = fs.isDir(abs) and "directory" or "file",

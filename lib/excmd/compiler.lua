@@ -1,9 +1,19 @@
 -- vim.lib.excmd.compiler
 local Compiler = {}
 
+Compiler.CACHE_VERSION = 2
+Compiler.CACHE_HEADER = "-- ccvim-compiled-v" .. Compiler.CACHE_VERSION
+
+function Compiler.is_cache_compatible(code)
+    return type(code) == "string" and code:sub(1, #Compiler.CACHE_HEADER) == Compiler.CACHE_HEADER
+end
+
 local Error = loadModule("lib.error")
 local Commands = loadModule("lib.excmd.commands")
 local VimExpr = loadModule("lib.excmd.vimxpr")
+local Payload = loadModule("lib.excmd.payload")
+local payload_arg_parsers = Payload.command_arg_parsers
+local split_payload_words = Payload.split_words
 
 local function is_space_code(b)
     return b == 32 or b == 9 or b == 10 or b == 13 or b == 12 or b == 11
@@ -33,20 +43,7 @@ local function lstrip_from(s, pos)
     return s:sub(pos)
 end
 
-local function trim(s)
-    s = tostring(s or "")
-    local first, last = 1, #s
-    while first <= last and is_space_code(s:byte(first)) do
-        first = first + 1
-    end
-    while last >= first and is_space_code(s:byte(last)) do
-        last = last - 1
-    end
-    if first == 1 and last == #s then
-        return s
-    end
-    return s:sub(first, last)
-end
+local trim = Payload.trim
 
 local function resolve_cmd_name(raw)
     return Commands.resolve_parse_name(raw)
@@ -56,27 +53,8 @@ local function _cmd_mode_and_bar(cmd_raw)
     return Commands.mode_and_bar(cmd_raw)
 end
 
-local DISPATCH_MIN_ABBREV = Commands.DISPATCH_MIN_ABBREV
-local MAP_COMMAND_SPECS = Commands.MAP_COMMAND_SPECS
 local resolve_dispatch_name = Commands.resolve_dispatch_name
 local parse_cmd_head
-
-local COMMAND_WRAPPERS = {
-    silent = true,
-    unsilent = true,
-    keepalt = true,
-    keepjumps = true,
-    noautocmd = true,
-    verbose = true,
-    leftabove = true,
-    aboveleft = true,
-    rightbelow = true,
-    belowright = true,
-    topleft = true,
-    botright = true,
-    vertical = true,
-    horizontal = true,
-}
 
 local function _expr_head_only_before_quote(head)
     local s = tostring(head or "")
@@ -145,7 +123,7 @@ local function split_commands(script)
                 if head ~= "" then
                     local cmd, rest = parse_cmd_head(head)
                     local guard = 0
-                    while type(cmd) == "string" and COMMAND_WRAPPERS[cmd] and guard < 8 do
+                    while type(cmd) == "string" and Commands.is_wrapper(cmd) and guard < 8 do
                         head = trim(rest or "")
                         if head == "" then
                             break
@@ -466,42 +444,6 @@ local function lua_literal(v)
     return lua_string(v)
 end
 
-local function split_ws_static(raw)
-    local out = {}
-    local buf = {}
-    local s = tostring(raw or "")
-    local i, n = 1, #s
-
-    local function flush()
-        if #buf > 0 then
-            out[#out + 1] = table.concat(buf)
-            buf = {}
-        end
-    end
-
-    while i <= n do
-        local ch = s:sub(i, i)
-        if ch == " " or ch == "\t" or ch == "\r" or ch == "\n" then
-            flush()
-            i = i + 1
-        elseif ch == "\\" then
-            if i < n then
-                buf[#buf + 1] = s:sub(i + 1, i + 1)
-                i = i + 2
-            else
-                buf[#buf + 1] = ch
-                i = i + 1
-            end
-        else
-            buf[#buf + 1] = ch
-            i = i + 1
-        end
-    end
-
-    flush()
-    return out
-end
-
 local function lua_string_list(items)
     local out = {}
     for i = 1, #items do
@@ -515,7 +457,7 @@ local function resolve_dispatch_for_node(node)
     if lname == "" then
         return nil
     end
-    if DISPATCH_MIN_ABBREV[lname] or MAP_COMMAND_SPECS[lname] or Commands.MENU_COMMAND_SPECS[lname] then
+    if node.command_spec and node.command_spec.dispatch then
         return lname
     end
     local resolved = resolve_dispatch_name(lname)
@@ -529,7 +471,8 @@ local function compile_invocation_spec(node)
     local cmd = node.cmd
     local rest = node.rest
     local lname = cmd:lower()
-    local ws_args = node.ws_args or split_ws_static(rest)
+    local arg_parser = payload_arg_parsers[lname] or split_payload_words
+    local ws_args = node.ws_args or arg_parser(rest)
 
     local fields = {
         "name = " .. lua_string(cmd),
@@ -564,140 +507,12 @@ local function split_params(param_str)
     local out = {}
     param_str = tostring(param_str or "")
     for p in param_str:gmatch("([^,]+)") do
-        local trimmed = p:gsub("^%s+", ""):gsub("%s+$", "")
+        local trimmed = trim(p)
         if #trimmed > 0 then
             out[#out + 1] = trimmed
         end
     end
     return out
-end
-
-local function split_let_assignment(rest)
-    local s = tostring(rest or "")
-    local in_s, in_d, esc = false, false, false
-    local depth_p, depth_c, depth_b = 0, 0, 0
-    local i, n = 1, #s
-    while i <= n do
-        local ch = s:sub(i, i)
-        if esc then
-            esc = false
-        elseif ch == "\\" then
-            if not in_s then esc = true end
-        elseif not in_d and ch == "'" then
-            in_s = not in_s
-        elseif not in_s and ch == '"' then
-            in_d = not in_d
-        elseif not in_s and not in_d then
-            if ch == "(" then depth_p = depth_p + 1
-            elseif ch == ")" then depth_p = math.max(0, depth_p - 1)
-            elseif ch == "{" then depth_c = depth_c + 1
-            elseif ch == "}" then depth_c = math.max(0, depth_c - 1)
-            elseif ch == "[" then depth_b = depth_b + 1
-            elseif ch == "]" then depth_b = math.max(0, depth_b - 1)
-            elseif depth_p == 0 and depth_c == 0 and depth_b == 0 then
-                local two = s:sub(i, i + 1)
-                if two == "+=" or two == "-=" or two == "*=" or two == "/=" or two == "%=" or two == ".=" then
-                    return trim(s:sub(1, i - 1)), two, trim(s:sub(i + 2))
-                elseif ch == "=" then
-                    return trim(s:sub(1, i - 1)), "=", trim(s:sub(i + 1))
-                end
-            end
-        end
-        i = i + 1
-    end
-    return nil
-end
-
-local function split_set_args_static(s)
-    if not s or s == "" then return {} end
-    local out, buf, i, n = {}, {}, 1, #s
-    while i <= n do
-        local c = s:sub(i, i)
-        if c == "\\" and i < n then
-            buf[#buf + 1] = s:sub(i, i + 1)
-            i = i + 2
-        elseif c == "\"" then
-            local prev = (i > 1) and s:sub(i - 1, i - 1) or ""
-            if i == 1 or prev == " " or prev == "\t" then
-                break
-            end
-            buf[#buf + 1] = c
-            i = i + 1
-        elseif c == " " or c == "\t" then
-            if #buf > 0 then
-                out[#out + 1] = table.concat(buf)
-                buf = {}
-            end
-            i = i + 1
-            while i <= n and (s:sub(i, i) == " " or s:sub(i, i) == "\t") do
-                i = i + 1
-            end
-        else
-            buf[#buf + 1] = c
-            i = i + 1
-        end
-    end
-    if #buf > 0 then
-        out[#out + 1] = table.concat(buf)
-    end
-    return out
-end
-
-local function rejoin_equals_static(args)
-    local out, i = {}, 1
-    while i <= #args do
-        local tok = args[i]
-        local nxt = args[i + 1]
-        local n2 = args[i + 2]
-        if tok:match("^[%a_]%w*$") and nxt then
-            if nxt:match("^[:=]") then
-                out[#out + 1] = tok .. "=" .. nxt:sub(2)
-                i = i + 2
-                goto continue
-            elseif nxt == "=" and n2 then
-                out[#out + 1] = tok .. "=" .. n2
-                i = i + 3
-                goto continue
-            elseif nxt:match("^[+%^%-]=") then
-                out[#out + 1] = tok .. nxt
-                i = i + 2
-                goto continue
-            end
-        end
-        out[#out + 1] = tok
-        i = i + 1
-        ::continue::
-    end
-    return out
-end
-
-local function parse_command_definition(rest)
-    local parts = split_ws_static(rest)
-    local nargs = 0
-    local name
-    local body_index = #parts + 1
-    local idx = 1
-    while idx <= #parts do
-        local tok = parts[idx]
-        if tok:match("^%-nargs=") then
-            local v = tok:sub(8)
-            nargs = (v == "*" or v == "?" or v == "+") and v or tonumber(v) or 0
-            idx = idx + 1
-        elseif tok:match("^%-") then
-            idx = idx + 1
-        else
-            name = tok
-            body_index = idx + 1
-            break
-        end
-    end
-    return {
-        kind = "command",
-        parts = parts,
-        nargs = nargs,
-        name = name,
-        body_index = body_index,
-    }
 end
 
 local function build_ir(script)
@@ -741,6 +556,7 @@ local function build_ir(script)
             local heredoc_value = "[" .. table.concat(items, ", ") .. "]"
             ir[#ir + 1] = {
                 cmd = "let",
+                command_spec = Commands.get_spec("let"),
                 rest = lhs .. " = " .. heredoc_value,
                 bang = false,
                 raw = "let",
@@ -757,6 +573,7 @@ local function build_ir(script)
             cmd = cmd or ""
             ir[#ir + 1] = {
                 cmd = cmd,
+                command_spec = Commands.get_spec(cmd),
                 rest = rest or "",
                 bang = not not bang,
                 raw = raw or cmd,
@@ -992,7 +809,9 @@ local function compile_ast(node, ctx)
             }
         elseif op == "+" then
             return { code = "__ops.add(" .. a.code .. ", " .. b.code .. ")", kind = "number" }
-        elseif op == "-" or op == "*" or op == "/" or op == "%" then
+        elseif op == "%" then
+            return { code = "__ops.mod(" .. a.code .. ", " .. b.code .. ")", kind = "number" }
+        elseif op == "-" or op == "*" or op == "/" then
             return {
                 code = "(__ops.to_number(" .. a.code .. ") "
                     .. op .. " __ops.to_number(" .. b.code .. "))",
@@ -1169,7 +988,14 @@ function Compiler.compile_command(node, ctx)
             if static_lhs then
                 return { code = lvalue_write_code(static_lhs, rhs_code, ctx) }
             end
-            return { code = string.format("runtime:assign(%s, %s)", lua_string(lhs), rhs_code) }
+            return {
+                code = string.format(
+                    "runtime:assign(%s, %s, %s)",
+                    lua_string(lhs),
+                    rhs_code,
+                    lua_string(node.rest)
+                ),
+            }
         end
 
         if op ~= "+=" and op ~= "-=" and op ~= "*=" and op ~= "/=" and op ~= "%=" and op ~= ".=" then
@@ -1252,7 +1078,7 @@ function Compiler.compile_command(node, ctx)
         return { code = string.format("runtime:exec_verbose(%d, %s)", level, lua_string(node.rest)) }
     elseif cmd == "echo" or cmd == "echoerr" or cmd == "echomsg" or cmd == "echon" then
         if node.text:match("^%s*:?[%%%.%$%'%d]") then
-            return { code = "error(Error(481))" }
+            return { code = "error(Error(481, " .. lua_string(node.text) .. "))" }
         end
         local values = {}
         for i = 1, #arg.exprs do
@@ -1305,7 +1131,7 @@ function Compiler.compile_command(node, ctx)
     end
 
     local spec = compile_invocation_spec(node)
-    if Commands.get_spec(cmd) then
+    if node.command_spec or Commands.get_spec(cmd) then
         return { code = "runtime:invoke_compiled_builtin_command(" .. lua_string(cmd) .. ", " .. spec .. ")" }
     end
     return { code = "runtime:invoke_compiled_command(" .. spec .. ")" }
@@ -1519,128 +1345,6 @@ local function expr_is_static(expr)
     return ast_is_static(expr)
 end
 
-local function parse_expr_for_node(node, field, expr)
-    if expr == nil or expr == "" then
-        return true
-    end
-    local ast, parse_err = VimExpr.parse(expr)
-    if not ast then
-        return nil, Error(474, "Unsupported expression: " .. tostring(expr or "") .. " (" .. tostring(parse_err) .. ")")
-    end
-    node[field] = ast
-    return true
-end
-
-local function parse_command_payloads(seq)
-    for i = 1, #seq do
-        local node = seq[i]
-        local cmd = node.cmd
-        if cmd == "let" then
-            local lhs, op, rhs = split_let_assignment(node.rest)
-            if not lhs or not op then
-                node.arg = { kind = "let_query" }
-            else
-                local arg = {
-                    kind = "let",
-                    lhs = trim(lhs),
-                    op = op,
-                    rhs = trim(rhs),
-                }
-                node.arg = arg
-                local _, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
-                if err then return nil, err end
-            end
-        elseif cmd == "if" or cmd == "elseif" or cmd == "while" then
-            local arg = { kind = "expr", expr = node.rest }
-            node.arg = arg
-            local _, err = parse_expr_for_node(arg, "expr_ast", arg.expr)
-            if err then return nil, err end
-        elseif cmd == "for" then
-            local arg = {
-                kind = "for",
-                lhs = node.iter_lhs,
-                rhs = node.iter_rhs,
-            }
-            node.arg = arg
-            local _, err = parse_expr_for_node(arg, "rhs_ast", arg.rhs)
-            if err then return nil, err end
-        elseif cmd == "call" or (cmd == "return" and node.rest ~= "") then
-            local arg = { kind = "expr", expr = node.rest }
-            node.arg = arg
-            local _, err = parse_expr_for_node(arg, "expr_ast", arg.expr)
-            if err then return nil, err end
-        elseif cmd == "echo" or cmd == "echoerr" or cmd == "echomsg" or cmd == "echon" then
-            local exprs = VimExpr.splitExpressionAsts(node.rest)
-            for j = 1, #exprs do
-                if not exprs[j].ast then
-                    return nil, Error(474, "Unsupported expression: " .. tostring(exprs[j].text))
-                end
-            end
-            node.arg = {
-                kind = "expr_list",
-                exprs = exprs,
-            }
-        elseif cmd == "unlet" then
-            node.arg = {
-                kind = "unlet",
-                names = split_ws_static(node.rest),
-            }
-        elseif cmd == "set" or cmd == "setglobal" or cmd == "setlocal" then
-            node.arg = {
-                kind = "set",
-                tokens = rejoin_equals_static(split_set_args_static(node.rest)),
-            }
-        elseif cmd == "execute" then
-            local exprs = VimExpr.splitExpressionAsts(node.rest)
-            node.arg = {
-                kind = "execute",
-                exprs = exprs,
-                dynamic = #exprs == 0 or node.rest:find("$'", 1, true) ~= nil,
-            }
-            for j = 1, #exprs do
-                if not exprs[j].ast then
-                    node.arg.dynamic = true
-                    break
-                end
-            end
-        elseif cmd == "put" then
-            local raw = trim(node.rest)
-            if raw == "" then
-                node.arg = { kind = "put", source = "default" }
-            elseif raw:sub(1, 1) == "=" then
-                local expr = trim(raw:sub(2))
-                node.arg = {
-                    kind = "put",
-                    source = (expr == "" and "expr_reuse" or "expr"),
-                    expr = expr,
-                }
-                if expr ~= "" then
-                    local _, err = parse_expr_for_node(node.arg, "expr_ast", expr)
-                    if err then return nil, err end
-                end
-            elseif #raw == 1 then
-                node.arg = { kind = "put", source = "register", reg = raw }
-            else
-                node.arg = { kind = "put", source = "invalid", raw = raw }
-            end
-        elseif cmd == "autocmd" then
-            node.arg = {
-                kind = "autocmd",
-                args = split_ws_static(node.rest),
-            }
-        elseif cmd == "command" then
-            node.arg = parse_command_definition(node.rest)
-        elseif cmd == "doautoall" then
-            local ws_args = split_ws_static(node.rest)
-            node.arg = {
-                kind = "doautoall",
-                event = ws_args[1],
-            }
-        end
-    end
-    return true
-end
-
 local function infer_function_locals(seq)
     local locals = {}
     local safe = true
@@ -1785,7 +1489,7 @@ local function emit_for_assignment(node, compile_ctx)
 end
 
 local function render_compiled_chunk(emitter)
-    local lines = {}
+    local lines = { Compiler.CACHE_HEADER }
     if #emitter.static_nodes > 0 then
         lines[#lines + 1] = "local __nodes = {"
         for i = 1, #emitter.static_nodes do
@@ -1976,18 +1680,18 @@ function Compiler.compile_script(script, opts)
     if flow_err then
         return nil, flow_err
     end
-    local _, parse_err = parse_command_payloads(ir)
-    if parse_err then
-        return nil, parse_err
+    local _, payload_err = Payload.parse_sequence(ir)
+    if payload_err then
+        return nil, payload_err
     end
     local ok_annotate, annotate_err = pcall(annotate_function_locals, ir)
     if not ok_annotate then
-        return nil, Error.IsError(annotate_err) and annotate_err or Error(0, tostring(annotate_err))
+        return nil, annotate_err
     end
     local emitter = new_script_emitter()
     local ok_emit, emit_err = pcall(emit_sequence, emitter, ir, opts.state, "    ", {}, {})
     if not ok_emit then
-        return nil, Error.IsError(emit_err) and emit_err or Error(0, tostring(emit_err))
+        return nil, emit_err
     end
     local source_map = {}
     return render_compiled_chunk(emitter), source_map

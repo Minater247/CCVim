@@ -7,7 +7,6 @@ local Command
 local Key    = loadModule("lib.key")
 local OnKey = loadModule("lib.luaapi.on_key")
 local ExMsg  = loadModule("lib.excmd.exmsg")
-local Error = loadModule("lib.error")
 local FrameTree = loadModule("lib.frame")
 local Autocmd = loadModule("lib.autocmd")
 local Fn = loadModule("lib.luaapi.fn")
@@ -503,7 +502,7 @@ local function handle_mouse_click(button, x, y)
         end
     elseif button == 2 then
         if model == "popup_setpos" then
-            local selection = was_visual and Visual.selection(win) or nil
+            local selection = was_visual and Visual.selection(win)
             place_cursor_from_click(win, local_x, local_y)
             if selection then
                 if Visual.contains(selection, win.cursory, win.cursorx) then
@@ -686,14 +685,8 @@ function Event.ProcessEvent(ev)
             w, h = ev[2], ev[3]
         end
         local ok, err = apply_terminal_resize(w, h, ev[1])
-        if not ok and err then
-            local msg
-            if Error.IsError(err) then
-                msg = err:toString()
-            else
-                msg = tostring(err)
-            end
-            ExMsg.echoerr(msg)
+        if not ok then
+            ExMsg.echoerr(err:toString())
         end
     end
 

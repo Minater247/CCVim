@@ -2,6 +2,7 @@ local Runtime = {}
 
 local Highlight = loadModule("lib.highlight")
 local VimRegex = loadModule("lib.excmd.vim_regex")
+local TblUtils = loadModule("lib.luaapi.tblutils")
 local str_sub = string.sub
 
 local RECOMPUTE_BATCH = 96
@@ -405,11 +406,7 @@ local function ext_captures_key(ext)
     if not ext then
         return ""
     end
-    local keys = {}
-    for k in pairs(ext) do
-        keys[#keys + 1] = k
-    end
-    table.sort(keys)
+    local keys = TblUtils.sorted_keys(ext)
     local parts = {}
     for i = 1, #keys do
         local k = keys[i]
@@ -637,7 +634,7 @@ local function active_context_group(state)
         return group_id
     end
     local top = active_syntax_container(state)
-    return top and top.group_id or nil
+    return top and top.group_id
 end
 
 local function keyword_boundary_ok(line, s, e, iskw)
@@ -801,10 +798,7 @@ local function container_allows(item, top)
     local containedin_ok = bit_has(item.options.containedin_bits, top.group_id)
     local contains_bits = top.contains_bits
     if contains_bits then
-        if bit_has(contains_bits, item.group_id) or containedin_ok then
-            return true
-        end
-        return false
+        return bit_has(contains_bits, item.group_id) or containedin_ok
     end
 
     if item.options.flags.contained then
@@ -1507,10 +1501,7 @@ end
 
 local function region_start_has_span_marker(event)
     local patt = event.spec.pattern
-    if patt:find("\\zs", 1, true) or patt:find("\\ze", 1, true) then
-        return true
-    end
-    return false
+    return patt:find("\\zs", 1, true) ~= nil or patt:find("\\ze", 1, true) ~= nil
 end
 
 local function event_resume_end(event)

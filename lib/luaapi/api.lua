@@ -20,6 +20,7 @@ local Event = loadModule("lib.event")
 local BufAttach = loadModule("lib.bufattach")
 local OnKey = loadModule("lib.luaapi.on_key")
 local Visual = loadModule("lib.visual")
+local TblUtils = loadModule("lib.luaapi.tblutils")
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -189,7 +190,7 @@ local function keymap_bucket(is_buffer, bufnr, mode, create)
 end
 
 local function keymap_bool_flag(opts, name, default)
-    local v = opts and opts[name]
+    local v = opts[name]
     if v == nil then
         return default and 1 or 0
     end
@@ -269,25 +270,9 @@ local feedkeys_flushing = false
 
 local NVIM_CMD_MARKER = string.char(128, 253, 104)
 
-local function inline_runtime_state()
-    local state = Runtime._API_STATE
-    if type(state) ~= "table" then
-        state = {}
-        Runtime._API_STATE = state
-    end
-    state.g = scopes._g
-    state.s = {}
-    state.v = scopes._v
-    state.funcs = Runtime._FUNCS
-    state.frames = {}
-    state.commands = state.commands or {}
-    state.menus = state.menus or {}
-    return state
-end
-
 local function _run_feedkeys_cmdline(cmdline)
     local ok, err = Runtime.run(tostring(cmdline or ""), {
-        state = inline_runtime_state(),
+        state = Runtime.PrepareApiState(),
         origin = {
             kind = "feedkeys-cmd",
         },
@@ -1376,7 +1361,6 @@ local function exec_script(src, opts)
         v = scopes._v,
         funcs = Runtime._FUNCS,
         frames = {},
-        commands = {},
     }
 
     local function run()
@@ -1951,11 +1935,7 @@ function api.nvim_buf_delete(buffer, opts)
             return alt
         end
 
-        local ids = {}
-        for id, _ in pairs(buffers) do
-            ids[#ids + 1] = id
-        end
-        table.sort(ids)
+        local ids = TblUtils.sorted_keys(buffers)
         for _, id in ipairs(ids) do
             local candidate = buffers[id]
             if candidate and candidate ~= buf then
@@ -2049,12 +2029,7 @@ function api.nvim_buf_attach(buffer, _send_buffer, opts)
         preview = opts.preview == true,
     }
 
-    local ok = BufAttach.attach(buf.bufnr, listener)
-    if not ok then
-        return false
-    end
-
-    return true
+    return not not BufAttach.attach(buf.bufnr, listener)
 end
 
 function api.nvim_buf_detach(buffer)
@@ -2315,12 +2290,7 @@ function api.nvim_echo(chunks, _history, _opts)
 end
 
 function api.nvim_list_tabpages()
-    local out = {}
-    for tabnr, _ in pairs(tabpages) do
-        out[#out + 1] = tabnr
-    end
-    table.sort(out)
-    return out
+    return TblUtils.sorted_keys(tabpages)
 end
 
 function api.nvim_list_uis()
@@ -2485,11 +2455,7 @@ function api.nvim_list_chans()
         channel_info_for_id(1),
         channel_info_for_id(2),
     }
-    local ids = {}
-    for chan in pairs(_term_channels) do
-        ids[#ids + 1] = chan
-    end
-    table.sort(ids)
+    local ids = TblUtils.sorted_keys(_term_channels)
     for i = 1, #ids do
         chans[#chans + 1] = channel_info_for_id(ids[i])
     end
@@ -2543,15 +2509,16 @@ end
 
 -- TODO: returning non-shell, non-error output if `output` is true
 function api.nvim_cmd(cmd, opts)
+    cmd = cmd or {}
     opts = opts or {}
-    local name = tostring((cmd and (cmd.cmd or cmd.command)) or "")
+    local name = tostring(cmd.cmd or cmd.command or "")
     if name == "" then
         error("nvim_cmd: missing command")
     end
-    local head = name .. ((cmd and cmd.bang) and "!" or "")
+    local head = name .. (cmd.bang and "!" or "")
 
     local argstr = ""
-    if cmd and cmd.args ~= nil then
+    if cmd.args ~= nil then
         if type(cmd.args) == "table" then
             argstr = table.concat(cmd.args, " ")
         else
@@ -2560,7 +2527,7 @@ function api.nvim_cmd(cmd, opts)
     end
 
     local prefix = ""
-    if cmd and cmd.range ~= nil then
+    if cmd.range ~= nil then
         local range = cmd.range
         if type(range) == "table" and #range == 2 then
             prefix = tostring(range[1]) .. "," .. tostring(range[2])
@@ -2569,12 +2536,12 @@ function api.nvim_cmd(cmd, opts)
         else
             prefix = tostring(range)
         end
-    elseif cmd and cmd.line1 ~= nil then
+    elseif cmd.line1 ~= nil then
         prefix = tostring(cmd.line1)
         if cmd.line2 ~= nil and cmd.line2 ~= cmd.line1 then
             prefix = prefix .. "," .. tostring(cmd.line2)
         end
-    elseif cmd and cmd.count ~= nil then
+    elseif cmd.count ~= nil then
         prefix = tostring(cmd.count)
     end
 
@@ -2587,7 +2554,7 @@ function api.nvim_cmd(cmd, opts)
     end
 
     local ws_args = nil
-    if cmd and type(cmd.args) == "table" then
+    if type(cmd.args) == "table" then
         ws_args = {}
         for i = 1, #cmd.args do
             ws_args[i] = tostring(cmd.args[i])
@@ -2607,7 +2574,7 @@ function api.nvim_cmd(cmd, opts)
         line2 = cmd.line2,
     }
 
-    local state = inline_runtime_state()
+    local state = Runtime.PrepareApiState()
     local rt = Runtime.new(state)
     rt:set_exec_cursor(1, cursor_text, spec.lname, spec.qargs)
 
@@ -2615,7 +2582,7 @@ function api.nvim_cmd(cmd, opts)
         return rt:invoke_compiled_command(spec)
     end)
     if not ok then
-        local msg = Error.IsError(rv) and rv:toString() or tostring(rv)
+        local msg = tostring(rv)
         scopes._v.errmsg = msg
         error(msg)
     end

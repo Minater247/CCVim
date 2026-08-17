@@ -1,7 +1,9 @@
 local Sign = {}
 local Utf8 = loadModule("lib.utf8")
+local TblUtils = loadModule("lib.luaapi.tblutils")
 
 local defined_signs = {}
+local EMPTY_DEF = {}
 
 local function normalize_group(group)
     if group == nil then
@@ -177,11 +179,7 @@ function Sign.getdefined(name)
         return { export_definition(key, def) }
     end
 
-    local keys = {}
-    for key in pairs(defined_signs) do
-        keys[#keys + 1] = key
-    end
-    table.sort(keys)
+    local keys = TblUtils.sorted_keys(defined_signs)
 
     local out = {}
     for i = 1, #keys do
@@ -505,8 +503,8 @@ end
 function Sign.get_line_numhl(buf, lnum)
     local signs = Sign.get_line_signs(buf, lnum)
     for i = 1, #signs do
-        local def = defined_signs[signs[i].name]
-        if def and def.numhl and def.numhl ~= "" then
+        local def = defined_signs[signs[i].name] or EMPTY_DEF
+        if def.numhl and def.numhl ~= "" then
             return def.numhl
         end
     end
@@ -516,8 +514,8 @@ end
 function Sign.get_line_linehl(buf, lnum)
     local signs = Sign.get_line_signs(buf, lnum)
     for i = 1, #signs do
-        local def = defined_signs[signs[i].name]
-        if def and def.linehl and def.linehl ~= "" then
+        local def = defined_signs[signs[i].name] or EMPTY_DEF
+        if def.linehl and def.linehl ~= "" then
             return def.linehl
         end
     end
