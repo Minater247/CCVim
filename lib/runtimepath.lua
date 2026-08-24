@@ -68,12 +68,12 @@ end
 
 function RuntimePath.get_list()
     local raw = Options.get("runtimepath", nil, nil, false, true)
-    return dedup_normalize(split_csv(raw))
+    return (dedup_normalize(split_csv(raw)))
 end
 
 function RuntimePath.get_pack_list()
     local raw = Options.get("packpath", nil, nil, false, true)
-    return dedup_normalize(split_csv(raw))
+    return (dedup_normalize(split_csv(raw)))
 end
 
 function RuntimePath.get_search_list()
