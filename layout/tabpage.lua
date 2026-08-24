@@ -641,14 +641,15 @@ function Tabpage:render()
             end
         end
 
-        if options.get("showtabline") and cmdheight > 0 then
+        if options.get("showmode") and cmdheight > 0 then
             if vimmode == "insert" then
                 ScreenDraw.put_text(screen.height - 1, 0, "-- INSERT --", "ModeMsg")
-            elseif vimmode == "visual" then
+            elseif vimmode == "visual" or vimmode == "select" then
                 local mode = Visual.mode_char(windows[curwin].visual_kind)
-                local label = (mode == "V" and "-- VISUAL LINE --")
-                    or (mode == string.char(22) and "-- VISUAL BLOCK --")
-                    or "-- VISUAL --"
+                local name = vimmode == "select" and "SELECT" or "VISUAL"
+                local label = (mode == "V" and "-- " .. name .. " LINE --")
+                    or (mode == string.char(22) and "-- " .. name .. " BLOCK --")
+                    or "-- " .. name .. " --"
                 ScreenDraw.put_text(screen.height - 1, 0, label, "ModeMsg")
             elseif vimmode ~= "normal" then
                 error("Unknown mode!")

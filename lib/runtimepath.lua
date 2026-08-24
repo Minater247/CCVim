@@ -26,7 +26,7 @@ local function normalize(path)
     return out
 end
 
-local function is_after(path)
+function RuntimePath.is_after(path)
     local n = normalize(path)
     return n:sub(-6) == "/after"
 end
@@ -104,7 +104,7 @@ function RuntimePath.add(path, opts)
     else
         local idx = #list + 1
         for i, p in ipairs(list) do
-            if is_after(p) then
+            if RuntimePath.is_after(p) then
                 idx = i
                 break
             end

@@ -70,11 +70,16 @@ local VIM_NIL = setmetatable({}, {
     end,
 })
 local VIM_CMD_ARG_MAX = 20
+local LIB_RUNTIME_MODULES = {
+    ["vim.lsp.lua"] = "lib/luaapi/lsp_lua.lua",
+}
 
 -- TODO: we need a print function.
 -- functions print as <function>, so this knowledge is kept somewhere
 
 local function resolve_runtime_module_path(module_name)
+    local lib_path = LIB_RUNTIME_MODULES[module_name]
+    if lib_path then return ccvim_path .. "/" .. lib_path end
     local rel = module_name:gsub("%.", "/")
     local path = ccvim_path .. "/runtime/lua/" .. rel .. ".lua"
     if fs.exists(path) then
@@ -87,6 +92,11 @@ local function resolve_runtime_module_path(module_name)
     return nil
 end
 
+local function extend_runtime_module(module_name, loaded)
+    if module_name == "vim.lsp" then loaded._submodules.lua = true end
+    return loaded
+end
+
 local function load_runtime_module_by_path(lua_loader, module_name, ...)
     local path = resolve_runtime_module_path(module_name)
     if not path then
@@ -96,6 +106,7 @@ local function load_runtime_module_by_path(lua_loader, module_name, ...)
     if loaded == nil then
         loaded = true
     end
+    loaded = extend_runtime_module(module_name, loaded)
     mainapi.package.loaded[module_name] = loaded
     return loaded
 end
@@ -148,7 +159,7 @@ local function load_runtime_vim_init_packages(lua_loader)
         if type(module_name) == "string" and module_name:sub(1, 4) == "vim." then
             local ok, loaded = pcall(original_require, module_name)
             if ok then
-                return loaded
+                return extend_runtime_module(module_name, loaded)
             end
             return load_runtime_module_by_path(lua_loader, module_name, module_name)
         end
@@ -407,6 +418,7 @@ function ApiBuild.Build()
             in_fast_event = timerutils.in_fast_event,
             inspect = print.inspect,
             regex = strutils.regex,
+            stricmp = strutils.stricmp,
             lpeg = lpeg,
             _ts_get_language_version = treesitter._ts_get_language_version,
             _ts_get_minimum_language_version = treesitter._ts_get_minimum_language_version,

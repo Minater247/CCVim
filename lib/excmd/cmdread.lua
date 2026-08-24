@@ -6,6 +6,8 @@ local ExMsg = loadModule("lib.excmd.exmsg")
 local Runtime = loadModule("lib.excmd.runtime")
 local ScreenDraw = loadModule("lib.screendraw")
 local scopes = loadModule("lib.luaapi.scopes")
+local Completion = loadModule("lib.excmd.completion")
+local PopupMenu = loadModule("lib.popupmenu")
 
 local pendingcmd = {}
 local active = false
@@ -26,6 +28,14 @@ local function current_cmdline_string()
 end
 
 local function handler(k)
+    local printable = k:printable()
+    if printable == "<C-[>" or printable == "<Esc>" then
+        endRead()
+        ExMsg.exitRead()
+        what_redraw.commandline = true
+        need_redraw = true
+        return
+    end
     if k:emittable() then
         if k == crref then
             local str = current_cmdline_string()
@@ -54,8 +64,15 @@ local function handler(k)
                     ExMsg.exitRead()
                 end
             elseif k == tabref then
-                -- TODO: completion
-                LOG_ERROR("Tab not handled in cmdread")
+                local line = current_cmdline_string()
+                local items, start = Completion.get(line, Runtime._USER_COMMANDS)
+                PopupMenu.cmdline(items, function(item)
+                    if not item then return end
+                    local next_line = line:sub(1, start - 1) .. item.word
+                    pendingcmd = Key.strtoseq(next_line)
+                    what_redraw.commandline = true
+                    need_redraw = true
+                end)
             else
                 table.insert(pendingcmd, k)
             end
@@ -95,16 +112,17 @@ function CmdRead.drawCmdline()
 end
 
 function CmdRead.getline()
-    return current_cmdline_string()
+    return current_cmdline_string():sub(2)
 end
 
 function CmdRead.getpos()
-    return #pendingcmd + 1
+    return #pendingcmd
 end
 
 function CmdRead.setline(str, pos)
     local seq = Key.strtoseq(tostring(str or ""))
-    pendingcmd = seq
+    pendingcmd = { Key:new(keys.semiColon or keys.semicolon, false, true) }
+    for i = 1, #seq do pendingcmd[#pendingcmd + 1] = seq[i] end
     if pos ~= nil then
         -- TODO: support explicit cmdline cursor position; currently ignored.
         local _ = tonumber(pos)

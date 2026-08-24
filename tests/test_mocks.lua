@@ -2300,7 +2300,9 @@ function MockEnv.setup(opts)
             AutoCmd.Run("InsertLeavePre", buf_ctx)
         end
 
-        if mode_changed and oldmode == "visual" and newmode ~= "visual" and win.visual_anchor then
+        local old_select = oldmode == "visual" or oldmode == "select"
+        local new_select = newmode == "visual" or newmode == "select"
+        if mode_changed and old_select and not new_select and win.visual_anchor then
             Visual.finish(win)
         end
 

@@ -145,7 +145,7 @@ end
 function Pack.load_start()
     for _, pkg in ipairs(RuntimePath.list_packages("start")) do
         register_pkg(pkg)
-        local ok, err = load_pkg(pkg)
+        local ok, err = load_pkg(pkg, true)
         if not ok then return false, err end
     end
 

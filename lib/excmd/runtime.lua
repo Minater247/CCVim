@@ -30,6 +30,7 @@ local RuntimePath = loadModule("lib.runtimepath")
 local Pack = loadModule("lib.pack")
 local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
+local Menu = loadModule("lib.menu")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -3862,6 +3863,7 @@ function Runtime:define_command(rest, bang)
         error(Error(474, "Command exists"))
     end
     local def = {
+        name = name,
         body = body,
         nargs = nargs,
         scope = self.state.s,
@@ -4281,15 +4283,7 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _menu_state()
-        local menus = rt.state.menus
-        if type(menus) ~= "table" then
-            menus = {}
-            rt.state.menus = menus
-        end
-        menus.items = menus.items or {}
-        menus.tooltips = menus.tooltips or {}
-        menus.translations = menus.translations or {}
-        return menus
+        return Menu.ensure(rt.state)
     end
 
     local function _menu_mode_bucket(modes)
@@ -4359,15 +4353,17 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _menu_has_prefix(modes, prefix)
-        local bucket = _menu_mode_bucket(modes)
-        for _, item in pairs(bucket) do
-            local raw = item.name
-            local translated = item.translated
-            if raw == prefix or raw:sub(1, #prefix + 1) == prefix .. "." then
-                return true
-            end
-            if translated and (translated == prefix or translated:sub(1, #prefix + 1) == prefix .. ".") then
-                return true
+        local menus = _menu_state()
+        for key, bucket in pairs(menus.items) do
+            if modes == "a" or key == modes then
+                for _, item in pairs(bucket) do
+                    local raw = item.name
+                    local translated = item.translated
+                    if raw == prefix or raw:sub(1, #prefix + 1) == prefix .. "." then return true end
+                    if translated and (translated == prefix or translated:sub(1, #prefix + 1) == prefix .. ".") then
+                        return true
+                    end
+                end
             end
         end
         return false
@@ -4478,58 +4474,41 @@ function Runtime.new(init_state, init_opts)
     end
 
     local function _is_menu_priority(tok)
-        return type(tok) == "string" and tok:match("^%d+([.]%d+)*$") ~= nil
+        return type(tok) == "string" and tok:match("^%d[%d.]*$") ~= nil
+            and tok:sub(-1) ~= "." and not tok:find("..", 1, true)
     end
 
     local function _menu_set_enabled(modes, pat, enabled)
-        local bucket = _menu_mode_bucket(modes)
         local changed = 0
-        for name, item in pairs(bucket) do
-            if _menu_item_matches(name, item, pat) then
-                item.enabled = enabled and true or false
-                changed = changed + 1
+        for key, bucket in pairs(_menu_state().items) do
+            if modes == "a" or key == modes then
+                for name, item in pairs(bucket) do
+                    if _menu_item_matches(name, item, pat) then
+                        item.enabled = enabled and true or false
+                        changed = changed + 1
+                    end
+                end
             end
         end
         return changed
     end
 
     local function _menu_remove(modes, pat)
-        local bucket = _menu_mode_bucket(modes)
         local changed = 0
-        for name, item in pairs(bucket) do
-            if _menu_item_matches(name, item, pat) then
-                bucket[name] = nil
-                changed = changed + 1
+        for key, bucket in pairs(_menu_state().items) do
+            if modes == "a" or key == modes then
+                for name, item in pairs(bucket) do
+                    if _menu_item_matches(name, item, pat) then
+                        bucket[name] = nil
+                        changed = changed + 1
+                    end
+                end
             end
         end
         return changed
     end
 
-    _menu_find_item = function(name)
-        local menus = _menu_state()
-        local lookup_order = { "a", "nvo", "n", "vs", "x", "s", "o", "i", "c", "tl" }
-        for i = 1, #lookup_order do
-            local bucket = menus.items[lookup_order[i]]
-            local item = bucket and bucket[name]
-            if item then
-                return item
-            end
-            if bucket then
-                for _, v in pairs(bucket) do
-                    if v.translated == name then
-                        return v
-                    end
-                end
-            end
-        end
-        for _, bucket in pairs(menus.items) do
-            local item = bucket and bucket[name]
-            if item then
-                return item
-            end
-        end
-        return nil
-    end
+    _menu_find_item = function(name) return Menu.find(rt.state, name) end
 
     local function _run_menu_ex_command(cmd_name, argstr, bang, parsed_args)
         local spec = Commands.get_menu_spec(cmd_name)
@@ -4656,32 +4635,9 @@ function Runtime.new(init_state, init_opts)
             if not item then
                 return Error(334, name)
             end
-            local rhs = tostring(item.rhs or "")
-            if rhs == "" then
-                return true
-            end
-
-            local run
-            local low = rhs:lower()
-            if low:sub(1, 5) == "<cmd>" then
-                run = rhs:sub(6)
-                run = run:gsub("<[cC][rR]>%s*$", "")
-                run = strip(run)
-                if run == "" then
-                    return true
-                end
-                return rt:exec_script(run)
-            end
-            if rhs:sub(1, 1) == ":" then
-                run = rhs:sub(2)
-                run = run:gsub("<[cC][rR]>%s*$", "")
-                run = strip(run)
-                if run == "" then
-                    return true
-                end
-                return rt:exec_script(run)
-            end
-            return rt:exec_script(rhs)
+            return Menu.execute(item, function(script) return rt:exec_script(script) end, function(keys, remap)
+                return Command.execute_normal_keys(Key.strtoseq(keys), { remap = remap })
+            end)
         end
 
         if spec.action == "define" then
@@ -4738,15 +4694,18 @@ function Runtime.new(init_state, init_opts)
             end
 
             local bucket = _menu_mode_bucket(spec.modes)
+            local menus = _menu_state()
             if menu_opts.unique then
                 return Error(331)
             end
 
+            menus.next_order = menus.next_order + 1
             bucket[name] = {
                 name = name,
                 translated = _menu_translate_name(name),
                 rhs = rhs_expanded or "",
                 priority = priority,
+                order = menus.next_order,
                 enabled = true,
                 recursive = spec.recursive and true or false,
                 modes = spec.modes,
@@ -6192,6 +6151,22 @@ function Runtime.CurrentScriptSid()
     return script_sid_for_ctx(state.script_ctx)
 end
 
+function Runtime.GetScriptInfo()
+    local out = {}
+    for name, sid in pairs(SCRIPT_SID_BY_CTX) do
+        out[#out + 1] = {
+            autoload = false,
+            name = name,
+            sid = sid,
+            sourced = 0,
+            variables = {},
+            version = 1,
+        }
+    end
+    table.sort(out, function(a, b) return a.sid < b.sid end)
+    return out
+end
+
 function Runtime.ResolveFunctionDef(name, opts)
     return resolve_function_def(name, opts)
 end
@@ -6201,6 +6176,7 @@ function Runtime.TryAutoloadFunction(name)
 end
 
 function Runtime.RegisterUserCommand(name, def)
+    def.name = def.name or name
     Runtime._USER_COMMANDS[tostring(name):lower()] = def
 end
 

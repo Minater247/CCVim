@@ -18,6 +18,7 @@ If you're used to Vim or Neovim, you will feel right at home. The only major con
     - NeoFS
     - And many more from standard plugin repositories!
 - **Neovim API Compatibility** so that any Neovim Lua code should run seamlessly
+- **Lua LSP Support** with diagnostics, completion, definitions, hover, and document symbols
 
 ## NOTICE
 This project is still in early beta! I have waited until the project was stable enough to be my main CC editor before releasing it, but you may encounter bugs while you use it.
@@ -53,7 +54,5 @@ Please try your config and see if it works! If anything behaves even slightly di
 If you want to help with development, contributions are welcomed! I will be working on documenting the code properly in the near future as the codebase begins to stabilize.
 
 ## Planned Projects
-- Rewrite of UI interfaces to allow ports to OpenComputers of native Lua
-- Implementation of an LSP for completion or tooling analysis
+- Porting to OpenComputers
 - Integration with existing `git` repository handlers for ComputerCraft
-- Vimscript JIT output optimization

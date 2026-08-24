@@ -38,14 +38,14 @@ local COMMAND_SPECS = {
     { name = "syntax", min = 3, dispatch = true, no_bar_split = true },
     { name = "sign", min = 3, dispatch = true, no_bar_split = true },
     { name = "highlight", min = 2, dispatch = true },
-    { name = "colorscheme", min = 4, dispatch = true },
-    { name = "runtime", min = 2, dispatch = true },
+    { name = "colorscheme", min = 4, dispatch = true, complete = "color" },
+    { name = "runtime", min = 2, dispatch = true, complete = "runtime" },
     { name = "augroup", min = 3, dispatch = true },
-    { name = "source", min = 2, dispatch = true },
-    { name = "filetype", min = 5, dispatch = true },
+    { name = "source", min = 2, dispatch = true, complete = "file" },
+    { name = "filetype", min = 5, dispatch = true, complete = "filetype" },
     { name = "doautoall", min = 7, dispatch = true },
-    { name = "set", min = 2 },
-    { name = "packadd", min = 2, dispatch = true },
+    { name = "set", min = 2, complete = "option" },
+    { name = "packadd", min = 2, dispatch = true, complete = "package" },
     { name = "verbose", min = 4, wrapper = true },
     { name = "echo", min = 2, dispatch = true, addr = "none" },
     { name = "echoerr", min = 5, dispatch = true, addr = "none" },
@@ -77,16 +77,16 @@ local COMMAND_SPECS = {
     { name = "quit", min = 1, dispatch = true, addr = "none" },
     { name = "close", min = 3, dispatch = true, addr = "count" },
     { name = "wincmd", min = 4, dispatch = true, addr = "count" },
-    { name = "setfiletype", min = 4, dispatch = true },
-    { name = "setlocal", min = 4, dispatch = true },
+    { name = "setfiletype", min = 4, dispatch = true, complete = "filetype" },
+    { name = "setlocal", min = 4, dispatch = true, complete = "option" },
     { name = "put", min = 2, dispatch = true },
     { name = "sort", min = 3, dispatch = true, addr = "line" },
     { name = "global", min = 1, dispatch = true, no_bar_split = true, addr = "line" },
     { name = "v", min = 1, dispatch = true, no_bar_split = true, addr = "line" },
     { name = "vglobal", min = 2, dispatch = true, no_bar_split = true, addr = "line" },
     { name = "substitute", min = 1, dispatch = true, addr = "line" },
-    { name = "edit", min = 1, dispatch = true },
-    { name = "file", min = 1, dispatch = true },
+    { name = "edit", min = 1, dispatch = true, complete = "file" },
+    { name = "file", min = 1, dispatch = true, complete = "file" },
     { name = "delete", min = 1, dispatch = true, addr = "line" },
     { name = "mark", min = 2, dispatch = true },
     { name = "undo", min = 1, dispatch = true },
@@ -189,32 +189,32 @@ local COMMAND_SPECS = {
     { name = "comclear", min = 4, dispatch = true },
     { name = "buffer", min = 2, dispatch = true, addr = "count" },
     { name = "enew", min = 3, dispatch = true },
-    { name = "find", min = 2, dispatch = true },
-    { name = "sfind", min = 3, dispatch = true },
-    { name = "tabfind", min = 4, dispatch = true },
-    { name = "tabnew", min = 4, dispatch = true },
-    { name = "tabedit", min = 4, dispatch = true },
+    { name = "find", min = 2, dispatch = true, complete = "file" },
+    { name = "sfind", min = 3, dispatch = true, complete = "file" },
+    { name = "tabfind", min = 4, dispatch = true, complete = "file" },
+    { name = "tabnew", min = 4, dispatch = true, complete = "file" },
+    { name = "tabedit", min = 4, dispatch = true, complete = "file" },
     { name = "tabnext", min = 4, dispatch = true },
     { name = "tabprevious", min = 7, dispatch = true },
     { name = "tabclose", min = 4, dispatch = true },
-    { name = "drop", min = 2, dispatch = true },
+    { name = "drop", min = 2, dispatch = true, complete = "file" },
     { name = "help", min = 1, dispatch = true },
-    { name = "lcd", min = 2, dispatch = true },
-    { name = "tcd", min = 2, dispatch = true },
+    { name = "lcd", min = 2, dispatch = true, complete = "file" },
+    { name = "tcd", min = 2, dispatch = true, complete = "file" },
     { name = "lua", min = 2, dispatch = true, no_bar_split = true },
     { name = "messages", min = 3, dispatch = true },
     { name = "redir", min = 4, dispatch = true },
-    { name = "setglobal", min = 4, dispatch = true },
+    { name = "setglobal", min = 4, dispatch = true, complete = "option" },
     { name = "normal", min = 4, dispatch = true, no_bar_split = true, addr = "line" },
     { name = "mode", min = 3, dispatch = true },
     { name = "redraw", min = 4, dispatch = true },
     { name = "redrawstatus", min = 7, dispatch = true },
     { name = "redrawtabline", min = 7, dispatch = true },
     { name = "resize", min = 3, dispatch = true, addr = "count", structured_addr = "none" },
-    { name = "split", min = 2, dispatch = true, addr = "line" },
-    { name = "vsplit", min = 2, dispatch = true, addr = "line" },
-    { name = "write", min = 1, dispatch = true },
-    { name = "wq", min = 2, dispatch = true },
+    { name = "split", min = 2, dispatch = true, addr = "line", complete = "file" },
+    { name = "vsplit", min = 2, dispatch = true, addr = "line", complete = "file" },
+    { name = "write", min = 1, dispatch = true, complete = "file" },
+    { name = "wq", min = 2, dispatch = true, complete = "file" },
     { name = "syntime", min = 4, dispatch = true },
     { name = "ownsyntax", min = 3, dispatch = true },
     { name = "match", min = 3, dispatch = true, no_bar_split = true },
@@ -225,6 +225,7 @@ local COMMAND_SPECS = {
 }
 
 local SPEC_BY_NAME = {}
+local NAMES = {}
 local PARSE_REGISTRY_BY_FIRST = {}
 local DISPATCH_REGISTRY_BY_FIRST = {}
 local EMPTY_REGISTRY = {}
@@ -253,6 +254,7 @@ end
 
 for _, spec in ipairs(COMMAND_SPECS) do
     SPEC_BY_NAME[spec.name] = spec
+    NAMES[#NAMES + 1] = spec.name
     if spec.min then
         add_registry(PARSE_REGISTRY_BY_FIRST, spec)
     end
@@ -260,6 +262,9 @@ for _, spec in ipairs(COMMAND_SPECS) do
         add_registry(DISPATCH_REGISTRY_BY_FIRST, spec)
     end
 end
+table.sort(NAMES)
+
+Commands.names = NAMES
 
 local function resolve_prefix(raw, by_first, dispatch_only, fallback_raw, sort_matches)
     if not raw or raw == "" then

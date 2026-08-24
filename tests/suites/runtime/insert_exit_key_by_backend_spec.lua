@@ -27,6 +27,7 @@ return {
         end
 
         assert_exit_behavior("cc", keys.tab, true, "normal", "cc backend exits insert with Ctrl-Tab")
+        assert_exit_behavior("cc", keys.leftBracket, true, "normal", "cc backend accepts Neovim Escape")
         assert_exit_behavior("native", keys.leftBracket, true, "normal", "native backend exits insert with Esc")
     end,
 }

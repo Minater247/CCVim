@@ -14,6 +14,7 @@
 local Native = {}
 Native.kind = "native"
 local uv = require("luv")
+Native.uv = uv
 local Utf8
 local Color
 
@@ -1054,6 +1055,19 @@ end
 
 local FS = {}
 
+function FS.attributes(path)
+    if not lfs then return nil end
+    local attr = lfs.attributes(path)
+    if not attr then return nil end
+    return {
+        size = attr.size,
+        modified = attr.modification,
+        modification = attr.modification,
+        isDir = attr.mode == "directory",
+        isReadOnly = false,
+    }
+end
+
 function FS.combine(a, b)
     if b == nil then return a end
     return path_normalize(path_join(a, b))
@@ -1073,6 +1087,10 @@ function FS.isDir(path)
         return lfs.attributes(path, "mode") == "directory"
     end
     -- Fallback: try to open as dir (unreliable without lfs)
+    return false
+end
+
+function FS.isReadOnly(_path)
     return false
 end
 

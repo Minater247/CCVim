@@ -648,6 +648,12 @@ function loop.hrtime()
     return os.epoch("utc") * 1000000
 end
 
+function loop.os_getpid()
+    local backend = Backend.current()
+    if backend.uv and backend.uv.os_getpid then return backend.uv.os_getpid() end
+    return 0
+end
+
 function loop.update_time()
     -- no-op: now() reads current time directly
 end

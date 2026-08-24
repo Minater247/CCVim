@@ -264,25 +264,14 @@ local function list_keymaps(is_buffer, bufnr, mode)
     return out
 end
 
-local feedkeys_queue = {}
+local feedkeys_queue = { first = 1, last = 0 }
 local feedkeys_flush_timer = nil
 local feedkeys_flushing = false
 
 local NVIM_CMD_MARKER = string.char(128, 253, 104)
 
 local function _run_feedkeys_cmdline(cmdline)
-    local ok, err = Runtime.run(tostring(cmdline or ""), {
-        state = Runtime.PrepareApiState(),
-        origin = {
-            kind = "feedkeys-cmd",
-        },
-    })
-    if not ok and err and err.toString then
-        ExMsg.echoerr(err:toString())
-    elseif not ok then
-        ExMsg.echoerr(tostring(err))
-    end
-    ExMsg.Finalize()
+    Event.ExecuteCommand(cmdline, "feedkeys-cmd")
 end
 
 local function _parse_feedkeys_ops(text)
@@ -380,71 +369,66 @@ local function enqueue_feedkeys(ops, prepend)
     end
 
     if prepend then
-        local merged = {}
-        for i = 1, #ops do
-            merged[#merged + 1] = ops[i]
+        for i = #ops, 1, -1 do
+            feedkeys_queue.first = feedkeys_queue.first - 1
+            feedkeys_queue[feedkeys_queue.first] = ops[i]
         end
-        for i = 1, #feedkeys_queue do
-            merged[#merged + 1] = feedkeys_queue[i]
-        end
-        feedkeys_queue = merged
     else
         for i = 1, #ops do
-            feedkeys_queue[#feedkeys_queue + 1] = ops[i]
+            feedkeys_queue.last = feedkeys_queue.last + 1
+            feedkeys_queue[feedkeys_queue.last] = ops[i]
         end
     end
 end
 
+local function drain_feedkeys_queue()
+    while feedkeys_queue.first <= feedkeys_queue.last do
+        local first = feedkeys_queue.first
+        local op = feedkeys_queue[first]
+        feedkeys_queue[first] = nil
+        feedkeys_queue.first = first + 1
+        local typed_state = __ccvim_input_state
+        if op.typed then
+            typed_state.feedkeys_typeahead_depth = typed_state.feedkeys_typeahead_depth + 1
+        end
+        local op_ok, op_err = pcall(function()
+            if op.kind == "keys" then
+                for j = 1, #op.seq do
+                    local key = op.seq[j]
+                    local keystr = Key.to_termcode_string(key)
+                    local discard = OnKey.dispatch_safely(keystr, keystr)
+                    if not discard then
+                        if op.noremap then
+                            Command._handle_key_with_policy(key, Command.POLICY_NOREMAP, true)
+                        else
+                            Command.HandleKey(key)
+                        end
+                    end
+                end
+            elseif op.kind == "cmd" then
+                _run_feedkeys_cmdline(op.cmd)
+            end
+        end)
+        if op.typed then
+            typed_state.feedkeys_typeahead_depth = math.max(0, typed_state.feedkeys_typeahead_depth - 1)
+        end
+        if not op_ok then error(op_err) end
+    end
+    feedkeys_queue.first, feedkeys_queue.last = 1, 0
+end
+
 local function flush_feedkeys_queue()
-    if feedkeys_flushing then
-        return
-    end
-    if #feedkeys_queue == 0 then
-        return
-    end
+    if feedkeys_queue.first > feedkeys_queue.last then return end
+    if feedkeys_flushing then return drain_feedkeys_queue() end
 
     feedkeys_flushing = true
     local lazy_block = options.get("lazyredraw")
     if lazy_block then
-        lazyredraw_block = lazyredraw_block + 1
+        lazyredraw_block = (lazyredraw_block or 0) + 1
     end
-    local queue = feedkeys_queue
-    feedkeys_queue = {}
-    local ok, err = pcall(function()
-        for i = 1, #queue do
-            local op = queue[i]
-            local typed_state = __ccvim_input_state
-            if op.typed then
-                typed_state.feedkeys_typeahead_depth = typed_state.feedkeys_typeahead_depth + 1
-            end
-            local op_ok, op_err = pcall(function()
-                if op.kind == "keys" then
-                    for j = 1, #op.seq do
-                        local key = op.seq[j]
-                        local keystr = Key.to_termcode_string(key)
-                        local discard = OnKey.dispatch_safely(keystr, keystr)
-                        if not discard then
-                            if op.noremap then
-                                Command._handle_key_with_policy(key, Command.POLICY_NOREMAP, true)
-                            else
-                                Command.HandleKey(key)
-                            end
-                        end
-                    end
-                elseif op.kind == "cmd" then
-                    _run_feedkeys_cmdline(op.cmd)
-                end
-            end)
-            if op.typed then
-                typed_state.feedkeys_typeahead_depth = math.max(0, typed_state.feedkeys_typeahead_depth - 1)
-            end
-            if not op_ok then
-                error(op_err)
-            end
-        end
-    end)
+    local ok, err = pcall(drain_feedkeys_queue)
     if lazy_block then
-        lazyredraw_block = lazyredraw_block - 1
+        lazyredraw_block = math.max(0, (lazyredraw_block or 1) - 1)
     end
     if not ok then
         feedkeys_flushing = false
@@ -1013,8 +997,8 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
 
     local sline = lines[sidx] or ""
     local eline = lines[eidx] or ""
-    local prefix = Utf8.sub(sline, 1, scol)
-    local suffix = Utf8.sub(eline, ecol + 1)
+    local prefix = sline:sub(1, scol)
+    local suffix = eline:sub(ecol + 1)
 
     local repl = {}
     if type(replacement) == "table" then
@@ -1031,6 +1015,32 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
 
     buf:set_lines(sidx - 1, eidx, false, repl, true)
     request_buffer_redraw(buf, true)
+end
+
+function api.nvim_buf_get_text(buffer, start_row, start_col, end_row, end_col, _opts)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    buf:ensure_loaded(true)
+
+    local lines = buf:lines_ref(true)
+    local srow, erow = tonumber(start_row) or 0, tonumber(end_row) or 0
+    local scol, ecol = tonumber(start_col) or 0, tonumber(end_col) or 0
+    if srow < 0 or erow < srow or erow >= #lines then
+        error("Index out of bounds")
+    end
+
+    local out = {}
+    for row = srow, erow do
+        local line = lines[row + 1] or ""
+        if row == srow then line = line:sub(scol + 1) end
+        if row == erow then
+            local stop = ecol + 1
+            if row == srow then stop = stop - scol end
+            line = line:sub(1, stop - 1)
+        end
+        out[#out + 1] = line
+    end
+    return out
 end
 
 -- TODO: use a window displaying the buffer, if it exists in the current tabpage
@@ -1214,7 +1224,7 @@ end
 
 function api.nvim_get_all_options_info()
     local out = {}
-    local names = options.list_all_info_names()
+    local names = options.names
     for i = 1, #names do
         local name = names[i]
         out[name] = api.nvim_get_option_info2(name, {})
@@ -1230,6 +1240,8 @@ function api.nvim_get_mode()
         return { mode = "i" }
     elseif vimmode == "visual" then
         return { mode = Visual.mode_char(windows[curwin].visual_kind) }
+    elseif vimmode == "select" then
+        return { mode = Visual.select_mode_char(windows[curwin].visual_kind) }
     else
         error("unhandled mode in nvim_get_mode")
     end
@@ -2184,16 +2196,43 @@ function api.nvim_buf_get_extmarks(buffer, ns_id, start, end_, opts)
     return out
 end
 
+function api.nvim_buf_get_extmark_by_id(buffer, ns_id, id, opts)
+    local buf = buf_for_bufnr(buffer)
+    assert(buf)
+    opts = opts or {}
+    local mark = buf._extmarks and buf._extmarks[ns_id] and buf._extmarks[ns_id][id]
+    if not mark then return {} end
+
+    local out = { mark.line or 0, mark.col or 0 }
+    if opts.details then
+        local details = {}
+        for k, v in pairs(mark.opts or {}) do details[k] = v end
+        details.ns_id = ns_id
+        if details.right_gravity == nil then details.right_gravity = true end
+        if details.end_row ~= nil and details.end_right_gravity == nil then
+            details.end_right_gravity = false
+        end
+        out[3] = details
+    end
+    return out
+end
+
 function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
     opts = opts or {}
+    local mark_opts = {}
+    for k, v in pairs(opts) do mark_opts[k] = v end
+    if mark_opts.end_line ~= nil then
+        mark_opts.end_row = mark_opts.end_line
+        mark_opts.end_line = nil
+    end
     buf._extmarks = buf._extmarks or {}
     buf._extmarks[ns_id] = buf._extmarks[ns_id] or {}
 
     local ns_marks = buf._extmarks[ns_id]
     buf._next_extmark_id = buf._next_extmark_id or {}
-    local id = opts.id
+    local id = mark_opts.id
     if not id then
         local nextid = buf._next_extmark_id[ns_id] or 1
         id = nextid
@@ -2203,16 +2242,16 @@ function api.nvim_buf_set_extmark(buffer, ns_id, line, col, opts)
     local mark = {
         line = line,
         col = col,
-        opts = opts,
+        opts = mark_opts,
     }
     local stored_ephemeral = false
-    if opts.ephemeral then
+    if mark_opts.ephemeral then
         stored_ephemeral = Decoration.add_ephemeral_extmark(buf.bufnr, ns_id, id, mark)
     end
 
     if not stored_ephemeral then
         ns_marks[id] = mark
-        if opts.sign_text ~= nil or opts.line_hl_group ~= nil or opts.number_hl_group ~= nil then
+        if mark_opts.sign_text ~= nil or mark_opts.line_hl_group ~= nil or mark_opts.number_hl_group ~= nil then
             request_buffer_redraw(buf, false)
         end
     end

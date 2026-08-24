@@ -450,28 +450,17 @@ local function _resolve_with_includeexpr(name, path_spec, buf, find_dirs, use_su
     return _matches_for_name(transformed, path_spec, buf, find_dirs, use_suffixes)
 end
 
-local function _extract_cfile_text(win)
+local function _extract_cursor_text(win, is_char)
     if not win or not win.buffer then return "" end
-    local buf = win.buffer
-    local line = buf:get_line(win.cursory, true) or ""
+    local line = win.buffer:get_line(win.cursory, true) or ""
     if line == "" then return "" end
-
-    local cx = win.cursorx
     local line_len = Utf8.len(line)
-    if cx < 1 then cx = 1 end
-    if cx > line_len and line_len > 0 then
-        cx = line_len
-    end
-
-    local function is_cfile_char(ch)
-        return ch:match("[%w%._%-%+/%\\$%%,#{}%[%]~@:]") ~= nil
-    end
-
+    local cx = math.max(1, math.min(win.cursorx, line_len))
     if cx < 1 or cx > line_len then
         return ""
     end
-    if not is_cfile_char(Utf8.char_at(line, cx)) then
-        if cx > 1 and is_cfile_char(Utf8.char_at(line, cx - 1)) then
+    if not is_char(Utf8.char_at(line, cx)) then
+        if cx > 1 and is_char(Utf8.char_at(line, cx - 1)) then
             cx = cx - 1
         else
             return ""
@@ -479,9 +468,19 @@ local function _extract_cfile_text(win)
     end
 
     local s, e = cx, cx
-    while s > 1 and is_cfile_char(Utf8.char_at(line, s - 1)) do s = s - 1 end
-    while e < line_len and is_cfile_char(Utf8.char_at(line, e + 1)) do e = e + 1 end
+    while s > 1 and is_char(Utf8.char_at(line, s - 1)) do s = s - 1 end
+    while e < line_len and is_char(Utf8.char_at(line, e + 1)) do e = e + 1 end
     return Utf8.sub(line, s, e)
+end
+
+local function _extract_cfile_text(win)
+    return _extract_cursor_text(win, function(ch)
+        return ch:match("[%w%._%-%+/%\\$%%,#{}%[%]~@:]") ~= nil
+    end)
+end
+
+local function _extract_cword_text(win)
+    return _extract_cursor_text(win, function(ch) return ch:match("[%w_]") ~= nil end)
 end
 
 local function _is_vim_list_expr(expr)
@@ -609,6 +608,49 @@ function Builtins.winwidth(nr)
     else
         return win.frame.width
     end
+end
+
+function Builtins.winheight(nr)
+    local win = resolve_win(nr)
+    if not win then return -1 end
+    return win.floatpos and win.floatpos.h or win.frame.height
+end
+
+function Builtins.win_findbuf(bufnr)
+    bufnr = tonumber(bufnr) or 0
+    if bufnr == 0 then bufnr = windows[curwin].buffer.bufnr end
+    local found = {}
+    for id, win in pairs(windows) do
+        if win.buffer and win.buffer.bufnr == bufnr then found[#found + 1] = id end
+    end
+    table.sort(found)
+    return found
+end
+
+function Builtins.gettagstack(nr)
+    local win = resolve_win(nr or 0)
+    if not win then return { items = {}, curidx = 1, length = 0 } end
+    local stack = win.tagstack or { items = {}, curidx = 1 }
+    return { items = TblUtils.deepcopy(stack.items), curidx = stack.curidx, length = #stack.items }
+end
+
+function Builtins.settagstack(nr, value, action)
+    local win = resolve_win(nr)
+    if not win or type(value) ~= "table" then return -1 end
+    local stack = win.tagstack or { items = {}, curidx = 1 }
+    local items = TblUtils.deepcopy(value.items or {})
+    action = action or "r"
+    if action == "r" then
+        stack.items = items
+    else
+        if action == "t" then
+            for i = #stack.items, stack.curidx, -1 do stack.items[i] = nil end
+        end
+        for i = 1, #items do stack.items[#stack.items + 1] = items[i] end
+    end
+    stack.curidx = tonumber(value.curidx) or (#stack.items + 1)
+    win.tagstack = stack
+    return 0
 end
 
 local function winlayout_from_frame(node)
@@ -755,6 +797,9 @@ function Builtins.expand(str, nosuf, list)
     local raw = tostring(str or "")
     if raw:find("<cfile>", 1, true) then
         raw = raw:gsub("<cfile>", _extract_cfile_text(windows[curwin]))
+    end
+    if raw:find("<cword>", 1, true) then
+        raw = raw:gsub("<cword>", _extract_cword_text(windows[curwin]))
     end
 
     local expansions = Filesystem.Expand(raw, nosuf)
@@ -1073,6 +1118,24 @@ local has_patches = {
     [279] = true,
     [213] = true,
 }
+
+function Builtins.api_info()
+    return {
+        version = {
+            major = 0,
+            minor = 11,
+            patch = 0,
+            prerelease = false,
+            api_level = 13,
+            api_compatible = 0,
+            api_prerelease = false,
+        },
+        functions = {},
+        ui_events = {},
+        ui_options = {},
+    }
+end
+
 local explicitly_no = {
     amiga = true,
     gui = true,
@@ -1432,6 +1495,20 @@ function Builtins.getpos(expr)
     return { 0, 0, 0, 0 }
 end
 
+function Builtins.getregionpos(pos1, pos2, opts)
+    opts = opts or {}
+    local first = { pos1[1] or 0, pos1[2] or 0, pos1[3] or 0, pos1[4] or 0 }
+    local last = { pos2[1] or 0, pos2[2] or 0, pos2[3] or 0, pos2[4] or 0 }
+    if first[2] > last[2] or (first[2] == last[2] and first[3] > last[3]) then
+        first, last = last, first
+    end
+    if opts.type == "V" then
+        first[3] = 1
+        last[3] = scopes.MAXCOL
+    end
+    return { { first, last } }
+end
+
 function Builtins.mode(_full)
     if vimmode == "normal" then
         return "n"
@@ -1439,8 +1516,17 @@ function Builtins.mode(_full)
         return "i"
     elseif vimmode == "visual" then
         return Visual.mode_char(windows[curwin].visual_kind)
+    elseif vimmode == "select" then
+        return Visual.select_mode_char(windows[curwin].visual_kind)
     end
     return vimmode
+end
+
+function Builtins.shiftwidth(_col, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "shiftwidth"))
+    end
+    return Tab.shiftwidth_effective(windows[curwin].buffer)
 end
 
 function Builtins.visualmode()
@@ -1612,6 +1698,14 @@ function Builtins.winline(...)
     return math.floor(row)
 end
 
+function Builtins.wincol(...)
+    if select("#", ...) > 0 then error(Error(118, "wincol")) end
+    local win = windows[curwin]
+    if not win then return 0 end
+    local _, text_col = win:textwidth()
+    return math.max(1, text_col + (win.cursorx or 1) - (win.scrollx or 1))
+end
+
 function Builtins.screenpos(winid, lnum, col, ...)
     if select("#", ...) > 0 then
         error(Error(118, "screenpos"))
@@ -1696,6 +1790,20 @@ function Builtins.getwininfo(winid, ...)
 
     for _, win in pairs(windows) do
         add(win)
+    end
+    return out
+end
+
+function Builtins.getscriptinfo(opts, ...)
+    if select("#", ...) > 0 then error(Error(118, "getscriptinfo")) end
+    opts = opts or {}
+    local sid = tonumber(opts.sid)
+    local name = opts.name and tostring(opts.name)
+    local out = {}
+    for _, info in ipairs(Runtime.GetScriptInfo()) do
+        if (not sid or info.sid == sid) and (not name or info.name:find(name)) then
+            out[#out + 1] = info
+        end
     end
     return out
 end

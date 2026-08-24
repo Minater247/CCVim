@@ -18,14 +18,14 @@ local function _request_full_redraw()
     need_redraw = true
 end
 
-local function _run_textchanged(buf, noauto)
+function Buffer:run_textchanged(noauto)
     if noauto then
         return
     end
     if __ccvim_input_state.feedkeys_typeahead_depth > 0 then
         return
     end
-    if windows[curwin].buffer ~= buf then
+    if windows[curwin].buffer ~= self then
         return
     end
     local event
@@ -37,8 +37,8 @@ local function _run_textchanged(buf, noauto)
         event = "TextChanged"
     end
     AutoCmd.Run(event, {
-        bufnr = buf.bufnr,
-        bufname = buf.name,
+        bufnr = self.bufnr,
+        bufname = self.name,
     })
 end
 
@@ -614,7 +614,7 @@ function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
     _notify_full_replace(self, old_lines, self.lines)
     Syntax.ParseLinetypes(self, 1)
     _request_full_redraw()
-    _run_textchanged(self, noauto)
+    self:run_textchanged(noauto)
 
     local target_win = win or _buffer_window(self)
     if target_win and cursor then
@@ -765,7 +765,7 @@ function Buffer:undo_line(win, noauto)
             deleted_text = old_line,
             bytes = _mk_bytes(target_line - 1, start_byte, {old_line}, #old_line, {new_line}, #new_line),
         })
-        _run_textchanged(self, noauto)
+        self:run_textchanged(noauto)
 
         local entry = st.entries[st.index]
         entry.after_modified = true
@@ -848,7 +848,7 @@ function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
         deleted_text = old_line,
         bytes = _mk_bytes(ln - 1, start_byte, {old_line}, #old_line, {new_line}, #new_line),
     })
-    _run_textchanged(self, noauto)
+    self:run_textchanged(noauto)
     self:undo_end()
 end
 
@@ -870,7 +870,7 @@ function Buffer:insert_line(index, item, load_if_unloaded, noauto)
         deleted_text = "",
         bytes = _mk_bytes(idx - 1, start_byte, {}, 0, {new_line}, #new_line),
     })
-    _run_textchanged(self, noauto)
+    self:run_textchanged(noauto)
     self:undo_end()
 end
 
@@ -944,7 +944,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
         })
     end
     
-    _run_textchanged(self, noauto)
+    self:run_textchanged(noauto)
     self:undo_end()
 
     return removed
@@ -1035,7 +1035,7 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
         })
     end
 
-    _run_textchanged(self, noauto)
+    self:run_textchanged(noauto)
     Syntax.ParseLinetypes(self, math.max(1, start1 - 1))
     _request_full_redraw()
     self:undo_end()
