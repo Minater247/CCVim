@@ -1477,7 +1477,7 @@ function Builtins.getpos(expr)
         return { 0, windows[curwin].buffer:line_count(true), 1, 0 }
     elseif type(expr) == "string" and expr:sub(1, 1) == "'" and #expr == 2 then
         local ch = expr:sub(2, 2)
-        if ch:match("^[a-z'\".`<>]$") then
+        if ch:match("^[a-z'\".`<>%[%]]$") then
             local m = windows[curwin].buffer.marks[ch]
             if m then
                 return { 0, m.lnum, m.col, 0 }
@@ -1493,6 +1493,21 @@ function Builtins.getpos(expr)
     end
 
     return { 0, 0, 0, 0 }
+end
+
+function Builtins.setpos(expr, pos)
+    local win = windows[curwin]
+    local lnum = math.floor(tonumber(pos[2]) or 0)
+    local col = math.floor(tonumber(pos[3]) or 0)
+    if expr == "." then
+        win:cursorSet(col, lnum)
+        return 0
+    end
+    if type(expr) == "string" and expr:match("^'[a-z'\".`<>%[%]]$") then
+        win.buffer.marks[expr:sub(2)] = { lnum = lnum, col = col }
+        return 0
+    end
+    return -1
 end
 
 function Builtins.getregionpos(pos1, pos2, opts)

@@ -16,6 +16,7 @@ local Visual = loadModule("lib.visual")
 local Menu = loadModule("lib.menu")
 local PopupMenu = loadModule("lib.popupmenu")
 local Runtime = loadModule("lib.excmd.runtime")
+local Api = loadModule("lib.luaapi.api")
 
 function Event.ExecuteCommand(command, origin)
     local ok, err = Runtime.run(tostring(command or ""), {
@@ -716,6 +717,15 @@ function Event.ProcessEvent(ev)
         handle_mouse_up(ev[2], ev[3], ev[4])
     elseif ev[1] == "mouse_scroll" then
         handle_mouse_scroll(ev[2], ev[3], ev[4])
+    elseif ev[1] == "paste" then
+        Api.nvim_paste(ev[2], true, -1)
+    elseif ev[1] == "file_transfer" then
+        local contents = {}
+        for _, file in ipairs(ev[2].getFiles()) do
+            contents[#contents + 1] = file.readAll()
+            file.close()
+        end
+        Api.nvim_paste(table.concat(contents, "\n"), true, -1)
     elseif ev[1] == "timer" then
         local timer_id = ev[2]
         local cb = timers[timer_id]

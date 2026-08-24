@@ -19,21 +19,30 @@ function Tags.SearchFile(filename, tag)
     if not f then return nil end
 
     local readLine, close = f.readLine, f.close
-    local tlen = #tag
+    local folded = tag:lower()
+    local contains, folded_exact, folded_contains
 
     while true do
         local line = readLine()
         if not line then break end
 
-        if string.sub(line, 1, tlen) == tag and (string.byte(line, tlen + 1) == 9 or #line == tlen) then
+        local tab = string.find(line, "\t", 1, true)
+        local name = tab and string.sub(line, 1, tab - 1) or line
+        if name == tag then
             local parts = split_tabs(line)
             close()
             return parts
+        elseif not contains and name:find(tag, 1, true) then
+            contains = split_tabs(line)
+        elseif not folded_exact and name:lower() == folded then
+            folded_exact = split_tabs(line)
+        elseif not folded_contains and name:lower():find(folded, 1, true) then
+            folded_contains = split_tabs(line)
         end
     end
 
     close()
-    return nil
+    return contains or folded_exact or folded_contains
 end
 
 return Tags

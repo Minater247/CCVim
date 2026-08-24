@@ -21,6 +21,9 @@ local BufAttach = loadModule("lib.bufattach")
 local OnKey = loadModule("lib.luaapi.on_key")
 local Visual = loadModule("lib.visual")
 local TblUtils = loadModule("lib.luaapi.tblutils")
+local ApiBuild = loadModule("lib.luaapi.apibuild")
+
+local paste_draining = false
 
 -- Basic color name lookup for `nvim_set_hl`/`nvim_get_color_by_name`.
 -- Uses the terminal palette so aliases match the active colors.
@@ -1245,6 +1248,79 @@ function api.nvim_get_mode()
     else
         error("unhandled mode in nvim_get_mode")
     end
+end
+
+function api.nvim_put(lines, type_, after, follow)
+    type_ = tostring(type_ or "")
+    if type_ ~= "c" and type_ ~= "v" then
+        error("nvim_put: unsupported register type: " .. type_, 2)
+    end
+
+    local text = {}
+    for i = 1, #lines do text[i] = tostring(lines[i] or "") end
+    if #text == 0 then text[1] = "" end
+
+    local win = windows[curwin]
+    local buf = win.buffer
+    local row = win.cursory
+    local line = buf:get_line(row, true)
+    local line_len = Utf8.len(line)
+    local prefix_len = after and math.min(win.cursorx, line_len)
+        or math.min(win.cursorx - 1, line_len)
+    local first_len = Utf8.len(text[1])
+    local last_len = Utf8.len(text[#text])
+    local replacement = {}
+    for i = 1, #text do replacement[i] = text[i] end
+    replacement[1] = Utf8.sub(line, 1, prefix_len) .. replacement[1]
+    replacement[#replacement] = replacement[#replacement] .. Utf8.sub(line, prefix_len + 1)
+
+    buf:set_lines(row - 1, row, false, replacement)
+    buf.marks["["] = { lnum = row, col = prefix_len + 1 }
+    buf.marks["]"] = {
+        lnum = row + #text - 1,
+        col = math.max(1, (#text == 1 and prefix_len or 0) + last_len),
+    }
+
+    local cursor_row = follow and row + #text - 1 or row
+    local cursor_col
+    if follow then
+        cursor_col = (#text == 1 and prefix_len or 0) + last_len
+        if last_len > 0 then cursor_col = cursor_col + 1 end
+    else
+        cursor_col = prefix_len + (first_len > 0 and 1 or 0)
+    end
+    win:cursorSet(math.max(1, cursor_col), cursor_row)
+    win:mark_redraw()
+end
+
+function api.nvim_paste(data, crlf, phase)
+    phase = tonumber(phase)
+    if phase ~= -1 and phase ~= 1 and phase ~= 2 and phase ~= 3 then
+        error("Invalid phase: " .. tostring(phase), 2)
+    end
+    if phase == -1 or phase == 1 then
+        paste_draining = false
+    elseif paste_draining then
+        return false
+    end
+
+    data = tostring(data or "")
+    if crlf then data = data:gsub("\r\n", "\n"):gsub("\r", "\n") end
+    local lines = {}
+    local start = 1
+    while true do
+        local newline = data:find("\n", start, true)
+        if not newline then
+            lines[#lines + 1] = data:sub(start)
+            break
+        end
+        lines[#lines + 1] = data:sub(start, newline - 1)
+        start = newline + 1
+    end
+
+    local ok = ApiBuild.Build().vim.paste(lines, phase)
+    if ok == false then paste_draining = phase ~= -1 end
+    return ok ~= false
 end
 
 function api.nvim__redraw(opts)

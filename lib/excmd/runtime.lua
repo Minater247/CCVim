@@ -4784,6 +4784,16 @@ function Runtime.new(init_state, init_opts)
             local q = tabpages[curtp]:close(windows[curwin], bang, nil, "autowriteall")
             if q ~= true then error(q) end
             return true
+        elseif cmd == "qall" then
+            Autocmd.Run("QuitPre", {
+                bufnr = windows[curwin].buffer.bufnr,
+                bufname = windows[curwin].buffer.name,
+            })
+            while windows[curwin] do
+                local q = tabpages[curtp]:close(windows[curwin], bang, nil, "autowriteall")
+                if q ~= true then error(q) end
+            end
+            return true
         elseif cmd == "close" then
             local target = windows[curwin]
             if cmdctx.count ~= nil then
@@ -5072,9 +5082,10 @@ function Runtime.new(init_state, init_opts)
 
             local function run_normal_once()
                 local prev_mode = vimmode
-                vimmode = "normal"
+                local selection_mode = prev_mode == "visual" or prev_mode == "select"
+                if not selection_mode then vimmode = "normal" end
                 local ok, rv = pcall(Command.execute_normal_keys, seq, { remap = not bang })
-                vimmode = prev_mode
+                if not selection_mode then vimmode = prev_mode end
                 if not ok then
                     error(rv)
                 end
@@ -6030,12 +6041,14 @@ function Runtime.new(init_state, init_opts)
             newbuf.opts.buftype = "help"
             newbuf.opts.readonly = true
             newbuf.opts.modifiable = false
+            newbuf.opts.filetype = ""
+            newbuf.opts.syntax = ""
             newbuf.name = doc_root .. "/" .. match[2]
             newbuf:Load(true)
             Options.set("filetype", "help", true, nil, newbuf)
             local jumpline, jumpcol = help_jump_pos(newbuf, match[1], match[3])
             if target_win then
-                target_win.buffer = newbuf
+                Window.SwitchBuffer(target_win, newbuf, { update_refcount = true })
             else
                 target_win = Window(newbuf)
                 if

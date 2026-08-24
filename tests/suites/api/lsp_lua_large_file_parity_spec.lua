@@ -7,7 +7,7 @@ end
 
 return {
     id = "api.lsp_lua_large_file_parity",
-    description = "Compares Lua LSP results from CCVim and real Neovim in the parity runner; single-engine backends are disabled because neither can perform the comparison alone.", -- luacheck: ignore 631
+    description = "Compares Lua LSP results from CCVim and real Neovim through the parity backend.", -- luacheck: ignore 631
     supports = { lua_editor = false, headless_nvim = false, parity = true },
 
     run = function(ctx)

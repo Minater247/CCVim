@@ -75,6 +75,7 @@ local COMMAND_SPECS = {
     { name = "noautocmd", min = 3, wrapper = true },
     { name = "windo", min = 4, dispatch = true, no_bar_split = true },
     { name = "quit", min = 1, dispatch = true, addr = "none" },
+    { name = "qall", min = 2, dispatch = true, addr = "none" },
     { name = "close", min = 3, dispatch = true, addr = "count" },
     { name = "wincmd", min = 4, dispatch = true, addr = "count" },
     { name = "setfiletype", min = 4, dispatch = true, complete = "filetype" },
