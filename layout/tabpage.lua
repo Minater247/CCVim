@@ -19,6 +19,8 @@ local PopupMenu = loadModule("lib.popupmenu")
 local ScreenDraw = loadModule("lib.screendraw")
 local Options = loadModule("lib.options")
 local Visual = loadModule("lib.visual")
+local Intro = loadModule("lib.intro")
+local may_intro = true
 
 local function all_tabpage_ids()
     local ids = {}
@@ -618,6 +620,10 @@ function Tabpage:render()
         self.global_statusline_click_zones = {}
     end
 
+    if may_intro and not Intro.command then
+        may_intro = Intro.draw(self)
+    end
+
     if PopupMenu.visible() then
         PopupMenu.render()
     end
@@ -666,6 +672,9 @@ function Tabpage:render()
     ExMsg.Redraw()
     if ExMsg.DrawOneShot then
         ExMsg.DrawOneShot()
+    end
+    if Intro.command then
+        Intro.draw(self)
     end
 
     Decoration.end_redraw()

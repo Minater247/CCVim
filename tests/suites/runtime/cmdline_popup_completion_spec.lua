@@ -25,7 +25,7 @@ return {
                 for i = 1, #row do chars[i] = row[i].ch end
                 local text = table.concat(chars)
                 rendered[#rendered + 1] = text
-                if text:match("^echo%s*$") then first = true end
+                if text:match("^ ?echo%s") then first = true end
             end
             ctx.assert.truthy("ambiguous matches are rendered", table.concat(rendered, "\n"):find("echoerr", 1, true))
             ctx.assert.eq("first ambiguous match is visible", first, true)

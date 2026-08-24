@@ -203,6 +203,7 @@ local COMMAND_SPECS = {
     { name = "tcd", min = 2, dispatch = true, complete = "file" },
     { name = "lua", min = 2, dispatch = true, no_bar_split = true },
     { name = "messages", min = 3, dispatch = true },
+    { name = "intro", min = 3, dispatch = true, addr = "none" },
     { name = "redir", min = 4, dispatch = true },
     { name = "setglobal", min = 4, dispatch = true, complete = "option" },
     { name = "normal", min = 4, dispatch = true, no_bar_split = true, addr = "line" },

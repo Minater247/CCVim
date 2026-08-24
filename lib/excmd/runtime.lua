@@ -31,6 +31,7 @@ local Pack = loadModule("lib.pack")
 local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
 local Menu = loadModule("lib.menu")
+local Intro = loadModule("lib.intro")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -5186,6 +5187,10 @@ function Runtime.new(init_state, init_opts)
             for i = 1, #ExMsg.messages do
                 ExMsg._writeWithHL(ExMsg.messages[i][2], ExMsg.messages[i][1])
             end
+            return true
+        elseif cmd == "intro" then
+            if strip(argstr) ~= "" then error(Error(488, argstr)) end
+            Intro.show(Command)
             return true
         elseif cmd == "mode" or cmd == "redraw" then
             what_redraw["all"] = true

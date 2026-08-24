@@ -20,6 +20,7 @@ end
 local function is_runner_option(value)
     return value == "--backend=lua_editor"
         or value == "--backend=headless_nvim"
+        or value == "--backend=parity"
         or value == "--benchmarks"
         or value == "--include-benchmarks"
 end
@@ -67,6 +68,8 @@ local function read_backend()
     for i = 1, #cli_args do
         if cli_args[i] == "--backend=headless_nvim" then
             return "headless_nvim"
+        elseif cli_args[i] == "--backend=parity" then
+            return "parity"
         end
     end
     return "lua_editor"
@@ -97,6 +100,62 @@ function Runner.run(default_paths)
     local total = 0
     local failed = 0
     local skipped = 0
+
+    if backend_name == "parity" then
+        local pending = {}
+        for i = 1, #paths do
+            local path = paths[i]
+            local ok_load, suite_or_err = pcall(dofile, path)
+            total = total + 1
+            if not ok_load then
+                io.stderr:write(string.format("FAIL load %s: %s\n", path, tostring(suite_or_err)))
+                failed = failed + 1
+            else
+                local suite = suite_or_err
+                if not (suite.supports and suite.supports.parity) then
+                    print(string.format("SKIP %s (parity unsupported)", suite.id))
+                    skipped = skipped + 1
+                elseif suite.benchmark and not include_benchmarks then
+                    print(string.format("SKIP %s (benchmark; pass --benchmarks to run)", suite.id))
+                    skipped = skipped + 1
+                else
+                    local backend = HeadlessNvimBackend.new()
+                    local ok_run, result = pcall(function()
+                        return suite.run({ backend = backend, assert = Assert })
+                    end)
+                    backend:cleanup()
+                    if ok_run and result ~= nil then
+                        pending[#pending + 1] = { suite = suite, expected = result }
+                    else
+                        failed = failed + 1
+                        io.stderr:write(string.format("FAIL %s (parity native): %s\n", suite.id,
+                            tostring(ok_run and "suite returned no comparison data" or result)))
+                    end
+                end
+            end
+        end
+
+        for i = 1, #pending do
+            local entry = pending[i]
+            local backend = LuaEditorBackend.new({ ccvim_path = detect_ccvim_path() })
+            local ok_run, run_err = pcall(function()
+                local actual = entry.suite.run({ backend = backend, assert = Assert })
+                Assert.truthy(entry.suite.id .. " comparison data", actual ~= nil)
+                Assert.deep_eq(entry.suite.id .. " parity", actual, entry.expected)
+            end)
+            backend:cleanup()
+            if ok_run then
+                print(string.format("PASS %s (parity)", entry.suite.id))
+            else
+                failed = failed + 1
+                io.stderr:write(string.format("FAIL %s (parity): %s\n", entry.suite.id, tostring(run_err)))
+            end
+        end
+
+        print(string.format("Summary: %d total, %d failed, %d skipped", total, failed, skipped))
+        if failed > 0 then os.exit(1) end
+        return
+    end
 
     for i = 1, #paths do
         local path = paths[i]
