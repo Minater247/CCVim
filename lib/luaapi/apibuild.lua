@@ -435,6 +435,7 @@ function ApiBuild.Build()
         table = table_compat,
         unpack = unpack or table.unpack,
         os = os_compat,
+        print = print.lua_print,
         type = fakeuserdata.type,
         next = fakeuserdata.next,
         pairs = fakeuserdata.pairs,

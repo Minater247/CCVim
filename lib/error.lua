@@ -25,6 +25,7 @@ local errStrings = {
     [117] = function(params) return "Unknown function: " .. params[1] end,
     [118] = function(params) return "Too many arguments for function: " .. params[1] end,
     [121] = function(params) return "Undefined variable: " .. tostring(params[1]) end,
+    [129] = "Function name required",
     [130] = function(params) return "Unknown function: " .. params[1] end,
     [134] = "Cannot move a range of lines into itself",
     [142] = "File not written: Writing is disabled by 'write' option",
@@ -70,7 +71,10 @@ local errStrings = {
     [603] = ":catch without :try",
     [606] = ":finally without :try",
     [676] = "No matching autocommands for buftype=acwrite buffer",
+    [687] = "Less targets than List items",
+    [688] = "More targets than List items",
     [698] = "Variable nested too deep for making a copy",
+    [700] = function(params) return "Unknown function: " .. tostring(params[1]) end,
     [703] = "Using a Funcref as a Number",
     [724] = "unable to correctly dump variable with self-referencing container",
     [726] = "Stride is zero",
@@ -80,12 +84,14 @@ local errStrings = {
         return "Cannot create directory " .. tostring(params[1] or "")
             .. (params[2] and (": " .. params[2]) or "")
     end,
+    [741] = function(params) return "Value is locked: " .. tostring(params[1]) end,
     [784] = "Cannot close last tab page",
     [745] = "Using a List as a Number",
     [790] = "undojoin is not allowed after undo",
     [804] = "Cannot use '%' with Float",
     [919] = function(params) return "Directory not found in 'packpath': \"pack/*/opt/" .. params[1] .. "\"" end,
     [936] = "Cannot delete the current group",
+    [995] = "Cannot modify existing variable",
     [1012] = function(params)
         return "Type mismatch; expected " .. tostring(params[1]) .. " but got " .. tostring(params[2])
     end,

@@ -76,7 +76,7 @@ do
                     visit(k); visit(v)
                 end
                 local mt = getmetatable(x)
-                if type(mt) == "table" then visit(mt) end
+                if type(mt) == "table" and not mt.__vimxpr_kind then visit(mt) end
                 stack[x] = nil
             end
         end
@@ -147,7 +147,7 @@ do
 
             local nonkeys, n = collect_nonseq_keys(t)
             local mt = getmetatable(t)
-            local has_mt_tbl = type(mt) == "table"
+            local has_mt_tbl = type(mt) == "table" and not mt.__vimxpr_kind
 
             push("{")
             if #nonkeys > 0 or has_mt_tbl then
@@ -223,11 +223,16 @@ do
         return ...
     end
 
+    function print.lua_print(...)
+        local values = {}
+        for i = 1, select("#", ...) do values[i] = tostring(select(i, ...)) end
+        ExMsg.echo(table.concat(values, " "))
+    end
+
     -- vim.inspect implementation: returns a string representation (newline separated if multiple args)
-    function print.inspect(...)
-        local args = { ... }
-        local lines = format_args(args)
-        return table.concat(lines, "\n")
+    function print.inspect(value, opts)
+        local lines = format_args({ value })
+        return table.concat(lines, type(opts) == "table" and opts.newline or "\n")
     end
 end
 

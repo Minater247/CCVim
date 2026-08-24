@@ -188,7 +188,10 @@ local function canonical_function_name(name, opts)
 end
 
 local function fresh_v(extra)
-    local v = { ["true"] = true, ["false"] = false, errmsg = "" }
+    local v = {
+        ["true"] = true, ["false"] = false, errmsg = "", exception = "", throwpoint = "",
+        t_number = 0, t_string = 1, t_func = 2, t_list = 3, t_dict = 4, t_float = 5, t_bool = 6, t_none = 7,
+    }
     if type(extra) == "table" then
         for k, val in pairs(extra) do v[k] = val end
     end
@@ -497,11 +500,11 @@ local function resolve_assignment_slot(base, state)
     if scope == "g" then return state.g, name end
     if scope == "s" then return state.s, name end
     if scope == "l" then
-        if not top then return nil, nil, Error(461, base) end
+        if not top or top.kind ~= "func" then return nil, nil, Error(461, base) end
         return top.l, name
     end
     if scope == "a" then
-        if not top then return nil, nil, Error(461, base) end
+        if not top or top.kind ~= "func" then return nil, nil, Error(461, base) end
         return top.a, name
     end
     if scope == "v" then return (top and top.v or state.v), name end
@@ -532,9 +535,11 @@ local function resolve_path_key(container, seg)
     return seg.key
 end
 
+local mark_runtime_list
+
 local function split_list_lhs_items(spec)
     local s = tostring(spec or "")
-    local out, buf = {}, {}
+    local out, buf, rest = {}, {}, nil
     local in_s, in_d, esc = false, false, false
     local depth_p, depth_c, depth_b = 0, 0, 0
 
@@ -577,6 +582,10 @@ local function split_list_lhs_items(spec)
             elseif ch == "]" then
                 depth_b = math.max(0, depth_b - 1)
                 buf[#buf + 1] = ch
+            elseif ch == ";" and depth_p == 0 and depth_c == 0 and depth_b == 0 then
+                flush()
+                rest = s:sub(i + 1):gsub("^%s+", ""):gsub("%s+$", "")
+                break
             elseif ch == "," and depth_p == 0 and depth_c == 0 and depth_b == 0 then
                 flush()
             else
@@ -590,15 +599,40 @@ local function split_list_lhs_items(spec)
     if #buf > 0 then
         flush()
     end
-    return out
+    return out, rest
 end
 
 local function assign_lhs(lhs, value, state, error_text)
     local s = (lhs or ""):gsub("^%s+", ""):gsub("%s+$", "")
 
+    local register = s:match("^@(.+)$")
+    if register then
+        Builtins.fn.setreg(register, value)
+        return true
+    end
+    local env = s:match("^%$([A-Za-z_][A-Za-z0-9_]*)$")
+    if env then
+        EnvVars.set(env, value)
+        return true
+    end
+    local option_scope, option = s:match("^&([lg]?):([A-Za-z0-9_]+)$")
+    if not option then option = s:match("^&([A-Za-z0-9_]+)$") end
+    if option then
+        local win = windows[curwin]
+        local option_type = type(Options.get(option, win, win.buffer))
+        if option_type == "boolean" then
+            value = (tonumber(value) or 0) ~= 0
+        elseif option_type == "number" then
+            value = tonumber(value) or 0
+        end
+        local ok = Options.set(option, value, option_scope == "l", win, win.buffer, option_scope == "g")
+        if Error.IsError(ok) then return ok end
+        return true
+    end
+
     if s:sub(1, 1) == "[" and s:sub(-1) == "]" then
         local inner = s:sub(2, -2)
-        local items = split_list_lhs_items(inner)
+        local items, rest = split_list_lhs_items(inner)
         local src = {}
         if type(value) == "string" then
             for i = 1, #value do
@@ -609,6 +643,8 @@ local function assign_lhs(lhs, value, state, error_text)
                 src[i] = value[i]
             end
         end
+        if #src < #items then return Error(688) end
+        if not rest and #src > #items then return Error(687) end
         for i = 1, #items do
             local item = items[i]
             if item ~= "" then
@@ -617,6 +653,12 @@ local function assign_lhs(lhs, value, state, error_text)
                     return ok
                 end
             end
+        end
+        if rest then
+            local remaining = mark_runtime_list({})
+            for i = #items + 1, #src do remaining[#remaining + 1] = src[i] end
+            local ok = assign_lhs(rest, remaining, state, rest)
+            if Error.IsError(ok) then return ok end
         end
         return true
     end
@@ -655,8 +697,16 @@ local function assign_lhs(lhs, value, state, error_text)
     local top = state.frames[#state.frames]
     if scope == "g" then state.g[name] = value; return true end
     if scope == "s" then state.s[name] = value; return true end
-    if scope == "l" then if not top then return Error(461, s) end; top.l[name] = value; return true end
-    if scope == "a" then if not top then return Error(461, s) end; top.a[name] = value; return true end
+    if scope == "l" then
+        if not top or top.kind ~= "func" then return Error(461, s) end
+        top.l[name] = value
+        return true
+    end
+    if scope == "a" then
+        if not top or top.kind ~= "func" then return Error(461, s) end
+        top.a[name] = value
+        return true
+    end
     if scope == "v" then (top and top.v or state.v)[name] = value; return true end
     if scope == "b" then scopes.b[name] = value; return true end
     if scope == "w" then scopes.w[name] = value; return true end
@@ -715,18 +765,17 @@ local function to_number(v)
         return v and 1 or 0
     end
     if type(v) == "string" then
-        local n = tonumber(v)
-        if n ~= nil then
-            return n
-        end
-        local lead = v:match("^%s*([+-]?%d+)")
-        if lead then
-            local ln = tonumber(lead)
-            if ln ~= nil then
-                return ln
-            end
-        end
-        return 0
+        local sign, body = v:match("^%s*([+-]?)(.*)")
+        local factor = sign == "-" and -1 or 1
+        local digits = body:match("^0[xX]([%da-fA-F]+)")
+        if digits then return factor * tonumber(digits, 16) end
+        digits = body:match("^0[bB]([01]+)")
+        if digits then return factor * tonumber(digits, 2) end
+        digits = body:match("^0[oO]([0-7]+)")
+        if digits then return factor * tonumber(digits, 8) end
+        local token = body:match("^%d+%.?%d*")
+        if token and token:match("^0[0-7]+$") then return factor * tonumber(token, 8) end
+        return factor * (tonumber(token) or 0)
     end
     if v == nil then
         return 0
@@ -737,7 +786,7 @@ end
 local RUNTIME_LIST_MT = { __vimxpr_kind = "list" }
 local RUNTIME_DICT_MT = { __vimxpr_kind = "dict" }
 
-local function mark_runtime_list(tbl)
+mark_runtime_list = function(tbl)
     return setmetatable(tbl or {}, RUNTIME_LIST_MT)
 end
 
@@ -748,6 +797,7 @@ end
 local function runtime_string(v)
     if v == nil then return "v:null" end
     if type(v) == "boolean" then return v and "true" or "false" end
+    if type(v) == "table" or type(v) == "function" then return Builtins.fn.string(v) end
     return tostring(v)
 end
 
@@ -770,7 +820,17 @@ local function runtime_mod(a, b)
     if math.type and (math.type(a) == "float" or math.type(b) == "float") then
         error(Error(804))
     end
-    return a % b
+    local quotient = math.modf(a / b)
+    return a - quotient * b
+end
+
+local function runtime_div(a, b)
+    a, b = to_number(a), to_number(b)
+    local value = a / b
+    if math.type and math.type(a) == "integer" and math.type(b) == "integer" then
+        return math.modf(value)
+    end
+    return value
 end
 
 local function runtime_index(container, idx)
@@ -1214,6 +1274,10 @@ end
 
 local split_ws = Payload.split_words
 
+local function quote_vim_string(value)
+    return "'" .. tostring(value):gsub("'", "''") .. "'"
+end
+
 local function expand_user_command_template(body, qargs, args, bang, count, line1, line2, range)
     local script = tostring(body or "")
     local fargs_token = "__CCVIM_FARGS__"
@@ -1225,13 +1289,13 @@ local function expand_user_command_template(body, qargs, args, bang, count, line
         end
     end
     for i = 1, #args do
-        fargs[i] = string.format("%q", args[i])
+        fargs[i] = quote_vim_string(args[i])
     end
     script = script:gsub("<lt>", repl("<"))
     script = script:gsub("<bar>", repl("|"))
     script = script:gsub("<bang>0", repl(bang and "1" or "0"))
     script = script:gsub("<f%-args>", repl(fargs_token))
-    script = script:gsub("<q%-args>", repl(string.format("%q", qargs)))
+    script = script:gsub("<q%-args>", repl(quote_vim_string(qargs)))
     script = script:gsub("<args>", repl(qargs))
     script = script:gsub("<bang>", repl(bang and "!" or ""))
     script = script:gsub("<count>", repl(count or 0))
@@ -1284,8 +1348,12 @@ function Runtime:set_exec_cursor_from(node)
     return true
 end
 
-function Runtime:push_frame(arg_values, param_names)
+function Runtime:push_frame(arg_values, param_names, parent)
     local l_scope, a_scope = build_call_scopes(arg_values, param_names)
+    if parent then
+        setmetatable(l_scope, { __index = parent.l })
+        setmetatable(a_scope, { __index = parent.a })
+    end
     local frame = { kind = "func", l = l_scope, a = a_scope, v = self.state.v }
     local sf = self.state.frames
     sf[#sf + 1] = frame
@@ -1342,7 +1410,12 @@ function Runtime:call_func(name, args)
     if not fn and try_autoload_function(name) then
         fn = resolve_function_def(name, { state = self.state })
     end
-    if not fn then error(Error(117, name)) end
+    if not fn then
+        local frame = self.state.frames[#self.state.frames]
+        local ref = runtime_var(name, self.state, frame, scopes)
+        if type(ref) == "function" then return ref(unpack_fn(args or {})) end
+        error(Error(117, name))
+    end
     args = args or {}
     local prev_script_scope = self.state.s
     local prev_script_sid = self.state.script_sid
@@ -1352,7 +1425,19 @@ function Runtime:call_func(name, args)
     self.state.script_sid = fn.script_sid or prev_script_sid
     self.state.script_ctx = fn.script_ctx or prev_script_ctx
     self.state.funcs = fn.funcs or prev_script_funcs
-    self:push_frame(args, fn.params or {})
+    local call_range, call_self = self.call_range, self.call_self
+    self.call_range = nil
+    self.call_self = nil
+    local frame = self:push_frame(args, fn.params or {}, fn.closure_frame)
+    if call_self then frame.l.self, frame.a.self = call_self, call_self end
+    if call_range then
+        if fn.attrs and fn.attrs.range then
+            frame.a.firstline, frame.a.lastline = call_range[1], call_range[2]
+            self.call_consumed_range = true
+        else
+            frame.a.firstline, frame.a.lastline = call_range[1], call_range[1]
+        end
+    end
     local ok, rv = pcall(fn.body, self)
     self:pop_frame()
     self.state.funcs = prev_script_funcs
@@ -1364,7 +1449,22 @@ function Runtime:call_func(name, args)
     error(rv)
 end
 
-function Runtime:register_function(name, params, body)
+function Runtime:call_method(receiver, key, args)
+    local fn = type(receiver) == "table" and receiver[key]
+    if type(fn) ~= "function" then error(Error(117, key)) end
+    local previous = self.call_self
+    self.call_self = receiver
+    local ok, result = pcall(fn, unpack_fn(args or EMPTY_ARGS))
+    self.call_self = previous
+    if not ok then error(result) end
+    return result
+end
+
+function Runtime:register_function(name, params, body, attrs)
+    local attr_map = {}
+    for i = 1, #(attrs or EMPTY_ARGS) do attr_map[attrs[i]] = true end
+    local dict_function = name:find("%.", 1) ~= nil
+    if dict_function then attr_map.dict = true end
     local def = {
         params = params,
         body = body,
@@ -1373,6 +1473,8 @@ function Runtime:register_function(name, params, body)
         script_sid = self.state.script_sid,
         script_ctx = self.state.script_ctx,
         kind = "compiled",
+        attrs = attr_map,
+        closure_frame = attr_map.closure and self.state.frames[#self.state.frames] or nil,
     }
     local canon = canonical_function_name(name, { state = self.state })
     def.name = canon or name
@@ -1383,6 +1485,10 @@ function Runtime:register_function(name, params, body)
         Runtime._FUNCS[name] = def
     end
     Runtime._FUNCS[def.name] = def
+    if dict_function then
+        local ok = assign_lhs(name, Builtins.fn["function"](def.name), self.state, name)
+        if Error.IsError(ok) then error(ok) end
+    end
 end
 
 function Runtime:eval_expr(expr)
@@ -1421,6 +1527,7 @@ function Runtime:eval_expr(expr)
         scope = scope,
         funcs = funcs,
         script_sid = state.script_sid,
+        call_method = function(receiver, key, args) return self:call_method(receiver, key, args) end,
     })
     if Error.IsError(rv) then error(rv) end
     return rv
@@ -1432,14 +1539,23 @@ function Runtime:get_var(name)
     local top = self.state.frames[#self.state.frames]
     if scope == "g" then return self.state.g[key] end
     if scope == "s" then return self.state.s[key] end
-    if scope == "l" then return (top and top.l or self.state.l)[key] end
-    if scope == "a" then return (top and top.a or self.state.a)[key] end
+    if scope == "l" or scope == "a" then
+        if not top or top.kind ~= "func" then error(Error(121, var)) end
+        return top[scope][key]
+    end
     if scope == "v" then return (top and top.v or self.state.v)[key] end
     if scope == "b" then return scopes.b[key] end
     if scope == "w" then return scopes.w[key] end
     if scope == "t" then return scopes.t[key] end
     if top and top.l[var] ~= nil then return top.l[var] end
     return self.state.g[var]
+end
+
+function Runtime:require_var(name)
+    local frame = self.state.frames[#self.state.frames]
+    local value = runtime_var(name, self.state, frame, scopes)
+    if value == nil then error(Error(121, name)) end
+    return value
 end
 
 function Runtime:get_option(name, mode)
@@ -1514,6 +1630,21 @@ function Runtime:assign(lhs, value, error_text)
     return rv
 end
 
+function Runtime:declare_const(lhs, value)
+    local name = strip(lhs)
+    local scope, key = name:match("^([gslavbtw]):(.+)$")
+    if scope == "b" or scope == "w" or scope == "t" then
+        local ok = scopes.Lock(scope, key, value)
+        if Error.IsError(ok) then error(ok) end
+        return true
+    end
+    local tbl, slot, slot_err = resolve_assignment_slot(name, self.state)
+    if slot_err then error(slot_err) end
+    local ok = scopes.LockTable(tbl, slot, value)
+    if Error.IsError(ok) then error(ok) end
+    return true
+end
+
 function Runtime:assign_compound(lhs, op, rhs)
     local cur = self:get_var(lhs)
     local value
@@ -1539,7 +1670,7 @@ function Runtime:assign_compound(lhs, op, rhs)
     elseif op == "*=" then
         value = to_number(cur) * to_number(rhs)
     elseif op == "/=" then
-        value = to_number(cur) / to_number(rhs)
+        value = runtime_div(cur, rhs)
     elseif op == "%=" then
         value = runtime_mod(cur, rhs)
     else
@@ -1561,6 +1692,7 @@ function Runtime:_push_script_ctx()
     local state = self.state
     self.__prev_state = Runtime._CURRENT_STATE
     self.__prev_ctrl = Runtime._CURRENT_CTRL
+    self.__prev_runtime = Runtime._CURRENT_RUNTIME
     self.__pushed_ctx = false
     if state.script_ctx and state.script_ctx ~= "" then
         ScriptSource.PushContext(state.script_ctx)
@@ -1568,17 +1700,20 @@ function Runtime:_push_script_ctx()
     end
     Runtime._CURRENT_STATE = state
     Runtime._CURRENT_CTRL = self.ctrl
+    Runtime._CURRENT_RUNTIME = self
 end
 
 function Runtime:_pop_script_ctx()
     Runtime._CURRENT_STATE = self.__prev_state
     Runtime._CURRENT_CTRL = self.__prev_ctrl
+    Runtime._CURRENT_RUNTIME = self.__prev_runtime
     if self.__pushed_ctx then
         ScriptSource.PopContext()
     end
     self.__pushed_ctx = false
     self.__prev_state = nil
     self.__prev_ctrl = nil
+    self.__prev_runtime = nil
 end
 
 function Runtime:_pcall(fn)
@@ -1597,6 +1732,36 @@ function Runtime:continue_exc()
     return { __continue = true }
 end
 
+function Runtime:throw_exc(value)
+    return { __vim_throw = true, value = tostring(value) }
+end
+
+function Runtime:is_control_exception(err)
+    return type(err) == "table" and (err.__ret or err.__break or err.__continue)
+end
+
+local function exception_text(err)
+    if type(err) == "table" and err.__vim_throw then return err.value end
+    local msg = tostring(err)
+    local vim_error = msg:match("(E%d+: .*)")
+    return vim_error and "Vim:" .. vim_error or msg
+end
+
+function Runtime:enter_catch(err)
+    local v = self.state.v
+    self.catch_stack = self.catch_stack or {}
+    self.catch_stack[#self.catch_stack + 1] = { v.exception, v.throwpoint }
+    v.exception = exception_text(err)
+    v.throwpoint = self.state.script_ctx or ""
+end
+
+function Runtime:leave_catch()
+    local stack = self.catch_stack
+    local previous = stack[#stack]
+    stack[#stack] = nil
+    self.state.v.exception, self.state.v.throwpoint = previous[1], previous[2]
+end
+
 function Runtime:catch_matches(err, spec)
     local s = strip(spec or "")
     if s == "" then
@@ -1607,7 +1772,7 @@ function Runtime:catch_matches(err, spec)
         s = s:sub(2, -2)
     end
 
-    local msg = tostring(err)
+    local msg = exception_text(err)
 
     local ecode = s:match("E%d+")
     if ecode and msg:find(ecode, 1, true) then
@@ -1866,7 +2031,7 @@ local function _to_string_simple(v)
     return tostring(v)
 end
 
-local function _scan_range_prefix(text, line_count, current_line)
+local function _scan_range_prefix(text, line_count, current_line, buffer)
     local i, n = 1, #text
     local function skip_ws()
         while i <= n and text:sub(i, i):match("%s") do
@@ -1887,6 +2052,27 @@ local function _scan_range_prefix(text, line_count, current_line)
         if c == "$" then
             i = i + 1
             return line_count, line_count, true, "$"
+        end
+        if (c == "/" or c == "?") and buffer then
+            local delimiter, start = c, i + 1
+            i = start
+            while i <= n do
+                c = text:sub(i, i)
+                if c == "\\" then i = i + 2
+                elseif c == delimiter then break
+                else i = i + 1 end
+            end
+            if i > n then return nil, nil, false, nil end
+            local pattern = text:sub(start, i - 1)
+            i = i + 1
+            local step = delimiter == "/" and 1 or -1
+            for offset = 1, line_count do
+                local line = ((current_line - 1 + step * offset) % line_count) + 1
+                if VimRegex.match(buffer:get_line(line, true), pattern, not Options.get("ignorecase")) then
+                    return line, line, true, "pattern"
+                end
+            end
+            return current_line, current_line, true, "pattern"
         end
         if c:match("%d") then
             local j = i
@@ -1924,7 +2110,7 @@ local function _cursor_parse_head(cursor, win)
     while text:sub(1, 1) == ":" do
         text = lstrip(text:sub(2))
     end
-    local l1, l2, has_range, pos = _scan_range_prefix(text, line_count, win.cursory)
+    local l1, l2, has_range, pos = _scan_range_prefix(text, line_count, win.cursory, win.buffer)
     if has_range then
         text = text:sub(pos)
     end
@@ -1934,6 +2120,24 @@ local function _cursor_parse_head(cursor, win)
     end
     local raw = text:match("^([%a][%w]*)")
     return raw and raw:lower(), l1, l2, has_range
+end
+
+function Runtime:call_statement(fn)
+    local win = windows[curwin]
+    local first, last, ranged = _scan_range_prefix(
+        tostring((self.exec_cursor and self.exec_cursor.text) or ""),
+        win.buffer:line_count(true),
+        win.cursory,
+        win.buffer
+    )
+    if not ranged then return fn() end
+    self.call_consumed_range = false
+    for line = first, last do
+        self.call_range = { line, last }
+        fn()
+        if self.call_consumed_range then break end
+    end
+    self.call_range = nil
 end
 
 local function _structured_range_from_spec(spec)
@@ -4001,6 +4205,7 @@ function Runtime.new(init_state, init_opts)
             to_number = to_number,
             to_string = runtime_string,
             add = runtime_add,
+            div = runtime_div,
             mod = runtime_mod,
             index = runtime_index,
             slice = runtime_slice,
@@ -6187,6 +6392,12 @@ end
 
 function Runtime.ResolveFunctionDef(name, opts)
     return resolve_function_def(name, opts)
+end
+
+function Runtime.CallCurrentFunction(name, args)
+    local runtime = Runtime._CURRENT_RUNTIME
+    if not runtime then return false end
+    return true, runtime:call_func(name, args)
 end
 
 function Runtime.TryAutoloadFunction(name)

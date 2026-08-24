@@ -64,7 +64,7 @@ local function _expr_head_only_before_quote(head)
 end
 
 local function split_commands(script)
-    script = tostring(script or ""):gsub("\n%s*\\", " ")
+    script = tostring(script or ""):gsub("\n%s*\\", "")
     local out = {}
 
     local function emit(seg)
@@ -330,6 +330,16 @@ local function strip_range_prefix(s)
             if i + 1 <= n then i = i + 2; return true end
             return false
         end
+        if c == "/" or c == "?" then
+            local delimiter = c
+            i = i + 1
+            while i <= n do
+                c = s:sub(i, i)
+                i = i + 1
+                if c == "\\" then i = i + 1 elseif c == delimiter then return true end
+            end
+            return false
+        end
         local b = c:byte()
         if b and b >= 48 and b <= 57 then
             while i <= n do
@@ -399,6 +409,7 @@ function parse_cmd_head(line)
 
     local range_byte = s:byte(pos)
     if range_byte == 37 or range_byte == 46 or range_byte == 36 or range_byte == 39
+        or range_byte == 47 or range_byte == 63
         or (range_byte and range_byte >= 48 and range_byte <= 57)
     then
         s = strip_range_prefix(s:sub(pos))
@@ -624,9 +635,9 @@ end
 
 local function scoped_table(scope, ctx)
     if scope == "l" then
-        return "__frame.l"
+        return ctx.in_function and "__frame.l" or nil
     elseif scope == "a" then
-        return "__frame.a"
+        return ctx.in_function and "__frame.a" or nil
     elseif DIRECT_SCOPES[scope] then
         return DIRECT_SCOPES[scope]
     elseif SHARED_SCOPES[scope] then
@@ -643,12 +654,7 @@ local function var_read_code(scope, name, ctx)
         return "__l_" .. tostring(name)
     end
     if not scope then
-        if ctx.in_function then
-            return "(__frame.l[" .. lua_string(name) .. "] ~= nil and __frame.l["
-                .. lua_string(name) .. "] or __g" .. lua_key(name) .. ")"
-        end
-        return "(__frame_is_func and __frame.l[" .. lua_string(name) .. "] ~= nil and __frame.l["
-            .. lua_string(name) .. "] or __g" .. lua_key(name) .. ")"
+        return "runtime:require_var(" .. lua_string(name) .. ")"
     end
     local tbl = scoped_table(scope, ctx)
     if not tbl then
@@ -811,7 +817,9 @@ local function compile_ast(node, ctx)
             return { code = "__ops.add(" .. a.code .. ", " .. b.code .. ")", kind = "number" }
         elseif op == "%" then
             return { code = "__ops.mod(" .. a.code .. ", " .. b.code .. ")", kind = "number" }
-        elseif op == "-" or op == "*" or op == "/" then
+        elseif op == "/" then
+            return { code = "__ops.div(" .. a.code .. ", " .. b.code .. ")", kind = "number" }
+        elseif op == "-" or op == "*" then
             return {
                 code = "(__ops.to_number(" .. a.code .. ") "
                     .. op .. " __ops.to_number(" .. b.code .. "))",
@@ -884,6 +892,20 @@ local function compile_ast(node, ctx)
         return {
             code = "runtime:call_func("
                 .. lua_string(fname) .. ", { " .. table.concat(args, ", ") .. " })",
+            kind = "unknown",
+        }
+    elseif k == "methodcall" then
+        local receiver = compile_ast(node.receiver, ctx)
+        if not receiver then return nil end
+        local args = {}
+        for i = 1, #node.args do
+            local arg = compile_ast(node.args[i], ctx)
+            if not arg then return nil end
+            args[#args + 1] = arg.code
+        end
+        return {
+            code = "runtime:call_method(" .. receiver.code .. ", " .. lua_string(node.key)
+                .. ", { " .. table.concat(args, ", ") .. " })",
             kind = "unknown",
         }
     end
@@ -974,7 +996,7 @@ function Compiler.compile_command(node, ctx)
     local cmd = node.cmd:lower()
     local arg = node.arg
 
-    if cmd == "let" then
+    if cmd == "let" or cmd == "const" then
         if arg.kind == "let_query" then
             return {
                 code = "runtime:invoke_compiled_builtin_command("
@@ -984,6 +1006,12 @@ function Compiler.compile_command(node, ctx)
         local lhs, op = arg.lhs, arg.op
         local static_lhs = parse_static_lvalue(lhs)
         local rhs_code = Compiler.compile_expr(arg.rhs_ast, ctx)
+        if cmd == "const" then
+            if op ~= "=" then error(Error(995)) end
+            return {
+                code = "runtime:declare_const(" .. lua_string(lhs) .. ", " .. rhs_code .. ")",
+            }
+        end
         if op == "=" then
             if static_lhs then
                 return { code = lvalue_write_code(static_lhs, rhs_code, ctx) }
@@ -1008,6 +1036,10 @@ function Compiler.compile_command(node, ctx)
                 value_code = "__ops.add(" .. cur_code .. ", " .. rhs_code .. ")"
             elseif op == ".=" then
                 value_code = "(__ops.to_string(" .. cur_code .. ") .. __ops.to_string(" .. rhs_code .. "))"
+            elseif op == "/=" then
+                value_code = "__ops.div(" .. cur_code .. ", " .. rhs_code .. ")"
+            elseif op == "%=" then
+                value_code = "__ops.mod(" .. cur_code .. ", " .. rhs_code .. ")"
             else
                 local binop = op:sub(1, 1)
                 value_code = "(__ops.to_number(" .. cur_code .. ") "
@@ -1089,13 +1121,18 @@ function Compiler.compile_command(node, ctx)
                 .. lua_string(cmd) .. ", { " .. table.concat(values, ", ") .. " })",
         }
     elseif cmd == "call" then
-        return { code = "do local __rv = " .. Compiler.compile_expr(arg.expr_ast, ctx) .. " end" }
+        return {
+            code = "runtime:call_statement(function() return "
+                .. Compiler.compile_expr(arg.expr_ast, ctx) .. " end)",
+        }
     elseif cmd == "return" then
         local val = "nil"
         if node.rest ~= "" then
             val = Compiler.compile_expr(arg.expr_ast, ctx)
         end
         return { code = string.format("error(runtime:return_exc(%s))", val) }
+    elseif cmd == "throw" then
+        return { code = "error(runtime:throw_exc(" .. Compiler.compile_expr(arg.expr_ast, ctx) .. "))" }
     elseif cmd == "finish" then
         return { code = "error(runtime:return_exc(nil))" }
     elseif cmd == "set" or cmd == "setglobal" or cmd == "setlocal" then
@@ -1276,12 +1313,14 @@ local function analyze_control_flow(seq)
 
             seq[entry.start_idx].try_region = region
         elseif cmd == "function" then
-            local fname, params = parse_function_head(node.rest)
+            local fname, params, attrs = parse_function_head(node.rest)
             if not fname then
                 return nil, Error(474, "function")
             end
             node.func_name = fname
             node.func_params = split_params(params)
+            node.func_attrs = {}
+            for attr in attrs:gmatch("%S+") do node.func_attrs[#node.func_attrs + 1] = attr:lower() end
             push({
                 kind = "function",
                 start_idx = i,
@@ -1367,6 +1406,9 @@ local function infer_function_locals(seq)
                 break
             end
             locals[target.name] = true
+        elseif cmd == "const" then
+            safe = false
+            break
         elseif cmd == "for" then
             local for_arg = node.arg
             local target = parse_static_lvalue(for_arg.lhs)
@@ -1596,31 +1638,30 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             emit_sequence(emitter, region.try_body, state, indent .. "    ", loop_stack, compile_ctx)
             emitter:emit(indent .. "  end)")
             emitter:emit(indent .. "  if not __try_ok then")
-            emitter:emit(
-                indent .. "    if type(__try_err) == 'table' and "
-                    .. "(__try_err.__ret or __try_err.__break or __try_err.__continue) "
-                    .. "then error(__try_err) end"
-            )
+            emitter:emit(indent .. "    if not runtime:is_control_exception(__try_err) then")
             if #region.catches > 0 then
                 for catch_idx = 1, #region.catches do
                     local catch = region.catches[catch_idx]
                     local prefix = (catch_idx == 1) and "if" or "elseif"
                     emitter:emit(
-                        indent .. "    " .. prefix .. " runtime:catch_matches(__try_err, "
+                        indent .. "      " .. prefix .. " runtime:catch_matches(__try_err, "
                             .. lua_string(catch.rest) .. ") then"
                     )
-                    emit_sequence(emitter, catch.body, state, indent .. "      ", loop_stack, compile_ctx)
+                    emitter:emit(indent .. "        runtime:enter_catch(__try_err)")
+                    emitter:emit(indent .. "        local __catch_ok, __catch_err = runtime:_pcall(function()")
+                    emit_sequence(emitter, catch.body, state, indent .. "          ", loop_stack, compile_ctx)
+                    emitter:emit(indent .. "        end)")
+                    emitter:emit(indent .. "        runtime:leave_catch()")
+                    emitter:emit(indent .. "        __try_ok, __try_err = __catch_ok, __catch_err")
                 end
-                emitter:emit(indent .. "    else")
-                emitter:emit(indent .. "      error(__try_err)")
-                emitter:emit(indent .. "    end")
-            else
-                emitter:emit(indent .. "    error(__try_err)")
+                emitter:emit(indent .. "      end")
             end
+            emitter:emit(indent .. "    end")
             emitter:emit(indent .. "  end")
             if region.finally_body then
                 emit_sequence(emitter, region.finally_body, state, indent .. "  ", loop_stack, compile_ctx)
             end
+            emitter:emit(indent .. "  if not __try_ok then error(__try_err) end")
             emitter:emit(indent .. "end")
             i = find_matching_end(seq, i, "try", "endtry") + 1
         elseif cmd == "function" then
@@ -1656,10 +1697,11 @@ local function emit_sequence(emitter, seq, state, indent, loop_stack, compile_ct
             end
             emit_sequence(emitter, region.body, state, indent .. "    ", {}, fn_ctx)
             emitter:emit(indent .. "  end")
-            emitter:emit(("%s  runtime:register_function(%s, {%s}, __fn)"):format(
+            emitter:emit(("%s  runtime:register_function(%s, {%s}, __fn, %s)"):format(
                 indent,
                 lua_string(node.func_name),
-                table.concat(plist, ", ")
+                table.concat(plist, ", "),
+                lua_string_list(node.func_attrs)
             ))
             emitter:emit(indent .. "end")
             i = find_matching_end(seq, i, "function", "endfunction") + 1

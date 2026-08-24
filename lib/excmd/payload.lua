@@ -256,7 +256,7 @@ function Payload.parse_sequence(sequence)
     for index = 1, #sequence do
         local node = sequence[index]
         local cmd = node.cmd
-        if cmd == "let" then
+        if cmd == "let" or cmd == "const" then
         local lhs, op, rhs = split_let_assignment(node.rest)
         if not lhs then
             node.arg = { kind = "let_query" }
@@ -266,7 +266,7 @@ function Payload.parse_sequence(sequence)
             if not ok then return nil, err end
         end
         elseif cmd == "if" or cmd == "elseif" or cmd == "while"
-            or cmd == "call" or (cmd == "return" and node.rest ~= "")
+            or cmd == "call" or cmd == "throw" or (cmd == "return" and node.rest ~= "")
         then
             node.arg = { kind = "expr", expr = node.rest }
             local ok, err = parse_expr(node.arg, "expr_ast", node.rest)

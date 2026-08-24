@@ -768,13 +768,14 @@ local function apply_quant_group_alts(alts, quant)
     if quant.t == "Q" then
         local q = quant.v
         if q == "?" then
-            local out = { EMPTY_FRAG }
+            local out = {}
             for i = 1, #alts do
                 out[#out + 1] = alts[i]
                 if #out > BRANCH_MAX then
                     return nil, ("Branch explosion (>%d branches)"):format(BRANCH_MAX)
                 end
             end
+            out[#out + 1] = EMPTY_FRAG
             return out
         end
         return nil, ("Group alternation with '%s' quantifier is unsupported"):format(tostring(q))
@@ -1911,6 +1912,12 @@ local function vm_parse_bracket(raw)
     while i <= n - 1 do
         local function read_item(idx)
             local c = raw:sub(idx, idx)
+            if c == "[" and raw:sub(idx + 1, idx + 1) == ":" then
+                local close = raw:find(":]", idx + 2, true)
+                if close then
+                    return { kind = "posix", name = raw:sub(idx + 2, close - 1) }, close + 2
+                end
+            end
             if c == "\\" and idx < (n - 1) then
                 local e = raw:sub(idx + 1, idx + 1)
                 local unicode_hex = raw:sub(idx + 2, idx + 5)
@@ -2010,6 +2017,25 @@ local function vm_match_bracket(parsed, ch, case_sensitive)
             end
         elseif e.kind == "class" then
             if vm_match_class_token(e.cls, ch, case_sensitive) then
+                matched = true
+                break
+            end
+        elseif e.kind == "posix" then
+            local name = e.name
+            local patt = name == "alnum" and "%w"
+                or name == "alpha" and "%a"
+                or name == "blank" and "[ \t]"
+                or name == "cntrl" and "%c"
+                or name == "digit" and "%d"
+                or name == "graph" and "%g"
+                or name == "lower" and (case_sensitive and "%l" or "%a")
+                or name == "print" and "[%g ]"
+                or name == "punct" and "%p"
+                or name == "space" and "%s"
+                or name == "upper" and (case_sensitive and "%u" or "%a")
+                or name == "xdigit" and "%x"
+                or name == "word" and "[%w_]"
+            if patt and ch:match(patt) then
                 matched = true
                 break
             end
@@ -2886,6 +2912,9 @@ local VM_TRIGGER_LITS = {
 }
 
 local function pattern_needs_vm(pat)
+    if pat:find("[[:", 1, true) then
+        return true
+    end
     for i = 1, #VM_TRIGGER_LITS do
         if pat:find(VM_TRIGGER_LITS[i], 1, true) then
             return true

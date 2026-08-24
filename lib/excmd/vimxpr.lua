@@ -96,8 +96,17 @@ local function num_coerce(v)
     if type(v) == "number" then return v end
     if type(v) == "boolean" then return v and 1 or 0 end
     if type(v) == "string" then
-        local s = v:match("^%s*([%+%-]?%d+%.?%d*)")
-        return s and (s:find("%.") and tonumber(s) or tonumber(s)) or 0
+        local sign, body = v:match("^%s*([+-]?)(.*)")
+        local factor = sign == "-" and -1 or 1
+        local digits = body:match("^0[xX]([%da-fA-F]+)")
+        if digits then return factor * tonumber(digits, 16) end
+        digits = body:match("^0[bB]([01]+)")
+        if digits then return factor * tonumber(digits, 2) end
+        digits = body:match("^0[oO]([0-7]+)")
+        if digits then return factor * tonumber(digits, 8) end
+        local token = body:match("^%d+%.?%d*")
+        if token and token:match("^0[0-7]+$") then return factor * tonumber(token, 8) end
+        return factor * (tonumber(token) or 0)
     end
     return nil
 end
@@ -202,6 +211,14 @@ local TOKEN_MULTI_OPS = {
     "==?",
     "!=#",
     "!=?",
+    ">=#",
+    ">=?",
+    "<=#",
+    "<=?",
+    ">#",
+    ">?",
+    "<#",
+    "<?",
     ">=",
     "<=",
     "=~#",
@@ -351,17 +368,41 @@ local function tokenize(input)
         end
         local start = i
 
-        -- number: int or simple float
+        -- number
         if is_digit_byte(cb) then
             local j = i
-            while is_digit_byte(input:byte(j)) do j = j + 1 end
-            if input:sub(j, j) == "." and is_digit_byte(input:byte(j + 1)) then
-                j = j + 1
+            local base
+            local prefix = input:sub(i, i + 1):lower()
+            if prefix == "0x" then
+                base = 16
+                j = i + 2
+                while input:sub(j, j):match("%x") do j = j + 1 end
+            elseif prefix == "0b" then
+                base = 2
+                j = i + 2
+                while input:sub(j, j):match("[01]") do j = j + 1 end
+            elseif prefix == "0o" then
+                base = 8
+                j = i + 2
+                while input:sub(j, j):match("[0-7]") do j = j + 1 end
+            else
                 while is_digit_byte(input:byte(j)) do j = j + 1 end
             end
-            local num = input:sub(i, j - 1)
+            local float = not base and input:sub(j, j) == "." and is_digit_byte(input:byte(j + 1))
+            if float then
+                j = j + 1
+                while is_digit_byte(input:byte(j)) do j = j + 1 end
+                local exp = input:sub(j):match("^[eE][+-]?%d+")
+                if exp then j = j + #exp end
+            end
+            local raw = input:sub(i, j - 1)
+            local digits = base and raw:sub(3) or raw
+            local number = tonumber(digits, base)
+            if not base and not float and #raw > 1 and raw:match("^0[0-7]+$") then
+                number = tonumber(raw, 8)
+            end
             i = j
-            add("NUM", tonumber(num), start, num, j - 1); goto cont
+            add("NUM", number, start, raw, j - 1); goto cont
         end
 
         -- string (single or double quoted)
@@ -694,21 +735,32 @@ local function parse(tokens)
                 local keytok = peek()
                 local nexttok = tokens[i + 1]
                 local can_index = node.kind ~= "str" and node.kind ~= "num" and node.kind ~= "call"
-                if
-                    can_index
-                    and keytok.typ == "ID"
-                    and keytok.pos == (t.pos + 1)
+                if can_index and keytok.typ == "ID" and keytok.pos == (t.pos + 1)
                     and not (nexttok and nexttok.typ == "COLON")
-                    and not (nexttok and nexttok.typ == "LPAREN")
                 then
                     local key = adv()
-                    node = {
-                        kind = "index",
-                        a = node,
-                        idx = { kind = "str", val = key.val, pos = key.pos, endpos = tok_end(key) },
-                        pos = t.pos,
-                        endpos = tok_end(key),
-                    }
+                    if peek().typ == "LPAREN" then
+                        adv()
+                        local args = {}
+                        if peek().typ ~= "RPAREN" then
+                            while true do
+                                args[#args + 1] = expr(0)
+                                if peek().typ == "RPAREN" then break end
+                                if expect("OP").val ~= "," then error("Expected ',' in arg list") end
+                            end
+                        end
+                        local close = expect("RPAREN")
+                        node = { kind = "methodcall", receiver = node, key = key.val, args = args,
+                            pos = t.pos, endpos = tok_end(close) }
+                    else
+                        node = {
+                            kind = "index",
+                            a = node,
+                            idx = { kind = "str", val = key.val, pos = key.pos, endpos = tok_end(key) },
+                            pos = t.pos,
+                            endpos = tok_end(key),
+                        }
+                    end
                 else
                     i = save_i
                     break
@@ -886,6 +938,7 @@ local function parse(tokens)
                     if peek().typ == "RBRACE" then break end
                     local op = expect("OP").val
                     if op ~= "," then error("Expected ',' in dict literal") end
+                    if peek().typ == "RBRACE" then break end
                 end
             end
             local close = expect("RBRACE")
@@ -1229,7 +1282,11 @@ local function eval_node(node, vim9, env)
     end
 
     if k == "var" then
-        return resolve_var(node.scope, node.name)
+        local value = resolve_var(node.scope, node.name)
+        if value == nil and not (node.scope == "v" and node.name == "null") then
+            return Error(121, (node.scope and (node.scope .. ":") or "") .. tostring(node.name))
+        end
+        return value
     end
     if k == "scope" then
         local scope = (env and env.scope) or {}
@@ -1345,6 +1402,21 @@ local function eval_node(node, vim9, env)
             return Error(5108, tostring(rv))
         end
         return rv
+    end
+
+    if k == "methodcall" then
+        local receiver = eval_node(node.receiver, vim9, env)
+        if is_error(receiver) then return receiver end
+        local args = {}
+        for i = 1, #node.args do
+            local value = eval_node(node.args[i], vim9, env)
+            if is_error(value) then return value end
+            args[i] = value
+        end
+        if type(env.call_method) == "function" then return env.call_method(receiver, node.key, args) end
+        local fn = type(receiver) == "table" and receiver[node.key]
+        if type(fn) ~= "function" then return Error(117, node.key) end
+        return fn(table.unpack(args))
     end
 
     if k == "index" then
@@ -1563,7 +1635,13 @@ local function eval_node(node, vim9, env)
             if op == "+" then return a + b end
             if op == "-" then return a - b end
             if op == "*" then return a * b end
-            if op == "/" then return a / b end
+            if op == "/" then
+                local value = a / b
+                if math.type and math.type(a) == "integer" and math.type(b) == "integer" then
+                    return math.modf(value)
+                end
+                return value
+            end
             if op == "%" then
                 if
                     type(a) == "number"
@@ -1572,7 +1650,8 @@ local function eval_node(node, vim9, env)
                 then
                     return Error(804)
                 end
-                return a % b
+                local quotient = math.modf(a / b)
+                return a - quotient * b
             end
         end
 

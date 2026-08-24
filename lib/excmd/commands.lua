@@ -11,6 +11,7 @@ local COMMAND_SPECS = {
     { name = "silent", min = 3, dispatch = true, wrapper = true },
     { name = "unsilent", min = 3, dispatch = true, wrapper = true },
     { name = "let", min = 3, comment_mode = "expr" },
+    { name = "const", min = 4, comment_mode = "expr" },
     { name = "if", min = 2, comment_mode = "expr" },
     { name = "elseif", min = 5, comment_mode = "expr" },
     { name = "else", min = 2 },

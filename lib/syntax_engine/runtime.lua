@@ -1115,6 +1115,24 @@ local function find_region_end_event(entry, line, lower_line, pos, syn_limit, li
     return nil
 end
 
+local function region_skip_crosses_eol(entry, line, next_line)
+    if next_line == nil or not entry.skip_specs then
+        return false
+    end
+    local joined = line .. "\n" .. next_line
+    local lower = joined:lower()
+    local eol = #line + 1
+    for i = 1, #entry.skip_specs do
+        local hit = find_in_spec(
+            joined, lower, eol, entry.skip_specs[i], true, entry.ext_captures, false, nil
+        )
+        if hit and hit.raw_end > eol then
+            return true
+        end
+    end
+    return false
+end
+
 local function resolve_resync_start(plan, buffer, target_line)
     local sync = plan.sync
     if sync.fromstart then
@@ -1396,7 +1414,9 @@ local function paint_match_contained_keywords(plan, item, line, lower_line, rang
     end
 end
 
-local function paint_match_contained_items(plan, item, line, lower_line, range_s, range_e, max_col, spans, line_cache)
+local function paint_match_contained_items(
+    plan, item, line, lower_line, range_s, range_e, max_col, spans, line_cache, priority
+)
     local contains_bits = item.options.contains_bits
     if not contains_bits then
         return
@@ -1407,6 +1427,7 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
         paint_match_contained_keywords(plan, item, line, lower_line, range_s, range_e, max_col, spans)
         return
     end
+    priority = priority or 2
 
     local container = {
         group_id = item.group_id,
@@ -1419,7 +1440,25 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
 
     local pos = range_s
     while pos <= range_e do
-        local best = find_best_start_event(plan, state, line, lower_line, pos, false, max_col, nil, nil, line_cache)
+        local best
+        local pending = state.pending_next
+        if pending then
+            best = find_best_start_event(
+                plan, state, line, lower_line, pos, true, max_col, item.id, range_s, line_cache
+            )
+            if not best then
+                if pending.skipwhite and is_whitespace_char(line:sub(pos, pos)) then
+                    pos = pos + 1
+                    goto continue
+                end
+                state.pending_next = nil
+            end
+        end
+        if not best then
+            best = find_best_start_event(
+                plan, state, line, lower_line, pos, false, max_col, item.id, range_s, line_cache
+            )
+        end
         if not best then
             break
         end
@@ -1444,7 +1483,7 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
                 ext_key = ext_captures_key(best.ext_captures),
             }
             local from_pos = region_end_search_pos(best, pos)
-            local end_ev = find_region_end_event(entry, line, lower_line, from_pos, max_col, line_cache)
+            local end_ev = find_region_end_event(entry, line, lower_line, from_pos, max_col + 1, line_cache)
             if (not (inner.options.flags.oneline and not end_ev)) and not inner.options.flags.transparent then
                 local group_id = inner.group_id
                 local hs = math.clamp(best.match_start, range_s, max_col + 1)
@@ -1454,7 +1493,7 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
                         s = hs,
                         e = he,
                         group_id = group_id,
-                        priority = 3,
+                        priority = priority + 1,
                         conceal = inner.options.flags.conceal or false,
                         concealends = inner.options.flags.concealends or false,
                         cchar = inner.options.cchar,
@@ -1463,9 +1502,33 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
                     }
                 end
             end
+            local start_group = resolved_matchgroup_ref(plan, best.spec)
+            if start_group then
+                local hs, he = event_paint_span(best, region_delim_uses_raw_span(best.spec))
+                spans[#spans + 1] = { s = hs, e = he, group_id = start_group, priority = 10 }
+            end
             if end_ev then
                 best.match_end = end_ev.match_end
                 best.raw_end = end_ev.raw_end
+                local end_group = resolved_matchgroup_ref(plan, end_ev.spec)
+                if end_group then
+                    local hs, he = event_paint_span(end_ev, region_delim_uses_raw_span(end_ev.spec))
+                    spans[#spans + 1] = { s = hs, e = he, group_id = end_group, priority = 10 }
+                end
+            end
+            if inner.options.contains_bits then
+                paint_match_contained_items(
+                    plan,
+                    inner,
+                    line,
+                    lower_line,
+                    best.match_start,
+                    best.match_end,
+                    max_col,
+                    spans,
+                    line_cache,
+                    priority + 1
+                )
             end
         elseif inner and not inner.options.flags.transparent then
             local group_id = inner.group_id
@@ -1478,7 +1541,7 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
                     s = hs,
                     e = he,
                     group_id = group_id,
-                    priority = 2,
+                    priority = priority,
                     conceal = inner.options.flags.conceal or false,
                     concealends = inner.options.flags.concealends or false,
                     cchar = inner.options.cchar,
@@ -1490,12 +1553,26 @@ local function paint_match_contained_items(plan, item, line, lower_line, range_s
                 local rs = math.clamp(best.match_start, range_s, max_col)
                 local re = math.clamp(best.match_end, 0, max_col)
                 if re >= rs then
-                    paint_match_contained_items(plan, inner, line, lower_line, rs, re, max_col, spans, line_cache)
+                    paint_match_contained_items(
+                        plan, inner, line, lower_line, rs, re, max_col, spans, line_cache, priority + 1
+                    )
                 end
             end
         end
 
+        state.pending_next = nil
+        if inner and inner.options.nextgroup_bits then
+            state.pending_next = make_pending_next(
+                inner.options.nextgroup_bits,
+                inner.options.flags.skipwhite or false,
+                inner.options.flags.skipnl or false,
+                inner.options.flags.skipempty or false,
+                nil,
+                inner.group_id
+            )
+        end
         pos = math.max(best.raw_end + 1, best.match_end + 1, pos + 1)
+        ::continue::
     end
 end
 
@@ -1645,7 +1722,7 @@ local function paint_anchored_contained_start(
     return math.max(event_resume_end(anchored) + 1, start_pos + 1)
 end
 
-local function highlight_line(plan, state_in, line, syn_limit)
+local function highlight_line(plan, state_in, line, syn_limit, next_line)
     local len = #line
     local max_col = syn_limit
     if max_col <= 0 then
@@ -1705,10 +1782,6 @@ local function highlight_line(plan, state_in, line, syn_limit)
             return
         end
         local gid = active_visible_group(state)
-        if not gid then
-            local top = state.stack[#state.stack]
-            gid = top and top.group_id
-        end
         if gid then
             local hs = math.clamp(event.match_start - lead_context, 1, max_col + 1)
             local he = math.clamp(event.match_start - 1, 0, max_col)
@@ -2184,6 +2257,9 @@ local function highlight_line(plan, state_in, line, syn_limit)
         if not end_ev then
             break
         end
+        if region_skip_crosses_eol(top, line, next_line) then
+            break
+        end
         apply_end_event(end_ev, eol_limit)
     end
 
@@ -2247,6 +2323,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
     local can_converge = not ctx._structure_changed and target_line > dirty_from
 
     local converged_to = nil
+    local text = buffer_get_line(buffer, start)
 
     for ln = start, recompute_end do
         local old_next_hash = nil
@@ -2261,8 +2338,14 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
         local before = state
         ctx.checkpoints[ln] = { state = before }
 
-        local text = buffer_get_line(buffer, ln)
-        local next_state, spans = highlight_line(plan, state, text, ctx.synmaxcol or 0)
+        local next_line = ln < line_count and buffer_get_line(buffer, ln + 1) or nil
+        local next_state, spans = highlight_line(
+            plan,
+            state,
+            text,
+            ctx.synmaxcol or 0,
+            next_line
+        )
         local after = next_state
         local after_hash = nil
         if old_next_hash then
@@ -2279,6 +2362,7 @@ local function recompute_to_line(ctx, plan, buffer, target_line, force_from_star
         }
 
         state = after
+        text = next_line
 
         if can_converge and ln >= dirty_from then
             if old_next_hash and old_next_hash == after_hash and old_text == text then

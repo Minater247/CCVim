@@ -1491,6 +1491,7 @@ local function exec_script(src, opts)
     end
 
     -- Success
+    if opts.output and output:sub(-1) == "\n" then output = output:sub(1, -2) end
     return true, (opts.output and output or ""), nil
 end
 

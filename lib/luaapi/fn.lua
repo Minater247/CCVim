@@ -39,6 +39,9 @@ local EMPTY_TABLE = {}
 
 -- Helper: call a Vimscript function by name (user-defined via runtime registry) or a builtin here.
 local function call_vimfunc(name, ...)
+    local args = { ... }
+    local active, result = Runtime.CallCurrentFunction(name, args)
+    if active then return result end
     -- Builtin first
     local b = Builtins[name]
     if type(b) == "function" then
@@ -68,7 +71,6 @@ local function call_vimfunc(name, ...)
     end
     local call_name = resolved_name or name
     -- Map args to a:/l: by parameter list (including a:0/a:000 for varargs).
-    local args = { ... }
     local l_scope, a_scope = Runtime.BuildCallScopes(args, def.params or {})
     -- Dict function: inject a:self/l:self
     if def.attrs and def.attrs.dict then
@@ -551,7 +553,8 @@ local function vim_string(v)
     elseif v == nil then
         return "v:null"
     elseif t == "table" then
-        local is_list = (#v > 0) or (v[1] ~= nil)
+        local kind = (getmetatable(v) or EMPTY_TABLE).__vimxpr_kind
+        local is_list = kind == "list" or (kind ~= "dict" and ((#v > 0) or (v[1] ~= nil)))
         if is_list then
             local parts = {}
             for i = 1, #v do parts[#parts + 1] = vim_string(v[i]) end
@@ -1107,6 +1110,7 @@ local has_features = {
     eval = true,
     nvim = true,
     syntax = true,
+    unix = true,
 
     ["nvim-0.7"] = true,
     ["nvim-0.8"] = true,
@@ -1357,7 +1361,7 @@ end
 
 -- function({name} [, {arglist} [, {dict}]]) -> Funcref
 -- Minimal support needed for option-value-function use cases.
-Builtins["function"] = function(name, arglist, _dict)
+Builtins["function"] = function(name, arglist, _dict, user_only)
     local fname
     local direct_fn
     if type(name) == "function" then
@@ -1390,6 +1394,10 @@ Builtins["function"] = function(name, arglist, _dict)
     if type(fname) ~= "string" or fname == "" then
         error(Error(474, "function()"))
     end
+    if not direct_fn then
+        local def = Runtime.ResolveFunctionDef(fname, { state = Runtime._CURRENT_STATE })
+        if not def and (user_only or Builtins[fname] == nil) then error(Error(700, fname)) end
+    end
 
     local prefix = {}
     if arglist ~= nil then
@@ -1420,7 +1428,7 @@ Builtins["function"] = function(name, arglist, _dict)
 end
 
 Builtins.funcref = function(name, arglist, dict)
-    return Builtins["function"](name, arglist, dict)
+    return Builtins["function"](name, arglist, dict, true)
 end
 
 Builtins.call = function(func, args, _dict)
@@ -1440,7 +1448,7 @@ end
 function Builtins.type(expr)
     local t = type(expr)
     if t == "number" then
-        return 0
+        return math.type and math.type(expr) == "float" and 5 or 0
     elseif t == "string" then
         return 1
     elseif t == "function" then
@@ -2362,8 +2370,7 @@ function Builtins.exists(expr)
         end
     end
 
-    local scoped = s:match("^([gslavbtw]):")
-    if scoped and (s:find("[", 1, true) or s:find(".", 1, true)) then
+    if (s:find("[", 1, true) or s:find(".", 1, true)) and not s:match("^[%$%*#&+:]") then
         local ok, val = Runtime.EvalExpression(s, {
             state = Runtime._CURRENT_STATE,
             ctrl = Runtime._CURRENT_CTRL,
@@ -2443,7 +2450,25 @@ function Builtins.exists(expr)
     elseif s:sub(1, 1) == "$" then
         local key = s:sub(2)
         return EnvVars.exists(key) and 1 or 0
+    elseif s:sub(1, 1) == "&" or s:sub(1, 1) == "+" then
+        local Options = loadModule("lib.options")
+        local name = Options.resolve_abbrev(s:sub(2))
+        if not name then return 0 end
+        return s:sub(1, 1) == "&" and 1 or (Options.get_info(name) and 1 or 0)
+    elseif s:sub(1, 2) == "##" then
+        return loadModule("lib.autocmd").IsValidEvent(s:sub(3)) and 1 or 0
+    elseif s:sub(1, 1) == "#" then
+        local Autocmd = loadModule("lib.autocmd")
+        local name = s:sub(2)
+        local event, pattern = name:match("^([^#]+)#(.*)$")
+        event = event or name
+        if Autocmd.IsValidEvent(event) then
+            local entries = Autocmd.GetAutocommands({ event = event, pattern = pattern })
+            return #entries > 0 and 1 or 0
+        end
+        return Autocmd.GetAugroupId(name) and 1 or 0
     elseif s:sub(1, 1) == "*" then
+        if s:sub(1, 2) == "**" then error(Error(129)) end
         local fname = s:sub(2)
         if Builtins[fname] ~= nil then return 1 end
         local def = Runtime.ResolveFunctionDef(fname, { state = Runtime._CURRENT_STATE })
@@ -4792,6 +4817,14 @@ function Builtins.keys(dict, ...)
     return out
 end
 
+function Builtins.values(dict, ...)
+    if select("#", ...) > 0 then error(Error(118, "values")) end
+    _require_dict_for_keys_items(dict)
+    local out = {}
+    for _, value in pairs(dict) do out[#out + 1] = value end
+    return out
+end
+
 function Builtins.keytrans(str, ...)
     if select("#", ...) > 0 then
         error(Error(118, "keytrans"))
@@ -5417,6 +5450,14 @@ function Builtins.nr2char(expr, _utf8, ...)
     end
 
     return _nr_to_utf8(nr)
+end
+
+function Builtins.char2nr(expr, utf8, ...)
+    if select("#", ...) > 0 then error(Error(118, "char2nr")) end
+    local value = tostring(expr or "")
+    if value == "" then return 0 end
+    if utf8 and utf8 ~= 0 then return value:byte(1) end
+    return Utf8.codepoint_at(value, 1)
 end
 
 function Builtins.strchars(str, _skipcc, ...)
