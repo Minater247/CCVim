@@ -288,7 +288,7 @@ local _V = {
     no_cache = false,
 
     ccvim_path = ccvim_path,
-    ccvimversion_str = "0.8",
+    ccvimversion_str = "0.9",
 
     -- error = function(...)
     --     log("DEBUG", "Error thrown:\n%s", debug.traceback())

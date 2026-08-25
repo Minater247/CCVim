@@ -1755,7 +1755,7 @@ function MockEnv.setup(opts)
     end
     
     globals.ccvim_path = ccvim_root
-    globals.ccvimversion_str = "0.8"
+    globals.ccvimversion_str = "0.9"
     globals.vimversion_maj = 0
     globals.vimversion_min = 11
     globals.vimversion_pat = 3

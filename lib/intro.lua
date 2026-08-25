@@ -15,7 +15,7 @@ local LINES = {
     "type  :q<Enter>               to exit         ",
     "type  :help<Enter>            for help        ",
     "",
-    "type  :help news<Enter> to see changes in v0.8",
+    "type  :help news<Enter> to see changes in v" .. ccvimversion_str,
     "",
     "Help poor children in Uganda!",
     "type  :help Kuwasha<Enter>    for information ",
