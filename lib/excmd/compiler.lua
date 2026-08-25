@@ -858,7 +858,10 @@ local function compile_ast(node, ctx)
             kind = "unknown",
         }
     elseif k == "lambda" then
-        local body = compile_ast(node.body, ctx)
+        local lambda_ctx = { direct_backend = ctx.direct_backend, in_function = true, local_vars = {} }
+        for name in pairs(ctx.local_vars) do lambda_ctx.local_vars[name] = true end
+        for i = 1, #node.params do lambda_ctx.local_vars[tostring(node.params[i])] = true end
+        local body = compile_ast(node.body, lambda_ctx)
         if not body then return nil end
         local lines = {
             "(function(...)",
@@ -868,6 +871,7 @@ local function compile_ast(node, ctx)
         }
         for i = 1, #node.params do
             local name = tostring(node.params[i])
+            lines[#lines + 1] = "local __l_" .. name .. " = __argv[" .. tostring(i) .. "]"
             lines[#lines + 1] = "__frame.l[" .. lua_string(name) .. "] = __argv[" .. tostring(i) .. "]"
             lines[#lines + 1] = "__frame.a[" .. lua_string(name) .. "] = __argv[" .. tostring(i) .. "]"
         end

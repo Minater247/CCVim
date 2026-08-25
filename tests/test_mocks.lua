@@ -1756,6 +1756,11 @@ function MockEnv.setup(opts)
     
     globals.ccvim_path = ccvim_root
     globals.ccvimversion_str = "0.8"
+    globals.vimversion_maj = 0
+    globals.vimversion_min = 11
+    globals.vimversion_pat = 3
+    globals.vimversion_str = "0.11.3"
+    globals.no_cache = opts.no_cache
     globals.screen = {
         width = state.term.width,
         height = state.term.height,

@@ -25,6 +25,12 @@ jobs:
       - name: Set up LuaRocks
         uses: leafo/gh-actions-luarocks@v4
 
+      - name: Set up Neovim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          version: stable
+          neovim: true
+
       - name: Install test dependencies
         run: |
           luarocks install luafilesystem

@@ -1270,6 +1270,7 @@ local function eval_node(node, vim9, env)
             end
             return v
         else
+            if var_name == "version" then return from(scope.v) or Scopes._v.version end
             -- bare: prefer l: if present, else g:
             if scope.l and scope.l[var_name] ~= nil then return scope.l[var_name] end
             if scope.g and scope.g[var_name] ~= nil then return scope.g[var_name] end

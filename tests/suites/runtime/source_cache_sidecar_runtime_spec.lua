@@ -64,6 +64,7 @@ return {
                 return orig_compile(...)
             end
             orig_no_cache = rawget(_G, "no_cache")
+            _G.no_cache = false
 
             local ok1, err1 = ScriptSource.source(source_path)
             Assert.eq("first source succeeds", ok1, true)

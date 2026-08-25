@@ -81,6 +81,7 @@ Scopes._v.count1 = 1
 Scopes._v.prevcount = 0
 Scopes._v.stderr = 2
 Scopes._v.maxcol = Scopes.MAXCOL
+Scopes._v.version = 801
 Scopes._v["true"] = true
 Scopes._v["false"] = false
 Scopes._v.t_number = 0

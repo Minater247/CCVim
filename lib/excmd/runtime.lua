@@ -190,6 +190,7 @@ end
 local function fresh_v(extra)
     local v = {
         ["true"] = true, ["false"] = false, errmsg = "", exception = "", throwpoint = "",
+        version = scopes._v.version,
         t_number = 0, t_string = 1, t_func = 2, t_list = 3, t_dict = 4, t_float = 5, t_bool = 6, t_none = 7,
     }
     if type(extra) == "table" then
@@ -945,6 +946,7 @@ end
 
 local function runtime_var(name, state, frame, shared_scopes)
     local var = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if var == "version" then return state.v.version end
     local scope, key = var:match("^([gslavwb]):(.+)$")
     if scope == "g" then return state.g[key] end
     if scope == "s" then return state.s[key] end

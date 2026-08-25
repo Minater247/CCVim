@@ -1,3 +1,4 @@
+-- luacheck: ignore 631
 return {
     id = "runtime.vimscript_concepts_parity",
     description = "Compares representative legacy Vimscript values, expressions, scopes, flow control, functions, commands, and autocommands with Neovim.", -- luacheck: ignore 631
@@ -31,7 +32,8 @@ return {
                 "has('nvim')", "has('unix')", "has('win32')", "exists('&mouse')", "exists('*strftime')",
                 "exists('##ColorScheme')",
                 "type(1)", "type('x')", "type(function('type'))", "type([])", "type({})", "type(1.0)",
-                "type(v:true)", "v:t_number", "v:t_string", "v:t_func", "v:t_list", "v:t_dict", "v:t_float", "v:t_bool",
+                "type(v:true)", "version", "v:version", "v:t_number", "v:t_string", "v:t_func", "v:t_list", "v:t_dict",
+                "v:t_float", "v:t_bool",
             }
             local values = {}
             for i = 1, #expressions do

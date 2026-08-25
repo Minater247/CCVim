@@ -1126,9 +1126,9 @@ local has_patches = {
 function Builtins.api_info()
     return {
         version = {
-            major = 0,
-            minor = 11,
-            patch = 0,
+            major = vimversion_maj,
+            minor = vimversion_min,
+            patch = vimversion_pat,
             prerelease = false,
             api_level = 13,
             api_compatible = 0,
