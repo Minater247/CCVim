@@ -122,8 +122,7 @@ local function run_vimscript_compiled(source_path, compiled_code, chunkname)
         chunkname = chunkname,
     })
     if not ok then
-        local msg = Error.IsError(rv) and rv:toString() or tostring(rv)
-        LOG_DEBUG("Error executing '%s': %s", source_path, msg)
+        LOG_DEBUG("Error executing '%s': %s", source_path, rv:toString())
         return false, rv, phase
     end
     return true, nil, phase
@@ -134,6 +133,9 @@ local function run_vimscript_path(path)
     local compiled_code
     if cache_path and not no_cache and compiled_cache_is_fresh(path, cache_path) then
         compiled_code = read_file(cache_path)
+        if compiled_code and not Compiler.is_cache_compatible(compiled_code) then
+            compiled_code = nil
+        end
     end
 
     if compiled_code then
@@ -154,14 +156,14 @@ local function run_vimscript_path(path)
 
     compiled_code, read_err = Compiler.compile_script(script)
     if not compiled_code then
-        LOG_DEBUG("Error compiling '%s': %s", path, tostring(read_err))
+        LOG_DEBUG("Error compiling '%s': %s", path, read_err:toString())
         return false, read_err
     end
 
     if cache_path then
         local write_ok, write_err = write_file(cache_path, compiled_code)
         if not write_ok then
-            LOG_DEBUG("Error writing cache '%s': %s", cache_path, tostring(write_err))
+            LOG_DEBUG("Error writing cache '%s': %s", cache_path, write_err:toString())
         end
     end
 
@@ -172,10 +174,8 @@ local function run_resolved_path(resolvedpath)
     if resolvedpath:sub(-4) == ".lua" then
         local ok, err = pcall(LuaLoader.LoadFile, resolvedpath)
         if not ok then
-            local e = Error.IsError(err) and err or Error(5107, tostring(err))
-            local msg = e:toString()
-            LOG_DEBUG("Error executing '%s': %s", resolvedpath, msg)
-            return false, e
+            LOG_DEBUG("Error executing '%s': %s", resolvedpath, err:toString())
+            return false, err
         end
         return true
     end

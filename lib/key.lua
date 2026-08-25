@@ -11,6 +11,9 @@ local function S(n)
     return bit32.bor(n, 8192)
 end
 
+local CMD_KEY = 2999
+Key.CMD = CMD_KEY
+
 local _dig_names = {"one","two","three","four","five","six","seven","eight","nine","zero"}
 local _dig_chars = {"1","2","3","4","5","6","7","8","9","0"}
 local _sft_chars = {"!","@","#","$","%","^","&","*","(",")"}
@@ -32,6 +35,7 @@ local printables = {
     [keys.numPadEnter] = "kEnter", [keys.numPadDivide] = "kDivide",
     plug = "Plug",
 }
+printables[CMD_KEY] = "Cmd"
 for c in ("abcdefghijklmnopqrstuvwxyz"):gmatch(".") do printables[keys[c]] = c end
 for i, n in ipairs(_dig_names) do printables[keys[n]] = _dig_chars[i] end
 for i = 0, 9 do printables[keys["numPad"..i]] = "k"..i end
@@ -283,6 +287,7 @@ local NVIM_SPECIAL_TO_NUMERIC = {
     ["<S-Left>"] = S(keys.left),
     ["<S-Right>"] = S(keys.right),
     ["<Nul>"] = C(S(keys.two)),
+    ["<Cmd>"] = CMD_KEY,
 }
 for i = 1, 12 do NVIM_SPECIAL_TO_NUMERIC["<F"..i..">"] = keys["f"..i] end
 
@@ -570,8 +575,7 @@ local function push_angle(seq, content)
     elseif parsed.kind == "literal_angle" then
         push_literal_angle(seq, parsed.content)
     elseif parsed.kind == "cmd" then
-        -- Keep command-mapping usability in feed/mapping paths.
-        push_char(seq, ":")
+        seq[#seq + 1] = key_from_numeric(CMD_KEY)
     else
         table.insert(seq, parsed.key)
     end
@@ -695,8 +699,6 @@ function Key.strtoseq(str)
             local nnum = NVIM_SPECIAL_TO_NUMERIC[nvim_notation]
             if nnum ~= nil then
                 seq[#seq + 1] = key_from_numeric(nnum)
-            elseif nvim_notation == "<Cmd>" then
-                push_char(seq, ":")
             end
             i = nvim_ni
             goto continue

@@ -912,8 +912,11 @@ function Window:_set_cursor_raw(line_idx, col1)
     if newx < 1 then
         newx = 1
     else
-        if vimmode == "normal" or vimmode == "visual" then
+        if vimmode == "normal" then
             if newx > ll then newx = math.max(1, ll) end
+        elseif vimmode == "visual" or vimmode == "select" then
+            local max_col = ll + (options.get("selection") == "old" and 0 or 1)
+            if newx > max_col then newx = math.max(1, max_col) end
         elseif vimmode == "insert" then
             if newx > ll + 1 then newx = math.max(1, ll + 1) end
         else
@@ -1044,8 +1047,8 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
             if newx > ll then
                 newx = math.max(1, ll)
             end
-        elseif vimmode == "visual" then
-            local max_col = ll
+        elseif vimmode == "visual" or vimmode == "select" then
+            local max_col = ll + (options.get("selection") == "old" and 0 or 1)
             if self.visual_kind == "block" then
                 max_col = ll + 1
             end
@@ -2287,7 +2290,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         if i < first_dirty then first_dirty = i end
     end
     local function set_line(i, s)
-        buf:set_line(i, s)
+        buf:set_line(i, s, nil, true)
         mark_dirty(i)
     end
 
@@ -2306,7 +2309,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
         local prev = lines[ln - 1]
         local new_prev = prev .. cur
         set_line(ln - 1, new_prev)
-        buf:remove_lines(ln, ln)
+        buf:remove_lines(ln, ln, nil, true)
         ln = ln - 1
         cur = lines[ln]
         col1 = Utf8.len(prev) + 1
@@ -2524,6 +2527,7 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
 
     self:cursorSet(col1, ln)
     self:markUpdate((first_dirty ~= math.huge) and first_dirty or line)
+    if first_dirty ~= math.huge then buf:run_textchanged() end
 end
 
 function Window:pasteRegister(reg_name, line, offset, isBefore)
@@ -2736,7 +2740,7 @@ local function directional_target_window(win, direction, count)
         return candidate.window and candidate.window.focusable
     end)
 
-    return current_frame and current_frame.window or nil
+    return current_frame and current_frame.window
 end
 
 local function split_place_after(vertical)

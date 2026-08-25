@@ -6,6 +6,7 @@ local FrameTree = loadModule("lib.frame")
 local ScreenDraw = loadModule("lib.screendraw")
 local scopes = loadModule("lib.luaapi.scopes")
 local Utf8 = loadModule("lib.utf8")
+local WordNav = loadModule("lib.wordnav")
 
 local state = {
     active = false,
@@ -27,6 +28,10 @@ local state = {
     scrollbar = false,
     noinsert = false,
     noselect = false,
+    anchor_row = nil,
+    anchor_col = nil,
+    on_change = nil,
+    on_accept = nil,
 }
 
 local function _strchars(s)
@@ -122,6 +127,9 @@ local function _window_origin(win)
 end
 
 local function _cursor_screen_row_col(win)
+    if state.anchor_row ~= nil then
+        return state.anchor_row + 1, state.anchor_col + 1
+    end
     local x0, y0 = _window_origin(win)
     local _, text_x = win:textwidth()
     local row1 = y0 + math.max(0, (win.cursory or 1) - ((win.scrolly and win.scrolly[1]) or 1))
@@ -224,6 +232,10 @@ local function _set_line_noauto(buf, line_nr, text)
 end
 
 local function _apply_current_selection(insert)
+    if state.mode ~= "eval" then
+        if state.on_change then state.on_change(_selected_item(), state.selected) end
+        return
+    end
     local win = windows[state.winid or curwin]
     if not win then
         return
@@ -264,6 +276,7 @@ local function _changed_event_data()
 end
 
 local function _emit_changed()
+    if state.mode ~= "eval" then return end
     AutoCmd.Run("CompleteChanged", {
         bufnr = state.bufnr,
         bufname = (buffers[state.bufnr] and buffers[state.bufnr].name) or "",
@@ -272,6 +285,7 @@ local function _emit_changed()
 end
 
 local function _emit_done(reason)
+    if state.mode ~= "eval" then return end
     local item = _completed_item_value()
     local data = {
         reason = reason or "",
@@ -331,10 +345,24 @@ function PopupMenu.close(reason)
     state.height = 0
     state.width = 0
     state.scrollbar = false
+    state.anchor_row = nil
+    state.anchor_col = nil
+    state.on_change = nil
+    state.on_accept = nil
     _set_completed_item()
 
     what_redraw["windows"] = true
     need_redraw = true
+end
+
+function PopupMenu.sync_text()
+    if not state.active or state.mode ~= "eval" then return end
+    local win = windows[state.winid or curwin]
+    if not win or not win.buffer then return end
+    local line = win.buffer:get_line(win.cursory, true) or ""
+    state.prefix = _strsub(line, 1, state.startcol - 1)
+    state.base = _strsub(line, state.startcol, win.cursorx - 1)
+    state.suffix = _strsub(line, win.cursorx)
 end
 
 function PopupMenu.select(item, insert, finish)
@@ -347,14 +375,24 @@ function PopupMenu.select(item, insert, finish)
     if idx >= state.size then idx = state.size - 1 end
 
     state.selected = idx
-    _ensure_scroll_visible()
     _set_completed_item()
 
     _compute_geometry()
+    _ensure_scroll_visible()
     _apply_current_selection(_truthy(insert))
     _emit_changed()
 
-    if _truthy(finish) then
+    if _truthy(finish) and state.mode ~= "eval" then
+        local selected, accept = _selected_item(), state.on_accept
+        local context = {
+            row = state.row,
+            col = state.col,
+            width = state.width,
+            selected = state.selected,
+        }
+        PopupMenu.close(selected and "accept" or "cancel")
+        if selected and accept then accept(selected, context) end
+    elseif _truthy(finish) then
         PopupMenu.close((idx >= 0 and _truthy(insert or finish)) and "accept" or "cancel")
     end
     return true
@@ -388,10 +426,28 @@ function PopupMenu.handle_key(key)
     end
 
     local p = key:printable()
-    if p == "<C-n>" or p == "<Down>" then
+    if p == "<Esc>" or p == "<C-[>" then
+        local mode = state.mode
+        PopupMenu.close("cancel")
+        return mode == "menu"
+    end
+    if state.mode == "menu" and (p == "CR" or p == "Right") then
+        return PopupMenu.select(state.selected, false, true)
+    end
+    if state.mode == "cmdline" and p == "CR" then
+        PopupMenu.close("accept")
+        return false
+    end
+    if p == "Tab" then
+        return PopupMenu.step(1, state.mode == "eval")
+    end
+    if p == "<S-Tab>" then
+        return PopupMenu.step(-1, state.mode == "eval")
+    end
+    if p == "<C-n>" or p == "Down" then
         return PopupMenu.step(1, true)
     end
-    if p == "<C-p>" or p == "<Up>" then
+    if p == "<C-p>" or p == "Up" then
         return PopupMenu.step(-1, true)
     end
     if p == "<C-y>" then
@@ -400,6 +456,15 @@ function PopupMenu.handle_key(key)
     if p == "<C-e>" then
         return PopupMenu.select(-1, false, true)
     end
+    if state.mode == "eval" then
+        local emitted = key:emittable()
+        if emitted and emitted ~= "" and emitted ~= "\r" and emitted ~= "\b"
+        then
+            local keyword = WordNav.isKeyword(windows[state.winid or curwin].buffer, emitted)
+            return false, keyword and nil or (state.selected >= 0 and "accept" or "cancel"), true
+        end
+    end
+    if state.mode == "cmdline" then PopupMenu.close("cancel") end
     return false
 end
 
@@ -445,6 +510,10 @@ function PopupMenu.complete(startcol, matches)
     state.prefix = _strsub(line, 1, startcol - 1)
     state.base = _strsub(line, startcol, curcol - 1)
     state.suffix = _strsub(line, curcol)
+    state.anchor_row = nil
+    state.anchor_col = nil
+    state.on_change = nil
+    state.on_accept = nil
 
     local cot = _parse_completeopt(win)
     state.noinsert = cot.noinsert and true or false
@@ -452,12 +521,76 @@ function PopupMenu.complete(startcol, matches)
     state.selected = state.noselect and -1 or 0
     state.scroll = 0
 
-    _ensure_scroll_visible()
     _compute_geometry()
+    _ensure_scroll_visible()
     _set_completed_item()
     _apply_current_selection(not state.noinsert and state.selected >= 0)
     _emit_changed()
     return 0
+end
+
+local function _open(mode, items, row, col, on_change, on_accept)
+    if #items == 0 then
+        PopupMenu.close("cancel")
+        return false
+    end
+    local normalized = {}
+    for i = 1, #items do normalized[i] = _normalize_item(items[i]) end
+    state.active = true
+    state.mode = mode
+    state.items = normalized
+    state.size = #normalized
+    state.selected = 0
+    state.scroll = 0
+    state.anchor_row = math.max(0, tonumber(row) or 0)
+    state.anchor_col = math.max(0, tonumber(col) or 0)
+    state.on_change = on_change
+    state.on_accept = on_accept
+    _compute_geometry()
+    _ensure_scroll_visible()
+    _apply_current_selection(false)
+    what_redraw.windows = true
+    need_redraw = true
+    return true
+end
+
+function PopupMenu.cmdline(items, on_change)
+    if #items == 1 then
+        on_change(items[1], 0)
+        PopupMenu.close("accept")
+        return true
+    end
+    return _open("cmdline", items, screen.height - 2, 0, on_change)
+end
+
+function PopupMenu.menu(items, row, col, on_accept)
+    local normalized = {}
+    for i = 1, #items do
+        local entry = items[i]
+        normalized[i] = {
+            word = entry.label,
+            abbr = entry.separator and string.rep("─", math.max(3, #entry.label)) or entry.label,
+            menu = entry.submenu and ">" or "",
+            entry = entry,
+        }
+    end
+    return _open("menu", normalized, row, col, nil, function(selected, context)
+        on_accept(selected.entry, context)
+    end)
+end
+
+function PopupMenu.handle_mouse(button, x, y)
+    if not state.active then return false end
+    local row, col = y - 1, x - 1
+    local inside = row >= state.row and row < state.row + state.height
+        and col >= state.col and col < state.col + state.width
+    if not inside then
+        PopupMenu.close("cancel")
+        return true
+    end
+    local idx = state.scroll + row - state.row
+    PopupMenu.select(idx, state.mode == "eval", button == 1 and state.mode ~= "cmdline")
+    return true
 end
 
 function PopupMenu.complete_add(expr)
@@ -488,6 +621,7 @@ function PopupMenu.complete_add(expr)
     state.items[#state.items + 1] = item
     state.size = #state.items
     _compute_geometry()
+    _ensure_scroll_visible()
     _emit_changed()
     return 1
 end

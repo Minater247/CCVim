@@ -1755,6 +1755,12 @@ function MockEnv.setup(opts)
     end
     
     globals.ccvim_path = ccvim_root
+    globals.ccvimversion_str = "0.9"
+    globals.vimversion_maj = 0
+    globals.vimversion_min = 11
+    globals.vimversion_pat = 3
+    globals.vimversion_str = "0.11.3"
+    globals.no_cache = opts.no_cache
     globals.screen = {
         width = state.term.width,
         height = state.term.height,
@@ -2300,7 +2306,9 @@ function MockEnv.setup(opts)
             AutoCmd.Run("InsertLeavePre", buf_ctx)
         end
 
-        if mode_changed and oldmode == "visual" and newmode ~= "visual" and win.visual_anchor then
+        local old_select = oldmode == "visual" or oldmode == "select"
+        local new_select = newmode == "visual" or newmode == "select"
+        if mode_changed and old_select and not new_select and win.visual_anchor then
             Visual.finish(win)
         end
 
@@ -2425,7 +2433,7 @@ function MockEnv.setup(opts)
 
     function mock.create_tabpage(tabnr, wins, opts_tab)
         local Tabpage = load_module("layout.tabpage")
-        local first = wins and wins[1] or nil
+        local first = wins and wins[1]
         local tp = Tabpage(first)
         if tabnr then
             tp.tabnr = tabnr

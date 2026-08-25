@@ -13,6 +13,7 @@
 local CC = {}
 CC.kind = "cc"
 local Utf8
+local Color
 local RuntimeScope
 
 local UTF_REPLACEMENTS = {
@@ -89,6 +90,13 @@ local function pack_rgb(r, g, b)
     return r * 65536 + g * 256 + b
 end
 
+local function unpack_rgb(rgb)
+    if Color then
+        return Color.unpack(rgb)
+    end
+    return math.floor(rgb / 65536) % 256, math.floor(rgb / 256) % 256, rgb % 256
+end
+
 local function current_term_slot_rgb(slot)
     local r, g, b = term.getPaletteColor(SLOT_COLOR[slot])
     return pack_rgb(
@@ -108,15 +116,6 @@ local _grids = {}
 -- =========================================================================
 -- Color math (OKLAB perceptual distance for RGB → nearest slot mapping)
 -- =========================================================================
-
-local OKLAB_CACHE = {}
-
-local function unpack_rgb(rgb)
-    local r = math.floor(rgb / 65536) % 256
-    local g = math.floor(rgb / 256) % 256
-    local b = rgb % 256
-    return r, g, b
-end
 
 local function ensure_grid_state(grid, w, h)
     local state = _grids[grid]
@@ -151,6 +150,7 @@ end
 function CC.on_load_module_ready(scope)
     RuntimeScope = scope
     Utf8 = scope.loadModule("lib.utf8")
+    Color = scope.loadModule("lib.color")
 end
 
 local function shell_path_to_abs(path)
@@ -164,70 +164,8 @@ local function shell_path_to_abs(path)
     return path
 end
 
-local function srgb_linear(c)
-    if c <= 0.04045 then return c / 12.92 end
-    return ((c + 0.055) / 1.055) ^ 2.4
-end
-
-local function rgb_to_oklab(rgb)
-    local cached = OKLAB_CACHE[rgb]
-    if cached then return cached[1], cached[2], cached[3] end
-
-    local r8, g8, b8 = unpack_rgb(rgb)
-    local r = srgb_linear(r8 / 255)
-    local g = srgb_linear(g8 / 255)
-    local b = srgb_linear(b8 / 255)
-
-    local l = 0.4122214708*r + 0.5363325363*g + 0.0514459929*b
-    local m = 0.2119034982*r + 0.6806995451*g + 0.1073969566*b
-    local s = 0.0883024619*r + 0.2817188376*g + 0.6299787005*b
-
-    local l_ = l^(1/3); local m_ = m^(1/3); local s_ = s^(1/3)
-
-    local out = {
-        0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_,
-        1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_,
-        0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_,
-    }
-    OKLAB_CACHE[rgb] = out
-    return out[1], out[2], out[3]
-end
-
-local function color_dist(a, b)
-    local l1, a1, b1 = rgb_to_oklab(a)
-    local l2, a2, b2 = rgb_to_oklab(b)
-    local dl, da, db = l1-l2, a1-a2, b1-b2
-    return math.sqrt(dl*dl + da*da + db*db)
-end
-
 local function xterm256_to_rgb(idx)
-    if idx < 0 then
-        return DEFAULT_SLOT_RGB[15]
-    end
-    if idx < 16 then
-        return ({
-            [0] = 0x000000, [1] = 0x800000, [2] = 0x008000, [3] = 0x808000,
-            [4] = 0x000080, [5] = 0x800080, [6] = 0x008080, [7] = 0xC0C0C0,
-            [8] = 0x808080, [9] = 0xFF0000, [10] = 0x00FF00, [11] = 0xFFFF00,
-            [12] = 0x0000FF, [13] = 0xFF00FF, [14] = 0x00FFFF, [15] = 0xFFFFFF,
-        })[idx]
-    end
-    if idx < 232 then
-        local cube = idx - 16
-        local r = math.floor(cube / 36)
-        local g = math.floor((cube % 36) / 6)
-        local b = cube % 6
-        local function v(n)
-            if n == 0 then return 0 end
-            return 55 + n * 40
-        end
-        return v(r) * 65536 + v(g) * 256 + v(b)
-    end
-    if idx < 256 then
-        local v = 8 + (idx - 232) * 10
-        return v * 65536 + v * 256 + v
-    end
-    return DEFAULT_SLOT_RGB[15]
+    return Color.xterm256(idx, DEFAULT_SLOT_RGB[15])
 end
 
 -- =========================================================================
@@ -244,7 +182,7 @@ local function rgb_to_slot(rgb)
 
     local best_slot, best_dist = 0, math.huge
     for s = 0, 15 do
-        local d = color_dist(rgb, _palette[s])
+        local d = Color.distance(rgb, _palette[s])
         if d < best_dist then
             best_dist = d
             best_slot = s
@@ -259,192 +197,12 @@ local SLOT_HEX = {}
 for s = 0, 15 do SLOT_HEX[s] = string.format("%x", s) end
 
 -- =========================================================================
--- Palette optimization (k-means over highlight-defined RGB colors)
--- =========================================================================
-
-local _hl_usage = {}        -- [rgb] = cumulative weight
-local function color_luminance(rgb)
-    local r8, g8, b8 = unpack_rgb(rgb)
-    local r = r8 / 255
-    local g = g8 / 255
-    local b = b8 / 255
-    return 0.30*r + 0.59*g + 0.11*b
-end
-
-local function palette_cost(items, centers)
-    local total = 0
-    for i = 1, #items do
-        local item = items[i]
-        local best = math.huge
-        for j = 1, #centers do
-            local d = color_dist(item.rgb, centers[j])
-            if d < best then best = d end
-        end
-        total = total + best * item.weight
-    end
-    return total
-end
-
-local function seeded_centers(items, wanted)
-    local centers = {}
-    if #items == 0 then return centers end
-    if #items <= wanted then
-        for i = 1, #items do centers[i] = items[i].rgb end
-        return centers
-    end
-
-    local best_cost = math.huge
-    for i = 1, #items do
-        local rgb = items[i].rgb
-        local cost = palette_cost(items, {rgb})
-        if cost < best_cost or (cost == best_cost and rgb < (centers[1] or math.huge)) then
-            centers[1] = rgb; best_cost = cost
-        end
-    end
-    local selected = {[centers[1]] = true}
-
-    while #centers < wanted do
-        local best_rgb, next_cost = nil, math.huge
-        for i = 1, #items do
-            local rgb = items[i].rgb
-            if not selected[rgb] then
-                local trial = {}
-                for j = 1, #centers do trial[j] = centers[j] end
-                trial[#trial+1] = rgb
-                local cost = palette_cost(items, trial)
-                if cost < next_cost or (cost == next_cost and (best_rgb == nil or rgb < best_rgb)) then
-                    best_rgb = rgb; next_cost = cost
-                end
-            end
-        end
-        selected[best_rgb] = true
-        centers[#centers+1] = best_rgb
-    end
-    return centers
-end
-
-local function refine_centers(items, centers)
-    if #items <= #centers then return centers end
-    local selected = {}
-    for i = 1, #centers do selected[centers[i]] = true end
-
-    local current_cost = palette_cost(items, centers)
-    local improved = true
-    while improved do
-        improved = false
-        for i = 1, #centers do
-            local old_rgb = centers[i]
-            selected[old_rgb] = nil
-            for j = 1, #items do
-                local candidate = items[j].rgb
-                if not selected[candidate] then
-                    centers[i] = candidate
-                    local cost = palette_cost(items, centers)
-                    if cost < current_cost then
-                        selected[candidate] = true
-                        current_cost = cost
-                        improved = true
-                        break
-                    end
-                end
-            end
-            if improved then break end
-            centers[i] = old_rgb
-            selected[old_rgb] = true
-        end
-    end
-    return centers
-end
-
-local function assign_palette_slots(centers)
-    local slot_colors = {}
-    local remaining = {}
-    for i = 1, #centers do remaining[i] = centers[i] end
-
-    local function take_extreme(want_darkest)
-        if #remaining == 0 then return nil end
-        local best_idx = 1
-        local best_luma = color_luminance(remaining[1])
-        for i = 2, #remaining do
-            local luma = color_luminance(remaining[i])
-            local better = want_darkest and luma < best_luma or luma > best_luma
-            if better then best_idx = i; best_luma = luma end
-        end
-        return table.remove(remaining, best_idx)
-    end
-
-    -- Darkest → slot 15 (black), brightest → slot 0 (white)
-    slot_colors[15] = take_extreme(true)  or DEFAULT_SLOT_RGB[15]
-    slot_colors[0]  = take_extreme(false) or DEFAULT_SLOT_RGB[0]
-
-    for s = 0, 15 do
-        if not slot_colors[s] then
-            if #remaining == 0 then
-                slot_colors[s] = DEFAULT_SLOT_RGB[s]
-            else
-                local best_idx, best_dist = 1, math.huge
-                for j = 1, #remaining do
-                    local d = color_dist(DEFAULT_SLOT_RGB[s], remaining[j])
-                    if d < best_dist then best_idx = j; best_dist = d end
-                end
-                slot_colors[s] = table.remove(remaining, best_idx)
-            end
-        end
-    end
-    return slot_colors
-end
-
---- Reoptimize the 16-slot palette to best represent the currently-defined
---- highlight colors. Called by the colorscheme commit logic.
---- Returns true if the palette was changed.
-function CC.optimize_palette()
-    -- Build weighted item list from tracked usage
-    local items = {}
-    for rgb, weight in pairs(_hl_usage) do
-        items[#items+1] = {rgb=rgb, weight=weight}
-    end
-    table.sort(items, function(a,b)
-        return a.weight ~= b.weight and a.weight > b.weight or a.rgb < b.rgb
-    end)
-    if #items == 0 then return false end
-
-    local centers = seeded_centers(items, 16)
-    centers = refine_centers(items, centers)
-    local slot_colors = assign_palette_slots(centers)
-
-    local changed = false
-    for s = 0, 15 do
-        if slot_colors[s] and slot_colors[s] ~= _palette[s] then
-            _palette[s] = slot_colors[s]
-            changed = true
-        end
-    end
-    if changed then
-        invalidate_slot_cache()
-        for s = 0, 15 do
-            local r, g, b = unpack_rgb(_palette[s])
-            term.setPaletteColor(SLOT_COLOR[s], r/255, g/255, b/255)
-        end
-    end
-    return changed
-end
-
--- =========================================================================
 -- Highlight registry (hl_id → {fg_slot, bg_slot})
 -- =========================================================================
 
 local _hl = {}   -- [id] = {fg=slot, bg=slot}
 
 function CC.hl_define(id, attrs)
-    local fg_rgb = attrs.fg
-    local bg_rgb = attrs.bg
-    -- Track usage for palette optimization
-    if type(fg_rgb) == "number" then
-        _hl_usage[fg_rgb] = (_hl_usage[fg_rgb] or 0) + 1
-    end
-    if type(bg_rgb) == "number" then
-        _hl_usage[bg_rgb] = (_hl_usage[bg_rgb] or 0) + 1
-    end
     _hl[id] = attrs
 end
 

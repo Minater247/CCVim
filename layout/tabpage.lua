@@ -19,6 +19,8 @@ local PopupMenu = loadModule("lib.popupmenu")
 local ScreenDraw = loadModule("lib.screendraw")
 local Options = loadModule("lib.options")
 local Visual = loadModule("lib.visual")
+local Intro = loadModule("lib.intro")
+local may_intro = true
 
 local function all_tabpage_ids()
     local ids = {}
@@ -327,7 +329,7 @@ local function _first_other_modified_buf(current_buf)
             first_bufnr = bufnr
         end
     end
-    return first_bufnr and buffers[first_bufnr] or nil
+    return first_bufnr and buffers[first_bufnr]
 end
 
 local function _surface_halting_buffer(buf)
@@ -618,6 +620,10 @@ function Tabpage:render()
         self.global_statusline_click_zones = {}
     end
 
+    if may_intro and not Intro.command then
+        may_intro = Intro.draw(self)
+    end
+
     if PopupMenu.visible() then
         PopupMenu.render()
     end
@@ -641,14 +647,15 @@ function Tabpage:render()
             end
         end
 
-        if options.get("showtabline") and cmdheight > 0 then
+        if options.get("showmode") and cmdheight > 0 then
             if vimmode == "insert" then
                 ScreenDraw.put_text(screen.height - 1, 0, "-- INSERT --", "ModeMsg")
-            elseif vimmode == "visual" then
+            elseif vimmode == "visual" or vimmode == "select" then
                 local mode = Visual.mode_char(windows[curwin].visual_kind)
-                local label = (mode == "V" and "-- VISUAL LINE --")
-                    or (mode == string.char(22) and "-- VISUAL BLOCK --")
-                    or "-- VISUAL --"
+                local name = vimmode == "select" and "SELECT" or "VISUAL"
+                local label = (mode == "V" and "-- " .. name .. " LINE --")
+                    or (mode == string.char(22) and "-- " .. name .. " BLOCK --")
+                    or "-- " .. name .. " --"
                 ScreenDraw.put_text(screen.height - 1, 0, label, "ModeMsg")
             elseif vimmode ~= "normal" then
                 error("Unknown mode!")
@@ -665,6 +672,9 @@ function Tabpage:render()
     ExMsg.Redraw()
     if ExMsg.DrawOneShot then
         ExMsg.DrawOneShot()
+    end
+    if Intro.command then
+        Intro.draw(self)
     end
 
     Decoration.end_redraw()

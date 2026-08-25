@@ -6,6 +6,7 @@ local scopes                = loadModule("lib.luaapi.scopes")
 local Error                 = loadModule("lib.error")
 local ExMsg                 = loadModule("lib.excmd.exmsg")
 local Runtime = loadModule("lib.excmd.runtime")
+local EMPTY_TABLE = {}
 
 ---@class Autocommand
 ---@field pattern table<string, boolean>  -- set of patterns
@@ -185,17 +186,11 @@ function Autocmd.NormalizeEvent(name)
 end
 
 local function augroup_as_integer(group)
-    if type(group) == "string" then
-        return autocmdgroups[group]
-    end
-    return group
+    return type(group) == "string" and autocmdgroups[group] or group
 end
 
 local function normalize_pattern(p)
-    if p == "<buffer>" then
-        return ("<buffer=%d>"):format(windows[curwin].buffer.bufnr)
-    end
-    return p
+    return p == "<buffer>" and ("<buffer=%d>"):format(windows[curwin].buffer.bufnr) or p
 end
 
 -- Build a lookup set from an array, applying a normalizer, plus wildcard detection.
@@ -658,43 +653,36 @@ end
 local function _call_callback(cb, ac, event, ctx)
     -- Build v.event dict (best-effort subset depending on event)
     local ve = { event = event }
-    if ctx then
-        if ctx.match ~= nil then ve.match = ctx.match end
-        if ctx.file ~= nil then ve.file = ctx.file end
-        if ctx.buf ~= nil then ve.buf = ctx.buf end
-    end
+    local data = ctx.data or EMPTY_TABLE
+    if ctx.match ~= nil then ve.match = ctx.match end
+    if ctx.file ~= nil then ve.file = ctx.file end
+    if ctx.buf ~= nil then ve.buf = ctx.buf end
     if event == "ModeChanged" then
         ve.scope = "global"
-        ve.old_mode = ctx and ctx.old_mode
-        ve.new_mode = ctx and ctx.new_mode
+        ve.old_mode = ctx.old_mode
+        ve.new_mode = ctx.new_mode
     elseif event == "DirChanged" then
         -- Expected keys (subset): scope, cwd, changed_window
-        ve.scope = (ctx and ctx.data and ctx.data.scope) or "global"
+        ve.scope = data.scope or "global"
         -- Support both old (cwd) and new (new_cwd) naming; choose new_cwd when present
-        if ctx and ctx.data then
-            ve.cwd = ctx.data.new_cwd or ctx.data.cwd
-            ve.changed_window = ctx.data.changed_window or false
-        end
+        ve.cwd = data.new_cwd or data.cwd
+        ve.changed_window = data.changed_window or false
     elseif event == "WinResized" then
-        ve.windows = (ctx and ctx.data and ctx.data.windows) or {}
+        ve.windows = data.windows or {}
     elseif event == "CompleteChanged" then
-        if ctx and ctx.data then
-            ve.completed_item = ctx.data.completed_item or {}
-            ve.height = ctx.data.height
-            ve.width = ctx.data.width
-            ve.row = ctx.data.row
-            ve.col = ctx.data.col
-            ve.size = ctx.data.size
-            ve.scrollbar = ctx.data.scrollbar
-            ve.complete_type = ctx.data.complete_type
-        end
+        ve.completed_item = data.completed_item or {}
+        ve.height = data.height
+        ve.width = data.width
+        ve.row = data.row
+        ve.col = data.col
+        ve.size = data.size
+        ve.scrollbar = data.scrollbar
+        ve.complete_type = data.complete_type
     elseif event == "CompleteDonePre" or event == "CompleteDone" then
-        if ctx and ctx.data then
-            ve.completed_item = ctx.data.completed_item or {}
-            ve.reason = ctx.data.reason
-            ve.complete_type = ctx.data.complete_type
-            ve.complete_word = ctx.data.complete_word
-        end
+        ve.completed_item = data.completed_item or {}
+        ve.reason = data.reason
+        ve.complete_type = data.complete_type
+        ve.complete_word = data.complete_word
     end
 
     if type(cb) == "function" then
@@ -787,9 +775,6 @@ local function _call_callback(cb, ac, event, ctx)
             end
 
             local rvstr = tostring(rv)
-            if not ok and Error.IsError(rv) then
-                rvstr = rv:toString()
-            end
             LOG_INTERNAL("autocmd", "autocmd %d Ex command returned ok=%s rv=%s", ac.id, tostring(ok), rvstr)
             if not ok then
                 LOG_DEBUG(
@@ -862,17 +847,15 @@ function Autocmd.Run(event, ctx)
     end
 
     -- Event-specific matching/context via registry (defaults to buffer name when absent)
-    do
-        local handler = event_match_behavior[event]
-        if handler then
-            local res = handler(ctx or {})
-            if res then
-                if res.pattern_target ~= nil then
-                    match_ctx.pattern_target = res.pattern_target
-                end
-                if res.cb then
-                    for k, v in pairs(res.cb) do cb_ctx[k] = v end
-                end
+    local handler = event_match_behavior[event]
+    if handler then
+        local res = handler(ctx)
+        if res then
+            if res.pattern_target ~= nil then
+                match_ctx.pattern_target = res.pattern_target
+            end
+            if res.cb then
+                for k, v in pairs(res.cb) do cb_ctx[k] = v end
             end
         end
     end

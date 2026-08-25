@@ -1,6 +1,7 @@
 local LuaLoader = {}
 
-local vimapi = loadModule("lib.luaapi.apibuild").Build()
+local ApiBuild = loadModule("lib.luaapi.apibuild")
+local vimapi = ApiBuild.Build()
 setmetatable(vimapi, { __index = _G })
 vimapi._G = vimapi
 local Error = loadModule("lib.error")
@@ -18,16 +19,20 @@ function LuaLoader.LoadFile(path, ...)
         plugin = loaded[path]
     else
         if not fs.exists(path) then
-            error("LoadFile(): " .. path .. ": not found")
+            error(Error(5112, "cannot open " .. path .. ": No such file or directory"), 0)
         end
         local chunk, err = loadfile(path, "t", vimapi)
         if not chunk then
             LOG_ERROR("CHUNK ERROR: " .. err)
-            return error(err, 0)
+            error(Error(5112, err), 0)
         end
         ScriptSource.PushContext(path)
-        plugin = chunk(...)
+        local ok
+        ok, plugin = pcall(chunk, ...)
         ScriptSource.PopContext()
+        if not ok then
+            error(Error(5113, tostring(plugin)), 0)
+        end
         loaded[path] = plugin
     end
 
@@ -42,10 +47,7 @@ function LuaLoader.Eval(src)
     end
     local ok, rv = pcall(chunk)
     if not ok then
-        if Error.IsError(rv) then
-            rv = rv:toString()
-        end
-        return false, Error(5108, rv)
+        return false, Error(5108, tostring(rv))
     end
     return true, rv
 end

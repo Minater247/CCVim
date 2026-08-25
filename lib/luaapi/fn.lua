@@ -35,9 +35,13 @@ local funcref_fn_by_name = {}
 local _jobs = {}
 local _next_job_id = 1
 local eval_scope_stack = {}
+local EMPTY_TABLE = {}
 
 -- Helper: call a Vimscript function by name (user-defined via runtime registry) or a builtin here.
 local function call_vimfunc(name, ...)
+    local args = { ... }
+    local active, result = Runtime.CallCurrentFunction(name, args)
+    if active then return result end
     -- Builtin first
     local b = Builtins[name]
     if type(b) == "function" then
@@ -67,7 +71,6 @@ local function call_vimfunc(name, ...)
     end
     local call_name = resolved_name or name
     -- Map args to a:/l: by parameter list (including a:0/a:000 for varargs).
-    local args = { ... }
     local l_scope, a_scope = Runtime.BuildCallScopes(args, def.params or {})
     -- Dict function: inject a:self/l:self
     if def.attrs and def.attrs.dict then
@@ -449,28 +452,17 @@ local function _resolve_with_includeexpr(name, path_spec, buf, find_dirs, use_su
     return _matches_for_name(transformed, path_spec, buf, find_dirs, use_suffixes)
 end
 
-local function _extract_cfile_text(win)
+local function _extract_cursor_text(win, is_char)
     if not win or not win.buffer then return "" end
-    local buf = win.buffer
-    local line = buf:get_line(win.cursory, true) or ""
+    local line = win.buffer:get_line(win.cursory, true) or ""
     if line == "" then return "" end
-
-    local cx = win.cursorx
     local line_len = Utf8.len(line)
-    if cx < 1 then cx = 1 end
-    if cx > line_len and line_len > 0 then
-        cx = line_len
-    end
-
-    local function is_cfile_char(ch)
-        return ch:match("[%w%._%-%+/%\\$%%,#{}%[%]~@:]") ~= nil
-    end
-
+    local cx = math.max(1, math.min(win.cursorx, line_len))
     if cx < 1 or cx > line_len then
         return ""
     end
-    if not is_cfile_char(Utf8.char_at(line, cx)) then
-        if cx > 1 and is_cfile_char(Utf8.char_at(line, cx - 1)) then
+    if not is_char(Utf8.char_at(line, cx)) then
+        if cx > 1 and is_char(Utf8.char_at(line, cx - 1)) then
             cx = cx - 1
         else
             return ""
@@ -478,17 +470,23 @@ local function _extract_cfile_text(win)
     end
 
     local s, e = cx, cx
-    while s > 1 and is_cfile_char(Utf8.char_at(line, s - 1)) do s = s - 1 end
-    while e < line_len and is_cfile_char(Utf8.char_at(line, e + 1)) do e = e + 1 end
+    while s > 1 and is_char(Utf8.char_at(line, s - 1)) do s = s - 1 end
+    while e < line_len and is_char(Utf8.char_at(line, e + 1)) do e = e + 1 end
     return Utf8.sub(line, s, e)
+end
+
+local function _extract_cfile_text(win)
+    return _extract_cursor_text(win, function(ch)
+        return ch:match("[%w%._%-%+/%\\$%%,#{}%[%]~@:]") ~= nil
+    end)
+end
+
+local function _extract_cword_text(win)
+    return _extract_cursor_text(win, function(ch) return ch:match("[%w_]") ~= nil end)
 end
 
 local function _is_vim_list_expr(expr)
     return type(expr) == "table" and not expr.__call
-end
-
-local function _syntax_mod()
-    return Syntax
 end
 
 local function _prepare_match_pattern(pat, use_ignorecase_opt)
@@ -555,7 +553,8 @@ local function vim_string(v)
     elseif v == nil then
         return "v:null"
     elseif t == "table" then
-        local is_list = (#v > 0) or (v[1] ~= nil)
+        local kind = (getmetatable(v) or EMPTY_TABLE).__vimxpr_kind
+        local is_list = kind == "list" or (kind ~= "dict" and ((#v > 0) or (v[1] ~= nil)))
         if is_list then
             local parts = {}
             for i = 1, #v do parts[#parts + 1] = vim_string(v[i]) end
@@ -612,6 +611,49 @@ function Builtins.winwidth(nr)
     else
         return win.frame.width
     end
+end
+
+function Builtins.winheight(nr)
+    local win = resolve_win(nr)
+    if not win then return -1 end
+    return win.floatpos and win.floatpos.h or win.frame.height
+end
+
+function Builtins.win_findbuf(bufnr)
+    bufnr = tonumber(bufnr) or 0
+    if bufnr == 0 then bufnr = windows[curwin].buffer.bufnr end
+    local found = {}
+    for id, win in pairs(windows) do
+        if win.buffer and win.buffer.bufnr == bufnr then found[#found + 1] = id end
+    end
+    table.sort(found)
+    return found
+end
+
+function Builtins.gettagstack(nr)
+    local win = resolve_win(nr or 0)
+    if not win then return { items = {}, curidx = 1, length = 0 } end
+    local stack = win.tagstack or { items = {}, curidx = 1 }
+    return { items = TblUtils.deepcopy(stack.items), curidx = stack.curidx, length = #stack.items }
+end
+
+function Builtins.settagstack(nr, value, action)
+    local win = resolve_win(nr)
+    if not win or type(value) ~= "table" then return -1 end
+    local stack = win.tagstack or { items = {}, curidx = 1 }
+    local items = TblUtils.deepcopy(value.items or {})
+    action = action or "r"
+    if action == "r" then
+        stack.items = items
+    else
+        if action == "t" then
+            for i = #stack.items, stack.curidx, -1 do stack.items[i] = nil end
+        end
+        for i = 1, #items do stack.items[#stack.items + 1] = items[i] end
+    end
+    stack.curidx = tonumber(value.curidx) or (#stack.items + 1)
+    win.tagstack = stack
+    return 0
 end
 
 local function winlayout_from_frame(node)
@@ -758,6 +800,9 @@ function Builtins.expand(str, nosuf, list)
     local raw = tostring(str or "")
     if raw:find("<cfile>", 1, true) then
         raw = raw:gsub("<cfile>", _extract_cfile_text(windows[curwin]))
+    end
+    if raw:find("<cword>", 1, true) then
+        raw = raw:gsub("<cword>", _extract_cword_text(windows[curwin]))
     end
 
     local expansions = Filesystem.Expand(raw, nosuf)
@@ -1065,6 +1110,7 @@ local has_features = {
     eval = true,
     nvim = true,
     syntax = true,
+    unix = true,
 
     ["nvim-0.7"] = true,
     ["nvim-0.8"] = true,
@@ -1076,6 +1122,24 @@ local has_patches = {
     [279] = true,
     [213] = true,
 }
+
+function Builtins.api_info()
+    return {
+        version = {
+            major = vimversion_maj,
+            minor = vimversion_min,
+            patch = vimversion_pat,
+            prerelease = false,
+            api_level = 13,
+            api_compatible = 0,
+            api_prerelease = false,
+        },
+        functions = {},
+        ui_events = {},
+        ui_options = {},
+    }
+end
+
 local explicitly_no = {
     amiga = true,
     gui = true,
@@ -1174,7 +1238,7 @@ function Builtins.synID(lnum, col, _trans, ...)
     end
 
     local win = windows[curwin]
-    local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
+    local q = Syntax.Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     local id = q.top_id or 0
     return id
 end
@@ -1185,7 +1249,7 @@ function Builtins.synstack(lnum, col, ...)
     end
 
     local win = windows[curwin]
-    local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
+    local q = Syntax.Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     return q.ids or {}
 end
 
@@ -1195,7 +1259,7 @@ function Builtins.synconcealed(lnum, col, ...)
     end
 
     local win = windows[curwin]
-    local q = _syntax_mod().Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
+    local q = Syntax.Query(win, tonumber(lnum) or 0, tonumber(col) or 0)
     return { q.conceal or 0, q.cchar or "", q.top_id or 0 }
 end
 
@@ -1213,7 +1277,7 @@ function Builtins.getmatches(winid, ...)
         win = resolved
     end
 
-    return _syntax_mod().MatchGet(win)
+    return Syntax.MatchGet(win)
 end
 
 function Builtins.synIDtrans(id, ...)
@@ -1297,7 +1361,7 @@ end
 
 -- function({name} [, {arglist} [, {dict}]]) -> Funcref
 -- Minimal support needed for option-value-function use cases.
-Builtins["function"] = function(name, arglist, _dict)
+Builtins["function"] = function(name, arglist, _dict, user_only)
     local fname
     local direct_fn
     if type(name) == "function" then
@@ -1330,6 +1394,10 @@ Builtins["function"] = function(name, arglist, _dict)
     if type(fname) ~= "string" or fname == "" then
         error(Error(474, "function()"))
     end
+    if not direct_fn then
+        local def = Runtime.ResolveFunctionDef(fname, { state = Runtime._CURRENT_STATE })
+        if not def and (user_only or Builtins[fname] == nil) then error(Error(700, fname)) end
+    end
 
     local prefix = {}
     if arglist ~= nil then
@@ -1360,7 +1428,7 @@ Builtins["function"] = function(name, arglist, _dict)
 end
 
 Builtins.funcref = function(name, arglist, dict)
-    return Builtins["function"](name, arglist, dict)
+    return Builtins["function"](name, arglist, dict, true)
 end
 
 Builtins.call = function(func, args, _dict)
@@ -1380,7 +1448,7 @@ end
 function Builtins.type(expr)
     local t = type(expr)
     if t == "number" then
-        return 0
+        return math.type and math.type(expr) == "float" and 5 or 0
     elseif t == "string" then
         return 1
     elseif t == "function" then
@@ -1390,11 +1458,11 @@ function Builtins.type(expr)
     elseif t == "nil" then
         return 7
     elseif t == "table" then
-        local mt = getmetatable(expr)
-        if mt and mt.__vimxpr_kind == "list" then
+        local kind = (getmetatable(expr) or EMPTY_TABLE).__vimxpr_kind
+        if kind == "list" then
             return 3
         end
-        if mt and mt.__vimxpr_kind == "dict" then
+        if kind == "dict" then
             return 4
         end
         -- treat as list if only numeric keys, else dict
@@ -1417,7 +1485,7 @@ function Builtins.getpos(expr)
         return { 0, windows[curwin].buffer:line_count(true), 1, 0 }
     elseif type(expr) == "string" and expr:sub(1, 1) == "'" and #expr == 2 then
         local ch = expr:sub(2, 2)
-        if ch:match("^[a-z'\".`<>]$") then
+        if ch:match("^[a-z'\".`<>%[%]]$") then
             local m = windows[curwin].buffer.marks[ch]
             if m then
                 return { 0, m.lnum, m.col, 0 }
@@ -1435,6 +1503,35 @@ function Builtins.getpos(expr)
     return { 0, 0, 0, 0 }
 end
 
+function Builtins.setpos(expr, pos)
+    local win = windows[curwin]
+    local lnum = math.floor(tonumber(pos[2]) or 0)
+    local col = math.floor(tonumber(pos[3]) or 0)
+    if expr == "." then
+        win:cursorSet(col, lnum)
+        return 0
+    end
+    if type(expr) == "string" and expr:match("^'[a-z'\".`<>%[%]]$") then
+        win.buffer.marks[expr:sub(2)] = { lnum = lnum, col = col }
+        return 0
+    end
+    return -1
+end
+
+function Builtins.getregionpos(pos1, pos2, opts)
+    opts = opts or {}
+    local first = { pos1[1] or 0, pos1[2] or 0, pos1[3] or 0, pos1[4] or 0 }
+    local last = { pos2[1] or 0, pos2[2] or 0, pos2[3] or 0, pos2[4] or 0 }
+    if first[2] > last[2] or (first[2] == last[2] and first[3] > last[3]) then
+        first, last = last, first
+    end
+    if opts.type == "V" then
+        first[3] = 1
+        last[3] = scopes.MAXCOL
+    end
+    return { { first, last } }
+end
+
 function Builtins.mode(_full)
     if vimmode == "normal" then
         return "n"
@@ -1442,8 +1539,17 @@ function Builtins.mode(_full)
         return "i"
     elseif vimmode == "visual" then
         return Visual.mode_char(windows[curwin].visual_kind)
+    elseif vimmode == "select" then
+        return Visual.select_mode_char(windows[curwin].visual_kind)
     end
     return vimmode
+end
+
+function Builtins.shiftwidth(_col, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "shiftwidth"))
+    end
+    return Tab.shiftwidth_effective(windows[curwin].buffer)
 end
 
 function Builtins.visualmode()
@@ -1615,6 +1721,14 @@ function Builtins.winline(...)
     return math.floor(row)
 end
 
+function Builtins.wincol(...)
+    if select("#", ...) > 0 then error(Error(118, "wincol")) end
+    local win = windows[curwin]
+    if not win then return 0 end
+    local _, text_col = win:textwidth()
+    return math.max(1, text_col + (win.cursorx or 1) - (win.scrollx or 1))
+end
+
 function Builtins.screenpos(winid, lnum, col, ...)
     if select("#", ...) > 0 then
         error(Error(118, "screenpos"))
@@ -1699,6 +1813,20 @@ function Builtins.getwininfo(winid, ...)
 
     for _, win in pairs(windows) do
         add(win)
+    end
+    return out
+end
+
+function Builtins.getscriptinfo(opts, ...)
+    if select("#", ...) > 0 then error(Error(118, "getscriptinfo")) end
+    opts = opts or {}
+    local sid = tonumber(opts.sid)
+    local name = opts.name and tostring(opts.name)
+    local out = {}
+    for _, info in ipairs(Runtime.GetScriptInfo()) do
+        if (not sid or info.sid == sid) and (not name or info.name:find(name)) then
+            out[#out + 1] = info
+        end
     end
     return out
 end
@@ -1922,8 +2050,7 @@ local function _mark_vim_list(tbl)
     if type(tbl) ~= "table" then
         return tbl
     end
-    local mt = getmetatable(tbl)
-    if mt and mt.__vimxpr_kind == "list" then
+    if (getmetatable(tbl) or EMPTY_TABLE).__vimxpr_kind == "list" then
         return tbl
     end
     return setmetatable(tbl, VIMXPR_LIST_MT)
@@ -2058,10 +2185,7 @@ local function _glob_expr_is_absolute(expr)
     if e:match("^%a[%w+.-]*://") then
         return true
     end
-    if e:sub(1, 1) == "~" then
-        return true
-    end
-    return false
+    return e:sub(1, 1) == "~"
 end
 
 local function _glob_matches_for_relative_expr(expr, matches)
@@ -2221,7 +2345,7 @@ function Builtins.exists(expr)
                     j = j + 1
                 end
                 if depth ~= 0 then
-                    return Error(0, "Unterminated { in variable name")
+                    return Error(475, "Unterminated { in variable name")
                 end
                 local inner = raw:sub(i + 1, j - 1)
                 local ok, val = Runtime.EvalExpression(inner, {
@@ -2246,8 +2370,7 @@ function Builtins.exists(expr)
         end
     end
 
-    local scoped = s:match("^([gslavbtw]):")
-    if scoped and (s:find("[", 1, true) or s:find(".", 1, true)) then
+    if (s:find("[", 1, true) or s:find(".", 1, true)) and not s:match("^[%$%*#&+:]") then
         local ok, val = Runtime.EvalExpression(s, {
             state = Runtime._CURRENT_STATE,
             ctrl = Runtime._CURRENT_CTRL,
@@ -2269,8 +2392,8 @@ function Builtins.exists(expr)
         if eval_scope and eval_scope.s and eval_scope.s[key] ~= nil then
             return 1
         end
-        local st = Runtime._CURRENT_STATE
-        if st and st.s then
+        local st = Runtime._CURRENT_STATE or EMPTY_TABLE
+        if st.s then
             local ok = (st.s[key] ~= nil) and 1 or 0
             if key == "vimentered" then
                 LOG_DEBUG("exists(s:vimentered) state=%s val=%s -> %s", tostring(st), tostring(st.s[key]),
@@ -2327,7 +2450,25 @@ function Builtins.exists(expr)
     elseif s:sub(1, 1) == "$" then
         local key = s:sub(2)
         return EnvVars.exists(key) and 1 or 0
+    elseif s:sub(1, 1) == "&" or s:sub(1, 1) == "+" then
+        local Options = loadModule("lib.options")
+        local name = Options.resolve_abbrev(s:sub(2))
+        if not name then return 0 end
+        return s:sub(1, 1) == "&" and 1 or (Options.get_info(name) and 1 or 0)
+    elseif s:sub(1, 2) == "##" then
+        return loadModule("lib.autocmd").IsValidEvent(s:sub(3)) and 1 or 0
+    elseif s:sub(1, 1) == "#" then
+        local Autocmd = loadModule("lib.autocmd")
+        local name = s:sub(2)
+        local event, pattern = name:match("^([^#]+)#(.*)$")
+        event = event or name
+        if Autocmd.IsValidEvent(event) then
+            local entries = Autocmd.GetAutocommands({ event = event, pattern = pattern })
+            return #entries > 0 and 1 or 0
+        end
+        return Autocmd.GetAugroupId(name) and 1 or 0
     elseif s:sub(1, 1) == "*" then
+        if s:sub(1, 2) == "**" then error(Error(129)) end
         local fname = s:sub(2)
         if Builtins[fname] ~= nil then return 1 end
         local def = Runtime.ResolveFunctionDef(fname, { state = Runtime._CURRENT_STATE })
@@ -2341,8 +2482,7 @@ function Builtins.exists(expr)
             return 0
         end
         local key = cname:lower()
-        local state = Runtime._CURRENT_STATE or Runtime._API_STATE
-        if (state and state.commands and state.commands[key]) or Runtime._USER_COMMANDS[key] then
+        if Runtime._USER_COMMANDS[key] then
             return 2
         end
         if Commands.resolve_dispatch_name(cname) then
@@ -2379,8 +2519,8 @@ end
 -- did_filetype(): true if filetype was set by detection (or already set)
 function Builtins.did_filetype()
     local bnr = windows[curwin].buffer.bufnr
-    local bt = scopes._b_by_buf[bnr]
-    if bt and bt.did_filetype then
+    local bt = scopes._b_by_buf[bnr] or EMPTY_TABLE
+    if bt.did_filetype then
         return 1
     end
     local ft = options.get("filetype", nil, windows[curwin].buffer)
@@ -3260,27 +3400,27 @@ function Builtins.mkdir(name, flags, _)
             if parents then
                 return 1
             end
-            error(Error(739, raw))
+            error(Error(739, raw, "file already exists"))
         end
-        error(Error(739, raw))
+        error(Error(739, raw, "file already exists"))
     end
 
     if not parents then
         local parent = _dir_of(path)
         if not fs.exists(parent) or not fs.isDir(parent) then
-            error(Error(739, raw))
+            error(Error(739, raw, "No such file or directory"))
         end
     end
 
-    local ok = pcall(fs.makeDir, path)
+    local ok, mkdir_err = pcall(fs.makeDir, path)
     if not ok then
-        error(Error(739, raw))
+        error(Error(739, raw, tostring(mkdir_err)))
     end
 
     if fs.exists(path) and fs.isDir(path) then
         return 1
     end
-    error(Error(739, raw))
+    error(Error(739, raw, "Unknown error"))
 end
 
 function Builtins.isdirectory(path)
@@ -3455,7 +3595,7 @@ function Builtins.writefile(lines, fname, flags)
     local handle
     handle = fs.open(path, binary and "wb" or "w")
     if not handle then
-        error(Error(212))
+        error(Error(212, raw))
     end
 
     local ok_write, write_err = pcall(function()
@@ -3473,7 +3613,7 @@ function Builtins.writefile(lines, fname, flags)
         end
     end)
     if not ok_write then
-        error(Error(212, tostring(write_err)))
+        error(Error(212, raw .. ": " .. tostring(write_err)))
     end
     return 0
 end
@@ -4644,11 +4784,11 @@ local function _require_dict_for_keys_items(dict)
     if type(dict) ~= "table" then
         error(Error(1206, 1))
     end
-    local mt = getmetatable(dict)
-    if mt and mt.__vimxpr_kind == "list" then
+    local kind = (getmetatable(dict) or EMPTY_TABLE).__vimxpr_kind
+    if kind == "list" then
         error(Error(1206, 1))
     end
-    if not (mt and mt.__vimxpr_kind == "dict") then
+    if kind ~= "dict" then
         local has_non_numeric_key = false
         local has_numeric_key = false
         for k, _ in pairs(dict) do
@@ -4674,6 +4814,14 @@ function Builtins.keys(dict, ...)
     for k, _ in pairs(dict) do
         out[#out + 1] = tostring(k)
     end
+    return out
+end
+
+function Builtins.values(dict, ...)
+    if select("#", ...) > 0 then error(Error(118, "values")) end
+    _require_dict_for_keys_items(dict)
+    local out = {}
+    for _, value in pairs(dict) do out[#out + 1] = value end
     return out
 end
 
@@ -5074,11 +5222,11 @@ local function _copy_table_kind(tbl)
     if type(tbl) ~= "table" then
         return nil
     end
-    local mt = getmetatable(tbl)
-    if mt and mt.__vimxpr_kind == "list" then
+    local kind = (getmetatable(tbl) or EMPTY_TABLE).__vimxpr_kind
+    if kind == "list" then
         return "list"
     end
-    if mt and mt.__vimxpr_kind == "dict" then
+    if kind == "dict" then
         return "dict"
     end
     return RegisterUtil.is_list(tbl) and "list" or "dict"
@@ -5304,6 +5452,14 @@ function Builtins.nr2char(expr, _utf8, ...)
     return _nr_to_utf8(nr)
 end
 
+function Builtins.char2nr(expr, utf8, ...)
+    if select("#", ...) > 0 then error(Error(118, "char2nr")) end
+    local value = tostring(expr or "")
+    if value == "" then return 0 end
+    if utf8 and utf8 ~= 0 then return value:byte(1) end
+    return Utf8.codepoint_at(value, 1)
+end
+
 function Builtins.strchars(str, _skipcc, ...)
     if select("#", ...) > 0 then
         error(Error(118, "strchars"))
@@ -5475,8 +5631,7 @@ function Builtins.execute(command, silent, ...)
         if mode == "silent!" then
             return output
         end
-        local emsg = last_err or ((rv and rv.toString) and rv:toString()) or tostring(rv)
-        error(emsg)
+        error(last_err or tostring(rv))
     end
 
     return output

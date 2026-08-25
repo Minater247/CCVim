@@ -18,6 +18,7 @@ If you're used to Vim or Neovim, you will feel right at home. The only major con
     - NeoFS
     - And many more from standard plugin repositories!
 - **Neovim API Compatibility** so that any Neovim Lua code should run seamlessly
+- **Lua LSP Support** with diagnostics, completion, definitions, hover, and document symbols
 
 ## NOTICE
 This project is still in early beta! I have waited until the project was stable enough to be my main CC editor before releasing it, but you may encounter bugs while you use it.
@@ -28,7 +29,7 @@ Not all plugins will run immediately - some require minor edits. I am working on
 
 A pastebin link will be coming as soon as I polish up the installer!
 
-For now, use wget (or any file downloader of choice) to transfer [vim_installer.lua](https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/rewrite-2026/vim_installer.lua) to your computer and run `vim_installer`. The installer will fetch [instui.lua](https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/rewrite-2026/instui.lua) automatically. Currently, the only functional installer option is a fresh install.
+For now, use wget (or any file downloader of choice) to transfer [vim_installer.lua](https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/main/vim_installer.lua) to your computer and run `vim_installer`. The installer fetches its UI automatically and saves the selected components for later updates.
 
 Be aware that there are just over 2,000 files to download for a full install, so it may take a while. The final installer, when complete, will allow you to select exactly what you want to download.
 
@@ -53,7 +54,5 @@ Please try your config and see if it works! If anything behaves even slightly di
 If you want to help with development, contributions are welcomed! I will be working on documenting the code properly in the near future as the codebase begins to stabilize.
 
 ## Planned Projects
-- Rewrite of UI interfaces to allow ports to OpenComputers of native Lua
-- Implementation of an LSP for completion or tooling analysis
+- Porting to OpenComputers
 - Integration with existing `git` repository handlers for ComputerCraft
-- Vimscript JIT output optimization

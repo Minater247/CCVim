@@ -106,7 +106,7 @@ return {
                 )
 
                 feed_text(typed)
-                Assert.eq(label .. " accepts typed keys after ':'", CmdRead.getline(), ":" .. typed)
+                Assert.eq(label .. " accepts typed keys after ':'", CmdRead.getline(), typed)
                 Assert.eq(
                     label .. " keeps cmdread on top while typing",
                     loadModule("lib.command").emitter_names[#loadModule("lib.command").emitter_names],

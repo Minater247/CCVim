@@ -50,6 +50,7 @@ function LuaEditorBackend.new(opts)
         module_stubs = opts.module_stubs,
         on_pull_event = opts.on_pull_event,
         bootstrap_default_editor = false,
+        no_cache = true,
     })
 
     local backend = {

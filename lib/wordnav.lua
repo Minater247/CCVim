@@ -58,6 +58,10 @@ function WordNav.invalidateCache(buf)
 	buf._ikw_cache.spec, buf._ikw_cache.set = nil, nil
 end
 
+function WordNav.isKeyword(buf, char)
+	return _build_iskeyword_set(buf)[Utf8.codepoint_at(char, 1)] == true
+end
+
 -- ---------- low-level helpers ----------
 local function _line_len(_, lines, y) return Utf8.len(lines[y] or "") end
 

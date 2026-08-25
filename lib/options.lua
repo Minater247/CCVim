@@ -8,6 +8,7 @@ local Fn = loadModule("lib.luaapi.fn")
 local VimExpr = loadModule("lib.excmd.vimxpr")
 local ScriptSource = loadModule("lib.scriptsource")
 local Runtime = loadModule("lib.excmd.runtime")
+local TblUtils = loadModule("lib.luaapi.tblutils")
 
 -- TODO: winhl is currently unhandled anywhere
 
@@ -24,6 +25,7 @@ local opt_defs = {
     backspace     = {"ggg", "indent,eol,start", "string"},
     bomb          = {"ltb", false,   "boolean"},
     breakat       = {"ggg", " \t!@*-+;:,./?", "string"},
+    breakindent   = {"ltw", false,   "boolean"},
     bufhidden     = {"ltb", "",      "string"},
     buflisted     = {"ltb", true,    "boolean"},
     buftype       = {"ltb", "",      "string"},
@@ -54,6 +56,7 @@ local opt_defs = {
     fileformat    = {"ltb", "unix",  "string"},
     fileformats   = {"ggg", "unix,dos", "string"},
     filetype      = {"ltb", "",      "string"},
+    eol           = {"ltb", true,    "boolean"},
     findfunc      = {"gob", "",      "stringfunc"},
     fillchars     = {"gow", "",      "string"},
     foldcolumn    = {"ltw", "0",     "string"},
@@ -62,6 +65,8 @@ local opt_defs = {
     foldmethod    = {"ltw", "manual","string"},
     foldopen      = {"ggg", "block,hor,mark,percent,quickfix,search,tag,undo", "string"},
     formatoptions = {"ltb", "tcqj",  "string"},
+    formatexpr    = {"ltb", "",      "string"},
+    formatprg     = {"gob", "",      "string"},
     gdefault      = {"ggg", false,   "boolean"},
     guicursor     = {
         "ggg",
@@ -77,6 +82,7 @@ local opt_defs = {
     indentkeys    = {"ltb", "0{,0},0),0],:,0#,!^F,o,O,e", "string"},
     insertmode    = {"ggg", false,   "boolean"},
     iskeyword     = {"ltb", "@,48-57,_,192-255", "string"},
+    keymodel      = {"ggg", "",      "string"},
     keywordprg    = {"gob", ":Man",  "string"},
     lazyredraw    = {"ggg", false,   "boolean"},
     linebreak     = {"ltw", false,   "boolean"},
@@ -121,6 +127,7 @@ local opt_defs = {
     signcolumn    = {"ltw", "auto",  "string"},
     smartcase     = {"ggg", false,   "boolean"},
     smarttab      = {"ggg", true,    "boolean"},
+    smoothscroll  = {"ltw", false,   "boolean"},
     softtabstop   = {"ltb", 0,       "number"},
     spell         = {"ltw", false,   "boolean"},
     splitbelow    = {"ggg", false,   "boolean"},
@@ -147,7 +154,11 @@ local opt_defs = {
     verbose       = {"ggg", 0,       "number"},
     virtualedit   = {"gow", "",      "string"},
     wildignore    = {"ggg", "",      "string"},
+    wildmenu      = {"ggg", true,    "boolean"},
+    wildmode      = {"ggg", "full",  "string"},
+    wildoptions   = {"ggg", "pum,tagfile", "string"},
     winblend      = {"ltw", 0,       "number"},
+    winborder     = {"ggg", "",      "string"},
     winfixheight  = {"ltw", false,   "boolean"},
     winfixwidth   = {"ltw", false,   "boolean"},
     winheight     = {"ggg", 1,       "number"},
@@ -158,6 +169,7 @@ local opt_defs = {
     wrap          = {"ltw", false,   "boolean"},
     write         = {"ggg", true,    "boolean"},
 }
+Options.names = TblUtils.sorted_keys(opt_defs)
 
 local function option_loc(name)
     return opt_defs[name][1]
@@ -453,6 +465,7 @@ local opt_aliases = {
     mouset = "mousetime",
     mod = "modified",
     ma = "modifiable",
+    km = "keymodel",
     nu = "number",
     nuw = "numberwidth",
     ofu = "omnifunc",
@@ -668,6 +681,7 @@ local append_type_special = {
     indentkeys = "csl",
     eventignore = "csl",
     iskeyword = "csl",
+    keymodel = "csl",
     packpath = "csl",
     path = "csl",
     runtimepath = "csl",
@@ -728,15 +742,6 @@ function Options.get_info(name)
         allows_duplicates = append_kind ~= "flags",
         _loc = loc,
     }
-end
-
-function Options.list_all_info_names()
-    local out = {}
-    for name, _ in pairs(opt_defs) do
-        out[#out + 1] = name
-    end
-    table.sort(out)
-    return out
 end
 
 function Options.has_local_value(name, window, buffer)

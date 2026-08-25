@@ -2,9 +2,9 @@ name: lua-tests
 
 on:
   pull_request:
-    branches: [main, rewrite-2026]
+    branches: [main]
   push:
-    branches: [main, rewrite-2026]
+    branches: [main]
 
 permissions:
   contents: read
@@ -24,6 +24,12 @@ jobs:
 
       - name: Set up LuaRocks
         uses: leafo/gh-actions-luarocks@v4
+
+      - name: Set up Neovim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          version: stable
+          neovim: true
 
       - name: Install test dependencies
         run: |

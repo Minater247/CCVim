@@ -1,39 +1,19 @@
 local Pack = {}
 
-local Options = loadModule("lib.options")
 local RuntimePath = loadModule("lib.runtimepath")
 local Error = loadModule("lib.error")
 local Scopes = loadModule("lib.luaapi.scopes")
 local ScriptSource = loadModule("lib.scriptsource")
+local FsUtil = loadModule("lib.fsutil")
 
-Pack.loaded = Pack.loaded or {}
-
-local function packpath_list()
-    local raw = Options.get("packpath", nil, nil, false, true)
-    local list = RuntimePath.split(raw)
-    local out, seen = {}, {}
-    for _, p in ipairs(list) do
-        local n = RuntimePath.normalize(p)
-        if n ~= "" and not seen[n] then
-            out[#out + 1] = n
-            seen[n] = true
-        end
-    end
-    return out
-end
-
-local function list_dir_sorted(path)
-    local entries = fs.list(path) or {}
-    table.sort(entries)
-    return entries
-end
+Pack.loaded = {}
 
 local function find_package_paths(name)
     local results, seen = {}, {}
-    for _, root in ipairs(packpath_list()) do
+    for _, root in ipairs(RuntimePath.get_pack_list()) do
         local packdir = root .. "/pack"
         if fs.isDir(packdir) then
-            for _, group in ipairs(list_dir_sorted(packdir)) do
+            for _, group in ipairs(FsUtil.list_sorted(packdir)) do
                 local gpath = packdir .. "/" .. group
                 if fs.isDir(gpath) then
                     local start = gpath .. "/start/" .. name
@@ -59,9 +39,7 @@ local function collect_scripts(root, recursive)
     end
 
     local function walk(dir)
-        local entries = fs.list(dir) or {}
-        table.sort(entries)
-        for _, name in ipairs(entries) do
+        for _, name in ipairs(FsUtil.list_sorted(dir)) do
             local path = dir .. "/" .. name
             if fs.isDir(path) then
                 if recursive then
@@ -119,6 +97,27 @@ local function register_pkg(pkg)
     end
 end
 
+local function load_pkg(pkg, after, ftdetect)
+    if Pack.loaded[pkg] then return true end
+
+    local ok, err = source_files(collect_scripts(pkg .. "/plugin", true))
+    if not ok then return false, err end
+
+    if after then
+        ok, err = source_files(collect_scripts(pkg .. "/after/plugin", true))
+        if not ok then return false, err end
+    end
+    if ftdetect and Scopes.g.did_load_filetypes then
+        ok, err = source_files(collect_scripts(pkg .. "/ftdetect", false))
+        if not ok then return false, err end
+        ok, err = source_files(collect_scripts(pkg .. "/after/ftdetect", false))
+        if not ok then return false, err end
+    end
+
+    Pack.loaded[pkg] = true
+    return true
+end
+
 function Pack.add(name, opts)
     opts = opts or {}
     if not name or name == "" then
@@ -135,31 +134,8 @@ function Pack.add(name, opts)
         register_pkg(pkg)
 
         if not opts.no_load then
-            if not Pack.loaded[pkg] then
-                local ok, err = source_files(collect_scripts(pkg .. "/plugin", true))
-                if not ok then
-                    return false, err
-                end
-
-                local ok_after, err_after = source_files(collect_scripts(pkg .. "/after/plugin", true))
-                if not ok_after then
-                    return false, err_after
-                end
-
-                if match.kind == "opt" and Scopes.g.did_load_filetypes then
-                    local ok_ft, err_ft = source_files(collect_scripts(pkg .. "/ftdetect", false))
-                    if not ok_ft then
-                        return false, err_ft
-                    end
-
-                    local ok_ft_after, err_ft_after = source_files(collect_scripts(pkg .. "/after/ftdetect", false))
-                    if not ok_ft_after then
-                        return false, err_ft_after
-                    end
-                end
-
-                Pack.loaded[pkg] = true
-            end
+            local ok, err = load_pkg(pkg, true, match.kind == "opt")
+            if not ok then return false, err end
         end
     end
 
@@ -167,30 +143,10 @@ function Pack.add(name, opts)
 end
 
 function Pack.load_start()
-    local packs = packpath_list()
-    for _, root in ipairs(packs) do
-        local packdir = root .. "/pack"
-        if fs.isDir(packdir) then
-            for _, group in ipairs(list_dir_sorted(packdir)) do
-                local startdir = packdir .. "/" .. group .. "/start"
-                if fs.isDir(startdir) then
-                    for _, pkg in ipairs(list_dir_sorted(startdir)) do
-                        local pkgpath = startdir .. "/" .. pkg
-                        if fs.isDir(pkgpath) then
-                            register_pkg(pkgpath)
-
-                            if not Pack.loaded[pkgpath] then
-                                local ok, err = source_files(collect_scripts(pkgpath .. "/plugin", true))
-                                if not ok then
-                                    return false, err
-                                end
-                                Pack.loaded[pkgpath] = true
-                            end
-                        end
-                    end
-                end
-            end
-        end
+    for _, pkg in ipairs(RuntimePath.list_packages("start")) do
+        register_pkg(pkg)
+        local ok, err = load_pkg(pkg, true)
+        if not ok then return false, err end
     end
 
     return true

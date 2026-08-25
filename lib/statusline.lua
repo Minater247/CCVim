@@ -2,7 +2,6 @@ local Statusline = {}
 
 local Options = loadModule("lib.options")
 local VimFs = loadModule("lib.luaapi.fs")
-local Compiler = loadModule("lib.excmd.compiler")
 local Runtime = loadModule("lib.excmd.runtime")
 local Scopes = loadModule("lib.luaapi.scopes")
 local Utf8 = loadModule("lib.utf8")
@@ -25,22 +24,9 @@ local function eval_statusline_expr(expr, winid)
     local prior_winid = Scopes._g.statusline_winid
     Scopes._g.statusline_winid = winid
 
-    local ok_compile, code = pcall(function()
-        return Compiler.compile_expr(expr, { state = rt.state })
-    end)
-    if ok_compile and type(code) == "string" and code ~= "" then
-        local chunk = load(
-            "return " .. code,
-            "statusline_excmd",
-            "t",
-            setmetatable({ runtime = rt, _G = _G }, { __index = _G })
-        )
-        if chunk then
-            local ok_run, rv = pcall(chunk)
-            if ok_run then
-                out = tostring(rv or "")
-            end
-        end
+    local ok_run, rv = pcall(rt.eval_expr, rt, expr)
+    if ok_run then
+        out = tostring(rv or "")
     end
 
     Scopes._g.statusline_winid = prior_winid
@@ -578,7 +564,7 @@ local function clone_chunks(chunks)
                     tabnr = click.tabnr,
                     func = click.func,
                     minwid = click.minwid,
-                } or nil,
+                },
             }
         else
             out[i] = { kind = ck.kind, s = ck.s }
@@ -616,7 +602,7 @@ local function drop_left_visible(chunks, n_drop)
                         tabnr = click.tabnr,
                         func = click.func,
                         minwid = click.minwid,
-                    } or nil,
+                    },
                 }
             else
                 out[#out + 1] = { kind = "truncmark", s = ck.s }

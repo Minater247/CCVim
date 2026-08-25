@@ -14,7 +14,9 @@
 local Native = {}
 Native.kind = "native"
 local uv = require("luv")
+Native.uv = uv
 local Utf8
+local Color
 
 -- =========================================================================
 -- Helpers
@@ -110,46 +112,11 @@ for s, fg in pairs(SLOT_TO_ANSI_FG) do
     SLOT_TO_ANSI_BG[s] = fg + 10  -- bg codes = fg + 10
 end
 
--- xterm 256 palette RGB values (first 16 entries, rest follow xterm spec)
--- We only need 0-15 for 16-color fallback and a compact cube for 256-color.
-local XTERM256_STANDARD = {
-    -- xterm 0-15
-    0x000000, 0x800000, 0x008000, 0x808000,
-    0x000080, 0x800080, 0x008080, 0xC0C0C0,
-    0x808080, 0xFF0000, 0x00FF00, 0xFFFF00,
-    0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF,
-}
-
 local function rgb_dist_sq(a, b)
     local dr = ((a>>16)&0xFF) - ((b>>16)&0xFF)
     local dg = ((a>>8 )&0xFF) - ((b>>8 )&0xFF)
     local db = ( a     &0xFF) - ( b     &0xFF)
     return dr*dr + dg*dg + db*db
-end
-
-local function xterm256_to_rgb(idx)
-    if idx < 0 then
-        return 0
-    end
-    if idx < 16 then
-        return XTERM256_STANDARD[idx + 1]
-    end
-    if idx < 232 then
-        local cube = idx - 16
-        local r = math.floor(cube / 36)
-        local g = math.floor((cube % 36) / 6)
-        local b = cube % 6
-        local function v(n)
-            if n == 0 then return 0 end
-            return 55 + n * 40
-        end
-        return v(r) * 65536 + v(g) * 256 + v(b)
-    end
-    if idx < 256 then
-        local v = 8 + (idx - 232) * 10
-        return v * 65536 + v * 256 + v
-    end
-    return 0
 end
 
 -- Default palette (slot → {r,g,b} for get_palette_slot / capture_palette)
@@ -309,7 +276,7 @@ local function emit_fg(token)
         if idx < 16 then
             write(esc(SLOT_TO_ANSI_FG[idx].."m"))
         else
-            local rgb = xterm256_to_rgb(idx)
+            local rgb = Color.xterm256(idx)
             local best_s, best_d = 0, math.huge
             for s = 0, 15 do
                 local p = NATIVE_PALETTE[s]
@@ -340,7 +307,7 @@ local function emit_bg(token)
         if idx < 16 then
             write(esc(SLOT_TO_ANSI_BG[idx].."m"))
         else
-            local rgb = xterm256_to_rgb(idx)
+            local rgb = Color.xterm256(idx)
             local best_s, best_d = 0, math.huge
             for s = 0, 15 do
                 local p = NATIVE_PALETTE[s]
@@ -448,6 +415,7 @@ end
 
 function Native.on_load_module_ready(scope)
     Utf8 = scope.loadModule("lib.utf8")
+    Color = scope.loadModule("lib.color")
 end
 
 function Native.grid_line(_grid, row, col, cells, _wrap)
@@ -1087,6 +1055,19 @@ end
 
 local FS = {}
 
+function FS.attributes(path)
+    if not lfs then return nil end
+    local attr = lfs.attributes(path)
+    if not attr then return nil end
+    return {
+        size = attr.size,
+        modified = attr.modification,
+        modification = attr.modification,
+        isDir = attr.mode == "directory",
+        isReadOnly = false,
+    }
+end
+
 function FS.combine(a, b)
     if b == nil then return a end
     return path_normalize(path_join(a, b))
@@ -1106,6 +1087,10 @@ function FS.isDir(path)
         return lfs.attributes(path, "mode") == "directory"
     end
     -- Fallback: try to open as dir (unreliable without lfs)
+    return false
+end
+
+function FS.isReadOnly(_path)
     return false
 end
 

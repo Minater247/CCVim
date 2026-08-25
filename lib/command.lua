@@ -8,6 +8,7 @@ local RegisterUtil                = loadModule("lib.registers")
 local Scopes                      = loadModule("lib.luaapi.scopes")
 local VimExpr                     = loadModule("lib.excmd.vimxpr")
 local Error                       = loadModule("lib.error")
+local Visual                      = loadModule("lib.visual")
 
 local POLICY_FULL, POLICY_CB_ONLY, POLICY_NOREMAP = 1, 2, 3
 Command.POLICY_FULL = POLICY_FULL
@@ -19,6 +20,8 @@ local cancel_ambiguous_timer
 local reset_state
 local execute_node
 local clear_count
+local select_mapping_context
+local select_once
 
 local macro_state = {
     recording_register = nil,
@@ -49,6 +52,11 @@ Command.emit_raw                  = function(keys_seq)
                 if emitted ~= nil then
                     win:insertText(emitted)
                 end
+            end
+        elseif vimmode == "select" then
+            local emitted = key:emittable()
+            if emitted ~= nil and emitted ~= "\b" and emitted ~= "\t" and Command.replace_select then
+                Command.replace_select(emitted)
             end
         end
     end
@@ -283,7 +291,7 @@ end
 local MODE_ALIASES = {
     n = "normal",
     i = "insert",
-    v = "visual",
+    v = { "visual", "select" },
     x = "visual",
     s = "select",
     o = "operator",
@@ -320,12 +328,17 @@ local function expand_modes(modes)
             -- Treat as alias string like "ni"
             for i = 1, #modes do
                 local ch = modes:sub(i, i)
-                local full = MODE_ALIASES[ch]
-                if not full then
+                local expanded = MODE_ALIASES[ch]
+                if not expanded then
                     error(("unknown mode alias '%s' in '%s'"):format(ch, modes))
                 end
-                if not seen[full] then
-                    out[#out + 1] = full; seen[full] = true
+                if type(expanded) == "string" then expanded = { expanded } end
+                for j = 1, #expanded do
+                    local full = expanded[j]
+                    if not seen[full] then
+                        out[#out + 1] = full
+                        seen[full] = true
+                    end
                 end
             end
         end
@@ -356,6 +369,12 @@ end
 -- =========================
 local user_global_mappings = {} -- user_global_mappings[mode_fullname] = root node
 local builtin_mappings = {}     -- builtin_mappings[mode_fullname] = root node
+local mapping_generation = 0
+local composite_cache = setmetatable({}, { __mode = "k" })
+
+local function mappings_changed()
+    mapping_generation = mapping_generation + 1
+end
 
 local function root_for_mode(storage, mode_full)
     local r = storage[mode_full]
@@ -428,6 +447,7 @@ local function _composite_node(buf_node, glob_node)
         composite.operator_cb = buf_node.operator_cb
         composite.motion_root = buf_node.motion_root
         composite.map_meta    = buf_node.map_meta
+        composite.select_as_visual = buf_node.select_as_visual
     else
         composite.callback    = glob_node.callback
         composite.rhs_seq     = glob_node.rhs_seq
@@ -438,6 +458,7 @@ local function _composite_node(buf_node, glob_node)
         composite.operator_cb = glob_node.operator_cb
         composite.motion_root = glob_node.motion_root
         composite.map_meta    = glob_node.map_meta
+        composite.select_as_visual = glob_node.select_as_visual
     end
 
     local keys = {}
@@ -470,12 +491,28 @@ end
 -- Composite *active* root for the current buffer+mode.
 -- Precedence: buffer-local user > global user > builtin.
 local function composite_root_for_mode(mode_full)
+    local buf = windows[curwin].buffer
+    local by_mode = composite_cache[buf]
+    if by_mode then
+        local cached = by_mode[mode_full]
+        if cached and cached.generation == mapping_generation then
+            return cached.root
+        end
+    else
+        by_mode = {}
+        composite_cache[buf] = by_mode
+    end
+
     local builtin = builtin_mappings[mode_full] or { children = {} }
     local global_user = user_global_mappings[mode_full] or { children = {} }
-    local buf  = windows[curwin].buffer
     local local_user = buf.local_mappings and buf.local_mappings[mode_full]
     local global_root = _composite_node(global_user, builtin)
-    return _composite_node(local_user, global_root)
+    local root = _composite_node(local_user, global_root)
+    by_mode[mode_full] = {
+        generation = mapping_generation,
+        root = root,
+    }
+    return root
 end
 
 local function _get_user_insert_root(mode_full, opts)
@@ -513,6 +550,7 @@ local function _clear_leaf(node)
     node.operator_cb = nil
     node.motion_root = nil
     node.map_meta = nil
+    node.select_as_visual = nil
 end
 
 local function _node_is_empty(node)
@@ -579,6 +617,7 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
     node.expr_rhs  = nil
     node.recursive = nil
     node.map_meta  = opts.map_meta
+    node.select_as_visual = opts.select_as_visual == true
     if opts.expr == true then
         node.expr = true
         node.replace_keycodes = opts.replace_keycodes ~= false
@@ -593,6 +632,7 @@ local function insert_callback_mapping(mode_full, seq_nums, callback, opts)
         tostring(callback),
         scope_suffix
     )
+    mappings_changed()
 end
 
 local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
@@ -611,6 +651,7 @@ local function insert_builtin_callback_mapping(mode_full, seq_nums, callback)
     node.rhs_seq   = nil
     node.recursive = nil
     Command.Log("map-builtin-callback mode=%s seq=%s cb=%s", mode_full, seq_tostring(seq_nums), tostring(callback))
+    mappings_changed()
 end
 
 local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts)
@@ -644,6 +685,7 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
     end
     node.recursive = recursive ~= false
     node.map_meta  = opts.map_meta
+    node.select_as_visual = opts.select_as_visual == true
 
     local rhs_log
     if node.expr then
@@ -660,6 +702,7 @@ local function insert_keys_mapping(mode_full, seq_nums, rhs_seq, recursive, opts
         tostring(node.recursive),
         scope_suffix
     )
+    mappings_changed()
 end
 
 local function _seq_to_map_text(seq)
@@ -675,10 +718,26 @@ end
 -- Public API: map / noremap with mode(s)
 -- modes: full names ("normal","insert","visual"), alias string ("ni"), or list
 -- =========================
+local function expanded_user_modes(modes, opts)
+    local expanded = expand_modes(modes)
+    local visual, select_mode
+    for i = 1, #expanded do
+        visual = visual or expanded[i] == "visual"
+        select_mode = select_mode or expanded[i] == "select"
+    end
+    if not (visual and select_mode) then return expanded, opts end
+
+    local select_opts = {}
+    for k, v in pairs(opts or {}) do select_opts[k] = v end
+    select_opts.select_as_visual = true
+    return expanded, opts, select_opts
+end
+
 function Command.map_callback(modes, lhs_seq, callback, opts)
     local seq = normalize_seq(lhs_seq)
-    for _, m in ipairs(expand_modes(modes)) do
-        insert_callback_mapping(m, seq, callback, opts)
+    local expanded, default_opts, select_opts = expanded_user_modes(modes, opts)
+    for _, m in ipairs(expanded) do
+        insert_callback_mapping(m, seq, callback, m == "select" and select_opts or default_opts)
     end
 end
 
@@ -692,16 +751,18 @@ end
 function Command.remap_keys(modes, lhs_seq, rhs_seq, opts)
     opts = opts or {}
     local lhs = normalize_seq(lhs_seq)
-    for _, m in ipairs(expand_modes(modes)) do
-        insert_keys_mapping(m, lhs, rhs_seq, true, opts)
+    local expanded, default_opts, select_opts = expanded_user_modes(modes, opts)
+    for _, m in ipairs(expanded) do
+        insert_keys_mapping(m, lhs, rhs_seq, true, m == "select" and select_opts or default_opts)
     end
 end
 
 function Command.noremap_keys(modes, lhs_seq, rhs_seq, opts)
     opts = opts or {}
     local lhs = normalize_seq(lhs_seq)
-    for _, m in ipairs(expand_modes(modes)) do
-        insert_keys_mapping(m, lhs, rhs_seq, false, opts)
+    local expanded, default_opts, select_opts = expanded_user_modes(modes, opts)
+    for _, m in ipairs(expanded) do
+        insert_keys_mapping(m, lhs, rhs_seq, false, m == "select" and select_opts or default_opts)
     end
 end
 
@@ -709,14 +770,19 @@ function Command.unmap_keys(modes, lhs_seq, opts)
     local lhs = normalize_seq(lhs_seq)
     for _, m in ipairs(expand_modes(modes)) do
         local root = _get_existing_user_root(m, opts)
-        _delete_mapping(root, lhs)
+        if _delete_mapping(root, lhs) then
+            mappings_changed()
+        end
     end
 end
 
 function Command.clear_mappings(modes, opts)
     for _, m in ipairs(expand_modes(modes)) do
         local root = _get_existing_user_root(m, opts)
-        _clear_root(root)
+        if root then
+            _clear_root(root)
+            mappings_changed()
+        end
     end
 end
 
@@ -968,6 +1034,8 @@ function Command.nimap_builtin_callback(lhs_seq, cb) return Command.map_builtin_
 
 function Command.vmap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("visual", lhs_seq, cb) end
 
+function Command.smap_builtin_callback(lhs_seq, cb) return Command.map_builtin_callback("select", lhs_seq, cb) end
+
 function Command.nnoremap_keys(lhs, rhs, opts) return Command.noremap_keys("normal", lhs, rhs, opts) end
 
 function Command.inoremap_keys(lhs, rhs, opts) return Command.noremap_keys("insert", lhs, rhs, opts) end
@@ -1028,6 +1096,7 @@ local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_sp
             add_motion(item.lhs, item.name)
         end
     end
+    mappings_changed()
     return node
 end
 
@@ -1164,7 +1233,7 @@ local function _vim_expr_result_to_text(rv)
     return tostring(rv)
 end
 
-execute_node = function(node)
+local function execute_node_inner(node)
     local cnt = (state.count_committed and state.count_value)
     Command.Log(
         "execute cb=%s rhs_len=%d recursive=%s count=%d",
@@ -1258,6 +1327,84 @@ execute_node = function(node)
         end)
         return
     end
+end
+
+local function restore_select(win, selection)
+    if vimmode == "visual" and win.visual_anchor then
+        setMode("select")
+        return
+    end
+    win.visual_anchor = {
+        lnum = selection.anchor.lnum,
+        col = selection.anchor.col,
+    }
+    win.visual_kind = selection.kind
+    win:cursorSet(selection.cursor.col, selection.cursor.lnum)
+    setMode("select")
+end
+
+execute_node = function(node)
+    if vimmode ~= "select" or not node.select_as_visual then
+        return execute_node_inner(node)
+    end
+
+    local win = windows[curwin]
+    local context = {
+        win = win,
+        buf = win.buffer,
+        selection = Visual.selection(win),
+        previous = select_mapping_context,
+    }
+    select_mapping_context = context
+    win.select_operator_charwise = true
+    setMode("visual")
+    local ok, result = pcall(execute_node_inner, node)
+
+    local same_target = windows[curwin] == win and win.buffer == context.buf
+    if ok and same_target and not context.cancel and context.selection
+        and vimmode ~= "insert" and vimmode ~= "cmdline" and vimmode ~= "select"
+    then
+        restore_select(win, context.selection)
+    end
+    win.select_operator_charwise = nil
+    select_mapping_context = context.previous
+    if not ok then error(result) end
+    return result
+end
+
+function Command.cancel_select_reselect()
+    if select_mapping_context then select_mapping_context.cancel = true end
+    if select_once then select_once.cancel = true end
+end
+
+function Command.begin_select_once()
+    local win = windows[curwin]
+    select_once = {
+        win = win,
+        buf = win.buffer,
+        armed = false,
+    }
+    win.select_operator_charwise = true
+    setMode("visual")
+end
+
+local function finish_select_once()
+    local context = select_once
+    if not context then return end
+    if not context.armed then
+        context.armed = true
+        return
+    end
+    if state.active or #Command.override_emitter > 0 then return end
+
+    local win = context.win
+    if not context.cancel and windows[curwin] == win and win.buffer == context.buf
+        and vimmode == "visual" and win.visual_anchor
+    then
+        setMode("select")
+    end
+    win.select_operator_charwise = nil
+    select_once = nil
 end
 
 
@@ -1458,6 +1605,24 @@ end
 function Command._handle_key_with_policy(code, policy, capture_counts)
     if #Command.override_emitter > 0 then
         Command.override_emitter[#Command.override_emitter](code)
+        return true
+    end
+
+    if code.numeric == Key.CMD then
+        reset_state()
+        local command = {}
+        Command.override_emitter[#Command.override_emitter + 1] = function(key)
+            local printable = key:printable()
+            if key:emittable() == "\r" or printable == "<C-j>" or printable == "<C-J>" then
+                table.remove(Command.override_emitter)
+                table.remove(Command.emitter_names)
+                Event.ExecuteCommand(table.concat(command))
+                return
+            end
+            local emitted = key:emittable()
+            if emitted then command[#command + 1] = emitted end
+        end
+        Command.emitter_names[#Command.emitter_names + 1] = "Mapping.command"
         return true
     end
 
@@ -1898,13 +2063,15 @@ function Command.HandleKey(k)
         macro_state.defer_executing_clear = false
     end
 
-    if vimmode == "insert" then
-        if PopupMenu.visible() then
-            return PopupMenu.handle_key(k)
-        end
+    local finish_popup, sync_popup
+    if PopupMenu.visible() then
+        local handled
+        handled, finish_popup, sync_popup = PopupMenu.handle_key(k)
+        if handled then return handled end
     end
 
     if handle_macro_control_key(k) then
+        finish_select_once()
         return true
     end
 
@@ -1912,18 +2079,27 @@ function Command.HandleKey(k)
 
     if #Command.override_emitter > 0 then
         Command.override_emitter[#Command.override_emitter](k)
+        if sync_popup then PopupMenu.sync_text() end
+        if finish_popup and PopupMenu.visible() then PopupMenu.close(finish_popup) end
+        finish_select_once()
         return
     end
 
     local code = k
     Command.Log("HandleKey code=%d (%s) vimmode=%s", code.numeric, code:printable(), vimmode)
-    return Command._handle_key_with_policy(code, POLICY_FULL, true)
+    local handled = Command._handle_key_with_policy(code, POLICY_FULL, true)
+    if sync_popup then PopupMenu.sync_text() end
+    if finish_popup and PopupMenu.visible() then PopupMenu.close(finish_popup) end
+    finish_select_once()
+    return handled
 end
 
 function Command.Reset()
     cancel_ambiguous_timer()
     reset_state()
     macro_state.pending_action = nil
+    select_mapping_context = nil
+    select_once = nil
 end
 
 function Command.reg_recording()

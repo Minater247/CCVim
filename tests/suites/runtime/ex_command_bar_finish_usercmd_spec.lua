@@ -42,6 +42,8 @@ return {
         }, "\n"))
         Assert.write_file(backend, syn_script, table.concat({
             [[syn match luaError "\<\%(end\|else\|elseif\|then\|until\|in\)\>"]],
+            [[command! -nargs=* VimL execute <q-args> 0 ? "contained" : ""]],
+            "VimL syn\tmatch\tvimQArgsTab\t\"^tabbed$\"",
             "",
         }, "\n"))
         Assert.write_file(backend, command_bar_script, table.concat({
@@ -115,6 +117,7 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
             vim.cmd("syntax clear")
             source(syn_script)
             local syntax_list = vim.fn.execute("syntax list luaError")
+            local tabbed_syntax_list = vim.fn.execute("syntax list vimQArgsTab")
 
             source(command_bar_script)
             source(keepj_script)
@@ -141,6 +144,7 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
                 vim.g.nmap_bar_split,
                 vim.fn.maparg("-", "n"),
                 vim.g.execute_double_quote_bar_ok,
+                tabbed_syntax_list,
             }
         ]=],
             quoted_bar,
@@ -175,5 +179,10 @@ command! -nargs=* UArgs let g:uargs_raw = "<args>" | let g:uargs_q = <q-args> | 
         Assert.eq("inline if with nmap still runs following line", result[13], 1)
         Assert.eq("inline if with nmap preserves mapping rhs", result[14], "<Plug>NetrwBrowseUpDir")
         Assert.eq("execute double-quoted command preserves bars", result[15], 11)
+        Assert.truthy(
+            "user command q-args preserve tab-separated syntax arguments",
+            type(result[16]) == "string" and result[16]:find("vimQArgsTab", 1, true) ~= nil,
+            result[16]
+        )
     end,
 }

@@ -36,8 +36,15 @@ function Visual.mode_char(kind)
     return mode
 end
 
+function Visual.select_mode_char(kind)
+    local mode = Visual.mode_char(kind)
+    if mode == "v" then return "s" end
+    if mode == "V" then return "S" end
+    return string.char(19)
+end
+
 function Visual.active(win)
-    return vimmode == "visual" and win.visual_anchor ~= nil
+    return (vimmode == "visual" or vimmode == "select") and win.visual_anchor ~= nil
 end
 
 function Visual.begin(win, kind)
@@ -73,6 +80,16 @@ function Visual.selection(win)
         start, finish = anchor, cursor
     else
         start, finish = cursor, anchor
+    end
+
+    if options.get("selection") == "exclusive" then
+        if kind == "block" and finish.col > start.col then
+            finish.col = finish.col - 1
+        elseif kind == "char"
+            and (finish.lnum > start.lnum or finish.col > start.col)
+        then
+            finish.col = finish.col - 1
+        end
     end
 
     return {

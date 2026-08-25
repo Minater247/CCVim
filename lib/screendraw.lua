@@ -1,6 +1,7 @@
 local ScreenDraw = {}
 
 local Highlight = loadModule("lib.highlight")
+local Color = loadModule("lib.color")
 local Utf8 = loadModule("lib.utf8")
 
 local HEX_TO_SLOT = {
@@ -10,10 +11,6 @@ local HEX_TO_SLOT = {
 }
 
 local BLIT_HL_CACHE = {}
-
-local function pack_rgb(r, g, b)
-    return r * 65536 + g * 256 + b
-end
 
 local function append_text_cells(cells, text, hl_id)
     Utf8.each_codepoint(text, function(cp)
@@ -34,8 +31,8 @@ local function blit_hl_id(fg_ch, bg_ch)
     local fr, fg, fb = screen.get_palette_slot(fg_slot)
     local br, bg, bb = screen.get_palette_slot(bg_slot)
     hl_id = screen.hl_id_for({
-        fg = pack_rgb(fr, fg, fb),
-        bg = pack_rgb(br, bg, bb),
+        fg = Color.pack(fr, fg, fb),
+        bg = Color.pack(br, bg, bb),
     })
     BLIT_HL_CACHE[cache_key] = hl_id
     return hl_id
@@ -107,8 +104,9 @@ function ScreenDraw.fill(row, col, width, group, ns, ch)
 
     local cells = {}
     local fill = ch or " "
-    for _ = 1, width do
-        cells[#cells + 1] = { fill, Highlight.GetId(group, ns), 1 }
+    local hl_id = Highlight.GetId(group, ns)
+    for i = 1, width do
+        cells[i] = { fill, hl_id, 1 }
     end
     screen.grid_line(1, row, col, cells, false)
 end

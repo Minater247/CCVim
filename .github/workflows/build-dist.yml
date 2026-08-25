@@ -2,7 +2,7 @@ name: build-dist
 
 on:
   push:
-    branches: [rewrite-2026]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

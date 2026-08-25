@@ -7,13 +7,27 @@ local Command
 local Key    = loadModule("lib.key")
 local OnKey = loadModule("lib.luaapi.on_key")
 local ExMsg  = loadModule("lib.excmd.exmsg")
-local Error = loadModule("lib.error")
 local FrameTree = loadModule("lib.frame")
 local Autocmd = loadModule("lib.autocmd")
 local Fn = loadModule("lib.luaapi.fn")
 local Scopes = loadModule("lib.luaapi.scopes")
 local TimerUtils = loadModule("lib.luaapi.timerutils")
 local Visual = loadModule("lib.visual")
+local Menu = loadModule("lib.menu")
+local PopupMenu = loadModule("lib.popupmenu")
+local Runtime = loadModule("lib.excmd.runtime")
+local Api = loadModule("lib.luaapi.api")
+
+function Event.ExecuteCommand(command, origin)
+    local ok, err = Runtime.run(tostring(command or ""), {
+        state = Runtime.PrepareApiState(),
+        origin = { kind = origin or "mapping-cmd" },
+    })
+    if not ok then
+        ExMsg.echoerr(err and err.toString and err:toString() or tostring(err))
+    end
+    ExMsg.Finalize()
+end
 
 local function current_backend()
     return rawget(_ENV, "backend")
@@ -430,7 +444,7 @@ end
 local function place_visual_endpoint(win, local_x, local_y, choose_nearest)
     local anchor
     local cursor
-    if choose_nearest and vimmode == "visual" and win.visual_anchor then
+    if choose_nearest and (vimmode == "visual" or vimmode == "select") and win.visual_anchor then
         anchor = { lnum = win.visual_anchor.lnum, col = win.visual_anchor.col }
         cursor = { lnum = win.cursory, col = win.cursorx }
     end
@@ -443,6 +457,13 @@ local function place_visual_endpoint(win, local_x, local_y, choose_nearest)
         win.visual_anchor = cursor
     end
     return true
+end
+
+local function mouse_selection_mode()
+    for item in options.get("selectmode"):gmatch("[^,]+") do
+        if item == "mouse" then return "select" end
+    end
+    return "visual"
 end
 
 local function fire_menu_popup(win, button, x, y, clicks)
@@ -458,7 +479,29 @@ local function fire_menu_popup(win, button, x, y, clicks)
     })
 end
 
+local function open_context_menu(x, y)
+    local menu_state = Runtime.PrepareApiState()
+    local mode = vimmode
+    local function open(root, row, col)
+        PopupMenu.menu(Menu.entries(menu_state, root, mode), row, col, function(entry, context)
+            if entry.submenu then
+                open(entry.path, context.row + context.selected, context.col + context.width)
+            elseif not entry.separator then
+                Menu.execute(entry.item, function(script)
+                    local ok, err = Runtime.run(script, { state = menu_state })
+                    if not ok then error(err) end
+                    return true
+                end, function(keys, remap)
+                    return Command.execute_normal_keys(Key.strtoseq(keys), { remap = remap })
+                end)
+            end
+        end)
+    end
+    open("PopUp", y - 1, x - 1)
+end
+
 local function handle_mouse_click(button, x, y)
+    if PopupMenu.handle_mouse(button, x, y) then return end
     if not mouse_enabled_for_current_mode() then
         return
     end
@@ -486,16 +529,16 @@ local function handle_mouse_click(button, x, y)
 
     local model = options.get("mousemodel")
     local _, shifted, alted = current_mod_flags()
-    local was_visual = vimmode == "visual" and win.visual_anchor ~= nil
+    local was_visual = (vimmode == "visual" or vimmode == "select") and win.visual_anchor ~= nil
 
     if button == 1 then
         if (model == "popup" or model == "popup_setpos") and (shifted or alted) then
             if vimmode == "normal" then
                 Visual.begin(win, alted and "block" or "char")
-                setMode("visual")
+                setMode(mouse_selection_mode())
             end
             place_visual_endpoint(win, local_x, local_y, was_visual)
-        elseif vimmode == "visual" then
+        elseif vimmode == "visual" or vimmode == "select" then
             setMode("normal")
             place_cursor_from_click(win, local_x, local_y)
         else
@@ -503,7 +546,7 @@ local function handle_mouse_click(button, x, y)
         end
     elseif button == 2 then
         if model == "popup_setpos" then
-            local selection = was_visual and Visual.selection(win) or nil
+            local selection = was_visual and Visual.selection(win)
             place_cursor_from_click(win, local_x, local_y)
             if selection then
                 if Visual.contains(selection, win.cursory, win.cursorx) then
@@ -513,12 +556,14 @@ local function handle_mouse_click(button, x, y)
                 end
             end
             fire_menu_popup(win, button, x, y, clicks)
+            open_context_menu(x, y)
         elseif model == "popup" then
             fire_menu_popup(win, button, x, y, clicks)
+            open_context_menu(x, y)
         else
             if vimmode == "normal" then
                 Visual.begin(win, alted and "block" or "char")
-                setMode("visual")
+                setMode(mouse_selection_mode())
             end
             place_visual_endpoint(win, local_x, local_y, was_visual)
         end
@@ -559,7 +604,7 @@ local function handle_mouse_drag(button, x, y)
         if start then
             win:cursorSet(start.col, start.lnum)
             Visual.begin(win, "char")
-            setMode("visual")
+            setMode(mouse_selection_mode())
         end
     end
 
@@ -585,7 +630,8 @@ local function handle_mouse_up(button, x, y)
             return
         end
     end
-    if button == 2 and vimmode == "visual" and options.get("mousemodel") == "extend"
+    if button == 2 and (vimmode == "visual" or vimmode == "select")
+        and options.get("mousemodel") == "extend"
         and local_x and local_y
     then
         place_visual_endpoint(win, local_x, local_y, true)
@@ -671,6 +717,15 @@ function Event.ProcessEvent(ev)
         handle_mouse_up(ev[2], ev[3], ev[4])
     elseif ev[1] == "mouse_scroll" then
         handle_mouse_scroll(ev[2], ev[3], ev[4])
+    elseif ev[1] == "paste" then
+        Api.nvim_paste(ev[2], true, -1)
+    elseif ev[1] == "file_transfer" then
+        local contents = {}
+        for _, file in ipairs(ev[2].getFiles()) do
+            contents[#contents + 1] = file.readAll()
+            file.close()
+        end
+        Api.nvim_paste(table.concat(contents, "\n"), true, -1)
     elseif ev[1] == "timer" then
         local timer_id = ev[2]
         local cb = timers[timer_id]
@@ -686,14 +741,8 @@ function Event.ProcessEvent(ev)
             w, h = ev[2], ev[3]
         end
         local ok, err = apply_terminal_resize(w, h, ev[1])
-        if not ok and err then
-            local msg
-            if Error.IsError(err) then
-                msg = err:toString()
-            else
-                msg = tostring(err)
-            end
-            ExMsg.echoerr(msg)
+        if not ok then
+            ExMsg.echoerr(err:toString())
         end
     end
 

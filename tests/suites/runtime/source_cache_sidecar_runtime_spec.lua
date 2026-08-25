@@ -64,6 +64,7 @@ return {
                 return orig_compile(...)
             end
             orig_no_cache = rawget(_G, "no_cache")
+            _G.no_cache = false
 
             local ok1, err1 = ScriptSource.source(source_path)
             Assert.eq("first source succeeds", ok1, true)
@@ -131,6 +132,24 @@ return {
             Assert.eq("no-cache executes updated body", Scopes._g.source_cache_stage, "third")
             Assert.eq("no-cache increments hits", Scopes._g.source_cache_hits, 4)
             Assert.truthy("no-cache rewrites cache file", read(cache_path) ~= stale_cached_code)
+
+            local legacy_source = "/tmp/source_cache_legacy.vim"
+            local legacy_cache = "/tmp/source_cache_legacy.ccvim"
+            write(legacy_source, "let g:source_cache_legacy = 'recompiled'")
+            write(legacy_cache, "return function(state) state.g.source_cache_legacy = 'legacy' end")
+            mtimes[legacy_source] = 400
+            mtimes[legacy_cache] = 400
+            _G.no_cache = false
+
+            local ok5, err5 = ScriptSource.source(legacy_source)
+            Assert.eq("legacy cache source succeeds", ok5, true)
+            Assert.eq("legacy cache source error", err5, nil)
+            Assert.eq("legacy cache is recompiled", compile_calls, 4)
+            Assert.eq("legacy cache body is not executed", Scopes._g.source_cache_legacy, "recompiled")
+            Assert.truthy(
+                "rewritten cache carries current version",
+                read(legacy_cache):find(Compiler.CACHE_HEADER, 1, true) == 1
+            )
         end)
 
         if orig_compile then

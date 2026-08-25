@@ -115,6 +115,15 @@ return {
             1,
             3
         )
+        do
+            local compiled, emsg = R.compile("\\%#=1\\%(==\\|!=\\|>=\\|<=\\|=\\~\\|!\\~\\|>\\|<\\)[?#]\\=")
+            if not compiled then
+                error("FAIL compile simple percent group: " .. tostring(emsg))
+            end
+            Assert.eq("percent group fast-path mode", compiled.mode, "simple")
+        end
+        assert_match("simple optional group absent", R, "foobaz", "foo\\%(bar\\)\\=baz", true, 1, 6)
+        assert_match("simple optional group present", R, "foobarbaz", "foo\\%(bar\\)\\=baz", true, 1, 9)
 
         local long_tail = ("x"):rep(32768 - 10) .. " token1234"
         local long_none = ("x"):rep(32768)

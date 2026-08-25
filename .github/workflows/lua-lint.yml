@@ -2,9 +2,9 @@ name: lua-lint
 
 on:
   pull_request:
-    branches: [main, rewrite-2026]
+    branches: [main]
   push:
-    branches: [main, rewrite-2026]
+    branches: [main]
 
 permissions:
   contents: read

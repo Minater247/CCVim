@@ -37,7 +37,28 @@ local function _mov_rt(n)
     windows[curwin]:cursorMove(n or 1, 0)
 end
 
-local function _set_visual_register(kind, value, width)
+local function _option_has(name, value)
+    for item in options.get(name):gmatch("[^,]+") do
+        if item == value then return true end
+    end
+    return false
+end
+
+local function _mov_home()
+    windows[curwin]:cursorSetX(1)
+end
+
+local function _mov_end()
+    local win = windows[curwin]
+    win:cursorSetX(math.max(1, win.buffer:line_len(win.cursory, true)))
+end
+
+local function _mov_page(direction)
+    local win = windows[curwin]
+    win:cursorMove(0, direction * math.max(win:textheight() - 2, 1))
+end
+
+local function _set_visual_register(kind, value, width, target)
     local entry
     if kind == "line" then
         entry = { "linewise", value }
@@ -48,6 +69,7 @@ local function _set_visual_register(kind, value, width)
     end
     registers["unnamed"] = entry
     registers[0] = entry
+    if target then registers[RegisterUtil.storage_key(target)] = entry end
 end
 
 local function _selection_text(win, selection)
@@ -92,6 +114,27 @@ local function _linewise_selection(selection)
     }
 end
 
+local function _select_charwise_selection(selection, buf)
+    if selection.kind ~= "line" then return selection end
+    local last = selection.finish.lnum
+    if last < buf:line_count(true) then
+        return {
+            kind = "char",
+            anchor = selection.anchor,
+            cursor = selection.cursor,
+            start = { lnum = selection.start.lnum, col = 1 },
+            finish = { lnum = last + 1, col = 0 },
+        }
+    end
+    return {
+        kind = "char",
+        anchor = selection.anchor,
+        cursor = selection.cursor,
+        start = { lnum = selection.start.lnum, col = 1 },
+        finish = { lnum = last, col = Utf8.len(buf:get_line(last, true)) },
+    }
+end
+
 local function _yank_visual_selection(force_linewise)
     local win = windows[curwin]
     local selection = Visual.finish(win)
@@ -108,12 +151,18 @@ local function _yank_visual_selection(force_linewise)
     setMode("normal")
 end
 
-local function _delete_visual_selection(insert_after, extend_block_to_eol, force_linewise)
+local function _delete_visual_selection(insert_after, extend_block_to_eol, force_linewise,
+    discard_register, target_register)
     local win = windows[curwin]
+    local select_charwise = vimmode == "select" or win.select_operator_charwise
+    if win.select_operator_charwise then Command.cancel_select_reselect() end
     local selection = Visual.finish(win)
     local visual_selection = selection
     if force_linewise then
         selection = _linewise_selection(selection)
+    end
+    if select_charwise then
+        selection = _select_charwise_selection(selection, win.buffer)
     end
     Visual.record_operation(win, selection)
     if extend_block_to_eol then
@@ -125,11 +174,9 @@ local function _delete_visual_selection(insert_after, extend_block_to_eol, force
         selection.width = end_col - selection.start.col + 1
     end
     local buf = win.buffer
-    _set_visual_register(
-        selection.kind,
-        _selection_text(win, selection),
-        selection.width
-    )
+    if not discard_register then
+        _set_visual_register(selection.kind, _selection_text(win, selection), selection.width, target_register)
+    end
 
     if selection.kind == "line" then
         buf:remove_lines(selection.start.lnum, selection.finish.lnum)
@@ -187,6 +234,23 @@ local function _delete_visual_selection(insert_after, extend_block_to_eol, force
         setMode("normal")
     end
     win:mark_redraw()
+end
+
+Command.replace_select = function(text)
+    local win = windows[curwin]
+    local target = win.select_register
+    win.select_register = nil
+    Command.cancel_select_reselect()
+    _delete_visual_selection(true, false, false, target == "_", target ~= "_" and target or nil)
+    win:insertText(text)
+end
+
+Command.delete_select = function()
+    local win = windows[curwin]
+    local target = win.select_register
+    win.select_register = nil
+    Command.cancel_select_reselect()
+    _delete_visual_selection(false, false, false, target == "_", target ~= "_" and target or nil)
 end
 
 local function _block_insert(append)
@@ -522,7 +586,7 @@ local function _start_or_switch_visual(kind, count)
         kind = previous.kind
     end
     Visual.begin(win, kind)
-    setMode("visual")
+    setMode(_option_has("selectmode", "cmd") and "select" or "visual")
     if previous and count then
         if kind == "line" then
             local height = previous.finish.lnum - previous.start.lnum + 1
@@ -543,6 +607,30 @@ local function _start_or_switch_visual(kind, count)
     end
 end
 
+local function _start_select(kind)
+    local win = windows[curwin]
+    Visual.begin(win, kind)
+    setMode("select")
+end
+
+local function _start_shift_selection(move)
+    if not _option_has("keymodel", "startsel") then
+        move()
+        return
+    end
+    local win = windows[curwin]
+    Visual.begin(win, "char")
+    setMode(_option_has("selectmode", "key") and "select" or "visual")
+    move()
+end
+
+local function _select_special_move(move, shifted)
+    if not shifted and _option_has("keymodel", "stopsel") then
+        setMode("normal")
+    end
+    move()
+end
+
 Command.nimap_builtin_callback({ K(keys.down) }, _mov_dn)
 Command.nimap_builtin_callback({ K(keys.up) }, _mov_up)
 Command.nimap_builtin_callback({ K(keys.left) }, _mov_lt)
@@ -554,6 +642,33 @@ Command.nmap_builtin_callback({ K(keys.l) }, _mov_rt)
 Command.nmap_builtin_callback({ K(keys.p, true) }, _mov_up)
 Command.nmap_builtin_callback({ K(keys.j, true) }, _mov_dn)
 Command.nmap_builtin_callback({ K(keys.n, true) }, _mov_dn)
+Command.nmap_builtin_callback({ K(keys.g), K(keys.h) }, function() _start_select("char") end)
+Command.nmap_builtin_callback({ K(keys.g), K(keys.h, false, true) }, function() _start_select("line") end)
+Command.nmap_builtin_callback({ K(keys.g), K(keys.h, true) }, function() _start_select("block") end)
+Command.nmap_builtin_callback({ K(keys.g), K(keys.h, true, true) }, function() _start_select("block") end)
+Command.nmap_builtin_callback({ K(keys.g), K(keys.backspace) }, function() _start_select("block") end)
+
+local select_specials = {
+    { keys.left, _mov_lt },
+    { keys.right, _mov_rt },
+    { keys.up, _mov_up },
+    { keys.down, _mov_dn },
+    { keys.home, _mov_home },
+    { keys["end"], _mov_end },
+    { keys.pageUp, function() _mov_page(-1) end },
+    { keys.pageDown, function() _mov_page(1) end },
+}
+for i = 1, #select_specials do
+    local key, move = select_specials[i][1], select_specials[i][2]
+    if key ~= keys.left and key ~= keys.right then
+        Command.nmap_builtin_callback({ K(key, false, true) }, function() _start_shift_selection(move) end)
+    end
+    Command.vmap_builtin_callback({ K(key, false, true) }, move)
+    Command.smap_builtin_callback({ K(key) }, function() _select_special_move(move, false) end)
+    Command.smap_builtin_callback({ K(key, false, true) }, function()
+        _select_special_move(move, true)
+    end)
+end
 
 -- Visual mode is a single mode with a selection kind stored on the window.
 -- Keeping all kinds on this path lets mappings and motion handling stay shared.
@@ -595,6 +710,24 @@ Command.vmap_builtin_callback({ K(keys.i, false, true) }, function() _block_inse
 Command.vmap_builtin_callback({ K(keys.a, false, true) }, function() _block_insert(true) end)
 Command.vmap_builtin_callback({ K(keys.leftBracket, true) }, function() setMode("normal") end)
 Command.vmap_builtin_callback({ K(keys.c, true) }, function() setMode("normal") end)
+Command.vmap_builtin_callback({ K(keys.g, true) }, function() setMode("select") end)
+Command.smap_builtin_callback({ K(keys.g, true) }, function() setMode("visual") end)
+Command.smap_builtin_callback({ K(keys.o, true) }, Command.begin_select_once)
+Command.smap_builtin_callback({ K(keys.leftBracket, true) }, function() setMode("normal") end)
+Command.smap_builtin_callback({ K(keys.c, true) }, function() setMode("normal") end)
+Command.smap_builtin_callback({ K(keys.j, true) }, function() Command.replace_select("\r") end)
+Command.smap_builtin_callback({ K(keys.backspace) }, Command.delete_select)
+Command.smap_builtin_callback({ K(keys.delete) }, Command.delete_select)
+Command.vmap_builtin_callback({ K(keys.delete) }, Command.delete_select)
+Command.smap_builtin_callback({ K(keys.r, true) }, function()
+    Command.override_emitter[#Command.override_emitter + 1] = function(key)
+        table.remove(Command.override_emitter)
+        table.remove(Command.emitter_names)
+        local register = key:emittable()
+        if register and #register == 1 then windows[curwin].select_register = register end
+    end
+    Command.emitter_names[#Command.emitter_names + 1] = "Select.register"
+end)
 if Backend.current().kind == "cc" then
     Command.vmap_builtin_callback({ K(keys.tab, true) }, function() setMode("normal") end)
 end
@@ -672,6 +805,7 @@ end)
 Command.vmap_builtin_callback({ K(keys.g), K(keys.v) }, function()
     Visual.swap_with_last(windows[curwin])
 end)
+Command.vmap_builtin_callback({ K(keys.g), K(keys.v, false, true) }, Command.cancel_select_reselect)
 
 Command.nmap_builtin_callback(
     { K(keys.g), K(keys.g) },
@@ -1151,13 +1285,27 @@ local function _wnav(fn, big, at_end)
     end
 end
 Command.nmap_builtin_callback({ K(keys.w) }, _wnav(WordNav.posNext, false, false))
-Command.nmap_builtin_callback({ K(keys.right, false, true) }, _wnav(WordNav.posNext, false, false))
+local next_word = _wnav(WordNav.posNext, false, false)
+Command.nmap_builtin_callback({ K(keys.right, false, true) }, function(count)
+    if _option_has("keymodel", "startsel") then
+        _start_shift_selection(_mov_rt)
+    else
+        next_word(count)
+    end
+end)
 Command.nmap_builtin_callback({ K(keys.w, false, true) }, _wnav(WordNav.posNext, true, false))
 Command.nmap_builtin_callback({ K(keys.right, true) }, _wnav(WordNav.posNext, true, false))
 Command.nmap_builtin_callback({ K(keys.e) }, _wnav(WordNav.posNext, false, true))
 Command.nmap_builtin_callback({ K(keys.e, false, true) }, _wnav(WordNav.posNext, true, true))
 Command.nmap_builtin_callback({ K(keys.b) }, _wnav(WordNav.posPrev, false, false))
-Command.nmap_builtin_callback({ K(keys.left, false, true) }, _wnav(WordNav.posPrev, false, false))
+local previous_word = _wnav(WordNav.posPrev, false, false)
+Command.nmap_builtin_callback({ K(keys.left, false, true) }, function(count)
+    if _option_has("keymodel", "startsel") then
+        _start_shift_selection(_mov_lt)
+    else
+        previous_word(count)
+    end
+end)
 Command.nmap_builtin_callback({ K(keys.b, false, true) }, _wnav(WordNav.posPrev, true, false))
 Command.nmap_builtin_callback({ K(keys.left, true) }, _wnav(WordNav.posPrev, true, false))
 Command.nmap_builtin_callback({ K(keys.g), K(keys.e) }, _wnav(WordNav.posPrev, false, true))

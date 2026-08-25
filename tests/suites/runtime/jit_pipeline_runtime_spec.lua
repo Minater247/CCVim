@@ -22,6 +22,14 @@ return {
             state.g = durable.g
 
             do
+                local first = Runtime.new(Runtime.MakeRuntimeState(durable))
+                local second = Runtime.new(Runtime.MakeRuntimeState(durable))
+                Assert.eq("runtime methods live on the shared prototype", rawget(first, "eval_expr"), nil)
+                Assert.eq("runtime instances reuse eval method", first.eval_expr, second.eval_expr)
+                Assert.eq("runtime return helper is callable", type(first.return_exc), "function")
+            end
+
+            do
                 local code, compile_err = Compiler.compile_script([[
 echo 'hello'
 let g:jit_pipeline_shape = 1 + 2 * 3
@@ -91,6 +99,28 @@ endfunction
                 Assert.eq("cached script still executes twice", Scopes._g.jit_pipeline_cache, 2)
                 Assert.eq("first run error", err1, nil)
                 Assert.eq("second run error", err2, nil)
+            end
+
+            do
+                Runtime.ClearCompiledScriptCache()
+                local compile_calls = 0
+                local orig_compile = Compiler.compile_script
+                Compiler.compile_script = function(...)
+                    compile_calls = compile_calls + 1
+                    return orig_compile(...)
+                end
+
+                for i = 1, 257 do
+                    local ran, run_err = Runtime.run("let g:jit_cache_eviction = " .. i)
+                    Assert.eq("unique cached script runs", ran, true)
+                    Assert.eq("unique cached script error", run_err, nil)
+                end
+                local reran, rerun_err = Runtime.run("let g:jit_cache_eviction = 1")
+                Compiler.compile_script = orig_compile
+
+                Assert.eq("evicted script runs", reran, true)
+                Assert.eq("evicted script error", rerun_err, nil)
+                Assert.eq("bounded cache evicts the oldest script", compile_calls, 258)
             end
 
             do

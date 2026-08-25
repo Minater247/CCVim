@@ -11,6 +11,7 @@ The mock environment intentionally avoids no-op stubs. If a test calls an API in
 **Backends:**
 - `lua_editor` (default): Loads the full CCVim codebase through the mock harness. Tests actual editor behavior.
 - `headless_nvim`: Runs equivalent tests against `nvim --headless` for API parity verification. Only works for tests that don't depend on CCVim-specific internals.
+- `parity`: Runs enabled suites first on headless Neovim and then in the Lua editor, comparing their returned data. The two phases keep native process access outside the CraftOS mock environment.
 
 ## Test Philosophy
 
@@ -63,6 +64,12 @@ Use the Neovim parity backend:
 lua tests/run.lua --backend=headless_nvim
 ```
 
+Run dual-engine comparison suites:
+
+```sh
+lua tests/run.lua --backend=parity
+```
+
 Run benchmark suites:
 
 ```sh
@@ -103,3 +110,16 @@ Useful helpers:
 - `Assert.table_eq(...)`
 
 For CCVim-internal runtime tests, `backend.mock` remains available when there is no sensible Neovim parity path.
+
+Dual-engine suites return normalized comparison data and explicitly select only the parity runner:
+
+```lua
+return {
+    id = "category.direct_parity",
+    description = "Compares both engines; single-engine backends are disabled because neither can compare alone.", -- luacheck: ignore 631
+    supports = { lua_editor = false, headless_nvim = false, parity = true },
+    run = function(ctx)
+        return ctx.assert.eval_block(ctx.backend, "comparison data", "return { vim.fn.mode() }")
+    end,
+}
+```

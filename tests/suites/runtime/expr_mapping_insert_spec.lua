@@ -64,6 +64,30 @@ return {
                 vim.api.nvim_win_get_cursor(0)[2],
             }
 
+            vim.cmd("enew!")
+            vim.g.insert_expr_cmd_mode = nil
+            vim.keymap.set("i", "<F6>", function()
+                return "<Cmd>let g:insert_expr_cmd_mode = mode()<CR>"
+            end, { buffer = true, expr = true })
+            press("i<F6>Z<Esc>")
+            local insert_cmd_expr = {
+                vim.api.nvim_get_current_line(),
+                vim.g.insert_expr_cmd_mode,
+            }
+
+            vim.cmd("enew!")
+            vim.api.nvim_buf_set_lines(0, 0, -1, false, { "alpha" })
+            vim.api.nvim_win_set_cursor(0, { 1, 1 })
+            vim.g.select_expr_cmd_mode = nil
+            vim.keymap.set("s", "<F7>", function()
+                return "<Cmd>let g:select_expr_cmd_mode = mode()<CR>"
+            end, { buffer = true, expr = true })
+            press("gh<Right><F7>X<Esc>")
+            local select_cmd_expr = {
+                vim.api.nvim_get_current_line(),
+                vim.g.select_expr_cmd_mode,
+            }
+
             return {
                 default_tab,
                 string_expr,
@@ -71,6 +95,8 @@ return {
                 callback_bool_expr,
                 ex_true_bool_expr,
                 ex_false_bool_expr,
+                insert_cmd_expr,
+                select_cmd_expr,
             }
         ]])
 
@@ -80,5 +106,7 @@ return {
         Assert.table_eq("callback expr boolean stays empty", result[4], { "", 0 })
         Assert.table_eq("Ex expr v:true stringifies like Vim", result[5], { "v:true", 5 })
         Assert.table_eq("Ex expr v:false stringifies like Vim", result[6], { "v:false", 6 })
+        Assert.table_eq("insert expr <Cmd> executes without inserting its command", result[7], { "Z", "i" })
+        Assert.table_eq("Select expr <Cmd> preserves selection", result[8], { "aXha", "s" })
     end,
 }

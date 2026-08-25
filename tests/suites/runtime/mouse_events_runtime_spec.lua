@@ -57,7 +57,7 @@ return {
             win.cursorSetScreenRow = function(_, row_offset, opts)
                 cursor_calls[#cursor_calls + 1] = {
                     row_offset = row_offset,
-                    screen_col = opts and opts.screen_col or nil,
+                    screen_col = opts and opts.screen_col,
                 }
                 win.cursory = row_offset + 1
                 win.cursorx = opts and opts.screen_col or win.cursorx

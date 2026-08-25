@@ -6,6 +6,7 @@ local Highlight = {}
 
 local AliasTable = loadModule("lib.aliastable")
 local Error = loadModule("lib.error")
+local Color = loadModule("lib.color")
 
 local HL_VERSION = 1
 
@@ -75,14 +76,14 @@ local IMPORTANT_GROUP_WEIGHTS = {
     Title = 2,
 }
 
-local OKLAB_CACHE = {}
-local COLOR_DISTANCE_CACHE = {}
 local tracked_palette_usage = nil
 
 local HL_ID, ID_NAME, NEXT_HL_ID = {}, {}, 1
+local RESOLVED_ID_CACHE = {}
 
 local function bump_version()
     HL_VERSION = HL_VERSION + 1
+    RESOLVED_ID_CACHE = {}
 end
 
 local function copy_palette(src)
@@ -93,13 +94,8 @@ local function copy_palette(src)
     return out
 end
 
-local function pack_rgb(r, g, b)
-    return r * 65536 + g * 256 + b
-end
-
-local function unpack_rgb(rgb)
-    return math.floor(rgb / 65536) % 256, math.floor(rgb / 256) % 256, rgb % 256
-end
+local pack_rgb = Color.pack
+local unpack_rgb = Color.unpack
 
 local function slot_from_palette_mask(mask)
     if type(mask) ~= "number" or mask <= 0 then
@@ -149,7 +145,7 @@ local function color_value_to_rgb(val)
     end
     if is_palette_ref(val) then
         local slot = slot_from_palette_mask(val.palette)
-        return slot and palette[slot] or nil
+        return slot and palette[slot]
     end
 
     local slot = slot_from_palette_mask(val)
@@ -169,80 +165,6 @@ local function record_palette_usage(val)
         return
     end
     tracked_palette_usage[rgb] = (tracked_palette_usage[rgb] or 0) + 1
-end
-
-local function srgb_to_linear(channel)
-    channel = channel / 255
-    if channel <= 0.04045 then
-        return channel / 12.92
-    end
-    return ((channel + 0.055) / 1.055) ^ 2.4
-end
-
-local function color_to_oklab(rgb)
-    local cached = OKLAB_CACHE[rgb]
-    if cached then
-        return cached[1], cached[2], cached[3]
-    end
-
-    local r8, g8, b8 = unpack_rgb(rgb)
-    local r = srgb_to_linear(r8)
-    local g = srgb_to_linear(g8)
-    local b = srgb_to_linear(b8)
-
-    local l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
-    local m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
-    local s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
-
-    local l_ = l ^ (1 / 3)
-    local m_ = m ^ (1 / 3)
-    local s_ = s ^ (1 / 3)
-
-    local out = {
-        0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
-        1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
-        0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_,
-    }
-    OKLAB_CACHE[rgb] = out
-    return out[1], out[2], out[3]
-end
-
-local function color_distance(color1, color2)
-    if color1 == color2 then
-        return 0
-    end
-
-    local low = color1
-    local high = color2
-    if low > high then
-        low = color2
-        high = color1
-    end
-
-    local cached_row = COLOR_DISTANCE_CACHE[low]
-    local cached = cached_row and cached_row[high]
-    if cached ~= nil then
-        return cached
-    end
-
-    local l1, a1, b1 = color_to_oklab(color1)
-    local l2, a2, b2 = color_to_oklab(color2)
-    local dl = l1 - l2
-    local da = a1 - a2
-    local db = b1 - b2
-    local dist = math.sqrt(dl * dl + da * da + db * db)
-
-    if not cached_row then
-        cached_row = {}
-        COLOR_DISTANCE_CACHE[low] = cached_row
-    end
-    cached_row[high] = dist
-    return dist
-end
-
-local function color_luminance(rgb)
-    local r, g, b = unpack_rgb(rgb)
-    return 0.30 * r + 0.59 * g + 0.11 * b
 end
 
 local function invalidate_blit_cache()
@@ -457,6 +379,18 @@ function Highlight.AttrsFor(name, ns, nodefault)
 end
 
 function Highlight.GetId(name, ns)
+    local namespace = ns or 0
+    local cache = RESOLVED_ID_CACHE[namespace]
+    if cache then
+        local cached = cache[name]
+        if cached ~= nil then
+            return cached
+        end
+    else
+        cache = {}
+        RESOLVED_ID_CACHE[namespace] = cache
+    end
+
     local fg, bg, cterm_fg, cterm_bg = resolved_group_colors(name, ns, false)
     local id = screen.hl_id_for({
         fg = fg,
@@ -464,7 +398,8 @@ function Highlight.GetId(name, ns)
         cterm_foreground = cterm_fg,
         cterm_background = cterm_bg,
     })
-    if (ns or 0) == 0 then
+    cache[name] = id
+    if namespace == 0 then
         screen.hl_group_set(name, id)
     end
     return id
@@ -700,102 +635,6 @@ local function usage_items(entries)
     return items
 end
 
-local function seeded_centers(items, wanted)
-    local centers = {}
-    if #items == 0 then
-        return centers
-    end
-    if #items <= wanted then
-        for i = 1, #items do
-            centers[i] = items[i].rgb
-        end
-        return centers
-    end
-
-    local selected = {}
-    local best_distances = {}
-    centers[1] = items[1].rgb
-    selected[centers[1]] = true
-    for i = 1, #items do
-        best_distances[i] = color_distance(items[i].rgb, centers[1])
-    end
-
-    while #centers < wanted do
-        local best_idx, best_score = nil, -1
-        for i = 1, #items do
-            local item = items[i]
-            local rgb = item.rgb
-            if not selected[rgb] then
-                local score = best_distances[i] * item.weight
-                if best_idx == nil or score > best_score or (score == best_score and rgb < items[best_idx].rgb) then
-                    best_idx = i
-                    best_score = score
-                end
-            end
-        end
-
-        local next_rgb = items[best_idx].rgb
-        selected[next_rgb] = true
-        centers[#centers + 1] = next_rgb
-
-        for i = 1, #items do
-            local dist = color_distance(items[i].rgb, next_rgb)
-            if dist < best_distances[i] then
-                best_distances[i] = dist
-            end
-        end
-    end
-    return centers
-end
-
-local function assign_palette_slots(centers)
-    local slot_colors = {}
-    local remaining = {}
-    for i = 1, #centers do
-        remaining[i] = centers[i]
-    end
-
-    local function take_extreme(want_darkest)
-        if #remaining == 0 then
-            return nil
-        end
-        local best_idx = 1
-        local best_luma = color_luminance(remaining[1])
-        for i = 2, #remaining do
-            local luma = color_luminance(remaining[i])
-            local better = want_darkest and luma < best_luma or luma > best_luma
-            if better then
-                best_idx = i
-                best_luma = luma
-            end
-        end
-        return table.remove(remaining, best_idx)
-    end
-
-    slot_colors[15] = take_extreme(true) or ROOT_SLOT_RGB[15]
-    slot_colors[0] = take_extreme(false) or ROOT_SLOT_RGB[0]
-
-    for slot = 0, 15 do
-        if slot_colors[slot] == nil then
-            if #remaining == 0 then
-                slot_colors[slot] = ROOT_SLOT_RGB[slot]
-            else
-                local best_idx, best_dist = 1, math.huge
-                for i = 1, #remaining do
-                    local dist = color_distance(ROOT_SLOT_RGB[slot], remaining[i])
-                    if dist < best_dist then
-                        best_idx = i
-                        best_dist = dist
-                    end
-                end
-                slot_colors[slot] = table.remove(remaining, best_idx)
-            end
-        end
-    end
-
-    return slot_colors
-end
-
 local function fallback_palette_entries()
     local entries = {}
     for i = 1, #hlns do
@@ -844,6 +683,7 @@ function Highlight.SetPalette(next_palette)
             palette[slot] = rgb
         end
     end
+    bump_version()
     invalidate_blit_cache()
 end
 
@@ -864,8 +704,8 @@ function Highlight.CommitPaletteTracking()
     end
 
     local items = usage_items(entries)
-    local centers = seeded_centers(items, 16)
-    local slot_colors = assign_palette_slots(centers)
+    local centers = Color.seeded_centers(items, 16)
+    local slot_colors = Color.assign_palette_slots(centers, ROOT_SLOT_RGB)
 
     for slot = 0, 15 do
         palette[slot] = slot_colors[slot]

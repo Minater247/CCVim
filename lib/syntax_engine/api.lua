@@ -448,6 +448,7 @@ function Api.syn_query(window, lnum, col)
     local ids = {}
     local top_span = nil
     local top_name = nil
+    local top_priority = -1
     for i = 1, #(cache.spans or {}) do
         local span = cache.spans[i]
         if col >= (span.s or 1) and col <= (span.e or 0) then
@@ -457,13 +458,17 @@ function Api.syn_query(window, lnum, col)
                 if #ids == 0 or ids[#ids] ~= id then
                     ids[#ids + 1] = id
                 end
-                top_name = name
+                local priority = span.priority or 0
+                if priority >= top_priority then
+                    top_name = name
+                    top_span = span
+                    top_priority = priority
+                end
             end
-            top_span = span
         end
     end
 
-    local top_id = ids[#ids] or 0
+    local top_id = top_name and Highlight.IdByName(top_name) or 0
     return {
         ids = ids,
         top_id = top_id,

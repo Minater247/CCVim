@@ -288,7 +288,7 @@ local _V = {
     no_cache = false,
 
     ccvim_path = ccvim_path,
-    ccvimversion_str = "0.8",
+    ccvimversion_str = "0.9",
 
     -- error = function(...)
     --     log("DEBUG", "Error thrown:\n%s", debug.traceback())
@@ -305,7 +305,7 @@ local function loadModule(module, opts)
 
     local cached = _V.loaded_modules[module]
     if cached ~= nil then
-        if type(cached) == "table" and cached.__ccvim_lazy_proxy then
+        if type(cached) == "table" and rawget(cached, "__ccvim_lazy_proxy") then
             if opts.immediate then
                 return cached.__ccvim_materialize()
             end
@@ -489,7 +489,9 @@ function _V.setMode(newmode, newx, newy)
         AutoCmd.Run("InsertLeavePre", buf_ctx)
     end
 
-    if mode_changed and oldmode == "visual" and newmode ~= "visual" and win.visual_anchor then
+    local old_select = oldmode == "visual" or oldmode == "select"
+    local new_select = newmode == "visual" or newmode == "select"
+    if mode_changed and old_select and not new_select and win.visual_anchor then
         Visual.finish(win)
     end
 
@@ -621,19 +623,6 @@ function _V.enterWindow(winnr)
     FrameTree.RebalanceCurrentTab()
 end
 
--- Set up the emitter
-local Command = loadModule("lib.command")
-Command.emit_raw = function(seq)
-    if _V.vimmode == "insert" then
-        for i = 1, #seq do
-            local emit = seq[i]:emittable()
-            if emit then
-                _V.windows[_V.curwin]:insertText(emit)
-            end
-        end
-    end
-end
-
 _V.writestartup("parsing arguments")
 local Args = loadModule("lib.args")
 if not Args.parse(arg) then
@@ -644,6 +633,7 @@ end
 ScriptSource = loadModule("lib.scriptsource")
 _source_runtime_startup("ftplugin.vim")
 _source_runtime_startup("indent.vim")
+_source_runtime_startup("lua/vim/_defaults.lua")
 
 _V.writestartup("sourcing vimrc file(s)")
 local srcok, srcerr = ScriptSource.source(ccvim_path .. "/config/init.lua")

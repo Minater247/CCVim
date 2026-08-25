@@ -26,7 +26,7 @@ return {
             vim.uv.fs_stat(root, function(err, stat)
                 out.stat = {
                     err = err,
-                    type = stat and stat.type or nil,
+                    type = stat and stat.type,
                 }
             end)
 
@@ -78,8 +78,8 @@ return {
                 dir_entries[1] = {
                     err = err,
                     count = entries and #entries or 0,
-                    name = entries and entries[1] and entries[1].name or nil,
-                    type = entries and entries[1] and entries[1].type or nil,
+                    name = entries and entries[1] and entries[1].name,
+                    type = entries and entries[1] and entries[1].type,
                     entries_nil = entries == nil,
                 }
             end)
@@ -91,8 +91,8 @@ return {
                 dir_entries[2] = {
                     err = err,
                     count = entries and #entries or 0,
-                    name = entries and entries[1] and entries[1].name or nil,
-                    type = entries and entries[1] and entries[1].type or nil,
+                    name = entries and entries[1] and entries[1].name,
+                    type = entries and entries[1] and entries[1].type,
                     entries_nil = entries == nil,
                 }
             end)
@@ -104,8 +104,8 @@ return {
                 dir_entries[3] = {
                     err = err,
                     count = entries and #entries or 0,
-                    name = entries and entries[1] and entries[1].name or nil,
-                    type = entries and entries[1] and entries[1].type or nil,
+                    name = entries and entries[1] and entries[1].name,
+                    type = entries and entries[1] and entries[1].type,
                     entries_nil = entries == nil,
                 }
             end)

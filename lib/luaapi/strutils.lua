@@ -50,5 +50,11 @@ function strutils._str_byteindex(s, old_index, _use_utf16)
     return Utf8.byte_index(s, old_index + 1, true) - 1
 end
 
+function strutils.stricmp(a, b)
+    a, b = a:lower(), b:lower()
+    if a == b then return 0 end
+    return a < b and -1 or 1
+end
+
 
 return strutils

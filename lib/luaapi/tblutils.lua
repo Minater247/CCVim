@@ -1,5 +1,12 @@
 local tbl = {}
 
+function tbl.sorted_keys(t)
+    local keys = {}
+    for key in pairs(t) do keys[#keys + 1] = key end
+    table.sort(keys)
+    return keys
+end
+
 function tbl.deepcopy(orig, noref)
     local function copy(obj, cache, stack)
         local t = type(obj)
