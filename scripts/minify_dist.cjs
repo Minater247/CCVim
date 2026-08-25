@@ -104,6 +104,8 @@ async function main() {
     console.log(`minified: ${rel}`);
   }
 
+  await fs.copyFile(path.join(ROOT, ".version"), path.join(DIST, ".version"));
+
   console.log(`done: ${count} Lua file(s) -> dist/`);
 }
 

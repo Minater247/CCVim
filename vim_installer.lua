@@ -1,13 +1,13 @@
-local DEFAULT_BRANCH = "rewrite-2026"
-local INSTALLER_VERSION = "0.2"
+local DEFAULT_BRANCH = "main"
+local INSTALLER_VERSION = "0.3"
 local COMPRESSED_URL = "https://minater247.github.io/CCVim/"
 local MANIFEST = "nvim.idx"
 local VERSION_FILE = ".version"
 local PREFS_FILE = ".installer_prefs"
 local INSTALLER_FILES = {
-    VERSION_FILE,
     "instui.lua",
     "vim_installer.lua",
+    VERSION_FILE,
 }
 
 local label = "CCVIM Installer v" .. INSTALLER_VERSION
@@ -189,9 +189,13 @@ local function ensureLatestInstaller()
         return
     end
 
-    local _, remoteInstallerVersion = parseVersionFile(versionText)
+    local remoteAppVersion, remoteInstallerVersion = parseVersionFile(versionText)
     local localInstallerVersion = readLocalInstallerVersion()
-    if remoteInstallerVersion == localInstallerVersion then
+    local remoteNumber = tonumber(remoteInstallerVersion)
+    local localNumber = tonumber(localInstallerVersion)
+    if remoteInstallerVersion == localInstallerVersion
+        or (remoteNumber and localNumber and remoteNumber <= localNumber)
+    then
         return
     end
 
@@ -199,9 +203,17 @@ local function ensureLatestInstaller()
         os.exit()
     end
 
+    local localVersionText = readFile(resolveInstallerFile(VERSION_FILE))
+    local localAppVersion = localVersionText and parseVersionFile(localVersionText)
+    if not localAppVersion or localAppVersion == "" then localAppVersion = remoteAppVersion end
+    local updatedVersionText = localAppVersion .. "\n" .. remoteInstallerVersion .. "\n"
+
     for i = 1, #INSTALLER_FILES do
         local relPath = INSTALLER_FILES[i]
-        local ok, updateErr = downloadInstallerFile(relPath, relPath == VERSION_FILE and versionText or nil)
+        local ok, updateErr = downloadInstallerFile(
+            relPath,
+            relPath == VERSION_FILE and updatedVersionText or nil
+        )
         if not ok then
             error(updateErr, 0)
         end
@@ -275,6 +287,19 @@ local function parseManifest(text)
 end
 
 local doRelease = true
+local releaseBranch
+local releaseMatches
+
+local function useRelease()
+    if not doRelease or git_branch ~= DEFAULT_BRANCH then return false end
+    if releaseBranch ~= git_branch then
+        local releaseVersion = httpGet(COMPRESSED_URL .. VERSION_FILE)
+        local branchVersion = httpGet(baseUrl(git_branch) .. VERSION_FILE)
+        releaseBranch = git_branch
+        releaseMatches = releaseVersion and branchVersion and trim(releaseVersion) == trim(branchVersion)
+    end
+    return releaseMatches
+end
 
 local function downloadFile(relPath)
     local url = baseUrl(git_branch) .. relPath
@@ -287,7 +312,7 @@ local function downloadFile(relPath)
 
     local data, err
 
-    if doRelease then
+    if useRelease() then
         data = httpGet(COMPRESSED_URL .. relPath)
     end
     
@@ -351,7 +376,7 @@ end
 
 local function applyPreferences(preferences)
     install_dir = preferences.install_dir
-    git_branch = preferences.git_branch
+    git_branch = preferences.git_branch == "rewrite-2026" and DEFAULT_BRANCH or preferences.git_branch
     doRelease = preferences.doRelease
     replaceSelectionTable(colorschemes, preferences.colorschemes)
     replaceSelectionTable(syntaxes, preferences.syntaxes)
@@ -747,7 +772,7 @@ local function buildRootMenu()
         TUI.Components.option("Install CCVIM", openInstallMenu),
     }
 
-    if hasSavedPreferences() then
+    if hasSavedPreferences() or fs.exists(fs.combine(install_dir, "vim.lua")) then
         menu[#menu + 1] = TUI.Components.option("Update CCVIM", runSavedUpdate)
     else
         menu[#menu + 1] = TUI.Components.disabledOption("Update CCVIM")
@@ -1121,19 +1146,21 @@ function openInstallMenu()
 end
 
 function runSavedUpdate()
-    local _, err = loadPreferences()
-    if err then
-        TUI.pushMenu({
-            TUI.Components.info(label),
-            TUI.Components.separator(),
-            TUI.Components.text("Failed to load saved update preferences."),
-            TUI.Components.info(tostring(err)),
-            TUI.Components.separator(),
-            TUI.Components.option("Back", function()
-                TUI.popMenu()
-            end),
-        })
-        return
+    if hasSavedPreferences() then
+        local _, err = loadPreferences()
+        if err then
+            TUI.pushMenu({
+                TUI.Components.info(label),
+                TUI.Components.separator(),
+                TUI.Components.text("Failed to load saved update preferences."),
+                TUI.Components.info(tostring(err)),
+                TUI.Components.separator(),
+                TUI.Components.option("Back", function()
+                    TUI.popMenu()
+                end),
+            })
+            return
+        end
     end
 
     beginInstallFlow()
