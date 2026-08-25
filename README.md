@@ -1,44 +1,58 @@
 # CCVim
-A newer Vim clone for ComputerCraft, made since I wanted some of the features the previous one didn't have.
 
-![2022-01-21_10 08 45](https://user-images.githubusercontent.com/45747191/150578475-108afa02-3acd-4019-b512-c47dd9546d1b.png)
+A faithful port of Neovim to Computercraft, built from the ground up to be fully compatible with existing Neovim configs and plugins.
 
-You can use [TAB] to exit editing mode.
+![Screenshot](./media/readme-screenshot.png)
 
-Features:
-- Insert mode
-- Append mode
-- Opening/Saving files
-- Scrolling (both directions)
-- Appending files
-- Copy / Cut / Paste
-- Jumping to lines
-- fF/tT jumping, with repeat/repeat reverse (```;```/```,```)
-- Tabs (opening multiple files uses tabs)
-- Basic syntax highlighting
-- Setting syntax type while in file using :set filetype=[FILETYPE]
-- Line numbers
-- Jumping to matching bracket (currently works with ```{}```,```[]```, and ```()```.
-- Commands that require pressing control (type ```:ctrl``` to activate the emulated control key, or ```:ctrl X``` to emulate [control + key X].)
-- File explorer
-- Support for tapping/clicking bottom line to exit insert/append modes, for use on mobile
-- Autoindent
-- Searching within file
+If you're used to Vim or Neovim, you will feel right at home. The only major control difference is that you press &lt;Ctrl-Tab&gt; to exit insert mode instead of &lt;Esc&gt;.
 
+## Features
+- **A full Vimscript JIT&rarr;Lua Transpiler** which allows native Vimscript to run without impacting performance
+- **Window Splitting** for all your multi-view needs
+- **Syntax Highlighting** for over 500 languages utilizing the Neovim highlight plugins with a custom VimRegex VM
+- **Plugin Support** for a rapidly growing number of plugins, including:
+    - Netrw
+    - Lualine
+    - oil.nvim
+    - NvimTree
+    - NeoFS
+    - And many more from standard plugin repositories!
+- **Neovim API Compatibility** so that any Neovim Lua code should run seamlessly
+- **Lua LSP Support** with diagnostics, completion, definitions, hover, and document symbols
 
-What's currently being worked on:
-- The few remaining commands in [this list of VIM commands](https://vim.rtorr.com)
+## NOTICE
+This project is still in early beta! I have waited until the project was stable enough to be my main CC editor before releasing it, but you may encounter bugs while you use it.
 
-Fun fact - this README was written in the program!
+Not all plugins will run immediately - some require minor edits. I am working on accounting for these, but I cannot guarantee a plugin will not become stuck or crash at a critical point - so use external plugins at your own risk.
 
-# Installation
+## Installation
 
-**Automatic**
-Run ```pastebin run eX0BrfjA``` on your computer.
+A pastebin link will be coming as soon as I polish up the installer!
 
-**Manual**
-Copy ```vim.lua```, ```.version``` and the ```libs``` folder with its contents to the ```/vim/``` folder of your computer.
+For now, use wget (or any file downloader of choice) to transfer [vim_installer.lua](https://raw.githubusercontent.com/Minater247/CCVim/refs/heads/main/vim_installer.lua) to your computer and run `vim_installer`. The installer fetches its UI automatically and saves the selected components for later updates.
 
-For syntax, put each syntax file according to extension (ex. ```XYZ.lua``` -> ```/vim/syntax/lua.lua```, ```XYZ.swf``` -> ```/vim/syntax/swf.lua```) in the ```/vim/syntax/``` folder.
+Be aware that there are just over 2,000 files to download for a full install, so it may take a while. The final installer, when complete, will allow you to select exactly what you want to download.
 
-A basic ```.vimrc``` can also be found in the main directory of the repo. This can be placed in the ```/vim/``` folder.
+## Configuration
+You should be able to simply use standard Neovim configuration files! In the directory you install the program to, simply create either `config/init.lua` or `config/init.vim`. Either copy in your config, or write one using the many tutorials available online!
+
+## Plugin Management
+
+### Installation
+Given that ComputerCraft does not support `git` natively, plugin managers which pull from such providers are not yet supported.
+
+If you are familiar with the `packadd` command, an older method of package management in Vim, that is supported! You may use `runtime/pack`.
+
+Most plugins also work perfectly fine if you simply copy their folders into the `runtime` directory, which is how I have been testing in the meantime.
+
+### Compatibility
+Any compatibility notes will be listed in `plugin_compat/<plugin-name>`. Most plugins only need a couple config keys set to function properly.
+
+## Contributing
+Please try your config and see if it works! If anything behaves even slightly differently to how Neovim behaves, that is grounds for opening an issue.
+
+If you want to help with development, contributions are welcomed! I will be working on documenting the code properly in the near future as the codebase begins to stabilize.
+
+## Planned Projects
+- Porting to OpenComputers
+- Integration with existing `git` repository handlers for ComputerCraft

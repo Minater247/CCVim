@@ -1,0 +1,10 @@
+logfile.txt
+log/
+config/
+*.old
+.DS_STORE
+.nvimlog
+dist/
+node_modules
+*S.md
+*.ccvim

@@ -1,0 +1,13 @@
+{
+  "devDependencies": {
+    "lua-format": "^1.6.1-b"
+  },
+  "scripts": {
+    "build:dist": "node scripts/patch_lua_format.cjs && node scripts/minify_dist.cjs",
+    "lint:lua": "lua scripts/run_luacheck.lua .",
+    "lint": "npm run lint:lua",
+    "test:lua_editor": "lua tests/run.lua",
+    "test:headless_nvim": "lua tests/run.lua --backend=headless_nvim",
+    "test": "npm run test:lua_editor"
+  }
+}

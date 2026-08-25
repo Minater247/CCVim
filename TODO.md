@@ -1,0 +1,5 @@
+- Visual mode number increment/decrement
+- Select mode
+- More plugin testing
+- Fix native mode
+- OpenComputers backend
