@@ -37,5 +37,10 @@ jobs:
           luarocks install lpeg
           luarocks install luv
 
+      - name: Regenerate installer index
+        run: |
+          npm run generate:index
+          git diff --exit-code -- nvim.idx
+
       - name: Run lua_editor suite
         run: npm test

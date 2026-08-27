@@ -7,7 +7,12 @@ lib/
 	aliastable.lua
 	args.lua
 	autocmd.lua
+	backend/
+		cc.lua
+		native.lua
+	backend.lua
 	bufattach.lua
+	color.lua
 	command.lua
 	decoration.lua
 	envvars.lua
@@ -17,13 +22,17 @@ lib/
 		cmdread.lua
 		commands.lua
 		compiler.lua
+		completion.lua
 		exmsg.lua
+		payload.lua
 		runtime.lua
 		vim_regex.lua
 		vimxpr.lua
 	filesystem.lua
 	frame.lua
+	fsutil.lua
 	highlight.lua
+	intro.lua
 	key.lua
 	listchars.lua
 	luaapi/
@@ -37,6 +46,7 @@ lib/
 		json.lua
 		loop.lua
 		lpeg.lua
+		lsp_lua.lua
 		on_key.lua
 		package.lua
 		print.lua
@@ -48,11 +58,14 @@ lib/
 		treesitter.lua
 	lualoader.lua
 	mappings.lua
+	menu.lua
 	options.lua
 	pack.lua
 	popupmenu.lua
 	registers.lua
 	runtimepath.lua
+	screen.lua
+	screendraw.lua
 	scriptsource.lua
 	sign.lua
 	statusline.lua
@@ -68,6 +81,7 @@ lib/
 	tags.lua
 	texren.lua
 	utf8.lua
+	visual.lua
 	wordnav.lua
 runtime/
 	autoload/
@@ -1392,6 +1406,7 @@ runtime/
 			injections.scm
 	scripts/
 		emoji_list.lua
+		generate_integration_mappings_table.lua
 		less.bat
 		less.sh
 		less.vim

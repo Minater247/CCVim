@@ -440,32 +440,42 @@ end
 --#region Components pages
 colorschemes = {}
 
-local function buildColorschemesMenu()
-    local tui = {
+local function selectionMenuHeader(selection, names, build)
+    return {
         TUI.Components.info(label),
-        
         TUI.Components.separator(),
-
+        TUI.Components.option("Select All", function()
+            for _, k in ipairs(names) do selection[k] = true end
+            TUI.popMenu()
+            TUI.pushMenu(build())
+        end),
+        TUI.Components.option("Deselect All", function()
+            for k in pairs(selection) do selection[k] = false end
+            for _, k in ipairs(names) do selection[k] = false end
+            TUI.popMenu()
+            TUI.pushMenu(build())
+        end),
+        TUI.Components.separator(),
         TUI.Components.option("Back", function()
             TUI.popMenu()
         end),
-        
         TUI.Components.separator(),
     }
+end
 
+local function buildColorschemesMenu()
     local color_names = {}
     for k, v in pairs(manifest_tree.runtime.colors) do
-        if v == true then
+        if v == true and k:match("^[%w_%-]+%.vim$") and k ~= "default.vim" then
             table.insert(color_names, k)
         end
     end
     table.sort(color_names)
+    local tui = selectionMenuHeader(colorschemes, color_names, buildColorschemesMenu)
     for _, k in ipairs(color_names) do
-        if k:match("^[%w_%-]+%.vim$") and k ~= "default.vim" then
-            table.insert(tui, TUI.Components.checkbox(k, colorschemes[k], function(newval)
-                colorschemes[k] = newval
-            end))
-        end
+        table.insert(tui, TUI.Components.checkbox(k, colorschemes[k], function(newval)
+            colorschemes[k] = newval
+        end))
     end
 
     return tui
@@ -481,31 +491,21 @@ syntaxes = {
 }
 
 local function buildSyntaxesMenu()
-    local tui = {
-        TUI.Components.info(label),
-        
-        TUI.Components.separator(),
-
-        TUI.Components.option("Back", function()
-            TUI.popMenu()
-        end),
-        
-        TUI.Components.separator(),
-    }
-    
     local syntax_names = {}
     for k, v in pairs(manifest_tree.runtime.syntax) do
-        if v == true then
+        if v == true and k:match("^[%w_%-]+%.vim$")
+            and k ~= "syntax.vim" and k ~= "synload.vim"
+            and k ~= "nosyntax.vim" and k ~= "manual.vim"
+        then
             table.insert(syntax_names, k)
         end
     end
     table.sort(syntax_names)
+    local tui = selectionMenuHeader(syntaxes, syntax_names, buildSyntaxesMenu)
     for _, k in ipairs(syntax_names) do
-        if k:match("^[%w_%-]+%.vim$") and k ~= "syntax.vim" and k ~= "synload.vim" then
-            table.insert(tui, TUI.Components.checkbox(k, syntaxes[k], function(newval)
-                syntaxes[k] = newval
-            end))
-        end
+        table.insert(tui, TUI.Components.checkbox(k, syntaxes[k], function(newval)
+            syntaxes[k] = newval
+        end))
     end
 
     return tui
@@ -524,31 +524,18 @@ ftplugins = {
 }
 
 local function buildFtpluginsMenu()
-    local tui = {
-        TUI.Components.info(label),
-        
-        TUI.Components.separator(),
-
-        TUI.Components.option("Back", function()
-            TUI.popMenu()
-        end),
-        
-        TUI.Components.separator(),
-    }
-
     local ftplugin_names = {}
     for k, v in pairs(manifest_tree.runtime.ftplugin) do
-        if v == true then
+        if v == true and (k:match("^[%w_%-]+%.vim$") or k:match("^[%w_%-]+%.lua$")) then
             table.insert(ftplugin_names, k)
         end
     end
     table.sort(ftplugin_names)
+    local tui = selectionMenuHeader(ftplugins, ftplugin_names, buildFtpluginsMenu)
     for _, k in ipairs(ftplugin_names) do
-        if (k:match("^[%w_%-]+%.vim$") or k:match("^[%w_%-]+%.lua$")) and k ~= "README.txt" then
-            table.insert(tui, TUI.Components.checkbox(k, ftplugins[k], function(newval)
-                ftplugins[k] = newval
-            end))
-        end
+        table.insert(tui, TUI.Components.checkbox(k, ftplugins[k], function(newval)
+            ftplugins[k] = newval
+        end))
     end
 
     return tui
@@ -561,31 +548,18 @@ indents = {
 }
 
 local function buildIndentsMenu()
-    local tui = {
-        TUI.Components.info(label),
-        
-        TUI.Components.separator(),
-
-        TUI.Components.option("Back", function()
-            TUI.popMenu()
-        end),
-        
-        TUI.Components.separator(),
-    }
-
     local indents_names = {}
     for k, v in pairs(manifest_tree.runtime.indent) do
-        if v == true then
+        if v == true and (k:match("^[%w_%-]+%.vim$") or k:match("^[%w_%-]+%.lua$")) then
             table.insert(indents_names, k)
         end
     end
     table.sort(indents_names)
+    local tui = selectionMenuHeader(indents, indents_names, buildIndentsMenu)
     for _, k in ipairs(indents_names) do
-        if (k:match("^[%w_%-]+%.vim$") or k:match("^[%w_%-]+%.lua$")) and k ~= "README.txt" and k ~= "Makefile" then
-            table.insert(tui, TUI.Components.checkbox(k, indents[k], function(newval)
-                indents[k] = newval
-            end))
-        end
+        table.insert(tui, TUI.Components.checkbox(k, indents[k], function(newval)
+            indents[k] = newval
+        end))
     end
 
     return tui
@@ -621,35 +595,6 @@ helpfiles = {
 }
 
 local function buildHelpfilesMenu()
-    local tui = {
-        TUI.Components.info(label),
-        
-        TUI.Components.separator(),
-
-        TUI.Components.option("Back", function()
-            TUI.popMenu()
-        end),
-        
-        TUI.Components.separator(),
-
-        TUI.Components.option("Enable All", function()
-            for k, _ in pairs(helpfiles) do
-                helpfiles[k] = true
-            end
-            TUI.popMenu()
-            TUI.pushMenu(buildHelpfilesMenu())
-        end),
-        TUI.Components.option("Disable All (breaks :help)", function()
-            for k, _ in pairs(helpfiles) do
-                helpfiles[k] = false
-            end
-            TUI.popMenu()
-            TUI.pushMenu(buildHelpfilesMenu())
-        end),
-        
-        TUI.Components.separator(),
-    }
-
     local helpfile_names = {}
     for k, v in pairs(manifest_tree.runtime.doc) do
         if v == true then
@@ -657,6 +602,7 @@ local function buildHelpfilesMenu()
         end
     end
     table.sort(helpfile_names)
+    local tui = selectionMenuHeader(helpfiles, helpfile_names, buildHelpfilesMenu)
     for _, k in ipairs(helpfile_names) do
         table.insert(tui, TUI.Components.checkbox(k, helpfiles[k], function(newval)
             helpfiles[k] = newval
@@ -669,20 +615,6 @@ end
 keymaps = {}
 
 local function buildKeymapsMenu()
-    local tui = {
-        TUI.Components.info(label),
-        
-        TUI.Components.separator(),
-
-        TUI.Components.text("These may or may not work. They have not been tested."),
-
-        TUI.Components.option("Back", function()
-            TUI.popMenu()
-        end),
-        
-        TUI.Components.separator(),
-    }
-
     local keymap_names = {}
     for k, v in pairs(manifest_tree.runtime.keymap) do
         if v == true then
@@ -690,6 +622,9 @@ local function buildKeymapsMenu()
         end
     end
     table.sort(keymap_names)
+    local tui = selectionMenuHeader(keymaps, keymap_names, buildKeymapsMenu)
+    table.insert(tui, TUI.Components.text("These may or may not work. They have not been tested."))
+    table.insert(tui, TUI.Components.separator())
     for _, k in ipairs(keymap_names) do
         table.insert(tui, TUI.Components.checkbox(k, keymaps[k], function(newval)
             keymaps[k] = newval
@@ -918,6 +853,8 @@ local function runInstall()
     local syntaxcnt = 0
     syntaxes["syntax.vim"] = true
     syntaxes["synload.vim"] = true
+    syntaxes["nosyntax.vim"] = true
+    syntaxes["manual.vim"] = true
     syntaxes["query.lua"] = true
     if syntaxes["tutor.vim"] then
         syntaxes["tutor.lua"] = true
@@ -1035,6 +972,7 @@ local function runInstall()
         manifest_tree.runtime.lua,
         manifest_tree.runtime.pack,
         manifest_tree.runtime.plugin,
+        manifest_tree.runtime.queries,
     }
     local core_single_files = {
         "runtime/example_init.lua",
@@ -1063,6 +1001,8 @@ local function runInstall()
     ok, err = downwalk(manifest_tree.runtime.pack, {"runtime", "pack"}, core_state, core_total)
     if not ok then return failure(err) end
     ok, err = downwalk(manifest_tree.runtime.plugin, {"runtime", "plugin"}, core_state, core_total)
+    if not ok then return failure(err) end
+    ok, err = downwalk(manifest_tree.runtime.queries, {"runtime", "queries"}, core_state, core_total)
     if not ok then return failure(err) end
     -- single files
     for _, f in ipairs(core_single_files) do
