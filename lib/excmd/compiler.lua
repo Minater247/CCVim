@@ -713,6 +713,12 @@ local function compile_ast(node, ctx)
         return { code = var_read_code(node.scope, node.name, ctx), kind = "unknown" }
     elseif k == "scope" then
         local tbl = scoped_table(node.scope, ctx)
+        if not tbl and (node.scope == "l" or node.scope == "a") then
+            return {
+                code = "runtime:scope_table(" .. lua_string(node.scope) .. ")",
+                kind = "table",
+            }
+        end
         if not tbl then return nil end
         return { code = tbl, kind = "table" }
     elseif k == "opt" then
@@ -922,6 +928,7 @@ local function _compile_expr_typed(expr, ctx)
     if not ctx.direct_backend then
         return { code = string.format("runtime:eval_expr(%q)", tostring(expr or "")), kind = "unknown" }
     end
+    local label = type(expr) == "table" and (expr.kind or "expression") or tostring(expr or "")
     local ast, parse_err
     if type(expr) == "table" and expr.kind then
         ast = expr
@@ -929,13 +936,13 @@ local function _compile_expr_typed(expr, ctx)
         ast, parse_err = VimExpr.parse(expr)
     end
     if not ast then
-        error(Error(474, "Unsupported expression: " .. tostring(expr or "") .. " (" .. tostring(parse_err) .. ")"))
+        error(Error(474, "Unsupported expression: " .. label .. " (" .. tostring(parse_err) .. ")"))
     end
     local compiled = compile_ast(ast, ctx)
     if compiled then
         return compiled
     end
-    error(Error(474, "Unsupported expression: " .. tostring(expr or "")))
+    error(Error(474, "Unsupported expression: " .. label))
 end
 
 local function dynamic_lvalue_name_code(node, ctx)

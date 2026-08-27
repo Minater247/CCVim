@@ -1553,6 +1553,14 @@ function Runtime:get_var(name)
     return self.state.g[var]
 end
 
+function Runtime:scope_table(scope)
+    local frame = self.state.frames[#self.state.frames]
+    if (scope == "l" or scope == "a") and (not frame or frame.kind ~= "func") then
+        error(Error(121, scope .. ":"), 0)
+    end
+    return frame[scope]
+end
+
 function Runtime:require_var(name)
     local frame = self.state.frames[#self.state.frames]
     local value = runtime_var(name, self.state, frame, scopes)
@@ -2027,10 +2035,7 @@ local COMMAND_MODIFIER_SPECS = {
 }
 
 local function _to_string_simple(v)
-    local t = type(v)
-    if t == "nil" then return "v:null" end
-    if t == "boolean" then return v and "true" or "false" end
-    return tostring(v)
+    return runtime_string(v)
 end
 
 local function _scan_range_prefix(text, line_count, current_line, buffer)
