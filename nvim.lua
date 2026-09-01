@@ -706,8 +706,9 @@ end
 _V.writestartup("loading argument files")
 Args.load_pending_files()
 
--- Fire VimEnter after startup scripts and plugins have loaded
+Scopes._v.vim_did_enter = 1
 AutoCmd.Run("VimEnter")
+AutoCmd.Run("UIEnter", { data = { chan = 1 } })
 
 if _V.startuptime then
     local file = fs.open(VimFs.abspath(_V.startuptime), "a")

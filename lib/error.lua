@@ -30,6 +30,8 @@ local errStrings = {
     [134] = "Cannot move a range of lines into itself",
     [142] = "File not written: Writing is disabled by 'write' option",
     [149] = function(params) return "Sorry, no help for " .. params[1] end,
+    [150] = function(params) return "Not a directory: " .. tostring(params[1]) end,
+    [154] = function(params) return "Duplicate tag: " .. tostring(params[1]) end,
     [185] = function(params) return "Cannot find color scheme " .. "'" .. params[1] .. "'" end,
     [189] = function(params) return '"' .. (params[1] or "") .. '" exists (add ! to override)' end,
     [191] = "Argument must be a letter or forward/backward quote",
@@ -80,6 +82,7 @@ local errStrings = {
     [726] = "Stride is zero",
     [727] = "Start past end",
     [728] = "Using a Dictionary as a Number",
+    [730] = "Using a List as a String",
     [739] = function(params)
         return "Cannot create directory " .. tostring(params[1] or "")
             .. (params[2] and (": " .. params[2]) or "")
@@ -113,6 +116,7 @@ local errStrings = {
     [5108] = function(params) return "Error executing lua " .. (params[1] or "[NULL]") end,
     [5112] = function(params) return "Error while creating lua chunk: " .. params[1] end,
     [5113] = function(params) return "Error while calling lua chunk: " .. params[1] end,
+    [5560] = "vim.wait() must not be called in a fast event context",
 }
 
 function Error:toString()

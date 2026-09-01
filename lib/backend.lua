@@ -23,4 +23,16 @@ function Backend.running_program()
     return Backend.current().running_program()
 end
 
+function Backend.system(command, opts)
+    return Backend.current().system(command, opts)
+end
+
+function Backend.new_pipe(ipc)
+    return Backend.current().new_pipe(ipc)
+end
+
+function Backend.spawn(path, opts, on_exit)
+    return Backend.current().spawn(path, opts, on_exit)
+end
+
 return Backend

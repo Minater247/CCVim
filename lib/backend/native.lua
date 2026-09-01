@@ -1053,6 +1053,100 @@ function Native.running_program()
     return tostring((arg and arg[0]) or "")
 end
 
+function Native.new_pipe(ipc)
+    return uv.new_pipe(ipc)
+end
+
+function Native.spawn(path, opts, on_exit)
+    return uv.spawn(path, opts, on_exit)
+end
+
+function Native.system(command, opts)
+    opts = opts or {}
+
+    local argv = command
+    if type(argv) == "string" then
+        argv = { "/bin/sh", "-c", argv }
+    end
+    if type(argv) ~= "table" or #argv == 0 then
+        return { code = 1, signal = 0, stdout = "", stderr = "empty command" }
+    end
+
+    local args = {}
+    for i = 2, #argv do
+        args[#args + 1] = argv[i]
+    end
+
+    local stdin = opts.input ~= nil and uv.new_pipe(false) or nil
+    local stdout, stderr = uv.new_pipe(false), uv.new_pipe(false)
+    local stdout_parts, stderr_parts = {}, {}
+    local stdout_done, stderr_done, exited = false, false, false
+    local code, signal = 1, 0
+
+    local handle
+    local spawn_err
+    handle, spawn_err = Native.spawn(argv[1], {
+        args = args,
+        cwd = opts.cwd,
+        env = opts.env,
+        stdio = { stdin, stdout, stderr },
+    }, function(exit_code, exit_signal)
+        code, signal, exited = exit_code, exit_signal, true
+        handle:close()
+    end)
+
+    if not handle then
+        if stdin then stdin:close() end
+        stdout:close()
+        stderr:close()
+        return { code = 1, signal = 0, stdout = "", stderr = tostring(spawn_err) }
+    end
+
+    stdout:read_start(function(err, data)
+        if err then stderr_parts[#stderr_parts + 1] = tostring(err) end
+        if data then
+            stdout_parts[#stdout_parts + 1] = data
+        else
+            stdout_done = true
+            stdout:close()
+        end
+    end)
+    stderr:read_start(function(err, data)
+        if err then stderr_parts[#stderr_parts + 1] = tostring(err) end
+        if data then
+            stderr_parts[#stderr_parts + 1] = data
+        else
+            stderr_done = true
+            stderr:close()
+        end
+    end)
+
+    if stdin then
+        local input = opts.input
+        if type(input) == "table" then
+            local lines = {}
+            for i = 1, #input do lines[i] = tostring(input[i]) end
+            input = table.concat(lines, "\n") .. "\n"
+        else
+            input = tostring(input)
+        end
+        stdin:write(input, function()
+            stdin:shutdown(function() stdin:close() end)
+        end)
+    end
+
+    while not (exited and stdout_done and stderr_done) do
+        uv.run("once")
+    end
+
+    return {
+        code = code,
+        signal = signal,
+        stdout = table.concat(stdout_parts),
+        stderr = table.concat(stderr_parts),
+    }
+end
+
 local FS = {}
 
 function FS.attributes(path)

@@ -669,6 +669,8 @@ local function _call_callback(cb, ac, event, ctx)
         ve.changed_window = data.changed_window or false
     elseif event == "WinResized" then
         ve.windows = data.windows or {}
+    elseif event == "UIEnter" or event == "UILeave" then
+        ve.chan = data.chan
     elseif event == "CompleteChanged" then
         ve.completed_item = data.completed_item or {}
         ve.height = data.height

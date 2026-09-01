@@ -30,6 +30,7 @@ end
 
 local next_fs_fd = 2
 local open_fds = {}
+local open_fd_paths = {}
 
 local function new_fs_req(op, fields)
     fields = fields or {}
@@ -38,9 +39,10 @@ local function new_fs_req(op, fields)
     return FakeUserdata.new("uv_fs_t", fields)
 end
 
-local function alloc_fd(handle)
+local function alloc_fd(handle, path)
     next_fs_fd = next_fs_fd + 1
     open_fds[next_fs_fd] = handle
+    open_fd_paths[next_fs_fd] = path
     return next_fs_fd
 end
 
@@ -241,6 +243,14 @@ function loop.cwd()
     return Backend.cwd()
 end
 
+function loop.new_pipe(ipc)
+    return Backend.new_pipe(ipc)
+end
+
+function loop.spawn(path, opts, on_exit)
+    return Backend.spawn(path, opts, on_exit)
+end
+
 function loop.fs_open(path, mode, permission, callback)
     -- permission currently ignored as ComputerCraft doesn't handle that
     if type(permission) == "function" and callback == nil then
@@ -255,7 +265,7 @@ function loop.fs_open(path, mode, permission, callback)
 
     local fd
     if err == nil and handle ~= nil then
-        fd = alloc_fd(handle)
+        fd = alloc_fd(handle, VimFs.abspath(path))
     end
 
     if type(callback) == "function" then
@@ -307,6 +317,72 @@ function loop.fs_read(fd, size, offset, callback)
     return data, err
 end
 
+function loop.fs_write(fd, data, offset, callback)
+    if type(offset) == "function" and callback == nil then
+        callback = offset
+        offset = nil
+    end
+
+    local ok, rv_or_err = pcall(function()
+        local handle, resolve_err = resolve_fd(fd)
+        if not handle then error(resolve_err) end
+        if not handle.write then error("EBADF: file is not writable") end
+
+        local initial = handle.seek and handle.seek()
+        if offset and offset >= 0 then
+            if not handle.seek then error("ESPIPE: file does not support positional writes") end
+            handle.seek("set", offset)
+        end
+
+        data = tostring(data or "")
+        handle.write(data)
+        if handle.flush then handle.flush() end
+
+        if offset and offset >= 0 and initial ~= nil then
+            handle.seek("set", initial)
+        end
+        return #data
+    end)
+
+    local written, err
+    if ok then written = rv_or_err else err = tostring(rv_or_err) end
+    if type(callback) == "function" then
+        callback(err, written)
+        return new_fs_req("write")
+    end
+    return written, err
+end
+
+function loop.fs_fstat(fd, callback)
+    local stat, err
+    if type(fd) == "number" and open_fd_paths[fd] then
+        stat, err = _fs_stat_impl(open_fd_paths[fd])
+    else
+        local handle, resolve_err = resolve_fd(fd)
+        if not handle then
+            err = resolve_err
+        elseif handle.seek then
+            local initial = handle.seek()
+            local size = handle.seek("end")
+            if initial ~= nil then handle.seek("set", initial) end
+            stat = {
+                size = size or 0,
+                type = "file",
+                ctime = modtimeconv(0),
+                mtime = modtimeconv(0),
+            }
+        else
+            err = "EBADF: cannot stat file descriptor"
+        end
+    end
+
+    if type(callback) == "function" then
+        callback(err, stat)
+        return new_fs_req("fstat")
+    end
+    return stat, err
+end
+
 function loop.fs_close(fd, callback)
     local ok, close_err = pcall(function()
         local handle, fd_num_or_nil = resolve_fd(fd)
@@ -318,6 +394,7 @@ function loop.fs_close(fd, callback)
         end
         if fd_num_or_nil ~= nil then
             open_fds[fd_num_or_nil] = nil
+            open_fd_paths[fd_num_or_nil] = nil
         end
     end)
     local err
@@ -662,18 +739,44 @@ function loop.now()
     return os.epoch("utc")
 end
 
-function loop.fs_scandir(path)
-    local i = 1
-    local items = fs.list(path)
-    return function()
-        local rv = items[i]
-        i = i + 1
-        return rv
+local function _fs_scandir_impl(path)
+    if has_uri_scheme(path) then
+        return nil, "ENOENT: unsupported uri scheme"
     end
+    local dir = VimFs.abspath(path)
+    if not fs.exists(dir) then
+        return nil, "ENOENT: no such file or directory"
+    end
+    if not fs.isDir(dir) then
+        return nil, "ENOTDIR: not a directory"
+    end
+    return FakeUserdata.new("uv_fs_t", {
+        _op = "scandir",
+        _path = dir,
+        _items = fs.list(dir) or {},
+        _idx = 1,
+    })
+end
+
+function loop.fs_scandir(path, callback)
+    local handle, err = _fs_scandir_impl(path)
+    if type(callback) == "function" then
+        callback(err, handle)
+        return new_fs_req("scandir", { _path = path })
+    end
+    return handle, err
 end
 
 function loop.fs_scandir_next(handle)
-    return handle()
+    local state = FakeUserdata.state(handle)
+    if state == nil or state._op ~= "scandir" then
+        return nil, "EBADF: bad scandir handle"
+    end
+    local name = state._items[state._idx]
+    if name == nil then return nil end
+    state._idx = state._idx + 1
+    local entry_type = fs.isDir(FsUtil.join(state._path, name)) and "directory" or "file"
+    return name, entry_type
 end
 
 function loop.fs_access(path, mode, callback)
@@ -743,6 +846,10 @@ function loop.os_getenv(name, size)
     end
     
     return value
+end
+
+function loop.os_environ()
+    return EnvVars.snapshot()
 end
 
 return loop

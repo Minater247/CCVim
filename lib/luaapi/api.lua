@@ -842,13 +842,19 @@ function api.nvim_call_function(name, args)
     local ok, res = xpcall(function()
         return Fn._call(name, table.unpack(args))
     end, function(e)
-        scopes._v.errmsg = tostring(e)
-        return e
+        local message = tostring(e)
+        scopes._v.errmsg = message
+        return message
     end)
 
     if not ok then
+        error(res, 0)
+    end
+    if Error.IsError(res) then
         -- Rethrow as Lua error to match API behavior
-        error(res)
+        local message = res:toString()
+        scopes._v.errmsg = message
+        error(message, 0)
     end
 
     return res

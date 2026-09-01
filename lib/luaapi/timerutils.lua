@@ -1,6 +1,7 @@
 local timerutils = {}
 
 local Event = loadModule("lib.event")
+local Error = loadModule("lib.error")
 local in_fast_event_depth = 0
 
 function timerutils.schedule(fn)
@@ -54,7 +55,7 @@ function timerutils.wait(timeout_ms, callback, interval_ms, fast_only)
     end
 
     if timerutils.in_fast_event() then
-        error("E5560: vim.wait() must not be called in a fast event context", 2)
+        error(Error(5560), 2)
     end
 
     callback = callback or function()

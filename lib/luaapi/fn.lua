@@ -822,14 +822,45 @@ function Builtins.expand(str, nosuf, list)
     return expansions
 end
 
--- TODO: Handle input, keepempty arguments
-function Builtins.systemlist(cmd, _input, _keepempty)
-    -- TODO: implement properly. ComputerCraft doesn't provide utilities for this so we'll have to write our own
-    if type(cmd) == "string" and cmd:sub(1, 3) == "ls " then
-        return fs.list(VimFs.abspath(cmd:sub(4)))
-    else
-        error("systemlist is very limited currently!! Don't understand command: " .. tostring(cmd))
+local function normalize_system_command(cmd)
+    if type(cmd) == "table" then
+        local argv = {}
+        for i = 1, #cmd do argv[i] = tostring(cmd[i]) end
+        return argv
     end
+    if type(cmd) ~= "string" then
+        error(Error(730))
+    end
+    return cmd
+end
+
+local function normalize_system_output(text)
+    return tostring(text or ""):gsub("\r\n", "\n"):gsub("\0", "\1")
+end
+
+local function execute_system(cmd, input)
+    local result = Backend.system(normalize_system_command(cmd), { input = input })
+    scopes._v.shell_error = result.code or 1
+    local output = (result.stdout or "") .. (result.stderr or "")
+    return tostring(output):gsub("\r\n", "\n")
+end
+
+function Builtins.system(cmd, input, ...)
+    if select("#", ...) > 0 then error(Error(118, "system")) end
+    return normalize_system_output(execute_system(cmd, input))
+end
+
+function Builtins.systemlist(cmd, input, keepempty, ...)
+    if select("#", ...) > 0 then error(Error(118, "systemlist")) end
+    local output = execute_system(cmd, input)
+    output = output:gsub("\0", "\n")
+    if output == "" then
+        return keepempty and { "" } or {}
+    end
+    local lines = {}
+    for line in (output .. "\n"):gmatch("(.-)\n") do lines[#lines + 1] = line end
+    if output:sub(-1) == "\n" and not keepempty then lines[#lines] = nil end
+    return lines
 end
 
 -- TODO: These should be properly scheduled in with the parallel api.
@@ -1096,6 +1127,8 @@ function Builtins.stdpath(type)
         return ccvim_path .. "/config"
     elseif type == "log" then
         return ccvim_path .. "/log"
+    elseif type == "state" then
+        return ccvim_path .. "/state"
     elseif type == "data" then
         return ccvim_path .. "/data"
     elseif type == "cache" then
@@ -1112,10 +1145,6 @@ local has_features = {
     syntax = true,
     unix = true,
 
-    ["nvim-0.7"] = true,
-    ["nvim-0.8"] = true,
-    ["nvim-0.9"] = true,
-    ["nvim-0.10"] = true,
 }
 local has_patches = {
     [1557] = true,
@@ -1161,13 +1190,24 @@ function Builtins.has(thing)
         LOG_DEBUG("has(%s) -> %s", tostring(thing), tostring(ok))
         return ok
     end
+    local req_major, req_minor, req_patch = thing:match("^nvim%-(%d+)%.(%d+)%.?(%d*)$")
+    if req_major then
+        req_major = tonumber(req_major)
+        req_minor = tonumber(req_minor)
+        req_patch = tonumber(req_patch) or 0
+        local available = vimversion_maj > req_major
+            or (vimversion_maj == req_major and vimversion_min > req_minor)
+            or (vimversion_maj == req_major and vimversion_min == req_minor
+                and vimversion_pat >= req_patch)
+        return available and 1 or 0
+    end
     if has_features[thing] then
         return 1
     end
     if explicitly_no[thing] then
         return 0
     end
-    LOG_INTERNAL("has", "has(%s) unknown -> 0", tostring(thing))
+    LOG_DEBUG("has(%s) unknown -> 0", tostring(thing))
     return 0
 end
 
@@ -3657,6 +3697,7 @@ function Builtins.json_decode(expr)
 
     local decoded, perr = Json.decode(payload, {
         empty_dict_mt = rawget(ApiBuild.Build().vim, "_empty_dict_mt"),
+        null_value = ApiBuild.Build().vim.NIL,
     })
     if decoded == nil then
         local reason = tostring(perr or "json_decode()")
@@ -5490,6 +5531,13 @@ function Builtins.strdisplaywidth(str)
     return Utf8.len(s)
 end
 
+function Builtins.strwidth(str, ...)
+    if select("#", ...) > 0 then
+        error(Error(118, "strwidth"))
+    end
+    return Utf8.len(tostring(str or ""))
+end
+
 function Builtins.tolower(str)
     return string.lower(tostring(str or ""))
 end
@@ -5877,6 +5925,10 @@ end
 
 function Builtins.getenv(name)
     return EnvVars.get(name)
+end
+
+function Builtins.environ()
+    return EnvVars.snapshot()
 end
 
 -- Non-builtin exports

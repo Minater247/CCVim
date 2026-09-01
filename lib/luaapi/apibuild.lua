@@ -4,6 +4,7 @@ local api = loadModule("lib.luaapi.api")
 local loop = loadModule("lib.luaapi.loop")
 local _jit = rawget(_G, 'jit')
 local jit = _jit or loadModule("lib.luaapi.fakejit")
+local fakeffi = loadModule("lib.luaapi.fakeffi")
 local on_key = loadModule("lib.luaapi.on_key")
 local Runtime = loadModule("lib.excmd.runtime")
 local ExMsg = loadModule("lib.excmd.exmsg")
@@ -19,6 +20,8 @@ local strutils = loadModule("lib.luaapi.strutils")
 local envvars = loadModule("lib.envvars")
 local lpeg = loadModule("lib.luaapi.lpeg")
 local treesitter = loadModule("lib.luaapi.treesitter")
+local Json = loadModule("lib.luaapi.json")
+local Error = loadModule("lib.error")
 
 local bit = rawget(_G, "bit")
 if not bit then
@@ -73,6 +76,41 @@ local VIM_CMD_ARG_MAX = 20
 local LIB_RUNTIME_MODULES = {
     ["vim.lsp.lua"] = "lib/luaapi/lsp_lua.lua",
 }
+
+local function user_call(callable, ...)
+    local result = { n = 0 }
+    local function capture(...)
+        result.n = select("#", ...)
+        for i = 1, result.n do
+            result[i] = select(i, ...)
+        end
+    end
+    capture(pcall(callable, ...))
+    if not result[1] then
+        local err = result[2]
+        if Error.IsError(err) then err = err:toString() end
+        error(err, 0)
+    end
+    for i = 2, result.n do
+        if Error.IsError(result[i]) then
+            error(result[i]:toString(), 0)
+        end
+    end
+    return table.unpack(result, 2, result.n)
+end
+
+local api_proxy = setmetatable({}, {
+    __index = function(proxy, name)
+        local value = api[name]
+        if type(value) == "function" then
+            value = function(...)
+                return user_call(api[name], ...)
+            end
+        end
+        rawset(proxy, name, value)
+        return value
+    end,
+})
 
 -- TODO: we need a print function.
 -- functions print as <function>, so this knowledge is kept somewhere
@@ -206,6 +244,7 @@ end
 function ApiBuild.Build()
     if mainapi then return mainapi end
 
+    scopes._v.exiting = VIM_NIL
     on_key.set_namespace_allocator(api.nvim_create_namespace)
 
     local function vim_with_c(context, f)
@@ -291,9 +330,9 @@ function ApiBuild.Build()
     local function vim_call(func, ...)
         local name = tostring(func)
         if select("#", ...) == 0 then
-            return fn._call(name)
+            return user_call(fn._call, name)
         end
-        return fn._call(name, ...)
+        return user_call(fn._call, name, ...)
     end
 
     local cmd_proxy = setmetatable({}, {
@@ -402,7 +441,7 @@ function ApiBuild.Build()
 
     mainapi = {
         vim = {
-            api = api,
+            api = api_proxy,
             loop = loop,
             uv = loop,
             cmd = cmd_proxy,
@@ -414,7 +453,9 @@ function ApiBuild.Build()
             NIL = VIM_NIL,
             deprecate = function() end,
             schedule = timerutils.schedule,
-            wait = timerutils.wait,
+            wait = function(...)
+                return user_call(timerutils.wait, ...)
+            end,
             in_fast_event = timerutils.in_fast_event,
             inspect = print.inspect,
             regex = strutils.regex,
@@ -430,7 +471,9 @@ function ApiBuild.Build()
             _setvar = set_scoped_var,
         },
         jit = jit,
-        require = require,
+        require = function(...)
+            return user_call(require, ...)
+        end,
         package = package,
         table = table_compat,
         unpack = unpack or table.unpack,
@@ -460,6 +503,22 @@ function ApiBuild.Build()
     mainapi.vim.empty_dict = function()
         return setmetatable({}, mainapi.vim._empty_dict_mt)
     end
+    mainapi.vim.json = {
+        decode = function(source, opts)
+            opts = opts or {}
+            opts.empty_dict_mt = mainapi.vim._empty_dict_mt
+            opts.null_value = VIM_NIL
+            local value, err = Json.decode(source, opts)
+            if err then error(err, 2) end
+            return value
+        end,
+        encode = function(value, opts)
+            opts = opts or {}
+            opts.empty_dict_mt = mainapi.vim._empty_dict_mt
+            opts.null_value = VIM_NIL
+            return Json.encode(value, opts)
+        end,
+    }
 
     local FL = fileload.Bind(mainapi)
     mainapi.loadfile = FL.loadfile
@@ -473,12 +532,27 @@ function ApiBuild.Build()
 
     mainapi.package.loaded.bit = bit
     mainapi.package.loaded.lpeg = lpeg
+    if not _jit then
+        mainapi.package.loaded.ffi = fakeffi
+    end
 
     LuaLoader = loadModule("lib.lualoader")
     mainapi.vim._str_utfindex = strutils._str_utfindex
     mainapi.vim._str_byteindex = strutils._str_byteindex
     load_runtime_vim_init_packages(LuaLoader)
     load_runtime_vim_underscore_modules(LuaLoader)
+    if not _jit then
+        local runtime_loader = mainapi.vim.loader
+        if type(runtime_loader) == "table" and type(runtime_loader.enable) == "function" then
+            local upstream_enable = runtime_loader.enable
+            runtime_loader.enable = function(enable)
+                if enable == false then
+                    return upstream_enable(false)
+                end
+                return nil
+            end
+        end
+    end
     mainapi.vim.cmd = cmd_proxy
     mainapi.vim.g = scopes.g
     mainapi.vim.v = scopes.v
@@ -486,7 +560,9 @@ function ApiBuild.Build()
     mainapi.vim.w = scopes.w
     mainapi.vim.t = scopes.t
     mainapi.vim.schedule = timerutils.schedule
-    mainapi.vim.wait = timerutils.wait
+    mainapi.vim.wait = function(...)
+        return user_call(timerutils.wait, ...)
+    end
     mainapi.vim.in_fast_event = timerutils.in_fast_event
     mainapi.vim.regex = strutils.regex
     mainapi.vim.lpeg = lpeg

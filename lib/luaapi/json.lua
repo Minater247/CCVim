@@ -3,233 +3,241 @@ local Json = {}
 local function utf8_from_codepoint(codepoint)
     if codepoint <= 0x7F then
         return string.char(codepoint)
+    elseif codepoint <= 0x7FF then
+        return string.char(0xC0 + math.floor(codepoint / 0x40), 0x80 + codepoint % 0x40)
+    elseif codepoint <= 0xFFFF then
+        return string.char(
+            0xE0 + math.floor(codepoint / 0x1000),
+            0x80 + math.floor(codepoint / 0x40) % 0x40,
+            0x80 + codepoint % 0x40
+        )
     end
-    if codepoint <= 0x7FF then
-        local b1 = 0xC0 + math.floor(codepoint / 0x40)
-        local b2 = 0x80 + (codepoint % 0x40)
-        return string.char(b1, b2)
-    end
-    if codepoint <= 0xFFFF then
-        local b1 = 0xE0 + math.floor(codepoint / 0x1000)
-        local b2 = 0x80 + (math.floor(codepoint / 0x40) % 0x40)
-        local b3 = 0x80 + (codepoint % 0x40)
-        return string.char(b1, b2, b3)
-    end
-    local b1 = 0xF0 + math.floor(codepoint / 0x40000)
-    local b2 = 0x80 + (math.floor(codepoint / 0x1000) % 0x40)
-    local b3 = 0x80 + (math.floor(codepoint / 0x40) % 0x40)
-    local b4 = 0x80 + (codepoint % 0x40)
-    return string.char(b1, b2, b3, b4)
+    return string.char(
+        0xF0 + math.floor(codepoint / 0x40000),
+        0x80 + math.floor(codepoint / 0x1000) % 0x40,
+        0x80 + math.floor(codepoint / 0x40) % 0x40,
+        0x80 + codepoint % 0x40
+    )
 end
 
-function Json.decode(json_str, opts)
-    if type(json_str) ~= "string" then
-        return nil, "json_decode expects a string"
+function Json.decode(source, opts)
+    if type(source) ~= "string" then return nil, "expected string" end
+    opts = opts or {}
+    local pos, length = 1, #source
+
+    local function skip_space()
+        while pos <= length and source:sub(pos, pos):match("[ \t\r\n]") do pos = pos + 1 end
     end
 
-    opts = opts or {}
-    local pos = 1
-    local len = #json_str
+    local function fail(message)
+        return nil, message .. " at byte " .. tostring(pos)
+    end
 
-    local function skip_whitespace()
-        while pos <= len and json_str:sub(pos, pos):match("[%s]") do
-            pos = pos + 1
+    local function hex_escape()
+        local hex = source:sub(pos, pos + 3)
+        if #hex ~= 4 or not hex:match("^%x%x%x%x$") then return fail("invalid unicode escape") end
+        pos = pos + 4
+        return tonumber(hex, 16)
+    end
+
+    local function decode_string()
+        pos = pos + 1
+        local out = {}
+        while pos <= length do
+            local ch = source:sub(pos, pos)
+            if ch == '"' then
+                pos = pos + 1
+                return table.concat(out)
+            elseif ch == "\\" then
+                pos = pos + 1
+                local esc = source:sub(pos, pos)
+                local simple = {
+                    ['"'] = '"', ["\\"] = "\\", ["/"] = "/", b = "\b",
+                    f = "\f", n = "\n", r = "\r", t = "\t",
+                }
+                if simple[esc] then
+                    out[#out + 1] = simple[esc]
+                    pos = pos + 1
+                elseif esc == "u" then
+                    pos = pos + 1
+                    local codepoint, err = hex_escape()
+                    if err then return nil, err end
+                    if codepoint >= 0xD800 and codepoint <= 0xDBFF then
+                        if source:sub(pos, pos + 1) ~= "\\u" then return fail("missing low surrogate") end
+                        pos = pos + 2
+                        local low, low_err = hex_escape()
+                        if low_err then return nil, low_err end
+                        if low < 0xDC00 or low > 0xDFFF then return fail("invalid low surrogate") end
+                        codepoint = 0x10000 + (codepoint - 0xD800) * 0x400 + low - 0xDC00
+                    elseif codepoint >= 0xDC00 and codepoint <= 0xDFFF then
+                        return fail("unexpected low surrogate")
+                    end
+                    out[#out + 1] = utf8_from_codepoint(codepoint)
+                else
+                    return fail("invalid escape")
+                end
+            elseif ch:byte() < 0x20 then
+                return fail("unescaped control character")
+            else
+                out[#out + 1] = ch
+                pos = pos + 1
+            end
         end
+        return fail("unterminated string")
     end
 
     local decode_value
 
-    local function decode_string()
-        pos = pos + 1
-        local result = {}
-        while pos <= len do
-            local c = json_str:sub(pos, pos)
-            if c == '"' then
-                pos = pos + 1
-                return table.concat(result)
-            elseif c == "\\" then
-                pos = pos + 1
-                local esc = json_str:sub(pos, pos)
-                if esc == "n" then
-                    result[#result + 1] = "\n"
-                elseif esc == "t" then
-                    result[#result + 1] = "\t"
-                elseif esc == "r" then
-                    result[#result + 1] = "\r"
-                elseif esc == "b" then
-                    result[#result + 1] = "\b"
-                elseif esc == "f" then
-                    result[#result + 1] = "\f"
-                elseif esc == "\\" then
-                    result[#result + 1] = "\\"
-                elseif esc == '"' then
-                    result[#result + 1] = '"'
-                elseif esc == "/" then
-                    result[#result + 1] = "/"
-                elseif esc == "u" then
-                    local hex = json_str:sub(pos + 1, pos + 4)
-                    local codepoint = tonumber(hex, 16)
-                    if not codepoint or #hex ~= 4 then
-                        return nil, "invalid unicode escape"
-                    end
-                    pos = pos + 4
-                    result[#result + 1] = utf8_from_codepoint(codepoint)
-                else
-                    result[#result + 1] = esc
-                end
-                pos = pos + 1
-            else
-                result[#result + 1] = c
-                pos = pos + 1
-            end
-        end
-        return nil, "unterminated string"
-    end
-
     local function decode_array()
         pos = pos + 1
-        local arr = {}
-        skip_whitespace()
-        if pos <= len and json_str:sub(pos, pos) == "]" then
-            pos = pos + 1
-            return arr
-        end
+        local result, index = {}, 1
+        skip_space()
+        if source:sub(pos, pos) == "]" then pos = pos + 1 return result end
         while true do
-            local val, err = decode_value()
-            if err then
-                return nil, err
-            end
-            arr[#arr + 1] = val
-            skip_whitespace()
-            if pos > len then
-                return nil, "unterminated array"
-            end
-            local next_char = json_str:sub(pos, pos)
-            if next_char == "]" then
-                pos = pos + 1
-                return arr
-            elseif next_char == "," then
-                pos = pos + 1
-            else
-                return nil, "expected ',' or ']' in array"
-            end
+            local value, err = decode_value("array")
+            if err then return nil, err end
+            result[index], index = value, index + 1
+            skip_space()
+            local ch = source:sub(pos, pos)
+            if ch == "]" then pos = pos + 1 return result end
+            if ch ~= "," then return fail("expected ',' or ']'") end
+            pos = pos + 1
+            skip_space()
         end
     end
 
     local function decode_object()
         pos = pos + 1
-        local obj = {}
-        skip_whitespace()
-        if pos <= len and json_str:sub(pos, pos) == "}" then
+        local result = {}
+        skip_space()
+        if source:sub(pos, pos) == "}" then
             pos = pos + 1
-            if opts.empty_dict_mt then
-                return setmetatable({}, opts.empty_dict_mt)
-            end
-            return {}
+            return opts.empty_dict_mt and setmetatable(result, opts.empty_dict_mt) or result
         end
         while true do
-            skip_whitespace()
-            if pos > len or json_str:sub(pos, pos) ~= '"' then
-                return nil, "expected string key in object"
-            end
-            local key, err = decode_string()
-            if err then
-                return nil, err
-            end
-            skip_whitespace()
-            if pos > len or json_str:sub(pos, pos) ~= ":" then
-                return nil, "expected ':' after object key"
-            end
+            if source:sub(pos, pos) ~= '"' then return fail("expected string key") end
+            local key, key_err = decode_string()
+            if key_err then return nil, key_err end
+            skip_space()
+            if source:sub(pos, pos) ~= ":" then return fail("expected ':'") end
             pos = pos + 1
-            local val, err2 = decode_value()
-            if err2 then
-                return nil, err2
-            end
-            obj[key] = val
-            skip_whitespace()
-            if pos > len then
-                return nil, "unterminated object"
-            end
-            local next_char = json_str:sub(pos, pos)
-            if next_char == "}" then
-                pos = pos + 1
-                return obj
-            elseif next_char == "," then
-                pos = pos + 1
-            else
-                return nil, "expected ',' or '}' in object"
-            end
+            local value, value_err = decode_value("object")
+            if value_err then return nil, value_err end
+            result[key] = value
+            skip_space()
+            local ch = source:sub(pos, pos)
+            if ch == "}" then pos = pos + 1 return result end
+            if ch ~= "," then return fail("expected ',' or '}'") end
+            pos = pos + 1
+            skip_space()
         end
     end
 
-    function decode_value()
-        skip_whitespace()
-        if pos > len then
-            return nil, "unexpected end of JSON"
+    local function decode_number()
+        local start = pos
+        if source:sub(pos, pos) == "-" then pos = pos + 1 end
+        if source:sub(pos, pos) == "0" then
+            pos = pos + 1
+            if source:sub(pos, pos):match("%d") then return fail("leading zero in number") end
+        else
+            local digit_start = pos
+            while source:sub(pos, pos):match("%d") do pos = pos + 1 end
+            if pos == digit_start then return fail("invalid number") end
         end
-
-        local char = json_str:sub(pos, pos)
-        if char == '"' then
-            return decode_string()
-        elseif char == "[" then
-            return decode_array()
-        elseif char == "{" then
-            return decode_object()
-        elseif char == "t" then
-            if json_str:sub(pos, pos + 3) == "true" then
-                pos = pos + 4
-                return true
-            end
-            return nil, "invalid JSON value"
-        elseif char == "f" then
-            if json_str:sub(pos, pos + 4) == "false" then
-                pos = pos + 5
-                return false
-            end
-            return nil, "invalid JSON value"
-        elseif char == "n" then
-            if json_str:sub(pos, pos + 3) == "null" then
-                pos = pos + 4
-                return nil
-            end
-            return nil, "invalid JSON value"
-        elseif char:match("[-0-9]") then
-            local num_start = pos
-            if char == "-" then
-                pos = pos + 1
-            end
-            while pos <= len and json_str:sub(pos, pos):match("[0-9]") do
-                pos = pos + 1
-            end
-            if pos <= len and json_str:sub(pos, pos) == "." then
-                pos = pos + 1
-                while pos <= len and json_str:sub(pos, pos):match("[0-9]") do
-                    pos = pos + 1
-                end
-            end
-            if pos <= len and json_str:sub(pos, pos):match("[eE]") then
-                pos = pos + 1
-                if pos <= len and json_str:sub(pos, pos):match("[+-]") then
-                    pos = pos + 1
-                end
-                while pos <= len and json_str:sub(pos, pos):match("[0-9]") do
-                    pos = pos + 1
-                end
-            end
-            return tonumber(json_str:sub(num_start, pos - 1))
+        if source:sub(pos, pos) == "." then
+            pos = pos + 1
+            local fraction_start = pos
+            while source:sub(pos, pos):match("%d") do pos = pos + 1 end
+            if pos == fraction_start then return fail("invalid fraction") end
         end
-        return nil, "unexpected character: " .. char
+        if source:sub(pos, pos):match("[eE]") then
+            pos = pos + 1
+            if source:sub(pos, pos):match("[+-]") then pos = pos + 1 end
+            local exponent_start = pos
+            while source:sub(pos, pos):match("%d") do pos = pos + 1 end
+            if pos == exponent_start then return fail("invalid exponent") end
+        end
+        local value = tonumber(source:sub(start, pos - 1))
+        if not value then return fail("invalid number") end
+        return value
     end
 
-    local result, err = decode_value()
-    if err then
-        return nil, err
+    function decode_value(context)
+        skip_space()
+        local ch = source:sub(pos, pos)
+        if ch == '"' then return decode_string()
+        elseif ch == "[" then return decode_array()
+        elseif ch == "{" then return decode_object()
+        elseif ch == "t" and source:sub(pos, pos + 3) == "true" then pos = pos + 4 return true
+        elseif ch == "f" and source:sub(pos, pos + 4) == "false" then pos = pos + 5 return false
+        elseif ch == "n" and source:sub(pos, pos + 3) == "null" then
+            pos = pos + 4
+            if opts.luanil and opts.luanil[context] then return nil end
+            return opts.null_value
+        elseif ch == "-" or ch:match("%d") then return decode_number()
+        elseif ch == "" then return fail("unexpected end of input")
+        end
+        return fail("unexpected character")
     end
-    skip_whitespace()
-    if pos <= len then
-        return nil, "trailing garbage after JSON"
+
+    local value, err = decode_value("top")
+    if err then return nil, err end
+    skip_space()
+    if pos <= length then return fail("trailing data") end
+    return value
+end
+
+local escapes = {
+    ['"'] = '\\"', ["\\"] = "\\\\", ["\b"] = "\\b", ["\f"] = "\\f",
+    ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t",
+}
+
+local function encode_string(value, escape_slash)
+    return '"' .. value:gsub('[%z\1-\31\\"/]', function(ch)
+        if ch == "/" and not escape_slash then return ch end
+        return escapes[ch] or (ch == "/" and "\\/" or string.format("\\u%04x", ch:byte()))
+    end) .. '"'
+end
+
+function Json.encode(value, opts)
+    opts = opts or {}
+    local active = {}
+    local function encode(item)
+        local kind = type(item)
+        if item == opts.null_value or kind == "nil" then return "null"
+        elseif kind == "boolean" then return item and "true" or "false"
+        elseif kind == "number" then
+            if item ~= item or item == math.huge or item == -math.huge then
+                error("cannot encode non-finite number", 0)
+            end
+            return tostring(item)
+        elseif kind == "string" then return encode_string(item, opts.escape_slash)
+        elseif kind ~= "table" then error("cannot encode " .. kind, 0) end
+        if active[item] then error("cannot encode recursive table", 0) end
+        active[item] = true
+        local object = opts.empty_dict_mt and getmetatable(item) == opts.empty_dict_mt
+        local count, max = 0, 0
+        for key in pairs(item) do
+            count = count + 1
+            if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then object = true
+            elseif key > max then max = key end
+        end
+        if not object and count ~= max then error("cannot encode sparse array", 0) end
+        local out = {}
+        if object then
+            for key, child in pairs(item) do
+                if type(key) ~= "string" then error("JSON object keys must be strings", 0) end
+                out[#out + 1] = encode_string(key, opts.escape_slash) .. ":" .. encode(child)
+            end
+            table.sort(out)
+            active[item] = nil
+            return "{" .. table.concat(out, ",") .. "}"
+        end
+        for i = 1, max do out[i] = encode(item[i]) end
+        active[item] = nil
+        return "[" .. table.concat(out, ",") .. "]"
     end
-    return result
+    return encode(value)
 end
 
 return Json

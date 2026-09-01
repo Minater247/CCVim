@@ -12,6 +12,14 @@
 
 local CC = {}
 CC.kind = "cc"
+local cc_shell = shell
+local cc_term = term
+local cc_window = window
+local cc_os = select(1, os)
+local cc_pull_event = cc_os.pullEvent
+local cc_pull_event_raw = cc_os.pullEventRaw
+local cc_queue_event = cc_os.queueEvent
+local cc_timers = {}
 local Utf8
 local Color
 local RuntimeScope
@@ -42,6 +50,7 @@ local UTF_REPLACEMENTS = {
     [0x250C] = { char = "/" },
     [0x2019] = { char = "'" },
     [0x201C] = { char = "\"" },
+    [0x25CF] = { char = string.char(0x07) },
 }
 
 -- =========================================================================
@@ -463,6 +472,9 @@ end
 function CC.pull_event(filter)
     while true do
         local ev = { os.pullEvent(filter) }
+        if ev[1] == "timer" then
+            cc_timers[ev[2]] = nil
+        end
         if ev[1] == "mouse_scroll" then
             local delta = tonumber(ev[2]) or 0
             if delta > 0 then
@@ -480,10 +492,13 @@ function CC.pull_event(filter)
 end
 
 function CC.start_timer(t)
-    return os.startTimer(t)
+    local id = os.startTimer(t)
+    cc_timers[id] = true
+    return id
 end
 
 function CC.cancel_timer(id)
+    cc_timers[id] = nil
     os.cancelTimer(id)
 end
 
@@ -510,6 +525,237 @@ end
 
 function CC.running_program()
     return shell.getRunningProgram()
+end
+
+local next_process_pid = 0
+
+local function process_event()
+    return RuntimeScope.loadModule("lib.event")
+end
+
+local function fake_userdata()
+    return RuntimeScope.loadModule("lib.luaapi.fakeuserdata")
+end
+
+local pipe_methods = {}
+
+function pipe_methods:read_start(callback)
+    local state = fake_userdata().state(self)
+    if state._closed then return nil, "EINVAL: pipe is closing" end
+    state._read_callback = callback
+    state._reading = true
+    return 0
+end
+
+function pipe_methods:read_stop()
+    local state = fake_userdata().state(self)
+    state._reading = false
+    return 0
+end
+
+function pipe_methods:write(data, callback)
+    local state = fake_userdata().state(self)
+    if state._closed then return nil, "EPIPE: pipe is closing" end
+    if type(data) == "table" then
+        for i = 1, #data do
+            state._write[#state._write + 1] = tostring(data[i])
+        end
+    else
+        state._write[#state._write + 1] = tostring(data or "")
+    end
+    if callback then callback(nil) end
+    return 0
+end
+
+function pipe_methods:shutdown(callback)
+    local state = fake_userdata().state(self)
+    state._shutdown = true
+    if callback then callback(nil) end
+    return 0
+end
+
+function pipe_methods:close(callback)
+    local state = fake_userdata().state(self)
+    state._closed = true
+    state._reading = false
+    if callback then callback() end
+end
+
+function pipe_methods:is_active()
+    local state = fake_userdata().state(self)
+    return state._reading and not state._closed
+end
+
+function pipe_methods:is_closing()
+    return fake_userdata().state(self)._closed
+end
+
+function CC.new_pipe(_ipc)
+    return fake_userdata().new("uv_pipe_t", {
+        _closed = false,
+        _reading = false,
+        _shutdown = false,
+        _write = {},
+    }, pipe_methods)
+end
+
+local process_methods = {}
+
+function process_methods:close(callback)
+    local state = fake_userdata().state(self)
+    state._closed = true
+    state._active = false
+    if callback then callback() end
+end
+
+function process_methods:is_active()
+    local state = fake_userdata().state(self)
+    return state._active and not state._closed
+end
+
+function process_methods:is_closing()
+    return fake_userdata().state(self)._closed
+end
+
+function process_methods:kill(signal)
+    local state = fake_userdata().state(self)
+    if state._closed or not state._active then return nil, "ESRCH: no such process" end
+    state._killed = tonumber(signal) or 15
+    if state._timer then
+        process_event().CancelTimer(state._timer)
+        state._timer = nil
+        state._active = false
+        state._on_exit(0, state._killed)
+    end
+    return 0
+end
+
+local function emit_pipe(pipe, data)
+    if pipe == nil then return end
+    local state = fake_userdata().state(pipe)
+    if not state or state._closed or not state._reading then return end
+    if data ~= nil and data ~= "" then
+        state._read_callback(nil, data)
+    end
+    if not state._closed and state._reading then
+        state._read_callback(nil, nil)
+    end
+end
+
+function CC.spawn(path, opts, on_exit)
+    opts = opts or {}
+    if type(path) ~= "string" or path == "" then
+        return nil, "EINVAL: empty process path"
+    end
+    if type(on_exit) ~= "function" then
+        return nil, "EINVAL: exit callback required"
+    end
+
+    next_process_pid = next_process_pid + 1
+    local state = {
+        _active = true,
+        _closed = false,
+        _on_exit = on_exit,
+    }
+    local handle = fake_userdata().new("uv_process_t", state, process_methods)
+    state._timer = process_event().StartTimer(0, function()
+        state._timer = nil
+        if state._closed or state._killed then return end
+
+        local command = { path }
+        for i = 1, #(opts.args or {}) do
+            command[#command + 1] = tostring(opts.args[i])
+        end
+        local result = CC.system(command, {
+            cwd = opts.cwd,
+            env = opts.env,
+        })
+        state._active = false
+        local stdio = opts.stdio or {}
+        emit_pipe(stdio[2], result.stdout)
+        emit_pipe(stdio[3], result.stderr)
+        on_exit(result.code or 1, result.signal or 0)
+    end)
+    return handle, next_process_pid
+end
+
+function CC.system(command, opts)
+    opts = opts or {}
+    if (type(command) ~= "string" and type(command) ~= "table") or #command == 0 then
+        return { code = 1, signal = 0, stdout = "", stderr = "empty command" }
+    end
+
+    local parent = cc_term.current()
+    local width, height = parent.getSize()
+    local capture = cc_window.create(parent, 1, 1, width, height, false)
+    local history = {}
+    local capture_scroll = capture.scroll
+    capture.scroll = function(amount)
+        amount = math.max(0, math.min(height, amount))
+        for y = 1, amount do
+            history[#history + 1] = capture.getLine(y):gsub("%s+$", "")
+        end
+        return capture_scroll(amount)
+    end
+    local old_dir = cc_shell.dir()
+    local deferred_events = {}
+
+    local function child_pull_event(raw, filter)
+        while true do
+            local ev = { cc_pull_event_raw() }
+            if ev[1] == "timer" and cc_timers[ev[2]] then
+                deferred_events[#deferred_events + 1] = ev
+            elseif filter == nil or ev[1] == filter then
+                if ev[1] == "terminate" and not raw then
+                    error("Terminated", 0)
+                end
+                return table.unpack(ev)
+            end
+        end
+    end
+
+    local function output()
+        local lines = history
+        for y = 1, height do
+            lines[#lines + 1] = capture.getLine(y):gsub("%s+$", "")
+        end
+        while #lines > 0 and lines[#lines] == "" do
+            lines[#lines] = nil
+        end
+        return table.concat(lines, "\n")
+    end
+
+    local function run()
+        if opts.cwd then
+            local cwd = tostring(opts.cwd)
+            cc_shell.setDir(cwd == "/" and "" or cwd:gsub("^/", ""))
+        end
+        cc_term.redirect(capture)
+        cc_os.pullEvent = function(filter)
+            return child_pull_event(false, filter)
+        end
+        cc_os.pullEventRaw = function(filter)
+            return child_pull_event(true, filter)
+        end
+        if type(command) == "string" then
+            return cc_shell.run(command)
+        end
+        return cc_shell.execute(command[1], table.unpack(command, 2))
+    end
+
+    local ok, ran = xpcall(run, debug.traceback)
+    cc_os.pullEvent = cc_pull_event
+    cc_os.pullEventRaw = cc_pull_event_raw
+    for i = 1, #deferred_events do
+        cc_queue_event(table.unpack(deferred_events[i]))
+    end
+    cc_term.redirect(parent)
+    cc_shell.setDir(old_dir)
+
+    if not ok then
+        return { code = 1, signal = 0, stdout = output(), stderr = ran }
+    end
+    return { code = ran == false and 1 or 0, signal = 0, stdout = output(), stderr = "" }
 end
 
 CC.keys = keys

@@ -201,6 +201,7 @@ local COMMAND_SPECS = {
     { name = "tabclose", min = 4, dispatch = true },
     { name = "drop", min = 2, dispatch = true, complete = "file" },
     { name = "help", min = 1, dispatch = true },
+    { name = "helptags", min = 5, dispatch = true, complete = "dir" },
     { name = "lcd", min = 2, dispatch = true, complete = "file" },
     { name = "tcd", min = 2, dispatch = true, complete = "file" },
     { name = "lua", min = 2, dispatch = true, no_bar_split = true },

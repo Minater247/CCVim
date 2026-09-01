@@ -39,14 +39,12 @@ You should be able to simply use standard Neovim configuration files! In the dir
 ## Plugin Management
 
 ### Installation
-Given that ComputerCraft does not support `git` natively, plugin managers which pull from such providers are not yet supported.
+I use [Lazy.nvim](https://github.com/folke/lazy.nvim), which works in CCVim as long as you have a `git` implementation on your CC [`shell.path`](https://tweaked.cc/module/shell.html#v:path)! I recommend using my version, [CCGit](https://github.com/Minater247/CCGit), since it supports the flags and repository standards necessary for proper plugin management.
 
-If you are familiar with the `packadd` command, an older method of package management in Vim, that is supported! You may use `runtime/pack`.
-
-Most plugins also work perfectly fine if you simply copy their folders into the `runtime` directory, which is how I have been testing in the meantime.
+If you are familiar with the `packadd` command, an older method of package management in Vim, that is also supported! You may use `runtime/pack`.
 
 ### Compatibility
-Any compatibility notes will be listed in `plugin_compat/<plugin-name>`. Most plugins only need a couple config keys set to function properly.
+Any compatibility notes will be listed in `plugin_compat/<plugin-name>`. Most plugins should work out of the box.
 
 ## Contributing
 Please try your config and see if it works! If anything behaves even slightly differently to how Neovim behaves, that is grounds for opening an issue.

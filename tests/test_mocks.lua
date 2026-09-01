@@ -673,7 +673,7 @@ local function create_shell_api(state)
         return out
     end
 
-    function shell.run(prog, ...)
+    function shell.execute(prog, ...)
         local path = shell.resolveProgram(prog)
         if not path then
             return false
@@ -687,6 +687,17 @@ local function create_shell_api(state)
             error(rv)
         end
         return rv ~= false
+    end
+
+    function shell.run(...)
+        local words = { ... }
+        local command = table.concat(words, " ")
+        local argv = {}
+        for word in command:gmatch("%S+") do
+            argv[#argv + 1] = word
+        end
+        if not argv[1] then return false end
+        return shell.execute(argv[1], table.unpack(argv, 2))
     end
 
     return shell
@@ -1096,6 +1107,10 @@ local function create_fs_api(state)
 
         function handle.flush()
             f:flush()
+        end
+
+        function handle.seek(whence, offset)
+            return f:seek(whence, offset)
         end
 
         function handle.close()

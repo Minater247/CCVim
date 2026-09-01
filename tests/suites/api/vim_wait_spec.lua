@@ -6,6 +6,18 @@ return {
     run = function(ctx)
         local backend = ctx.backend
         local Assert = ctx.assert
+        local mock = backend.mock
+        local Error = mock.loadModule("lib.error")
+        local TimerUtils = mock.loadModule("lib.luaapi.timerutils")
+
+        local internal_ok, internal_err = pcall(function()
+            TimerUtils.with_fast_event(function()
+                TimerUtils.wait(10)
+            end)
+        end)
+        Assert.eq("internal fast-event guard raises", internal_ok, false)
+        Assert.truthy("internal fast-event guard uses Error", Error.IsError(internal_err))
+        Assert.eq("internal fast-event guard error code", internal_err.code, 5560)
 
         local result = Assert.eval_block(backend, "vim.wait scenarios", [[
             local immediate_calls = 0
@@ -59,6 +71,8 @@ return {
                 fast_guard = {
                     ok,
                     tostring(err or ""),
+                    type(err),
+                    type(err) == "table" and err.code or false,
                 }
                 guard_timer:stop()
                 guard_timer:close()
@@ -106,5 +120,7 @@ return {
         Assert.eq("fast-event guard callback reason", result[16], true)
         Assert.eq("fast-event guard raised", result[17][1], false)
         Assert.top_error_code("fast-event guard raised E5560", result[17][2], "E5560")
+        Assert.eq("userspace fast-event guard is a string", result[17][3], "string")
+        Assert.eq("userspace fast-event guard hides Error", result[17][4], false)
     end,
 }

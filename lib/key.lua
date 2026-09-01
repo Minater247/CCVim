@@ -1,5 +1,12 @@
 local Key = {}
 Key.__index = Key
+local Scopes = loadModule("lib.luaapi.scopes")
+
+local function leader_value(local_leader)
+    local name = local_leader and "maplocalleader" or "mapleader"
+    local value = Scopes._g[name]
+    return type(value) == "string" and value ~= "" and value or "\\"
+end
 
 -- TODO: support for caps lock
 
@@ -490,6 +497,8 @@ local function parse_angle_content(content)
         return { kind = "literal_char", ch = string.char(27), force_keycode = force_keycode }
     elseif clower == "nul" then
         return { kind = "key", key = Key:new(keys.two, true, true, false), force_keycode = force_keycode }
+    elseif clower == "leader" or clower == "localleader" then
+        return { kind = "leader", local_leader = clower == "localleader" }
     end
 
     local ctrl, shift, alt = false, false, false
@@ -576,6 +585,9 @@ local function push_angle(seq, content)
         push_literal_angle(seq, parsed.content)
     elseif parsed.kind == "cmd" then
         seq[#seq + 1] = key_from_numeric(CMD_KEY)
+    elseif parsed.kind == "leader" then
+        local value = leader_value(parsed.local_leader)
+        for i = 1, #value do push_char(seq, value:sub(i, i)) end
     else
         table.insert(seq, parsed.key)
     end
@@ -913,6 +925,8 @@ function Key.replace_termcodes(str, do_lt, special)
                         out[#out + 1] = NVIM_SPECIAL_KEYCODE[notation] or notation
                     elseif parsed.kind == "cmd" then
                         out[#out + 1] = NVIM_SPECIAL_KEYCODE["<Cmd>"]
+                    elseif parsed.kind == "leader" then
+                        out[#out + 1] = leader_value(parsed.local_leader)
                     else
                         out[#out + 1] = key_to_termcode_string(parsed.key, { force_keycode = false, from_expr = false })
                     end
@@ -939,6 +953,9 @@ function Key.decode_angle_escape(content)
     end
     if parsed.kind == "cmd" then
         return NVIM_SPECIAL_KEYCODE["<Cmd>"]
+    end
+    if parsed.kind == "leader" then
+        return leader_value(parsed.local_leader)
     end
     if parsed.kind == "key" then
         return key_to_termcode_string(parsed.key, { force_keycode = parsed.force_keycode, from_expr = true })

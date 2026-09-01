@@ -31,6 +31,7 @@ lib/
 	filesystem.lua
 	frame.lua
 	fsutil.lua
+	helptags.lua
 	highlight.lua
 	intro.lua
 	key.lua
@@ -38,6 +39,7 @@ lib/
 	luaapi/
 		api.lua
 		apibuild.lua
+		fakeffi.lua
 		fakejit.lua
 		fakeuserdata.lua
 		fileload.lua

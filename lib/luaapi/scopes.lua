@@ -15,7 +15,7 @@ local function lock_value(value)
   local mt = {}
   if original_mt then for key, child in pairs(original_mt) do mt[key] = child end end
   mt.__index = backing
-  mt.__newindex = function() error(Error(741, "const"), 2) end
+  mt.__newindex = function() error(Error(741, "const"):toString(), 2) end
   mt.__len = function() return #backing end
   mt.__pairs = function() return next, backing end
   setmetatable(value, mt)
@@ -42,7 +42,7 @@ local function lockable(tbl)
     end,
     __newindex = function(self, key, value)
       if values[key] then
-        if value ~= nil then error(Error(741, key), 2) end
+        if value ~= nil then error(Error(741, key):toString(), 2) end
         unlock_value(values[key].value)
         values[key] = nil
       else
@@ -80,6 +80,9 @@ Scopes._v.count = 0
 Scopes._v.count1 = 1
 Scopes._v.prevcount = 0
 Scopes._v.stderr = 2
+Scopes._v.shell_error = 0
+Scopes._v.echospace = (screen and screen.width) or 0
+Scopes._v.vim_did_enter = 0
 Scopes._v.maxcol = Scopes.MAXCOL
 Scopes._v.version = 801
 Scopes._v["true"] = true

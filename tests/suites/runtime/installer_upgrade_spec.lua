@@ -273,6 +273,19 @@ return {
             file:close()
         end
         for path, contents in pairs(fresh.files) do writeInstalledFile(path, contents) end
+        writeInstalledFile("/vim/config/init.lua", [[
+local function record(event, chan)
+    local file = assert(fs.open("/startup-events.log", "a"))
+    file.write(('%s:%d:%s\n'):format(event, vim.v.vim_did_enter, chan or ""))
+    file.close()
+end
+record("init")
+vim.api.nvim_create_autocmd({ "VimEnter", "UIEnter" }, {
+    callback = function(args)
+        record(args.event, vim.v.event.chan)
+    end,
+})
+]])
 
         local MockEnv = require("vim.tests.test_mocks")
         local quitEvents = {}
@@ -309,6 +322,11 @@ return {
             bare.cleanup()
             error(bootErr)
         end
+        local startupFile = assert(globals.fs.open("/startup-events.log", "r"))
+        local startupEvents = startupFile.readAll()
+        startupFile.close()
+        Assert.eq("bare install startup lifecycle", startupEvents,
+            "init:0:\nVimEnter:1:\nUIEnter:1:1\n")
 
         local ScriptSource = bare.loadModule("lib.scriptsource")
         for _, path in ipairs({ "ftplugin.vim", "indent.vim", "filetype.lua", "syntax/syntax.vim" }) do

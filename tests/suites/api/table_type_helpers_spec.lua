@@ -46,5 +46,7 @@ return {
         Assert.eq("NIL list keeps following item", result.list[2], 1)
         Assert.eq("NIL sentinel is not list", backend:is_list(result.value), false)
         Assert.eq("NIL sentinel is not dict", backend:is_dict(result.value), false)
+        Assert.eq("v:exiting is NIL before exit",
+            Assert.eval(backend, "eval v:exiting", "vim.v.exiting == vim.NIL"), true)
     end,
 }

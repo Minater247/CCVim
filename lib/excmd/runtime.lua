@@ -32,6 +32,7 @@ local Command = loadModule("lib.command")
 local Key = loadModule("lib.key")
 local Menu = loadModule("lib.menu")
 local Intro = loadModule("lib.intro")
+local HelpTags = loadModule("lib.helptags")
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -6271,6 +6272,25 @@ function Runtime.new(init_state, init_opts)
             end
             enterWindow(target_win.winnr)
             target_win:cursorSet(jumpcol, jumpline)
+            return true
+        elseif cmd == "helptags" then
+            local target = strip(argstr)
+            local force_help_tag = false
+            if target:sub(1, 3) == "++t" and (target:sub(4, 4) == "" or target:sub(4, 4):match("%s")) then
+                force_help_tag = true
+                target = strip(target:sub(4))
+            end
+            if target == "" then error(Error(471)) end
+            if target == "ALL" then
+                for _, base in ipairs(RuntimePath.get_search_list()) do
+                    local doc = base .. "/doc"
+                    if fs.isDir(doc) then HelpTags.generate(doc, force_help_tag) end
+                end
+            else
+                target = target:gsub("\\(.)", "%1")
+                local runtime_doc = ccvim_path .. "/runtime/doc"
+                HelpTags.generate(target, force_help_tag or VimFs.normalize(target) == VimFs.normalize(runtime_doc))
+            end
             return true
         elseif cmd == "highlight" then
             local args = cmdctx and cmdctx.args or split_ws(strip_trailing_comment(argstr))
