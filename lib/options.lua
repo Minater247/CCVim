@@ -154,6 +154,7 @@ local opt_defs = {
     verbose       = {"ggg", 0,       "number"},
     virtualedit   = {"gow", "",      "string"},
     wildignore    = {"ggg", "",      "string"},
+    wildignorecase= {"ggg", false,   "boolean"},
     wildmenu      = {"ggg", true,    "boolean"},
     wildmode      = {"ggg", "full",  "string"},
     wildoptions   = {"ggg", "pum,tagfile", "string"},

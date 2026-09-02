@@ -105,6 +105,7 @@ local errStrings = {
     [1098] = "String, List or Blob required",
     [1135] = function(params) return 'Using a String as a Bool: "' .. tostring(params[1]) .. '"' end,
     [1138] = "Using a Bool as a Number",
+    [1174] = function(params) return "String required for argument " .. tostring(params[1]) end,
     [1206] = function(params) return "Dictionary required for argument " .. tostring(params[1] or 1) end,
     [1203] = function(params) return "Dot can only be used on a dictionary: " .. tostring(params[1]) end,
     [1225] = function(params)

@@ -2001,6 +2001,18 @@ function Builtins.complete_info(what)
     return PopupMenu.complete_info(what)
 end
 
+function Builtins.getcompletion(pattern, completion_type, filtered, ...)
+    if select("#", ...) > 0 then error(Error(118, "getcompletion")) end
+    if type(pattern) ~= "string" then error(Error(474)) end
+    if type(completion_type) ~= "string" then error(Error(1174, 2)) end
+    if type(filtered) == "table" then error(Error(745)) end
+    return loadModule("lib.excmd.completion").for_type(pattern, completion_type, filtered, {
+        builtins = Builtins,
+        user_commands = Runtime._USER_COMMANDS,
+        call_function = call_vimfunc,
+    })
+end
+
 function Builtins.pumvisible()
     return (PopupMenu.visible() and 1 or 0)
 end

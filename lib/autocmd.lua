@@ -185,6 +185,20 @@ function Autocmd.NormalizeEvent(name)
     return EVENT_CANON[name:lower()] or name
 end
 
+function Autocmd.ListEvents()
+    local out = {}
+    for i = 1, #EVENT_LIST do out[i] = EVENT_LIST[i] end
+    table.sort(out)
+    return out
+end
+
+function Autocmd.ListAugroups()
+    local out = {}
+    for name in pairs(autocmdgroups) do out[#out + 1] = name end
+    table.sort(out)
+    return out
+end
+
 local function augroup_as_integer(group)
     return type(group) == "string" and autocmdgroups[group] or group
 end
