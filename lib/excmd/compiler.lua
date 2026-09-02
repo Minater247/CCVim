@@ -1168,9 +1168,10 @@ function Compiler.compile_command(node, ctx)
     elseif cmd == "command" then
         return {
             code = string.format(
-                "runtime:define_command({ parts = %s, nargs = %s, name = %s, body_index = %d }, %s)",
+                "runtime:define_command({ parts = %s, nargs = %s, complete = %s, name = %s, body_index = %d }, %s)",
                 lua_string_list(arg.parts),
                 lua_literal(arg.nargs),
+                arg.complete and lua_string(arg.complete) or "nil",
                 lua_string(arg.name),
                 arg.body_index,
                 node.bang and "true" or "false"

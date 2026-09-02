@@ -23,6 +23,18 @@ function Backend.running_program()
     return Backend.current().running_program()
 end
 
+function Backend.list_commands()
+    return Backend.current().list_commands()
+end
+
+function Backend.list_locales()
+    return Backend.current().list_locales()
+end
+
+function Backend.list_users()
+    return Backend.current().list_users()
+end
+
 function Backend.system(command, opts)
     return Backend.current().system(command, opts)
 end

@@ -13,6 +13,7 @@ return {
             local Options = backend.mock.loadModule("lib.options")
             local Autocmd = backend.mock.loadModule("lib.autocmd")
             local Args = backend.mock.loadModule("lib.args")
+            local Completion = backend.mock.loadModule("lib.excmd.completion")
 
             Autocmd.CreateAutocommand({ "BufRead" }, { "*.lua" }, function(info)
                 local buf = buffers[info.bufnr]
@@ -20,6 +21,8 @@ return {
             end, nil, 1, false, false)
 
             Assert.eq("args parse ok", Args.parse({ [0] = "nvim", path }), true)
+            Assert.deep_eq("argument completion uses the argument list",
+                Completion.for_type(path, "arglist", false, {}), { path })
 
             local buf = nil
             for _, candidate in pairs(buffers) do

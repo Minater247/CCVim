@@ -36,18 +36,36 @@ return {
         local user, user_err = complete(":CodexCom<Tab>", [[
             vim.api.nvim_create_user_command("CodexComplete", function() end, {})
         ]])
+        local callback, callback_err = complete(":CodexCallback al<Tab>", [[
+            vim.api.nvim_create_user_command("CodexCallback", function() end, {
+                nargs = "*",
+                complete = function() return { "alpha", "alpine" } end,
+            })
+        ]])
+        local vimscript, vimscript_err = complete(":CodexVimscript al<Tab>", [=[
+            vim.cmd([[
+                function! CodexCompleteFn(ArgLead, CmdLine, CursorPos)
+                    return ['alpha', 'alpine']
+                endfunction
+                command! -nargs=* -complete=customlist,CodexCompleteFn CodexVimscript echo
+            ]])
+        ]=])
         ctx.assert.eq("unique command completion error", unique_err, nil)
         ctx.assert.eq("ambiguous command completion error", ambiguous_err, nil)
         ctx.assert.eq("cancelled command completion error", cancelled_err, nil)
         ctx.assert.eq("colorscheme completion error", color_err, nil)
         ctx.assert.eq("file command completion error", file_err, nil)
         ctx.assert.eq("user command completion error", user_err, nil)
+        ctx.assert.eq("callback command completion error", callback_err, nil)
+        ctx.assert.eq("Vimscript command completion error", vimscript_err, nil)
         ctx.assert.table_eq("unique command expands without popup", unique, { "tabedit", 0 })
         ctx.assert.table_eq("ambiguous command expands with popup", ambiguous, { "echo", 1 })
         ctx.assert.table_eq("Escape cancels command completion", cancelled, { "", 0 })
         ctx.assert.table_eq("colorscheme arguments cycle", color, { "colorscheme darkblue", 1 })
         ctx.assert.table_eq("file argument completes", file, { "edit " .. path, 0 })
         ctx.assert.table_eq("user command preserves case", user, { "CodexComplete", 0 })
+        ctx.assert.table_eq("callback command arguments complete", callback, { "CodexCallback alpha", 1 })
+        ctx.assert.table_eq("Vimscript command arguments complete", vimscript, { "CodexVimscript alpha", 1 })
         ctx.backend:remove_path(path)
     end,
 }

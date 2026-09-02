@@ -1,4 +1,5 @@
 local Args = {}
+local argument_files = {}
 
 local Buffer = loadModule("layout.buffer")
 local Window = loadModule("layout.window")
@@ -187,6 +188,7 @@ function Args.parse(argv)
 
     pending_file_bufnrs = state.file_bufnrs
     pending_window_bufnrs = state.window_bufnrs
+    argument_files = state.files
 
     return true
 end
@@ -221,6 +223,12 @@ function Args.load_pending_files()
     pending_file_bufnrs = nil
 
     return true
+end
+
+function Args.list()
+    local out = {}
+    for i = 1, #argument_files do out[i] = argument_files[i] end
+    return out
 end
 
 return Args

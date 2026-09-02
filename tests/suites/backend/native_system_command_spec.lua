@@ -13,6 +13,16 @@ return {
         local env = setmetatable({ io = quiet_io }, { __index = _G })
         local Native = assert(loadfile("lib/backend/native.lua", "t", env))()
 
+        local commands = Native.list_commands()
+        local has_sh = false
+        for i = 1, #commands do
+            if commands[i] == "sh" then has_sh = true end
+            if i > 1 then Assert.truthy("native commands are unique and sorted", commands[i - 1] < commands[i]) end
+        end
+        Assert.truthy("native command discovery scans PATH", has_sh)
+        Assert.truthy("native locale discovery returns a list", type(Native.list_locales()) == "table")
+        Assert.truthy("native user discovery reads the host namespace", #Native.list_users() > 0)
+
         local result = Native.system({ "/bin/sh", "-c", "printf '%s' \"$1\"", "sh", "a b;$HOME" })
         Assert.eq("list command bypasses shell reinterpretation", result.stdout, "a b;$HOME")
         Assert.eq("list command succeeds", result.code, 0)

@@ -209,7 +209,7 @@ end
 
 function Payload.parse_command_definition(value)
     local parts = Payload.split_words(value)
-    local nargs, name = 0, nil
+    local nargs, complete, name = 0, nil, nil
     local body_index = #parts + 1
     local i = 1
     while i <= #parts do
@@ -218,6 +218,8 @@ function Payload.parse_command_definition(value)
             local raw_nargs = token:sub(8)
             nargs = (raw_nargs == "*" or raw_nargs == "?" or raw_nargs == "+")
                 and raw_nargs or tonumber(raw_nargs) or 0
+        elseif token:match("^%-complete=") then
+            complete = token:sub(11)
         elseif token:sub(1, 1) ~= "-" then
             name = token
             body_index = i + 1
@@ -229,6 +231,7 @@ function Payload.parse_command_definition(value)
         kind = "command",
         parts = parts,
         nargs = nargs,
+        complete = complete,
         name = name,
         body_index = body_index,
     }

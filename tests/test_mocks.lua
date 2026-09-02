@@ -2174,6 +2174,20 @@ function MockEnv.setup(opts)
         running_program = function()
             return tostring((arg and arg[0]) or "")
         end,
+        list_commands = function()
+            local commands = globals.shell.programs(false)
+            for name in pairs(globals.shell.aliases()) do
+                commands[#commands + 1] = name
+            end
+            table.sort(commands)
+            return commands
+        end,
+        list_locales = function()
+            return {}
+        end,
+        list_users = function()
+            return {}
+        end,
         keys = globals.keys,
         fs = globals.fs,
     }

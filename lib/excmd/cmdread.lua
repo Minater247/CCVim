@@ -8,6 +8,7 @@ local ScreenDraw = loadModule("lib.screendraw")
 local scopes = loadModule("lib.luaapi.scopes")
 local Completion = loadModule("lib.excmd.completion")
 local PopupMenu = loadModule("lib.popupmenu")
+local Fn
 
 local pendingcmd = {}
 local active = false
@@ -65,7 +66,10 @@ local function handler(k)
                 end
             elseif k == tabref then
                 local line = current_cmdline_string()
-                local items, start = Completion.get(line, Runtime._USER_COMMANDS)
+                Fn = Fn or loadModule("lib.luaapi.fn")
+                local items, start = Completion.get(line, Runtime._USER_COMMANDS, {
+                    call_function = Fn._call,
+                })
                 PopupMenu.cmdline(items, function(item)
                     if not item then return end
                     local next_line = line:sub(1, start - 1) .. item.word

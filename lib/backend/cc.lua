@@ -527,6 +527,31 @@ function CC.running_program()
     return shell.getRunningProgram()
 end
 
+function CC.list_commands()
+    local commands = cc_shell.programs(false)
+    for name in pairs(cc_shell.aliases()) do
+        commands[#commands + 1] = name
+    end
+    local out, seen = {}, {}
+    for i = 1, #commands do
+        local name = tostring(commands[i])
+        if name ~= "" and not seen[name] then
+            seen[name] = true
+            out[#out + 1] = name
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+function CC.list_locales()
+    return {}
+end
+
+function CC.list_users()
+    return {}
+end
+
 local next_process_pid = 0
 
 local function process_event()

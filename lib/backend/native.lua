@@ -1053,6 +1053,60 @@ function Native.running_program()
     return tostring((arg and arg[0]) or "")
 end
 
+function Native.list_commands()
+    local out, seen = {}, {}
+    for dir in tostring(uv.os_getenv("PATH") or ""):gmatch("[^:]+") do
+        local attr = lfs and lfs.attributes(dir)
+        if attr and attr.mode == "directory" then
+            for name in lfs.dir(dir) do
+                if name ~= "." and name ~= ".." and not seen[name] then
+                    local file_attr = lfs.attributes(path_join(dir, name))
+                    local permissions = file_attr and file_attr.permissions
+                    if file_attr and file_attr.mode == "file"
+                            and (permissions == nil or permissions:find("x", 1, true)) then
+                        seen[name] = true
+                        out[#out + 1] = name
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+local native_locales
+
+function Native.list_locales()
+    if native_locales then return native_locales end
+    native_locales = {}
+    local result = Native.system({ "locale", "-a" })
+    if result.code == 0 then
+        for name in result.stdout:gmatch("[^\r\n]+") do
+            native_locales[#native_locales + 1] = name
+        end
+        table.sort(native_locales)
+    end
+    return native_locales
+end
+
+local native_users
+
+function Native.list_users()
+    if native_users then return native_users end
+    native_users = {}
+    local file = io.open("/etc/passwd", "r")
+    if file then
+        for line in file:lines() do
+            local name = line:match("^([^:]+):")
+            if name then native_users[#native_users + 1] = name end
+        end
+        file:close()
+        table.sort(native_users)
+    end
+    return native_users
+end
+
 function Native.new_pipe(ipc)
     return uv.new_pipe(ipc)
 end

@@ -22,6 +22,7 @@ local OnKey = loadModule("lib.luaapi.on_key")
 local Visual = loadModule("lib.visual")
 local TblUtils = loadModule("lib.luaapi.tblutils")
 local ApiBuild = loadModule("lib.luaapi.apibuild")
+local Completion
 
 local paste_draining = false
 
@@ -1825,16 +1826,8 @@ function api.nvim_del_augroup_by_id(id)
     return true
 end
 
--- ========================
--- User Command Functions (minimal subset for nvim-tree usage)
--- ========================
 local _user_commands = {}
 
----Create a (global) user command.
--- Minimal implementation supporting: force, nargs ("?", "1"/1), bang, desc, complete (ignored), bar (ignored).
--- @param name string Command name (must start with uppercase letter)
--- @param command string|function Ex command string or Lua callback
--- @param opts table Attributes (subset)
 function api.nvim_create_user_command(name, command, opts)
     opts = opts or {}
 
@@ -1846,6 +1839,12 @@ function api.nvim_create_user_command(name, command, opts)
     end
     if type(opts) ~= "table" then
         error("nvim_create_user_command: opts must be table", 2)
+    end
+    if opts.complete ~= nil then
+        if opts.nargs == nil then error("'complete' used without 'nargs'", 2) end
+        Completion = Completion or loadModule("lib.excmd.completion")
+        local valid, complete_err = Completion.validate_spec(opts.complete)
+        if not valid then error(tostring(complete_err), 2) end
     end
 
     local lname = name:lower()
@@ -1862,6 +1861,7 @@ function api.nvim_create_user_command(name, command, opts)
 
     _user_commands[lname] = { name = name, command = command, opts = opts }
     Runtime.RegisterUserCommand(name, {
+        complete = opts.complete,
         handler = function(info)
             local def = _user_commands[lname]
             if not def then return end

@@ -44,6 +44,8 @@ return {
             setDir = function(path) cwd = path end,
             resolve = function(path) return path end,
             getRunningProgram = function() return "nvim.lua" end,
+            programs = function() return { "git", "vim", "git" } end,
+            aliases = function() return { g = "git" } end,
             execute = function(program, ...)
                 seen = { program, ... }
                 current.write("captured output")
@@ -102,6 +104,11 @@ return {
         local chunk, err = loadfile(root .. "/lib/backend/cc.lua", "t", env)
         Assert.truthy("cc backend loads", chunk ~= nil, err)
         local CC = chunk()
+        Assert.deep_eq("CraftOS command discovery includes programs and aliases", CC.list_commands(), {
+            "g", "git", "vim",
+        })
+        Assert.deep_eq("CraftOS has no host locale namespace", CC.list_locales(), {})
+        Assert.deep_eq("CraftOS has no host user namespace", CC.list_users(), {})
         local result = CC.system({ "tool", "--value=a b", "literal" }, { cwd = "/work" })
 
         Assert.eq("program passed directly", seen[1], "tool")

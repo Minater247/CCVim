@@ -32,6 +32,7 @@ local errStrings = {
     [149] = function(params) return "Sorry, no help for " .. params[1] end,
     [150] = function(params) return "Not a directory: " .. tostring(params[1]) end,
     [154] = function(params) return "Duplicate tag: " .. tostring(params[1]) end,
+    [180] = function(params) return "Invalid complete value: " .. tostring(params[1]) end,
     [185] = function(params) return "Cannot find color scheme " .. "'" .. params[1] .. "'" end,
     [189] = function(params) return '"' .. (params[1] or "") .. '" exists (add ! to override)' end,
     [191] = "Argument must be a letter or forward/backward quote",
@@ -50,6 +51,7 @@ local errStrings = {
     [464] = function(params)
         return "Ambiguous use of user-defined command: " .. params[1] .. " (matches: " .. params[2] .. ")"
     end,
+    [467] = "Custom completion requires a function argument",
     [471] = "Argument required",
     [474] = function(params) return "Invalid argument" .. (params[1] and (": " .. params[1]) or "") end,
     [475] = function(params) return "Invalid argument: " .. params[1] end,
@@ -107,6 +109,7 @@ local errStrings = {
     [1138] = "Using a Bool as a Number",
     [1174] = function(params) return "String required for argument " .. tostring(params[1]) end,
     [1206] = function(params) return "Dictionary required for argument " .. tostring(params[1] or 1) end,
+    [1208] = "-complete used without allowing arguments",
     [1203] = function(params) return "Dot can only be used on a dictionary: " .. tostring(params[1]) end,
     [1225] = function(params)
         return "String, List or Dictionary required for argument " .. tostring(params[1] or 1)

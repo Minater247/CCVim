@@ -33,6 +33,7 @@ local Key = loadModule("lib.key")
 local Menu = loadModule("lib.menu")
 local Intro = loadModule("lib.intro")
 local HelpTags = loadModule("lib.helptags")
+local Completion
 
 Runtime._FUNCS = {}
 Runtime._USER_COMMANDS = {}
@@ -4070,6 +4071,12 @@ function Runtime:define_command(rest, bang)
     local name = parsed.name
     local idx = parsed.body_index
     if not name then error(Error(474, "Missing command name")) end
+    if parsed.complete then
+        if nargs == 0 then error(Error(1208)) end
+        Completion = Completion or loadModule("lib.excmd.completion")
+        local valid, complete_err = Completion.validate_spec(parsed.complete)
+        if not valid then error(complete_err) end
+    end
     local key = name:lower()
     local body = table.concat(parts, " ", idx)
     if (not bang) and Runtime._USER_COMMANDS[key] then
@@ -4079,6 +4086,7 @@ function Runtime:define_command(rest, bang)
         name = name,
         body = body,
         nargs = nargs,
+        complete = parsed.complete,
         scope = self.state.s,
         funcs = self.state.funcs,
         script_sid = self.state.script_sid,
