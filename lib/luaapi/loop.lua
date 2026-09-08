@@ -408,6 +408,47 @@ function loop.fs_close(fd, callback)
     return err == nil, err
 end
 
+local function _fs_rmdir_impl(path)
+    if has_uri_scheme(path) then
+        return nil, "ENOENT: unsupported uri scheme", "ENOENT"
+    end
+    path = VimFs.abspath(path)
+    if not fs.exists(path) then
+        return nil, "ENOENT: no such file or directory", "ENOENT"
+    end
+    if not fs.isDir(path) then
+        return nil, "ENOTDIR: not a directory", "ENOTDIR"
+    end
+    if fs.isReadOnly and fs.isReadOnly(path) then
+        return nil, "EACCES: permission denied", "EACCES"
+    end
+    if #fs.list(path) > 0 then
+        return nil, "ENOTEMPTY: directory not empty", "ENOTEMPTY"
+    end
+    local ok, err = pcall(fs.delete, path)
+    if not ok then
+        return nil, "EPERM: operation not permitted (" .. tostring(err) .. ")", "EPERM"
+    end
+    return true
+end
+
+function loop.fs_rmdir(path, callback)
+    if type(callback) == "function" then
+        local req = new_fs_req("rmdir", { _path = path })
+        Event.StartTimer(0, function()
+            local ok, err = _fs_rmdir_impl(path)
+            local TimerUtils = loadModule("lib.luaapi.timerutils")
+            if err then
+                TimerUtils.with_fast_event(callback, err)
+            else
+                TimerUtils.with_fast_event(callback, nil, ok)
+            end
+        end)
+        return req
+    end
+    return _fs_rmdir_impl(path)
+end
+
 local function _fs_unlink_impl(path)
     if has_uri_scheme(path) then
         return nil, "ENOENT: unsupported uri scheme", "ENOENT"

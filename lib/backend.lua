@@ -1,5 +1,7 @@
 local Backend = {}
 
+local ModifierState = loadModule("lib.excmd.modifierstate")
+
 function Backend.current()
     return rawget(_ENV, "backend")
         or rawget(_G, "backend")
@@ -36,6 +38,7 @@ function Backend.list_users()
 end
 
 function Backend.system(command, opts)
+    ModifierState.check()
     return Backend.current().system(command, opts)
 end
 

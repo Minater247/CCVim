@@ -1862,6 +1862,7 @@ function api.nvim_create_user_command(name, command, opts)
     _user_commands[lname] = { name = name, command = command, opts = opts }
     Runtime.RegisterUserCommand(name, {
         complete = opts.complete,
+        count = opts.count,
         handler = function(info)
             local def = _user_commands[lname]
             if not def then return end
@@ -1886,14 +1887,16 @@ function api.nvim_create_user_command(name, command, opts)
                 name = def.name,
                 args = info._ccvim.raw_args or "",
                 fargs = info.fargs or {},
-                nargs = def.opts.nargs,
+                nargs = tostring(def.opts.nargs or 0),
                 bang = info.bang or false,
-                line1 = windows[curwin].cursory,
-                line2 = windows[curwin].cursory,
-                range = 0,
-                reg = nil,
-                mods = "",
-                smods = {},
+                line1 = info.line1,
+                line2 = info.line2,
+                range = info.range,
+                count = info._ccvim.count or (type(def.opts.count) == "number" and def.opts.count
+                    or (def.opts.count and 0 or -1)),
+                reg = "",
+                mods = info.mods,
+                smods = info.smods,
             }
 
             if type(def.command) == "function" then
@@ -2412,7 +2415,7 @@ function api.nvim_echo(chunks, _history, _opts)
 end
 
 function api.nvim_list_tabpages()
-    return TblUtils.sorted_keys(tabpages)
+    return tabpages[curtp]:all_ids()
 end
 
 function api.nvim_list_uis()
@@ -2670,7 +2673,7 @@ function api.nvim_cmd(cmd, opts)
     local cursor_text = (argstr ~= "") and (head .. " " .. argstr) or head
     local script = prefix .. cursor_text
 
-    if opts.output then
+    if opts.output and cmd.mods == nil then
         local rv = api.nvim_exec2(script, { output = true })
         return rv.output or ""
     end
@@ -2700,15 +2703,19 @@ function api.nvim_cmd(cmd, opts)
     local rt = Runtime.new(state)
     rt:set_exec_cursor(1, cursor_text, spec.lname, spec.qargs)
 
-    local ok, rv = pcall(function()
-        return rt:invoke_compiled_command(spec)
-    end)
+    local invoke = function() return rt:invoke_with_command_modifiers(spec, cmd.mods) end
+    local ok, rv, output
+    if opts.output then
+        ok, rv, _, output = with_capture(invoke)
+    else
+        ok, rv = pcall(invoke)
+    end
     if not ok then
         local msg = tostring(rv)
         scopes._v.errmsg = msg
         error(msg)
     end
-    return ""
+    return output or ""
 end
 
 function api.nvim_get_option(name)

@@ -446,6 +446,9 @@ function Sign.unplace(group, opts)
 end
 
 function Sign.on_lines_changed(buf, start1, removed_count, inserted_count)
+    local Modifiers = loadModule("lib.excmd.modifierstate")
+    Modifiers.adjust_marks(buf, start1, removed_count, inserted_count)
+    if Modifiers.get("lockmarks") then return end
     if removed_count == 0 and inserted_count == 0 then
         return
     end

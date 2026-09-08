@@ -304,7 +304,8 @@ local function click_modifier_string()
 end
 
 local function switch_to_tab_from_click(tabnr)
-    local target = tonumber(tabnr)
+    local ordinal = tonumber(tabnr)
+    local target = ordinal and tabpages[curtp]:ordinal_all(ordinal)
     if not target or not tabpages[target] then
         return false
     end
@@ -318,13 +319,11 @@ local function switch_to_tab_from_click(tabnr)
 end
 
 local function close_tab_from_click(tabnr)
-    local target = tonumber(tabnr)
-    if not target then
+    local ordinal = tonumber(tabnr)
+    if not ordinal then
         return false
     end
-    if target == 999 then
-        target = curtp
-    end
+    local target = ordinal == 999 and curtp or tabpages[curtp]:ordinal_all(ordinal)
 
     local target_tab = tabpages[target]
     if not target_tab then

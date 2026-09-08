@@ -125,6 +125,19 @@ return {
         Assert.eq("scrolled output retained", result.stdout,
             table.concat({ "shell output", "", "", "", "", "", "", "tail" }, "\n"))
 
+        local previous_input = io.input()
+        shell.execute = function()
+            current.write(io.read("*a"))
+            return true
+        end
+        result = CC.system({"filter"}, {input = "one\ntwo\n"})
+        Assert.eq("filter receives stdin", result.stdout, "one\ntwo")
+        Assert.eq("stdin restored", io.input(), previous_input)
+        shell.execute = function() error("filter failed") end
+        result = CC.system({"filter"}, {input = "input"})
+        Assert.eq("failed filter status", result.code, 1)
+        Assert.eq("stdin restored after error", io.input(), previous_input)
+
         local parent_timer = CC.start_timer(1)
         os_api.queueEvent("timer", parent_timer)
         os_api.queueEvent("http_success", "request")

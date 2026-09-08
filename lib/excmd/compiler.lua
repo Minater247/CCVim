@@ -1,7 +1,7 @@
 -- vim.lib.excmd.compiler
 local Compiler = {}
 
-Compiler.CACHE_VERSION = 2
+Compiler.CACHE_VERSION = 3
 Compiler.CACHE_HEADER = "-- ccvim-compiled-v" .. Compiler.CACHE_VERSION
 
 function Compiler.is_cache_compatible(code)
@@ -124,11 +124,11 @@ local function split_commands(script)
                     local cmd, rest = parse_cmd_head(head)
                     local guard = 0
                     while type(cmd) == "string" and Commands.is_wrapper(cmd) and guard < 8 do
-                        head = trim(rest or "")
-                        if head == "" then
+                        local nested_head = trim(rest or "")
+                        if nested_head == "" then
                             break
                         end
-                        cmd, rest = parse_cmd_head(head)
+                        cmd, rest = parse_cmd_head(nested_head)
                         guard = guard + 1
                     end
                     if type(cmd) == "string" and cmd ~= "" then
@@ -380,6 +380,11 @@ function parse_cmd_head(line)
         end
     end
 
+    local tab_address, tab_command, tab_body = s:sub(pos):match("^([.$+-][%d+-]*)%s*(%a+)%s+(.*)$")
+    if tab_address and resolve_cmd_name(tab_command) == "tab" then
+        return "tab", tab_body, nil, false, tab_command, tab_address
+    end
+
     local first_byte = s:byte(pos)
     if first_byte and first_byte >= 48 and first_byte <= 57 then
         local count_start = pos
@@ -397,7 +402,7 @@ function parse_cmd_head(line)
             end
             local base = s:sub(base_start, tail_pos - 1)
             local resolved, rerr = resolve_cmd_name(base)
-            if not Error.IsError(rerr) and resolved == "verbose" then
+            if not Error.IsError(rerr) and (resolved == "verbose" or resolved == "tab") then
                 local raw_base = base
                 local bang = s:byte(tail_pos) == 33
                 local rest = lstrip_from(s, tail_pos + (bang and 1 or 0))
@@ -424,6 +429,7 @@ function parse_cmd_head(line)
         end
     end
     local b = s:byte(pos)
+    if b == 33 then return "!", s:sub(pos + 1), nil, false, "!" end
     if not is_alpha_code(b) then return nil, s:sub(pos) end
     local base_start = pos
     pos = pos + 1
@@ -1007,7 +1013,14 @@ function Compiler.compile_command(node, ctx)
     local cmd = node.cmd:lower()
     local arg = node.arg
 
-    if cmd == "let" or cmd == "const" then
+    if cmd == "!" then
+        return { code = "runtime:filter_command(" .. lua_string(node.rest) .. ")" }
+    elseif node.cmd == cmd and Commands.is_wrapper(cmd) then
+        return { code = string.format("runtime:exec_command_modifier(%s, %s, %s, %s)",
+            lua_string(cmd), lua_string(node.rest), node.bang and "true" or "false",
+            type(node.verbose_count) == "string" and lua_string(node.verbose_count)
+                or (node.verbose_count ~= nil and tostring(node.verbose_count) or "nil")) }
+    elseif cmd == "let" or cmd == "const" then
         if arg.kind == "let_query" then
             return {
                 code = "runtime:invoke_compiled_builtin_command("
@@ -1116,9 +1129,6 @@ function Compiler.compile_command(node, ctx)
             }
         end
         return { code = "error(Error(488, " .. lua_string(arg.raw) .. "))" }
-    elseif cmd == "verbose" then
-        local level = tonumber(node.verbose_count) or 1
-        return { code = string.format("runtime:exec_verbose(%d, %s)", level, lua_string(node.rest)) }
     elseif cmd == "echo" or cmd == "echoerr" or cmd == "echomsg" or cmd == "echon" then
         if node.text:match("^%s*:?[%%%.%$%'%d]") then
             return { code = "error(Error(481, " .. lua_string(node.text) .. "))" }

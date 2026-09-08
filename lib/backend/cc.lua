@@ -16,6 +16,9 @@ local cc_shell = shell
 local cc_term = term
 local cc_window = window
 local cc_os = select(1, os)
+local cc_io = io
+local cc_fs = fs
+local stdin_counter = 0
 local cc_pull_event = cc_os.pullEvent
 local cc_pull_event_raw = cc_os.pullEventRaw
 local cc_queue_event = cc_os.queueEvent
@@ -724,6 +727,7 @@ function CC.system(command, opts)
     end
     local old_dir = cc_shell.dir()
     local deferred_events = {}
+    local saved_input, input_file, input_path
 
     local function child_pull_event(raw, filter)
         while true do
@@ -751,6 +755,26 @@ function CC.system(command, opts)
     end
 
     local function run()
+        if opts.input ~= nil and cc_io and cc_io.input then
+            local input = opts.input
+            if type(input) == "table" then input = table.concat(input, "\n") .. "\n" end
+            input = tostring(input)
+            saved_input = cc_io.input()
+            if cc_io.tmpfile then
+                input_file = assert(cc_io.tmpfile())
+                input_file:write(input)
+                input_file:seek("set", 0)
+            else
+                stdin_counter = stdin_counter + 1
+                cc_fs.makeDir("/tmp")
+                input_path = "/tmp/ccvim-stdin-" .. tostring(cc_os.epoch("utc")) .. "-" .. stdin_counter
+                local writer = assert(cc_io.open(input_path, "w"))
+                writer:write(input)
+                writer:close()
+                input_file = assert(cc_io.open(input_path, "r"))
+            end
+            cc_io.input(input_file)
+        end
         if opts.cwd then
             local cwd = tostring(opts.cwd)
             cc_shell.setDir(cwd == "/" and "" or cwd:gsub("^/", ""))
@@ -769,6 +793,9 @@ function CC.system(command, opts)
     end
 
     local ok, ran = xpcall(run, debug.traceback)
+    if saved_input then cc_io.input(saved_input) end
+    if input_file then input_file:close() end
+    if input_path then cc_fs.delete(input_path) end
     cc_os.pullEvent = cc_pull_event
     cc_os.pullEventRaw = cc_pull_event_raw
     for i = 1, #deferred_events do

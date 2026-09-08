@@ -3,3 +3,4 @@
 - More plugin testing
 - Fix native mode
 - OpenComputers backend
+- swap-file creation, persistence, conflict detection, recovery, `SwapExists` handling

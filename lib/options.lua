@@ -1,3 +1,4 @@
+local ModifierState = loadModule("lib.excmd.modifierstate")
 local Options = {}
 
 local Error = loadModule("lib.error")
@@ -38,6 +39,7 @@ local opt_defs = {
     columns       = {"ggg", 80,      "number"},
     comments      = {"ltb", "s1:/*,mb:*,ex:*/,://,b:#,:%,:XCOMM,n:>,fb:-", "string"},
     commentstring = {"ltb", "",      "string"},
+    confirm       = {"ggg", false, "boolean"},
     completeopt   = {"gob", "menu,popup", "string"},
     completefunc  = {"ltb", "",      "stringfunc"},
     concealcursor = {"ltw", "",      "string"},
@@ -324,9 +326,9 @@ local function _capture_expr_option_state(name)
     if not spec then
         return nil
     end
-    return Runtime.CaptureDurableScriptState({
-        script_ctx = _current_script_ctx(),
-    })
+    local state = Runtime.CaptureDurableScriptState({script_ctx = _current_script_ctx()})
+    state.sandbox = ModifierState.get("sandbox") == true
+    return state
 end
 
 local function _canonicalize_expr_option_string(name, value)
@@ -393,9 +395,10 @@ function Options.EvalExprOption(name, expr, window, buffer, vscope)
     local durable = Options.GetExprOptionScriptState(canon, window, buffer)
     local state = Runtime.MakeRuntimeState(durable, vscope)
 
-    local ok, rv = Runtime.EvalExpression(expr, {
-        state = state,
-    })
+    local sandbox = durable and durable.sandbox or ModifierState.get("sandbox")
+    local ok, rv = ModifierState.with({sandbox = sandbox}, function()
+        return Runtime.EvalExpression(expr, {state = state})
+    end)
     if not ok then
         return rv, false
     end
@@ -1212,6 +1215,53 @@ local option_updatees = {
     end,
 }
 
+local sandbox_options = {
+    backupdir = true,
+    cdhome = true,
+    cdpath = true,
+    charconvert = true,
+    completefunc = true,
+    diffexpr = true,
+    directory = true,
+    equalprg = true,
+    errorfile = true,
+    exrc = true,
+    findfunc = true,
+    formatprg = true,
+    fsync = true,
+    grepprg = true,
+    helpfile = true,
+    keywordprg = true,
+    langmap = true,
+    makeef = true,
+    makeprg = true,
+    mkspellmem = true,
+    modelineexpr = true,
+    omnifunc = true,
+    operatorfunc = true,
+    packpath = true,
+    patchexpr = true,
+    pyxversion = true,
+    quickfixtextfunc = true,
+    shada = true,
+    shadafile = true,
+    shell = true,
+    shellcmdflag = true,
+    shellpipe = true,
+    shellquote = true,
+    shellredir = true,
+    shellxescape = true,
+    shellxquote = true,
+    spellfile = true,
+    spellsuggest = true,
+    tagfunc = true,
+    thesaurusfunc = true,
+    titleold = true,
+    undodir = true,
+    verbosefile = true,
+    viewdir = true,
+}
+
 function Options.set(name, value, setlocal, window, buffer, setglobal)
     local name_orig = name
 
@@ -1225,6 +1275,7 @@ function Options.set(name, value, setlocal, window, buffer, setglobal)
         error(Error(519, name))
     end
 
+    if sandbox_options[name] then ModifierState.check() end
     local loc = option_loc(name)
 
     if not loc then
@@ -1358,6 +1409,7 @@ local function parse_number(s)
 end
 
 local function _apply_value(name, value, mode, window, buffer, source_expr)
+    if sandbox_options[name] then ModifierState.check() end
     local oldvalue = nil
     if name == "filetype" and buffer then
         oldvalue = buffer.opts.filetype

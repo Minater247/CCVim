@@ -1,3 +1,4 @@
+local ModifierState = loadModule("lib.excmd.modifierstate")
 local Tabpage = {}
 Tabpage.__index = Tabpage -- Share the instance methods
 
@@ -27,7 +28,9 @@ local function all_tabpage_ids()
     for tabnr, _ in pairs(tabpages) do
         ids[#ids + 1] = tabnr
     end
-    table.sort(ids)
+    table.sort(ids, function(a, b)
+        return (tabpages[a].order or a) < (tabpages[b].order or b)
+    end)
     return ids
 end
 
@@ -155,7 +158,7 @@ local function default_tabline_format()
     for i = 1, #tab_ids do
         local tabnr = tab_ids[i]
         local hl = (tabnr == curtp) and "TabLineSel" or "TabLine"
-        parts[#parts + 1] = ("%%#%s#%%%dT%s"):format(hl, tabnr, default_tab_label(tabpages[tabnr]))
+        parts[#parts + 1] = ("%%#%s#%%%dT%s"):format(hl, i, default_tab_label(tabpages[tabnr]))
     end
 
     parts[#parts + 1] = "%#TabLineFill#%T"
@@ -178,13 +181,23 @@ end
 
 --- Creates a new Tabpage.
 ---@param window Window The window to attach to the tabpage, if any.
-function Tabpage:new(window)
+function Tabpage:new(window, after)
     window = window or Window()
+    local ids = all_tabpage_ids()
+    local current = #ids
+    for i, id in ipairs(ids) do
+        tabpages[id].order = i
+        if id == curtp then current = i end
+    end
+    after = after or ModifierState.get("tab")
+    if type(after) ~= "number" then after = current end
+    after = math.max(0, math.min(after, #ids))
 
     local displayheight, winyoff = compute_layout_metrics()
 
     local obj = setmetatable({
         tabnr = curr_tabno,
+        order = after + 0.5,
         windows = { window },
         tree = FrameTree.New(window, screen.width, displayheight),
         opts = Options.new_object_local_opts("tab"),
@@ -312,16 +325,6 @@ function Tabpage:_win_local_index(window)
     -- Not found, nil
 end
 
-local function next_numeric_index(t, i)
-    local wrap  -- smallest key > i
-    local first -- smallest key overall
-    for k, _ in pairs(t) do
-        if not first or k < first then first = k end
-        if k > i and (not wrap or k < wrap) then wrap = k end
-    end
-    return wrap or first
-end
-
 local function _first_other_modified_buf(current_buf)
     local first_bufnr
     for bufnr, buf in pairs(buffers) do
@@ -353,7 +356,21 @@ local function _prepare_halting_buffers(current_buf, force, autowrite_kind)
 
     local buf = _first_other_modified_buf(current_buf)
     while buf do
-        if autowrite_enabled and not Buffer.AutowriteBlockedBuftype(buf) then
+        if ModifierState.get("confirm") or options.get("confirm") then
+            local decision = ModifierState.confirm_buffer(buf)
+            if decision ~= true then
+                _surface_halting_buffer(buf)
+                return decision == false and Error(37) or decision
+            end
+            if buf.opts.modified then
+                local saved = buf.opts.modified
+                buf.opts.modified = false
+                local rv = _prepare_halting_buffers(current_buf, force, autowrite_kind)
+                buf.opts.modified = saved
+                return rv
+            end
+            buf = _first_other_modified_buf(current_buf)
+        elseif autowrite_enabled and not Buffer.AutowriteBlockedBuftype(buf) then
             local status = buf:write(false)
             if status == true then
                 buf = _first_other_modified_buf(current_buf)
@@ -386,9 +403,13 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
             error("Internal error: tabpage not located!")
         end
 
-        local next = next_numeric_index(tabpages, myidx)
-        if next ~= myidx then
-            newcurtp = next
+        local ids = all_tabpage_ids()
+        local ordinal
+        for i, id in ipairs(ids) do
+            if id == myidx then ordinal = i; break end
+        end
+        if #ids > 1 then
+            newcurtp = ids[ordinal + 1] or ids[ordinal - 1]
         else
             halting = true
         end
@@ -497,6 +518,11 @@ end
 
 function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
     opts = opts or {}
+    if type(ModifierState.get("tab")) == "number" then
+        if opts.dry_run then return true end
+        Tabpage(new_win, ModifierState.get("tab"))
+        return true
+    end
 
     if opts.dry_run then
         return self:CanWinSplit(target_winnr, new_win, vertical, opts)

@@ -1,5 +1,7 @@
 -- vim.lib.excmd.runtime
 local Runtime = {}
+local ModifierState = loadModule("lib.excmd.modifierstate")
+local Backend = loadModule("lib.backend")
 
 local VimExpr = loadModule("lib.excmd.vimxpr")
 local VimRegex = loadModule("lib.excmd.vim_regex")
@@ -15,7 +17,6 @@ local Builtins = loadModule("lib.luaapi.fn")
 local Utf8 = loadModule("lib.utf8")
 local Window = loadModule("layout.window")
 local EnvVars = loadModule("lib.envvars")
-local TblUtils = loadModule("lib.luaapi.tblutils")
 local Req = loadModule("lib.luaapi.require")
 local LuaLoader = loadModule("lib.lualoader")
 local Syntax = loadModule("lib.syntax")
@@ -1323,13 +1324,198 @@ local resolve_dispatch_name = Commands.resolve_dispatch_name
 
 local function with_cleared_command_modifiers(rt, fn)
     local saved = rt._command_modifiers
+    local saved_callback_modifiers = rt._callback_command_modifiers
     rt._command_modifiers = nil
-    local ok, rv = pcall(fn)
+    rt._callback_command_modifiers = nil
+    local ok, rv = pcall(function() return ModifierState.with({tab = false}, fn) end)
     rt._command_modifiers = saved
+    rt._callback_command_modifiers = saved_callback_modifiers
     if not ok then
         error(rv)
     end
     return rv
+end
+
+local modifier_booleans = {
+    "browse", "confirm", "hide", "keepalt", "keepjumps", "keepmarks", "keeppatterns",
+    "lockmarks", "noswapfile", "sandbox", "unsilent", "noautocmd", "silent", "emsg_silent",
+    "vertical", "horizontal",
+}
+local modifier_order = {
+    "browse", "confirm", "hide", "keepalt", "keepjumps", "keepmarks", "keeppatterns",
+    "lockmarks", "noswapfile", "sandbox", "unsilent", "noautocmd", "silent", "verbose",
+    "aboveleft", "belowright", "botright", "tab", "topleft", "vertical", "horizontal",
+}
+
+function Runtime:command_modifier_info()
+    local values = { filter = {pattern = "", force = false}, tab = -1, verbose = -1 }
+    for _, entry in ipairs(self._callback_command_modifiers or {}) do
+        for key, value in pairs(entry) do values[key] = value end
+    end
+    local smods = {
+        filter = {
+            pattern = values.filter.pattern,
+            force = values.filter.force,
+        },
+        tab = values.tab,
+        verbose = values.verbose,
+        split = "",
+    }
+    for _, key in ipairs(modifier_booleans) do smods[key] = values[key] == true end
+    for _, key in ipairs({ "aboveleft", "belowright", "topleft", "botright" }) do
+        if values[key] then smods.split = key; break end
+    end
+    local mods = {}
+    for _, key in ipairs(modifier_order) do
+        if key == "tab" or key == "verbose" then
+            if values[key] >= 0 then
+                local default = key == "tab" and Builtins.fn.tabpagenr() or 1
+                mods[#mods + 1] = (values[key] == default and "" or tostring(values[key])) .. key
+            end
+        elseif values[key] then
+            mods[#mods + 1] = key == "silent" and values.emsg_silent and "silent!" or key
+        end
+    end
+    return table.concat(mods, " "), smods
+end
+
+local function run_modifier_body(rt, body)
+    if type(body) == "function" then return body() end
+    return rt:exec_script(body)
+end
+
+function Runtime:exec_command_modifier(name, body, bang, count)
+    local key = ({ leftabove = "aboveleft", rightbelow = "belowright" })[name] or name
+    local entry = { [key] = true }
+    if name == "verbose" then
+        entry.verbose = count or 1
+    elseif name == "tab" then
+        if type(count) == "string" then
+            local address = count
+            count = address:sub(1, 1) == "$" and Builtins.fn.tabpagenr("$") or Builtins.fn.tabpagenr()
+            if address:sub(1, 1) == "." or address:sub(1, 1) == "$" then address = address:sub(2) end
+            for sign, amount in address:gmatch("([+-])(%d*)") do
+                count = count + (sign == "+" and 1 or -1) * (tonumber(amount) or 1)
+            end
+        end
+        entry.tab = count or Builtins.fn.tabpagenr()
+        if type(body) ~= "function" and (entry.tab < 0 or entry.tab > Builtins.fn.tabpagenr("$")) then
+            error(Error(16))
+        end
+    elseif name == "silent" and bang then
+        entry.emsg_silent = true
+    end
+    self._callback_command_modifiers = self._callback_command_modifiers or {}
+    local stack = self._callback_command_modifiers
+    stack[#stack + 1] = entry
+    local ok, result = pcall(function()
+        if name == "verbose" then return self:exec_verbose(entry.verbose, body) end
+        if name == "sandbox" or name == "lockmarks" or name == "keepmarks" or name == "noswapfile"
+            or name == "confirm" or name == "tab" or name == "browse" then
+            return ModifierState.with({[name] = entry[name]}, function() return run_modifier_body(self, body) end)
+        end
+        if name == "hide" then
+            local previous = Options.get("hidden")
+            Options.set("hidden", true)
+            local inner_ok, rv = pcall(function()
+                if body == "" then
+                    if #tabpages[curtp].windows == 1 and tabpages[curtp]:count_all() == 1 then error(Error(444)) end
+                    local target_count = tostring(self.exec_cursor.text or ""):match("^%s*:*(%d+)%s*%a+")
+                    return self:_invoke_builtin("close", "", false, {count = tonumber(target_count)})
+                end
+                return run_modifier_body(self, body)
+            end)
+            Options.set("hidden", previous)
+            if not inner_ok then error(rv) end
+            return rv
+        end
+        if name == "noautocmd" then
+            local previous = Options.get("eventignore")
+            Options.set("eventignore", "all")
+            local inner_ok, rv = pcall(run_modifier_body, self, body)
+            Options.set("eventignore", previous)
+            if not inner_ok then error(rv) end
+            return rv
+        end
+        local spec = Commands.get_spec(name)
+        if spec.dispatch then return self:_invoke_builtin(name, body, bang, {}) end
+        return run_modifier_body(self, body)
+    end)
+    stack[#stack] = nil
+    if not ok then error(result) end
+    return result
+end
+
+function Runtime:invoke_with_command_modifiers(spec, modifiers)
+    if modifiers == nil then return self:invoke_compiled_command(spec) end
+    if type(modifiers) ~= "table" then error("Invalid 'mods'") end
+    local values = {}
+    local boolean_keys = {}
+    for _, key in ipairs(modifier_booleans) do boolean_keys[key] = true end
+    for key, value in pairs(modifiers) do
+        if boolean_keys[key] then
+            if type(value) ~= "boolean" and type(value) ~= "number" then
+                error("Invalid 'mods." .. key .. "'")
+            end
+            values[key] = value ~= false and value ~= 0
+        elseif key == "tab" or key == "verbose" then
+            if type(value) ~= "number" or value % 1 ~= 0 then
+                error("Invalid 'mods." .. key .. "'")
+            end
+            if value >= 0 then values[key] = value end
+        elseif key == "split" then
+            value = ({leftabove = "aboveleft", rightbelow = "belowright"})[value] or value
+            if value ~= "" and value ~= "aboveleft" and value ~= "belowright"
+                and value ~= "topleft" and value ~= "botright" then
+                error("Invalid 'mods.split'")
+            end
+            if value ~= "" then values[value] = true end
+        elseif key == "filter" then
+            if type(value) ~= "table" then error("Invalid 'filter'") end
+            local filter = {pattern = "", force = false}
+            for field, item in pairs(value) do
+                if field == "pattern" then
+                    if type(item) ~= "string" then error("Invalid 'filter.pattern'") end
+                    filter.pattern = item
+                elseif field == "force" then
+                    if type(item) ~= "boolean" and type(item) ~= "number" then
+                        error("Invalid 'filter.force'")
+                    end
+                    filter.force = item ~= false and item ~= 0
+                else
+                    error("Invalid key: '" .. tostring(field) .. "'")
+                end
+            end
+            values.filter = filter
+        else
+            error("Invalid key: '" .. tostring(key) .. "'")
+        end
+    end
+    if values.emsg_silent then values.silent = true end
+    local invoke = function() return self:invoke_compiled_command(spec) end
+    if values.filter then
+        local body = invoke
+        invoke = function()
+            self._callback_command_modifiers = self._callback_command_modifiers or {}
+            local stack = self._callback_command_modifiers
+            stack[#stack + 1] = {filter = values.filter}
+            local result = table.pack(pcall(body))
+            stack[#stack] = nil
+            if not result[1] then error(result[2], 0) end
+            return table.unpack(result, 2, result.n)
+        end
+    end
+    for i = #modifier_order, 1, -1 do
+        local name = modifier_order[i]
+        if values[name] ~= nil and values[name] ~= false then
+            local body = invoke
+            invoke = function()
+                return self:exec_command_modifier(name, body, name == "silent" and values.emsg_silent,
+                    (name == "tab" or name == "verbose") and values[name] or nil)
+            end
+        end
+    end
+    return invoke()
 end
 
 function Runtime:set_exec_cursor(line, text, cmd, rest)
@@ -1345,6 +1531,10 @@ function Runtime:get_exec_cursor()
 end
 
 function Runtime:set_exec_cursor_from(node)
+    ModifierState.check_command(node.cmd)
+    if node.cmd == "let" or node.cmd == "const" or node.cmd == "unlet" then
+        ModifierState.check_assignment(node.rest)
+    end
     self.exec_cursor.line = node.line
     self.exec_cursor.text = node.text
     self.exec_cursor.cmd = node.cmd
@@ -1377,6 +1567,7 @@ function Runtime:pop_frame()
 end
 
 function Runtime:call_func(name, args)
+    ModifierState.check_function(name)
     if type(name) == "string" and name:sub(1, 6):lower() == "v:lua." then
         local f = resolve_vlua_function(name)
         local ok, rv = pcall(function()
@@ -1442,7 +1633,10 @@ function Runtime:call_func(name, args)
             frame.a.firstline, frame.a.lastline = call_range[1], call_range[1]
         end
     end
-    local ok, rv = pcall(fn.body, self)
+    local ok, rv = pcall(function()
+        if fn.sandbox then return ModifierState.with({sandbox = true}, function() return fn.body(self) end) end
+        return fn.body(self)
+    end)
     self:pop_frame()
     self.state.funcs = prev_script_funcs
     self.state.script_ctx = prev_script_ctx
@@ -1477,6 +1671,7 @@ function Runtime:register_function(name, params, body, attrs)
         script_sid = self.state.script_sid,
         script_ctx = self.state.script_ctx,
         kind = "compiled",
+        sandbox = ModifierState.get("sandbox"),
         attrs = attr_map,
         closure_frame = attr_map.closure and self.state.frames[#self.state.frames] or nil,
     }
@@ -1950,11 +2145,12 @@ end
 
 function Runtime:exec_verbose(level, body)
     level = tonumber(level) or 1
-    body = tostring(body or ""):gsub("^%s*", "", 1)
+    if type(body) ~= "function" then body = tostring(body or ""):gsub("^%s*", "", 1) end
     local prev_verbose = tonumber(Options.get("verbose", nil, nil, false, true)) or 0
     Options.set("verbose", level, false, nil, nil, true)
 
     local ok, rv = pcall(function()
+        if type(body) == "function" then return body() end
         if body:match("^exe%c?") or body:match("^execute%s+") then
             body = body:gsub("^exe", "execute", 1)
             body = body:gsub("^execute%s+", "", 1)
@@ -1971,7 +2167,7 @@ function Runtime:exec_verbose(level, body)
 end
 
 function Runtime:exec_silent(rest, is_unsilent, is_bang)
-    local inner = tostring(rest or "")
+    local inner = type(rest) == "function" and rest or tostring(rest or "")
     if inner == "" then
         return true
     end
@@ -1979,7 +2175,7 @@ function Runtime:exec_silent(rest, is_unsilent, is_bang)
     if is_unsilent then
         ExMsg.PushUnsilent()
         local ok, rv = pcall(function()
-            return self:exec_script(inner)
+            return run_modifier_body(self, inner)
         end)
         ExMsg.PopSilent()
         if not ok then
@@ -1990,7 +2186,7 @@ function Runtime:exec_silent(rest, is_unsilent, is_bang)
 
     ExMsg.PushSilent({ skip_errors = is_bang, on_error = function(_m) end })
     local ok, rv = pcall(function()
-        return self:exec_script(inner)
+        return run_modifier_body(self, inner)
     end)
     ExMsg.PopSilent()
     if ok then
@@ -2000,7 +2196,7 @@ function Runtime:exec_silent(rest, is_unsilent, is_bang)
     self.state.v.errmsg = tostring(rv)
     if is_bang then
         LOG_DEBUG("silent! suppressed error: %s (cmd=%s)", tostring(self.state.v.errmsg), tostring(inner))
-        local ctx = build_error_context(self, { origin = { kind = "silent!" } }, self.state, inner)
+        local ctx = build_error_context(self, { origin = { kind = "silent!" } }, self.state, tostring(inner))
         if ctx ~= "" then
             LOG_DEBUG("silent! vimscript context: %s", ctx)
         end
@@ -2010,6 +2206,9 @@ function Runtime:exec_silent(rest, is_unsilent, is_bang)
 end
 
 function Runtime:set_options(rest, mode)
+    if ModifierState.get("browse") then
+        return ModifierState.with({browse = false}, function() return self:exec_script("runtime optwin.vim") end)
+    end
     local win, buf = current_win_buf()
     mode = mode or "both"
     local args
@@ -2131,6 +2330,34 @@ local function _cursor_parse_head(cursor, win)
     return raw and raw:lower(), l1, l2, has_range
 end
 
+function Runtime:filter_command(command)
+    ModifierState.check()
+    local win = windows[curwin]
+    local first, last, ranged = _scan_range_prefix(self.exec_cursor.text,
+        win.buffer:line_count(true), win.cursory, win.buffer)
+    local input
+    if ranged then
+        local lines = {}
+        for i = first, last do lines[#lines + 1] = win.buffer:get_line(i, true) end
+        input = table.concat(lines, "\n") .. "\n"
+    end
+    local result = Backend.system(command, {input = input})
+    scopes._v.shell_error = result.code or 0
+    if not ranged then
+        ExMsg.echo((result.stdout or "") .. (result.stderr or ""))
+        return true
+    end
+    local text = (result.stdout or "") .. (result.stderr or "")
+    local lines = {}
+    for line in text:gmatch("([^\n]*)\n") do lines[#lines + 1] = line end
+    if text ~= "" and text:sub(-1) ~= "\n" then lines[#lines + 1] = text:match("([^\n]*)$") end
+    ModifierState.with({filter = true}, function()
+        win.buffer:set_lines(first - 1, last, false, lines)
+    end)
+    win:cursorSet(1, math.min(first, win.buffer:line_count(true)))
+    return true
+end
+
 function Runtime:call_statement(fn)
     local win = windows[curwin]
     local first, last, ranged = _scan_range_prefix(
@@ -2230,6 +2457,11 @@ local function _build_cmd_context(cursor, win, spec)
             end
             if addr_mode == "count" then
                 ctx.count = count
+            elseif Runtime._USER_COMMANDS[name] and Runtime._USER_COMMANDS[name].count ~= nil then
+                ctx.count = count
+                ctx.line1 = win.cursory
+                ctx.line2 = count
+                ctx.range = 1
             else
                 error("Command cannot accept count: " .. name)
             end
@@ -2291,7 +2523,7 @@ local function _parse_copy_move_target(raw, win)
 end
 
 local function _sorted_tabnrs()
-    return TblUtils.sorted_keys(tabpages)
+    return tabpages[curtp]:all_ids()
 end
 
 local function _tab_switch_target(raw, step)
@@ -2313,10 +2545,10 @@ local function _tab_switch_target(raw, step)
     end
 
     local target = tonumber(text)
-    if not target or not tabpages[target] then
+    if not target or not ids[target] then
         return nil, Error(475, text)
     end
-    return target, nil
+    return ids[target], nil
 end
 
 local function _switch_to_tab(target)
@@ -4109,6 +4341,7 @@ function Runtime:invoke_compiled_command(spec)
     local win = windows[curwin]
     local cmdctx = _build_cmd_context(self:get_exec_cursor(), win, spec)
 
+    ModifierState.check_command(name)
     if name == "" then
         if cmdctx.raw_cmd == nil and cmdctx.line2 ~= nil then
             local line_count = win.buffer:line_count(true)
@@ -4142,17 +4375,21 @@ function Runtime:invoke_compiled_command(spec)
     local def = Runtime._USER_COMMANDS[lname]
     if def then
         if type(def.handler) == "function" then
-            return def.handler({
+            local mods, smods = self:command_modifier_info()
+            local info = {
                 cmd = name,
                 args = qargs,
                 fargs = ensure_args(),
-                _ccvim = { raw_args = qargs },
+                _ccvim = { raw_args = qargs, count = cmdctx.count or cmdctx.line2 },
                 bang = bang,
                 count = count,
                 line1 = line1,
                 line2 = line2,
                 range = range,
-            })
+                mods = mods,
+                smods = smods,
+            }
+            return with_cleared_command_modifiers(self, function() return def.handler(info) end)
         end
         local body = def.body or def.command
         if type(body) == "string" then
@@ -4950,6 +5187,22 @@ function Runtime.new(init_state, init_opts)
     end
 
     function rt:_invoke_builtin(cmd, argstr, bang, cmdctx)
+        if ModifierState.get("browse") then
+            local browse_commands = { edit = true, write = true, split = true, vsplit = true,
+                tabedit = true, tabnew = true, read = true, saveas = true, source = true,
+                view = true, sview = true, wall = true, wq = true, wqall = true, update = true }
+            if browse_commands[cmd] then
+                if cmd == "edit" and Builtins.fn.exists("#FileExplorer") == 1 then
+                    local dir = strip(argstr)
+                    if dir == "" then dir = Backend.cwd() end
+                    if not fs.isDir(VimFs.abspath(dir)) then dir = fs.getDir(dir) end
+                    return ModifierState.with({browse = false}, function()
+                        return self:_invoke_builtin(cmd, dir, bang, cmdctx)
+                    end)
+                end
+                error(Error(338))
+            end
+        end
         if Commands.get_map_spec(cmd) then
             local rv = _run_map_ex_command(cmd, argstr, bang)
             if Error.IsError(rv) then error(rv) end
@@ -4963,6 +5216,7 @@ function Runtime.new(init_state, init_opts)
 
         if cmd == "write" then
             local status = windows[curwin].buffer:write(bang, argstr)
+            if status == ModifierState.CANCELLED then return true end
             if status ~= true then error(status) end
             return true
         elseif cmd == "silent" then
@@ -4971,13 +5225,13 @@ function Runtime.new(init_state, init_opts)
             return self:exec_silent(argstr, true, false)
         elseif cmd == "keepjumps" or cmd == "keeppatterns" then
             if argstr == "" then error(Error(474, "Argument required")) end
-            return self:exec_script(argstr)
+            return run_modifier_body(self, argstr)
         elseif cmd == "keepalt" then
             if argstr == "" then error(Error(474, "Argument required")) end
             local win = windows[curwin]
             local saved_alt = win.altbuf
             local ok, rv = pcall(function()
-                return self:exec_script(argstr)
+                return run_modifier_body(self, argstr)
             end)
             win.altbuf = saved_alt
             if not ok then error(rv) end
@@ -4987,10 +5241,11 @@ function Runtime.new(init_state, init_opts)
                 error(Error(471))
             end
             return _with_command_modifier(cmd, function()
-                return self:exec_script(argstr)
+                return run_modifier_body(self, argstr)
             end)
         elseif cmd == "wq" then
             local status = windows[curwin].buffer:write(bang, argstr)
+            if status == ModifierState.CANCELLED then return true end
             if status ~= true then error(status) end
             local q = tabpages[curtp]:close(windows[curwin], bang)
             if q ~= true then error(q) end
@@ -5907,11 +6162,15 @@ function Runtime.new(init_state, init_opts)
             local text = strip(argstr)
             local target = curtp
             local tabnrs = _sorted_tabnrs()
-            if text ~= "" then
+            if cmdctx.count ~= nil then
+                target = tabnrs[tonumber(cmdctx.count)]
+                if not target then error(Error(475, tostring(cmdctx.count))) end
+            elseif text ~= "" then
                 if text == "$" then
                     target = tabnrs[#tabnrs]
                 else
-                    target = tonumber(text)
+                    local ordinal = tonumber(text)
+                    target = ordinal and tabnrs[ordinal]
                 end
                 if not target or not tabpages[target] then
                     error(Error(475, text))
@@ -5921,6 +6180,13 @@ function Runtime.new(init_state, init_opts)
                 error(Error(784))
             end
 
+            local previous_tab = curtp
+            local previous_win = curwin
+            if target ~= curtp then
+                tabpages[curtp].lastwin = curwin
+                curtp = target
+                enterWindow(tabpages[target].lastwin or tabpages[target].windows[1].winnr)
+            end
             while tabpages[target] do
                 local tp = tabpages[target]
                 local win = tp.windows[1]
@@ -5928,6 +6194,11 @@ function Runtime.new(init_state, init_opts)
                 if ok ~= true then
                     error(ok)
                 end
+            end
+            if tabpages[previous_tab] then
+                curtp = previous_tab
+                enterWindow(windows[previous_win] and previous_win
+                    or (tabpages[curtp].lastwin or tabpages[curtp].windows[1].winnr))
             end
             return true
         elseif cmd == "drop" then

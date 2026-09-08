@@ -698,7 +698,8 @@ function Builtins.winlayout(tabnr, ...)
         if nr == nil then
             return {}
         end
-        tp = tabpages[nr]
+        local id = nr == 0 and curtp or tabpages[curtp]:all_ids()[nr]
+        tp = id and tabpages[id]
     end
 
     if not tp or not tp.tree then
@@ -3365,7 +3366,10 @@ function Builtins.getcwd(...)
         error(Error(474))
     end
 
-    local tabpage = tabpages[(tabnr == 0 or not tabnr) and curtp or tabnr]
+    local target_tab = (tabnr == 0 or not tabnr) and curtp
+        or tabpages[curtp]:all_ids()[tonumber(tabnr)]
+    local tabpage = target_tab and tabpages[target_tab]
+    if not tabpage then error(Error(5002)) end
     local window
     if winnr == 0 or not winnr then
         window = windows[curwin]
@@ -4264,23 +4268,21 @@ end
 
 function Builtins.tabpagenr(arg)
     if arg == nil then
-        return curtp
+        for i, id in ipairs(tabpages[curtp]:all_ids()) do if id == curtp then return i end end
+        return 0
     elseif arg == "$" then
         return tabpages[curtp]:count_all()
     elseif arg == "#" then
         return 0
     end
 
-    local nr = tonumber(arg)
-    if nr and tabpages[nr] then
-        return nr
-    end
     return 0
 end
 
 function Builtins.tabpagewinnr(tabarg, arg)
-    local tabnr = tonumber(tabarg) or curtp
-    local tp = tabpages[tabnr]
+    local ordinal = tonumber(tabarg)
+    local tabnr = ordinal and tabpages[curtp]:all_ids()[ordinal]
+    local tp = tabnr and tabpages[tabnr]
     if not tp then
         return 0
     end
@@ -4305,8 +4307,9 @@ function Builtins.tabpagewinnr(tabarg, arg)
 end
 
 function Builtins.tabpagebuflist(arg)
-    local tabnr = tonumber(arg) or curtp
-    local tp = tabpages[tabnr]
+    local ordinal = tonumber(arg)
+    local tabnr = ordinal and tabpages[curtp]:all_ids()[ordinal]
+    local tp = tabnr and tabpages[tabnr]
     if not tp then
         return {}
     end
@@ -4326,6 +4329,8 @@ function Builtins.win_getid(winnr, tabnr)
     local target_tab = tonumber(tabnr) or 0
     if target_tab == 0 then
         target_tab = curtp
+    else
+        target_tab = tabpages[curtp]:all_ids()[target_tab]
     end
 
     local tp = tabpages[target_tab]
@@ -5942,6 +5947,8 @@ end
 function Builtins.environ()
     return EnvVars.snapshot()
 end
+
+loadModule("lib.excmd.modifierstate").wrap_functions(Builtins)
 
 -- Non-builtin exports
 local export = {

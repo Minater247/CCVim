@@ -24,6 +24,7 @@ lib/
 		compiler.lua
 		completion.lua
 		exmsg.lua
+		modifierstate.lua
 		payload.lua
 		runtime.lua
 		vim_regex.lua

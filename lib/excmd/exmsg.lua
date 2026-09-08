@@ -61,6 +61,8 @@ local more_help_long = false
 -- should be drawn once during the next Tabpage render (back buffer), then
 -- cleared.
 local pending_one_shot = false
+local question_active = false
+local question_line_count = 0
 
 -- =====================================
 -- Silent stack (for :silent / :unsilent)
@@ -483,6 +485,19 @@ local function draw_press_enter()
     what_redraw["commandline"] = false
 end
 
+local function draw_question()
+    calculateScreenLines()
+    local visible = math.min(#screenlines, screen.height)
+    local first = #screenlines - visible + 1
+    local row = screen.height - visible
+    for i = 1, visible do
+        ScreenDraw.clear_line(row + i - 1, "Normal")
+        local triad = screenlines[first + i - 1]
+        ScreenDraw.put_hl_text(row + i - 1, 0, triad[1], triad[2], triad[3], triad[4])
+    end
+    what_redraw["commandline"] = false
+end
+
 
 -- Draw current messages and, if needed, the Press ENTER prompt.
 -- Also enforces the "MoreMessage" threshold.
@@ -528,7 +543,9 @@ end
 
 
 function ExMsg.Redraw()
-    if in_more then
+    if question_active then
+        draw_question()
+    elseif in_more then
         draw_more_page(false)
     elseif in_press_enter then
         draw_press_enter()
@@ -536,7 +553,7 @@ function ExMsg.Redraw()
 end
 
 function ExMsg.DrawOneShot()
-    if pending_one_shot and #displaymessages > 0 then
+    if not question_active and pending_one_shot and #displaymessages > 0 then
         -- Draw the one-shot messages into the current buffer (tabpage back buffer)
         draw_press_enter()
         -- Clear after drawing once
@@ -552,7 +569,40 @@ end
 -- occupies the lower message/cmdline region and should not be overwritten by
 -- other renderers in the same frame.
 function ExMsg.IsOverlayActive()
-    return in_more or in_press_enter
+    return question_active or in_more or in_press_enter
+end
+
+function ExMsg.BeginQuestion(text)
+    ExMsg.flush()
+    text = tostring(text or "")
+    local start = 1
+    repeat
+        local newline = text:find("\n", start, true)
+        displaymessages[#displaymessages + 1] = {{"Question", text:sub(start, newline and newline - 1 or #text)}}
+        question_line_count = question_line_count + 1
+        start = newline and newline + 1 or nil
+    until not start
+    if in_press_enter then
+        in_press_enter = false
+        local top = Command.override_emitter[#Command.override_emitter]
+        if top == readEnter then
+            table.remove(Command.override_emitter)
+            table.remove(Command.emitter_names)
+        end
+    end
+    question_active = true
+    pending_one_shot = false
+    mark_display_dirty()
+    draw_question()
+end
+
+function ExMsg.EndQuestion()
+    question_active = false
+    question_line_count = 0
+    displaymessages = {}
+    mark_display_dirty()
+    what_redraw["all"] = true
+    need_redraw = true
 end
 
 local function emit(str, hlgroup, nonewline, flush, savetomsg)
@@ -622,7 +672,8 @@ local function emit(str, hlgroup, nonewline, flush, savetomsg)
     if nonewline then
         echon[#echon + 1] = { hlgroup, str }
     else
-        displaymessages[#displaymessages + 1] = { { hlgroup, str } }
+        local index = question_active and #displaymessages - question_line_count + 1 or #displaymessages + 1
+        table.insert(displaymessages, index, { { hlgroup, str } })
         mark_display_dirty()
         if savetomsg then
             ExMsg.messages[#ExMsg.messages + 1] = { hlgroup, str }
@@ -690,7 +741,8 @@ end
 function ExMsg.flush()
     if #echon > 0 then
         if not ui_suppressed() then
-            displaymessages[#displaymessages + 1] = echon
+            local index = question_active and #displaymessages - question_line_count + 1 or #displaymessages + 1
+            table.insert(displaymessages, index, echon)
             mark_display_dirty()
         end
     end
@@ -723,6 +775,11 @@ function ExMsg.Finalize()
     end
 
     ExMsg.flush()
+
+    if question_active then
+        draw_question()
+        return
+    end
 
     if in_more then
         -- Already paging; just refresh the view with any flushed lines.

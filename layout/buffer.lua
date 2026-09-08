@@ -1,3 +1,4 @@
+local ModifierState = loadModule("lib.excmd.modifierstate")
 local Buffer = {}
 Buffer.__index = Buffer -- Share the instance methods
 
@@ -276,6 +277,7 @@ function Buffer:new(listed, scratch, loaded)
     local opts = Options.new_object_local_opts("buf")
     opts.buflisted = listed or false
     opts.modified = false
+    if ModifierState.get("noswapfile") then opts.swapfile = false end
     local obj = setmetatable({
         scratch = scratch or false,
         bufnr = curr_bufno,
@@ -309,6 +311,8 @@ function Buffer:new(listed, scratch, loaded)
 end
 
 function Buffer:Load(read_contents)
+    ModifierState.check()
+    if not self.loaded and ModifierState.get("noswapfile") then self.opts.swapfile = false end
     local was_loaded = self.loaded == true
     self.syntax_ctx = nil
     self.loaded = true
@@ -830,6 +834,7 @@ function Buffer:line_col_from_byte(line_nr, byte_idx, load_if_unloaded, allow_eo
 end
 
 function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
+    ModifierState.check()
     local lines = self:lines_ref(load_if_unloaded)
     self:undo_begin()
     local ln = math.max(1, math.floor(tonumber(line_nr) or 1))
@@ -853,6 +858,7 @@ function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
 end
 
 function Buffer:insert_line(index, item, load_if_unloaded, noauto)
+    ModifierState.check()
     local lines = self:lines_ref(load_if_unloaded)
     self:undo_begin()
     self:undo_break_line_chain()
@@ -860,6 +866,7 @@ function Buffer:insert_line(index, item, load_if_unloaded, noauto)
     local new_line = tostring(item or "")
     local start_byte = _bytes_before_row(lines, idx - 1)
     table.insert(lines, idx, new_line)
+    Sign.on_lines_changed(self, idx, 0, 1)
     self:undo_mark_changed()
     self.opts.modified = true
     _notify_buf_lines(self, {
@@ -875,6 +882,7 @@ function Buffer:insert_line(index, item, load_if_unloaded, noauto)
 end
 
 function Buffer:splice_line(line_nr, start_col1, end_col1, replacement, load_if_unloaded)
+    ModifierState.check()
     local line = self:get_line(line_nr, load_if_unloaded) or ""
     local s = math.max(1, math.floor(tonumber(start_col1) or 1))
     local e = math.floor(tonumber(end_col1) or (s - 1))
@@ -887,6 +895,7 @@ function Buffer:splice_line(line_nr, start_col1, end_col1, replacement, load_if_
 end
 
 function Buffer:remove_lines(start1, end1, opts, noauto)
+    ModifierState.check()
     opts = opts or {}
     self.loaded = true
 
@@ -951,6 +960,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
 end
 
 function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
+    ModifierState.check()
     self.loaded = true
     local line_count = #self.lines
 
@@ -1106,7 +1116,12 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
     else
         local check = (not hidden and self.refcount <= 1) or mustabandon
         if check and self.opts.modified and not forceabandon then
-            return Error(37)
+            if ModifierState.get("confirm") or options.get("confirm") then
+                local decision = ModifierState.confirm_buffer(self)
+                if decision ~= true then return decision == false and Error(37) or decision end
+            else
+                return Error(37)
+            end
         end
     end
 
@@ -1115,17 +1130,16 @@ function Buffer:leave(forceabandon, mustabandon, autowrite_kind)
 end
 
 function Buffer:write(force, newname)
+    ModifierState.check()
     if not options.get("write") then
         return Error(142)
     end
 
-    local was_unnamed = self.name == nil or self.name == ""
+    local original_name = self.name
+    local was_unnamed = original_name == nil or original_name == ""
     local name
     if newname and newname ~= "" then
         name = newname
-        if was_unnamed then
-            self.name = newname
-        end
     else
         name = self.name
     end
@@ -1151,11 +1165,26 @@ function Buffer:write(force, newname)
         return Error(382)
     end
 
-    if options.get("readonly", nil, self) and not force then
-        return Error(45)
+    local path = VimFs.abspath(name)
+    local writes_other_file = newname and newname ~= ""
+        and (was_unnamed or path ~= VimFs.abspath(original_name))
+
+    if options.get("readonly", nil, self) and not writes_other_file and not force then
+        if not (ModifierState.get("confirm") or options.get("confirm")) then return Error(45) end
+        local choice = ModifierState.ask("'readonly' option is set for \"" .. name
+            .. "\".\nDo you wish to write anyway?", {
+            {key = "y", label = "(Y)es"}, {key = "n", label = "[N]o"},
+        }, 2)
+        if choice ~= 1 then return ModifierState.CANCELLED end
+        force = true
     end
 
-    local path = VimFs.abspath(name)
+    if writes_other_file and fs.exists(path) and not force then
+        if not (ModifierState.get("confirm") or options.get("confirm")) then return Error(13, name) end
+        if ModifierState.ask('Overwrite existing file "' .. name .. '"?', {
+            {key = "y", label = "(Y)es"}, {key = "n", label = "[N]o"},
+        }, 2) ~= 1 then return ModifierState.CANCELLED end
+    end
     local f = fs.open(path, "w")
     if not f then
         return Error(212, name)
@@ -1172,6 +1201,7 @@ function Buffer:write(force, newname)
 
     f.close()
 
+    if was_unnamed and newname and newname ~= "" then self.name = newname end
     self.opts.modified = false
     _request_full_redraw()
 
