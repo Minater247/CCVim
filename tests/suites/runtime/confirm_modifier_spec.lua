@@ -65,9 +65,21 @@ return {
         end
         local prompt_screen
         local pull_count = 0
+        local writes_before_idle
+        local writes_after_idle
+        local original_grid_line = globals.screen.grid_line
+        local grid_writes = 0
+        globals.screen.grid_line = function(...)
+            grid_writes = grid_writes + 1
+            return original_grid_line(...)
+        end
         backend_impl.pull_event = function()
             pull_count = pull_count + 1
-            if pull_count == 1 then return 'timer', -1 end
+            if pull_count == 1 then
+                writes_before_idle = grid_writes
+                return 'timer', -1
+            end
+            writes_after_idle = grid_writes
             prompt_screen = screen_text()
             return 'char', 'n'
         end
@@ -78,12 +90,14 @@ return {
         ]=], root, root))
         backend_impl.pull_event = original_pull
         tabpage.render = original_render
+        globals.screen.grid_line = original_grid_line
         if not ran then error(rejected) end
         A.truthy('real prompt retains pending message', prompt_screen:find('test', 1, true) ~= nil)
         A.truthy('real prompt draws question', prompt_screen:find('Overwrite existing file', 1, true) ~= nil)
         A.truthy('real prompt draws choices', prompt_screen:find('(Y)es, [N]o:', 1, true) ~= nil)
         A.eq('real prompt suppresses hit-enter prompt', prompt_screen:find('Press ENTER', 1, true), nil)
         A.eq('timer does not repaint editor behind prompt', render_count, 1)
+        A.eq('timer does not repaint message rows', writes_after_idle, writes_before_idle)
         A.deep_eq('reject quietly preserves target', rejected, {true, '', 'changed'})
         b.mock.queueEvent('char', 'y')
         local overwrite = A.eval_block(b, 'accept overwrite', string.format([=[

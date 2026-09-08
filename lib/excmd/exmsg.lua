@@ -777,17 +777,16 @@ function ExMsg.Finalize()
     ExMsg.flush()
 
     if question_active then
-        draw_question()
+        if display_dirty then draw_question() end
         return
     end
 
     if in_more then
-        -- Already paging; just refresh the view with any flushed lines.
-        draw_more_page(false)
+        if display_dirty then draw_more_page(false) end
         return
     end
 
-    if #displaymessages > 0 then
+    if #displaymessages > 0 and display_dirty then
         draw_messages_and_prompt()
     end
 end
