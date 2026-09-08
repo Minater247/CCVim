@@ -54,6 +54,10 @@ local UTF_REPLACEMENTS = {
     [0x2019] = { char = "'" },
     [0x201C] = { char = "\"" },
     [0x25CF] = { char = string.char(0x07) },
+    [0xE0B3] = { char = string.char(0x99), swap = true },
+    [0xE0B1] = { char = string.char(0x99) },
+    [0xE0A0] = { char = string.char(0x17) },
+    [0xEAD3] = { char = string.char(0x10) },
 }
 
 -- =========================================================================
