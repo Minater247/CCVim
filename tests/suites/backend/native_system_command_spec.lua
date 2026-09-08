@@ -12,6 +12,7 @@ return {
         }, { __index = io })
         local env = setmetatable({ io = quiet_io }, { __index = _G })
         local Native = assert(loadfile("lib/backend/native.lua", "t", env))()
+        local test_cwd = assert(Native.uv.fs_realpath(Native.uv.os_tmpdir()))
 
         local commands = Native.list_commands()
         local has_sh = false
@@ -32,10 +33,10 @@ return {
         Assert.eq("string shell succeeds", result.code, 0)
 
         result = Native.system({ "/bin/sh", "-c", "pwd; cat; printf problem >&2; exit 7" }, {
-            cwd = "/private/tmp",
+            cwd = test_cwd,
             input = { "one", "two" },
         })
-        Assert.eq("stdin list and cwd forwarded", result.stdout, "/private/tmp\none\ntwo\n")
+        Assert.eq("stdin list and cwd forwarded", result.stdout, test_cwd .. "\none\ntwo\n")
         Assert.eq("stderr captured separately", result.stderr, "problem")
         Assert.eq("nonzero status returned", result.code, 7)
 
@@ -53,7 +54,7 @@ return {
         }
         local handle, pid = Native.spawn("/bin/sh", {
             args = args,
-            cwd = "/private/tmp",
+            cwd = test_cwd,
             env = { "ONLY=stderr" },
             stdio = { nil, stdout, stderr },
         }, function(code, signal)
