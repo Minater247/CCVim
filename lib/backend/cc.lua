@@ -19,10 +19,10 @@ local cc_os = select(1, os)
 local cc_io = io
 local cc_fs = fs
 local stdin_counter = 0
-local cc_pull_event = cc_os.pullEvent
 local cc_pull_event_raw = cc_os.pullEventRaw
-local cc_queue_event = cc_os.queueEvent
-local cc_timers = {}
+local cc_global_table = _ENV
+local cc_host_globals
+local dispatch_process_event
 local Utf8
 local Color
 local RuntimeScope
@@ -163,6 +163,10 @@ function CC.on_load_module_ready(scope)
     RuntimeScope = scope
     Utf8 = scope.loadModule("lib.utf8")
     Color = scope.loadModule("lib.color")
+end
+
+function CC.set_host_globals(globals)
+    cc_host_globals = globals
 end
 
 local function shell_path_to_abs(path)
@@ -474,34 +478,39 @@ end
 
 function CC.pull_event(filter)
     while true do
-        local ev = { os.pullEvent(filter) }
-        if ev[1] == "timer" then
-            cc_timers[ev[2]] = nil
+        local ev = table.pack(cc_pull_event_raw())
+        if dispatch_process_event then
+            dispatch_process_event(ev)
         end
+        if ev[1] == "terminate" then
+            error("Terminated", 0)
+        end
+        local matches = filter == nil or filter == ev[1]
         if ev[1] == "mouse_scroll" then
             local delta = tonumber(ev[2]) or 0
             if delta > 0 then
                 ev[2] = "down"
-                return table.unpack(ev)
+                if matches then
+                    return table.unpack(ev, 1, ev.n)
+                end
             end
             if delta < 0 then
                 ev[2] = "up"
-                return table.unpack(ev)
+                if matches then
+                    return table.unpack(ev, 1, ev.n)
+                end
             end
-        else
-            return table.unpack(ev)
+        elseif matches then
+            return table.unpack(ev, 1, ev.n)
         end
     end
 end
 
 function CC.start_timer(t)
-    local id = os.startTimer(t)
-    cc_timers[id] = true
-    return id
+    return os.startTimer(t)
 end
 
 function CC.cancel_timer(id)
-    cc_timers[id] = nil
     os.cancelTimer(id)
 end
 
@@ -563,6 +572,62 @@ end
 
 local function fake_userdata()
     return RuntimeScope.loadModule("lib.luaapi.fakeuserdata")
+end
+
+local function copy_globals(source)
+    local copy = {}
+    for name, value in pairs(source) do
+        copy[name] = value
+    end
+    copy._G = copy
+    copy._ENV = copy
+    setmetatable(copy, getmetatable(source))
+    return copy
+end
+
+local function process_globals()
+    if not cc_host_globals then
+        cc_host_globals = copy_globals(cc_global_table)
+    end
+    local env = setmetatable({}, { __index = cc_host_globals })
+    env._G = env
+    env._ENV = env
+
+    local child_os = {}
+    local base_os = cc_host_globals.os or cc_os
+    for name, value in pairs(base_os) do
+        child_os[name] = value
+    end
+    setmetatable(child_os, { __index = base_os })
+
+    local function pull_event(raw, filter)
+        local event = table.pack(coroutine.yield(filter))
+        if event[1] == "terminate" and not raw then
+            error("Terminated", 0)
+        end
+        return table.unpack(event, 1, event.n)
+    end
+
+    child_os.pullEvent = function(filter)
+        return pull_event(false, filter)
+    end
+    child_os.pullEventRaw = function(filter)
+        return pull_event(true, filter)
+    end
+    child_os.sleep = function(timeout)
+        if timeout ~= nil and type(timeout) ~= "number" then
+            error("bad argument #1 (number expected, got " .. type(timeout) .. ")", 2)
+        end
+        timeout = timeout or 0
+        local timer = cc_os.startTimer(timeout)
+        repeat
+            local _, timer_id = child_os.pullEvent("timer")
+        until timer_id == timer
+    end
+
+    env.os = child_os
+    env.sleep = child_os.sleep
+    return env
 end
 
 local pipe_methods = {}
@@ -628,11 +693,210 @@ function CC.new_pipe(_ipc)
 end
 
 local process_methods = {}
+local processes = {}
+
+local function emit_pipe(pipe, data)
+    if pipe == nil then return end
+    local state = fake_userdata().state(pipe)
+    if not state or state._closed or not state._reading then return end
+    if data ~= nil and data ~= "" then
+        state._read_callback(nil, data)
+    end
+    if not state._closed and state._reading then
+        state._read_callback(nil, nil)
+    end
+end
+
+local function prepare_input(input)
+    if input == nil or not cc_io or not cc_io.input then
+        return cc_io and cc_io.input and cc_io.input() or nil
+    end
+
+    if type(input) == "table" then
+        input = table.concat(input, "\n") .. "\n"
+    end
+    input = tostring(input)
+    if cc_io.tmpfile then
+        local file = assert(cc_io.tmpfile())
+        file:write(input)
+        file:seek("set", 0)
+        return file
+    end
+
+    stdin_counter = stdin_counter + 1
+    cc_fs.makeDir("/tmp")
+    local path = "/tmp/ccvim-stdin-" .. tostring(cc_os.epoch("utc")) .. "-" .. stdin_counter
+    local writer = assert(cc_io.open(path, "w"))
+    writer:write(input)
+    writer:close()
+    local file = assert(cc_io.open(path, "r"))
+    return file, path
+end
+
+local function capture_terminal()
+    local parent = cc_term.current()
+    local width, height = parent.getSize()
+    local capture = cc_window.create(parent, 1, 1, width, height, false)
+    local history = {}
+    local capture_scroll = capture.scroll
+    capture.scroll = function(amount)
+        amount = math.max(0, math.min(height, amount))
+        for y = 1, amount do
+            history[#history + 1] = capture.getLine(y):gsub("%s+$", "")
+        end
+        return capture_scroll(amount)
+    end
+    local function output()
+        local lines = {}
+        for i = 1, #history do lines[i] = history[i] end
+        for y = 1, height do
+            lines[#lines + 1] = capture.getLine(y):gsub("%s+$", "")
+        end
+        while #lines > 0 and lines[#lines] == "" do
+            lines[#lines] = nil
+        end
+        return table.concat(lines, "\n")
+    end
+    return capture, output
+end
+
+local function restore_global(name, value)
+    rawset(cc_global_table, name, value)
+end
+
+local function resume_in_context(state, event)
+    local editor_term = cc_term.current()
+    local editor_dir = cc_shell.dir()
+    local editor_input = cc_io and cc_io.input and cc_io.input() or nil
+    local editor_output = cc_io and cc_io.output and cc_io.output() or nil
+    local editor_global = rawget(cc_global_table, "_G")
+    local editor_os = rawget(cc_global_table, "os")
+    local editor_sleep = rawget(cc_global_table, "sleep")
+
+    rawset(cc_global_table, "_G", state._globals)
+    rawset(cc_global_table, "os", state._globals.os)
+    rawset(cc_global_table, "sleep", state._globals.sleep)
+
+    local setup_ok, setup_err = pcall(function()
+        cc_shell.setDir(state._cwd)
+        cc_term.redirect(state._term)
+        if cc_io and cc_io.input and state._input then cc_io.input(state._input) end
+        if cc_io and cc_io.output and state._output then cc_io.output(state._output) end
+    end)
+
+    local resumed
+    if setup_ok then
+        if event then
+            resumed = table.pack(coroutine.resume(state._coroutine, table.unpack(event, 1, event.n)))
+        else
+            resumed = table.pack(coroutine.resume(state._coroutine))
+        end
+        state._term = cc_term.current()
+        state._cwd = cc_shell.dir()
+        if cc_io and cc_io.input then state._input = cc_io.input() end
+        if cc_io and cc_io.output then state._output = cc_io.output() end
+    else
+        resumed = table.pack(false, setup_err)
+    end
+
+    if cc_io and cc_io.input and editor_input then pcall(cc_io.input, editor_input) end
+    if cc_io and cc_io.output and editor_output then pcall(cc_io.output, editor_output) end
+    pcall(cc_term.redirect, editor_term)
+    pcall(cc_shell.setDir, editor_dir)
+    restore_global("_G", editor_global)
+    restore_global("os", editor_os)
+    restore_global("sleep", editor_sleep)
+    return resumed
+end
+
+local function finish_process(state, ran, runtime_error, signal)
+    if state._finished then return end
+    state._finished = true
+    state._active = false
+    state._signal = signal or 0
+    processes[state._pid] = nil
+
+    if state._input_owned and state._input then pcall(state._input.close, state._input) end
+    if state._input_path then pcall(cc_fs.delete, state._input_path) end
+
+    local result = {
+        code = runtime_error and 1 or (ran == false and 1 or 0),
+        signal = state._signal,
+        stdout = state._capture_output(),
+        stderr = runtime_error and tostring(runtime_error) or "",
+    }
+    state._result = result
+
+    local stdio = state._stdio or {}
+    emit_pipe(stdio[2], result.stdout)
+    emit_pipe(stdio[3], result.stderr)
+    if state._on_exit then state._on_exit(result.code, result.signal) end
+end
+
+local function resume_process(state, event)
+    if not state._active or state._finished then return end
+    local resumed = resume_in_context(state, event)
+    if not resumed[1] then
+        local message = tostring(resumed[2])
+        if debug and debug.traceback then
+            message = debug.traceback(state._coroutine, message)
+        end
+        finish_process(state, nil, message, 0)
+    elseif coroutine.status(state._coroutine) == "dead" then
+        finish_process(state, resumed[2], nil, 0)
+    else
+        state._filter = resumed[2]
+    end
+end
+
+local function create_process(command, opts, on_exit)
+    opts = opts or {}
+    next_process_pid = next_process_pid + 1
+    local capture, output = capture_terminal()
+    local initial_input, input_path = prepare_input(opts.input)
+    local state = {
+        _pid = next_process_pid,
+        _active = true,
+        _closed = false,
+        _on_exit = on_exit,
+        _stdio = opts.stdio,
+        _globals = process_globals(),
+        _cwd = opts.cwd and tostring(opts.cwd):gsub("^/", "") or cc_shell.dir(),
+        _term = capture,
+        _capture_output = output,
+        _input = initial_input,
+        _input_owned = opts.input ~= nil,
+        _input_path = input_path,
+        _output = cc_io and cc_io.output and cc_io.output() or nil,
+    }
+    state._coroutine = coroutine.create(function()
+        if type(command) == "string" then
+            return cc_shell.run(command)
+        end
+        return cc_shell.execute(command[1], table.unpack(command, 2))
+    end)
+    processes[state._pid] = state
+    return state
+end
+
+dispatch_process_event = function(event)
+    local ready
+    for _, state in pairs(processes) do
+        if state._active and not state._timer and (state._filter == nil or state._filter == event[1]) then
+            ready = ready or {}
+            ready[#ready + 1] = state
+        end
+    end
+    if not ready then return end
+    for i = 1, #ready do
+        resume_process(ready[i], event)
+    end
+end
 
 function process_methods:close(callback)
     local state = fake_userdata().state(self)
     state._closed = true
-    state._active = false
+    if not state._active then processes[state._pid] = nil end
     if callback then callback() end
 end
 
@@ -648,26 +912,13 @@ end
 function process_methods:kill(signal)
     local state = fake_userdata().state(self)
     if state._closed or not state._active then return nil, "ESRCH: no such process" end
-    state._killed = tonumber(signal) or 15
+    local killed = tonumber(signal) or 15
     if state._timer then
         process_event().CancelTimer(state._timer)
         state._timer = nil
-        state._active = false
-        state._on_exit(0, state._killed)
     end
+    finish_process(state, true, nil, killed)
     return 0
-end
-
-local function emit_pipe(pipe, data)
-    if pipe == nil then return end
-    local state = fake_userdata().state(pipe)
-    if not state or state._closed or not state._reading then return end
-    if data ~= nil and data ~= "" then
-        state._read_callback(nil, data)
-    end
-    if not state._closed and state._reading then
-        state._read_callback(nil, nil)
-    end
 end
 
 function CC.spawn(path, opts, on_exit)
@@ -679,32 +930,18 @@ function CC.spawn(path, opts, on_exit)
         return nil, "EINVAL: exit callback required"
     end
 
-    next_process_pid = next_process_pid + 1
-    local state = {
-        _active = true,
-        _closed = false,
-        _on_exit = on_exit,
-    }
+    local command = { path }
+    for i = 1, #(opts.args or {}) do
+        command[#command + 1] = tostring(opts.args[i])
+    end
+    local state = create_process(command, opts, on_exit)
     local handle = fake_userdata().new("uv_process_t", state, process_methods)
     state._timer = process_event().StartTimer(0, function()
         state._timer = nil
-        if state._closed or state._killed then return end
-
-        local command = { path }
-        for i = 1, #(opts.args or {}) do
-            command[#command + 1] = tostring(opts.args[i])
-        end
-        local result = CC.system(command, {
-            cwd = opts.cwd,
-            env = opts.env,
-        })
-        state._active = false
-        local stdio = opts.stdio or {}
-        emit_pipe(stdio[2], result.stdout)
-        emit_pipe(stdio[3], result.stderr)
-        on_exit(result.code or 1, result.signal or 0)
+        if state._closed or state._finished then return end
+        resume_process(state)
     end)
-    return handle, next_process_pid
+    return handle, state._pid
 end
 
 function CC.system(command, opts)
@@ -713,101 +950,18 @@ function CC.system(command, opts)
         return { code = 1, signal = 0, stdout = "", stderr = "empty command" }
     end
 
-    local parent = cc_term.current()
-    local width, height = parent.getSize()
-    local capture = cc_window.create(parent, 1, 1, width, height, false)
-    local history = {}
-    local capture_scroll = capture.scroll
-    capture.scroll = function(amount)
-        amount = math.max(0, math.min(height, amount))
-        for y = 1, amount do
-            history[#history + 1] = capture.getLine(y):gsub("%s+$", "")
-        end
-        return capture_scroll(amount)
-    end
-    local old_dir = cc_shell.dir()
-    local deferred_events = {}
-    local saved_input, input_file, input_path
-
-    local function child_pull_event(raw, filter)
-        while true do
-            local ev = { cc_pull_event_raw() }
-            if ev[1] == "timer" and cc_timers[ev[2]] then
-                deferred_events[#deferred_events + 1] = ev
-            elseif filter == nil or ev[1] == filter then
-                if ev[1] == "terminate" and not raw then
-                    error("Terminated", 0)
-                end
-                return table.unpack(ev)
+    local state = create_process(command, opts)
+    resume_process(state)
+    while state._active do
+        local event = table.pack(CC.pull_event())
+        if RuntimeScope then
+            local Event = process_event()
+            if Event and Event.ProcessEvent then
+                Event.ProcessEvent(event)
             end
         end
     end
-
-    local function output()
-        local lines = history
-        for y = 1, height do
-            lines[#lines + 1] = capture.getLine(y):gsub("%s+$", "")
-        end
-        while #lines > 0 and lines[#lines] == "" do
-            lines[#lines] = nil
-        end
-        return table.concat(lines, "\n")
-    end
-
-    local function run()
-        if opts.input ~= nil and cc_io and cc_io.input then
-            local input = opts.input
-            if type(input) == "table" then input = table.concat(input, "\n") .. "\n" end
-            input = tostring(input)
-            saved_input = cc_io.input()
-            if cc_io.tmpfile then
-                input_file = assert(cc_io.tmpfile())
-                input_file:write(input)
-                input_file:seek("set", 0)
-            else
-                stdin_counter = stdin_counter + 1
-                cc_fs.makeDir("/tmp")
-                input_path = "/tmp/ccvim-stdin-" .. tostring(cc_os.epoch("utc")) .. "-" .. stdin_counter
-                local writer = assert(cc_io.open(input_path, "w"))
-                writer:write(input)
-                writer:close()
-                input_file = assert(cc_io.open(input_path, "r"))
-            end
-            cc_io.input(input_file)
-        end
-        if opts.cwd then
-            local cwd = tostring(opts.cwd)
-            cc_shell.setDir(cwd == "/" and "" or cwd:gsub("^/", ""))
-        end
-        cc_term.redirect(capture)
-        cc_os.pullEvent = function(filter)
-            return child_pull_event(false, filter)
-        end
-        cc_os.pullEventRaw = function(filter)
-            return child_pull_event(true, filter)
-        end
-        if type(command) == "string" then
-            return cc_shell.run(command)
-        end
-        return cc_shell.execute(command[1], table.unpack(command, 2))
-    end
-
-    local ok, ran = xpcall(run, debug.traceback)
-    if saved_input then cc_io.input(saved_input) end
-    if input_file then input_file:close() end
-    if input_path then cc_fs.delete(input_path) end
-    cc_os.pullEvent = cc_pull_event
-    cc_os.pullEventRaw = cc_pull_event_raw
-    for i = 1, #deferred_events do
-        cc_queue_event(table.unpack(deferred_events[i]))
-    end
-    cc_term.redirect(parent)
-    cc_shell.setDir(old_dir)
-
-    if not ok then
-        return { code = 1, signal = 0, stdout = output(), stderr = ran }
-    end
-    return { code = ran == false and 1 or 0, signal = 0, stdout = output(), stderr = "" }
+    return state._result
 end
 
 CC.keys = keys

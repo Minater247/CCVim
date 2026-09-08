@@ -36,6 +36,9 @@ return {
         }
         local cwd = "before"
         local seen
+        local run_multitasked = false
+        local child_observations
+        local env
         local shell = {
             dir = function() return cwd end,
             setDir = function(path) cwd = path end,
@@ -43,6 +46,20 @@ return {
             getRunningProgram = function() return "nvim.lua" end,
             execute = function(program, ...)
                 seen = { program, ... }
+                if run_multitasked then
+                    child_observations = {
+                        custom = env._G.custom_fs_addon,
+                        editor_only = env._G.editor_only,
+                        cwd = cwd,
+                        sleep_false_ok = pcall(env.sleep, false),
+                    }
+                    current.write("before ")
+                    local event, value = env.os.pullEvent("http_success")
+                    current.write(event .. " " .. value .. " ")
+                    env.sleep(0)
+                    current.write("after")
+                    return true
+                end
                 current.write("process output")
                 return false
             end,
@@ -54,20 +71,40 @@ return {
             lightGray = 256, cyan = 512, purple = 1024, blue = 2048,
             brown = 4096, green = 8192, red = 16384, black = 32768,
         }
-        local env = setmetatable({
+        local event_queue = {}
+        local os_timer = 0
+        local os_api = {
+            pullEventRaw = function()
+                local event = table.remove(event_queue, 1)
+                if not event then error("event queue empty") end
+                return table.unpack(event)
+            end,
+            startTimer = function()
+                os_timer = os_timer + 1
+                return os_timer
+            end,
+            cancelTimer = function() end,
+            epoch = function() return 0 end,
+        }
+        os_api.pullEvent = function(filter)
+            while true do
+                local event = table.pack(os_api.pullEventRaw())
+                if filter == nil or event[1] == filter then
+                    return table.unpack(event, 1, event.n)
+                end
+            end
+        end
+        env = setmetatable({
             term = term,
             window = window,
             shell = shell,
             colors = colors,
             keys = {},
             fs = {},
-            os = {
-                pullEvent = function() end,
-                startTimer = function() return 1 end,
-                cancelTimer = function() end,
-                epoch = function() return 0 end,
-            },
+            os = os_api,
+            custom_fs_addon = { marker = "preserved" },
         }, { __index = _G })
+        env._G = env
 
         local chunk, err = loadfile(root .. "/lib/backend/cc.lua", "t", env)
         Assert.truthy("cc backend loads", chunk ~= nil, err)
@@ -143,12 +180,96 @@ return {
         Assert.truthy("closed process reports closing", handle:is_closing())
         Assert.truthy("closed stdout reports closing", stdout:is_closing())
 
+        run_multitasked = true
+        env.editor_only = "added after startup"
+        local async_stdout = CC.new_pipe(false)
+        local async_events = {}
+        async_stdout:read_start(function(read_err, data)
+            async_events[#async_events + 1] = { read_err, data == nil and "<eof>" or data }
+        end)
+        local async_exit
+        local async_handle = CC.spawn("git", {
+            args = { "clone", "repository" },
+            cwd = "/work tree",
+            stdio = { nil, async_stdout, nil },
+        }, function(code, signal)
+            async_exit = { code, signal }
+        end)
+        scheduled[2]()
+        Assert.truthy("yielding process remains active", async_handle:is_active())
+        Assert.eq("editor terminal restored after child yield", current, parent)
+        Assert.eq("editor cwd restored after child yield", cwd, "before")
+        Assert.eq("editor os table restored after child yield", env.os, os_api)
+        Assert.eq("startup custom global inherited", child_observations.custom.marker, "preserved")
+        Assert.eq("late editor global excluded", child_observations.editor_only, nil)
+        Assert.eq("child cwd applied", child_observations.cwd, "work tree")
+        Assert.eq("sleep rejects boolean timeout", child_observations.sleep_false_ok, false)
+
+        event_queue[#event_queue + 1] = { "http_success", "response" }
+        local editor_event, editor_value = CC.pull_event()
+        Assert.eq("editor receives child wake event", editor_event, "http_success")
+        Assert.eq("editor receives child wake payload", editor_value, "response")
+        Assert.truthy("sleeping process remains active", async_handle:is_active())
+        Assert.eq("editor terminal restored after child sleep", current, parent)
+        Assert.eq("editor cwd restored after child sleep", cwd, "before")
+        Assert.eq("editor os table restored after child sleep", env.os, os_api)
+
+        event_queue[#event_queue + 1] = { "timer", os_timer }
+        Assert.eq("editor receives child sleep timer", CC.pull_event(), "timer")
+        Assert.deep_eq("multitasked process output", async_events, {
+            { nil, "before http_success response after" },
+            { nil, "<eof>" },
+        })
+        Assert.deep_eq("multitasked process exit", async_exit, { 0, 0 })
+        Assert.eq("completed multitasked process inactive", async_handle:is_active(), false)
+
+        local shared_results = {}
+        shell.execute = function(program)
+            local _, value = env.os.pullEvent("shared_event")
+            shared_results[program] = value
+            return true
+        end
+        local first_exit, second_exit
+        CC.spawn("first", {}, function(code, signal)
+            first_exit = { code, signal }
+        end)
+        CC.spawn("second", {}, function(code, signal)
+            second_exit = { code, signal }
+        end)
+        scheduled[3]()
+        scheduled[4]()
+        event_queue[#event_queue + 1] = { "shared_event", "broadcast" }
+        Assert.eq("editor receives broadcast event", CC.pull_event(), "shared_event")
+        Assert.deep_eq("same event wakes every matching process", shared_results, {
+            first = "broadcast",
+            second = "broadcast",
+        })
+        Assert.deep_eq("first broadcast process exits", first_exit, { 0, 0 })
+        Assert.deep_eq("second broadcast process exits", second_exit, { 0, 0 })
+
+        local resumed_after_kill = false
+        shell.execute = function()
+            env.os.pullEvent("resume_killed")
+            resumed_after_kill = true
+            return true
+        end
+        local waiting_exit
+        local waiting = CC.spawn("waiting", {}, function(code, signal)
+            waiting_exit = { code, signal }
+        end)
+        scheduled[5]()
+        Assert.eq("waiting process kill succeeds", waiting:kill("sigterm"), 0)
+        Assert.deep_eq("waiting process kill reports signal", waiting_exit, { 0, 15 })
+        event_queue[#event_queue + 1] = { "resume_killed" }
+        Assert.eq("editor receives killed process event", CC.pull_event(), "resume_killed")
+        Assert.eq("killed process is not resumed", resumed_after_kill, false)
+
         local killed
         local pending = CC.spawn("git", { args = { "status" } }, function(code, signal)
             killed = { code, signal }
         end)
         Assert.eq("pre-start kill succeeds", pending:kill("sigterm"), 0)
         Assert.deep_eq("pre-start kill reports signal", killed, { 0, 15 })
-        Assert.truthy("killed timer cancelled", scheduled[2] == nil)
+        Assert.truthy("killed timer cancelled", scheduled[6] == nil)
     end,
 }

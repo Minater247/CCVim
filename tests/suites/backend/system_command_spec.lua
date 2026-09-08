@@ -104,6 +104,20 @@ return {
         local chunk, err = loadfile(root .. "/lib/backend/cc.lua", "t", env)
         Assert.truthy("cc backend loads", chunk ~= nil, err)
         local CC = chunk()
+        local processed_events = {}
+        CC.on_load_module_ready({
+            loadModule = function(name)
+                if name == "lib.event" then
+                    return {
+                        ProcessEvent = function(event)
+                            processed_events[#processed_events + 1] = event
+                        end,
+                    }
+                end
+                return {}
+            end,
+            LOG_DEBUG = function() end,
+        })
         Assert.deep_eq("CraftOS command discovery includes programs and aliases", CC.list_commands(), {
             "g", "git", "vim",
         })
@@ -144,7 +158,7 @@ return {
         local original_pull = os_api.pullEvent
         local original_pull_raw = os_api.pullEventRaw
         shell.execute = function()
-            local name, request = os_api.pullEvent("http_success")
+            local name, request = env.os.pullEvent("http_success")
             Assert.eq("child receives requested event", name, "http_success")
             Assert.eq("child receives requested event payload", request, "request")
             return true
@@ -154,8 +168,8 @@ return {
         Assert.eq("networked command succeeds", result.code, 0)
         Assert.eq("pullEvent restored after command", os_api.pullEvent, original_pull)
         Assert.eq("pullEventRaw restored after command", os_api.pullEventRaw, original_pull_raw)
-        local event, timer_id = CC.pull_event()
-        Assert.eq("parent timer event preserved", event, "timer")
-        Assert.eq("parent timer id preserved", timer_id, parent_timer)
+        Assert.eq("parent timer processed while child waits", processed_events[1][1], "timer")
+        Assert.eq("parent timer id processed while child waits", processed_events[1][2], parent_timer)
+        Assert.eq("child event also reaches editor", processed_events[2][1], "http_success")
     end,
 }

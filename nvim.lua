@@ -35,6 +35,14 @@ if not ccvim_path then
     return
 end
 
+local ccvim_host_globals = {}
+for name, value in pairs(_ENV) do
+    ccvim_host_globals[name] = value
+end
+ccvim_host_globals._G = ccvim_host_globals
+ccvim_host_globals._ENV = ccvim_host_globals
+setmetatable(ccvim_host_globals, getmetatable(_ENV))
+
 if not os.epoch then
     os.epoch = function(_)
         return math.floor(os.time() * 1000)
@@ -227,6 +235,9 @@ end
 
 local _is_cc = (type(term) == "table" and term.getSize ~= nil)
 local _backend = load_local_chunk(ccvim_path .. "/lib/backend/" .. (_is_cc and "cc" or "native") .. ".lua")()
+if _backend.set_host_globals then
+    _backend.set_host_globals(ccvim_host_globals)
+end
 if not fs then
     fs = _backend.fs
 end
