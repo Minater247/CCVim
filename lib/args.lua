@@ -37,6 +37,7 @@ function Args.parse(argv)
         files = {},
         file_bufnrs = {},
         window_bufnrs = {},
+        window_ids = {},
         nomodifiable = false,
         readonly = false,
 
@@ -155,22 +156,16 @@ function Args.parse(argv)
         state.mkwins = #state.files
     end
 
-    local startup_window_buffer
-    if #state.files > 0 then
-        startup_window_buffer = Buffer(true, false)
-    end
-
     for idx = 1, state.mkwins do
-        if startup_window_buffer then
-            Window(startup_window_buffer)
-        else
-            Window(buffers[idx])
-        end
+        local win = Window(buffers[state.file_bufnrs[idx]])
+        state.window_ids[#state.window_ids + 1] = win.winnr
     end
 
-    local firsttp = Tabpage(windows[1])
-    for idx = 2, #windows do
-        firsttp:WinSplit(windows[idx-1].winnr, windows[idx], state.win_split_type == 2)
+    local firsttp = Tabpage(windows[state.window_ids[1]])
+    for idx = 2, #state.window_ids do
+        local previous = windows[state.window_ids[idx - 1]]
+        local current = windows[state.window_ids[idx]]
+        firsttp:WinSplitForStartup(previous.winnr, current, state.win_split_type == 2)
     end
     assert(FrameTree.Equalize(firsttp.tree))
     
@@ -183,7 +178,10 @@ function Args.parse(argv)
 
     local visible_count = math.min(#state.file_bufnrs, state.mkwins)
     for idx = 1, visible_count do
-        state.window_bufnrs[idx] = state.file_bufnrs[idx]
+        state.window_bufnrs[idx] = {
+            winid = state.window_ids[idx],
+            bufnr = state.file_bufnrs[idx],
+        }
     end
 
     pending_file_bufnrs = state.file_bufnrs
@@ -200,14 +198,11 @@ function Args.load_pending_files()
 
     if pending_window_bufnrs then
         for i = 1, #pending_window_bufnrs do
-            local win = windows[i]
-            local newbuf = buffers[pending_window_bufnrs[i]]
-            if win and newbuf and win.buffer ~= newbuf then
-                if win.buffer then
-                    win.buffer.refcount = math.max(0, (win.buffer.refcount or 0) - 1)
-                end
-                win.buffer = newbuf
-                newbuf.refcount = (newbuf.refcount or 0) + 1
+            local pending = pending_window_bufnrs[i]
+            local win = windows[pending.winid]
+            local newbuf = buffers[pending.bufnr]
+            if win and newbuf then
+                Window.SwitchBuffer(win, newbuf, { skip_leave = true, skip_enter = true, update_refcount = true })
             end
         end
     end

@@ -59,13 +59,33 @@ return {
         Assert.write_file(backend, "/browse/example.txt", "hello")
         Assert.eval_block(backend, "Oil command and directory listing", [=[
             vim.opt.rtp:prepend('/plugins/oil.nvim')
+            local Args = loadModule('lib.args')
+            assert(Args.parse({[0] = 'nvim', '/browse'}))
+            local startup_win
+            for winid, window in pairs(windows) do
+                if window.buffer.name == '/browse' then
+                    startup_win = winid
+                    break
+                end
+            end
+            assert(startup_win, 'startup directory was not attached to a window')
+            enterWindow(startup_win)
+            assert(vim.fn.bufloaded('/browse') == 0, 'startup directory loaded before plugin setup')
+            local ScriptSource = loadModule('lib.scriptsource')
+            for _, path in ipairs({'ftplugin.vim', 'indent.vim', 'lua/vim/_defaults.lua'}) do
+                local ok, err = ScriptSource.source_runtime(path)
+                assert(ok, tostring(err))
+            end
+            assert(vim.fn.bufloaded('/browse') == 0, 'startup runtime loaded the directory argument')
             require('oil').setup({columns = {'type'}})
-            vim.cmd('Oil /browse')
+            Args.load_pending_files()
             assert(vim.wait(1000, function()
                 local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
                 return table.concat(lines, '\n'):find('example.txt', 1, true) ~= nil
-            end), 'Oil did not render the directory entry')
+            end), 'Oil did not hijack the startup directory argument')
             assert(vim.bo.filetype == 'oil')
+            assert(vim.api.nvim_buf_get_name(0):match('^oil://'), 'startup directory kept its filesystem buffer name')
+            vim.cmd('Oil /browse')
             local windows_before = #vim.api.nvim_tabpage_list_wins(0)
             vim.cmd('belowright vertical Oil /browse')
             assert(#vim.api.nvim_tabpage_list_wins(0) == windows_before + 1)

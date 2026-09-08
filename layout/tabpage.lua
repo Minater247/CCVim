@@ -516,16 +516,16 @@ function Tabpage:updateFrameview()
     return ok
 end
 
-function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
-    opts = opts or {}
+function Tabpage:_WinSplit(target_winnr, new_win, vertical, split_opts, sync_cursor)
+    split_opts = split_opts or {}
     if type(ModifierState.get("tab")) == "number" then
-        if opts.dry_run then return true end
+        if split_opts.dry_run then return true end
         Tabpage(new_win, ModifierState.get("tab"))
         return true
     end
 
-    if opts.dry_run then
-        return self:CanWinSplit(target_winnr, new_win, vertical, opts)
+    if split_opts.dry_run then
+        return self:CanWinSplit(target_winnr, new_win, vertical, split_opts)
     end
 
     local frame = resolve_split_target(self, target_winnr)
@@ -558,9 +558,9 @@ function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
 
     local success, new_frm
     if vertical then
-        success, new_frm = FrameTree.VerticalSplit(frame, new_win, opts.place_after == true)
+        success, new_frm = FrameTree.VerticalSplit(frame, new_win, split_opts.place_after == true)
     else
-        success, new_frm = FrameTree.HorizontalSplit(frame, new_win, opts.place_after == true)
+        success, new_frm = FrameTree.HorizontalSplit(frame, new_win, split_opts.place_after == true)
     end
 
     if not success then
@@ -576,15 +576,24 @@ function Tabpage:WinSplit(target_winnr, new_win, vertical, opts)
 
     self:updateFrameview()
 
-    -- Force a cursor update
-    new_win:cursorMove(0, 0)
-    windows[curwin]:cursorMove(0, 0)
+    if sync_cursor then
+        new_win:cursorMove(0, 0)
+        windows[curwin]:cursorMove(0, 0)
+    end
 
-    if options.get("equalalways") and (not opts.skip_equalize or grew_for_split) then
+    if options.get("equalalways") and (not split_opts.skip_equalize or grew_for_split) then
         FrameTree.Equalize(self.tree)
     end
 
     return true
+end
+
+function Tabpage:WinSplit(target_winnr, new_win, vertical, split_opts)
+    return self:_WinSplit(target_winnr, new_win, vertical, split_opts, true)
+end
+
+function Tabpage:WinSplitForStartup(target_winnr, new_win, vertical)
+    return self:_WinSplit(target_winnr, new_win, vertical, nil, false)
 end
 
 function Tabpage:FindWin(target_winnr)

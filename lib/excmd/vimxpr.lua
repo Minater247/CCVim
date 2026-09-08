@@ -427,7 +427,9 @@ local function tokenize(input)
                     buf[#buf + 1] = ch
                 end
             end
-            add("STR", table.concat(buf), start, nil, i - 1); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1)
+            toks[#toks].quote = "'"
+            goto cont
         end
         if c == '"' then
             i = i + 1
@@ -470,7 +472,9 @@ local function tokenize(input)
                 -- Trailing backslash in a double-quoted string is literal.
                 buf[#buf + 1] = "\\"
             end
-            add("STR", table.concat(buf), start, nil, i - 1); goto cont
+            add("STR", table.concat(buf), start, nil, i - 1)
+            toks[#toks].quote = '"'
+            goto cont
         end
 
         -- environment variable: $NAME or ${NAME}
@@ -1048,6 +1052,44 @@ local function parse(tokens)
                     end
                     segs[#segs + 1] = adv().val
                 end
+                if #segs == 1 and segs[1] == "require" and peek().typ == "STR"
+                    and peek().quote == "'" and peek().pos == (tokens[i - 1].endpos + 1)
+                then
+                    local module = adv()
+                    local dot = peek()
+                    local func = tokens[i + 1]
+                    if dot.typ == "OP" and dot.val == "." and dot.pos == (module.endpos + 1)
+                        and func and func.typ == "ID" and func.pos == (dot.endpos + 1)
+                    then
+                        adv()
+                        adv()
+                        if peek().typ == "LPAREN" then
+                            adv()
+                            local args = {}
+                            if peek().typ ~= "RPAREN" then
+                                while true do
+                                    args[#args + 1] = expr(0)
+                                    if peek().typ == "RPAREN" then break end
+                                    local op = expect("OP").val
+                                    if op ~= "," then error("Expected ',' in arg list") end
+                                end
+                            end
+                            local close = expect("RPAREN")
+                            return apply_postfix({
+                                kind = "call",
+                                name = name,
+                                scope = scope,
+                                lua_require = module.val,
+                                lua_path = func.val,
+                                args = args,
+                                pos = t.pos,
+                                endpos = tok_end(close),
+                            })
+                        end
+                    end
+                    i = dot_i
+                    segs = {}
+                end
                 if #segs > 0 and peek().typ == "LPAREN" then
                     adv() -- '('
                     local args = {}
@@ -1357,10 +1399,16 @@ local function eval_node(node, vim9, env)
     if k == "call" then
         local f = nil
         if node.scope == "v" and node.name == "lua" then
-            if not node.lua_path then
+            if node.lua_require then
+                local api = ApiBuild.Build()
+                local ok, module = pcall(api.require, node.lua_require)
+                if not ok then return Error(5108, tostring(module)) end
+                f = type(module) == "table" and module[node.lua_path]
+            elseif not node.lua_path then
                 return Error(117, "v:lua")
+            else
+                f = resolve_vlua_path(node.lua_path)
             end
-            f = resolve_vlua_path(node.lua_path)
             if is_error(f) then return f end
         else
             local scoped_name = node.scope and (tostring(node.scope) .. ":" .. tostring(node.name))
@@ -1384,6 +1432,10 @@ local function eval_node(node, vim9, env)
         end
         if type(f) ~= "function" then
             if node.scope == "v" and node.name == "lua" then
+                if node.lua_require then
+                    return Error(117, "v:lua.require'" .. tostring(node.lua_require) .. "'."
+                        .. tostring(node.lua_path or ""))
+                end
                 return Error(117, "v:lua." .. tostring(node.lua_path or ""))
             end
             return Error(117, node.name)

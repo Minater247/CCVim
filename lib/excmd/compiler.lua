@@ -891,6 +891,19 @@ local function compile_ast(node, ctx)
         lines[#lines + 1] = "end)"
         return { code = table.concat(lines, "; "), kind = "function" }
     elseif k == "call" then
+        local args = {}
+        for i = 1, #node.args do
+            local arg = compile_ast(node.args[i], ctx)
+            if not arg then return nil end
+            args[#args + 1] = arg.code
+        end
+        if node.scope == "v" and node.name == "lua" and node.lua_require then
+            return {
+                code = "runtime:call_vlua_require(" .. lua_string(node.lua_require) .. ", "
+                    .. lua_string(node.lua_path) .. ", { " .. table.concat(args, ", ") .. " })",
+                kind = "unknown",
+            }
+        end
         local fname
         if node.scope == "v" and node.name == "lua" and node.lua_path then
             fname = "v:lua." .. node.lua_path
@@ -898,12 +911,6 @@ local function compile_ast(node, ctx)
             fname = node.scope .. ":" .. tostring(node.name)
         else
             fname = tostring(node.name)
-        end
-        local args = {}
-        for i = 1, #node.args do
-            local arg = compile_ast(node.args[i], ctx)
-            if not arg then return nil end
-            args[#args + 1] = arg.code
         end
         return {
             code = "runtime:call_func("
@@ -1142,6 +1149,9 @@ function Compiler.compile_command(node, ctx)
                 .. lua_string(cmd) .. ", { " .. table.concat(values, ", ") .. " })",
         }
     elseif cmd == "call" then
+        if not arg.expr_ast or (arg.expr_ast.kind ~= "call" and arg.expr_ast.kind ~= "methodcall") then
+            return { code = "error(Error(15, " .. lua_string(node.rest) .. "))" }
+        end
         return {
             code = "runtime:call_statement(function() return "
                 .. Compiler.compile_expr(arg.expr_ast, ctx) .. " end)",

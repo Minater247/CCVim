@@ -1647,6 +1647,23 @@ function Runtime:call_func(name, args)
     error(rv)
 end
 
+function Runtime:call_vlua_require(module_name, function_name, args)
+    ModifierState.check_function("v:lua.require")
+    local ok_module, module = pcall(Req, module_name)
+    if not ok_module then
+        error(Error(5108, tostring(module)))
+    end
+    local f = type(module) == "table" and module[function_name]
+    if type(f) ~= "function" then
+        error(Error(117, "v:lua.require'" .. tostring(module_name) .. "'." .. tostring(function_name)))
+    end
+    local ok, rv = pcall(f, unpack_fn(args or {}))
+    if not ok then
+        error(Error(5108, tostring(rv)))
+    end
+    return rv
+end
+
 function Runtime:call_method(receiver, key, args)
     local fn = type(receiver) == "table" and receiver[key]
     if type(fn) ~= "function" then error(Error(117, key)) end
@@ -2309,14 +2326,29 @@ local function _scan_range_prefix(text, line_count, current_line, buffer)
     return l1, l2, true, i, kind1, false
 end
 
+local function _command_text(text)
+    text = lstrip(tostring(text or ""))
+    while text:sub(1, 1) == ":" do
+        text = lstrip(text:sub(2))
+    end
+    return text
+end
+
+local function _may_have_range_prefix(text)
+    local first = _command_text(text):sub(1, 1)
+    return first == "%" or first == "." or first == "$" or first == "/" or first == "?"
+        or first:match("%d") ~= nil
+end
+
 local function _cursor_parse_head(cursor, win)
+    local text = _command_text((cursor and cursor.text) or "")
+    if not _may_have_range_prefix(text) then
+        local raw = text:match("^([%a][%w]*)")
+        return raw and raw:lower(), nil, nil, false
+    end
     local line_count = win.buffer:line_count(true)
     if line_count < 1 then
         line_count = 1
-    end
-    local text = lstrip(tostring((cursor and cursor.text) or ""))
-    while text:sub(1, 1) == ":" do
-        text = lstrip(text:sub(2))
     end
     local l1, l2, has_range, pos = _scan_range_prefix(text, line_count, win.cursory, win.buffer)
     if has_range then
@@ -2333,8 +2365,11 @@ end
 function Runtime:filter_command(command)
     ModifierState.check()
     local win = windows[curwin]
-    local first, last, ranged = _scan_range_prefix(self.exec_cursor.text,
-        win.buffer:line_count(true), win.cursory, win.buffer)
+    local first, last, ranged
+    if _may_have_range_prefix(self.exec_cursor.text) then
+        first, last, ranged = _scan_range_prefix(self.exec_cursor.text,
+            win.buffer:line_count(true), win.cursory, win.buffer)
+    end
     local input
     if ranged then
         local lines = {}
@@ -2360,8 +2395,10 @@ end
 
 function Runtime:call_statement(fn)
     local win = windows[curwin]
+    local text = tostring((self.exec_cursor and self.exec_cursor.text) or "")
+    if not _may_have_range_prefix(text) then return fn() end
     local first, last, ranged = _scan_range_prefix(
-        tostring((self.exec_cursor and self.exec_cursor.text) or ""),
+        text,
         win.buffer:line_count(true),
         win.cursory,
         win.buffer
