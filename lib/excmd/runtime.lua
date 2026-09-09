@@ -6491,15 +6491,16 @@ function Runtime.new(init_state, init_opts)
                 error(Error(478))
             end
             if target == "" then target = "help.txt" end
-            local match, doc_root
+            local match, doc_root, match_rank
             local rtp = RuntimePath.get_search_list()
             for i = 1, #rtp do
                 local base = rtp[i]
-                local found = Tags.SearchFile(base .. "/doc/tags", target)
-                if found then
+                local found, rank = Tags.SearchFile(base .. "/doc/tags", target)
+                if found and (not match_rank or rank < match_rank) then
                     match = found
                     doc_root = base .. "/doc"
-                    break
+                    match_rank = rank
+                    if rank == 1 then break end
                 end
             end
             if not match then error(Error(149, target)) end

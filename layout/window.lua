@@ -1230,7 +1230,7 @@ function Window:hasLocalStatusline()
         return true
     end
 
-    if laststat == 1 and #tabp.windows > 1 then
+    if laststat == 1 and tabp:frame_window_count() > 1 then
         return true
     end
 

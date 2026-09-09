@@ -2260,6 +2260,7 @@ function MockEnv.setup(opts)
         local AutoCmd = load_module("lib.autocmd")
         local new_curtp
         local new_curwin = winnr
+        local old_curwin = globals.curwin
         local oldwin = globals.windows[globals.curwin]
         local newwin = globals.windows[new_curwin]
 
@@ -2284,6 +2285,8 @@ function MockEnv.setup(opts)
         globals.curwin = new_curwin
         if new_curtp then
             globals.curtp = new_curtp
+        elseif oldwin.tabpagenr == newwin.tabpagenr then
+            globals.tabpages[newwin.tabpagenr].prevwin = old_curwin
         end
 
         AutoCmd.Run("WinEnter")
@@ -2296,7 +2299,10 @@ function MockEnv.setup(opts)
             AutoCmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
         end
 
-        load_module("lib.frame").RebalanceCurrentTab()
+        oldwin:mark_redraw()
+        newwin:mark_redraw()
+        globals.what_redraw["statusline"] = true
+        globals.what_redraw["tabline"] = true
     end
     _G.enterWindow = globals.enterWindow
 

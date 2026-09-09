@@ -31,7 +31,7 @@ function Tags.SearchFile(filename, tag)
         if name == tag then
             local parts = split_tabs(line)
             close()
-            return parts
+            return parts, 1
         elseif not contains and name:find(tag, 1, true) then
             contains = split_tabs(line)
         elseif not folded_exact and name:lower() == folded then
@@ -42,7 +42,9 @@ function Tags.SearchFile(filename, tag)
     end
 
     close()
-    return contains or folded_exact or folded_contains
+    if contains then return contains, 2 end
+    if folded_exact then return folded_exact, 3 end
+    if folded_contains then return folded_contains, 4 end
 end
 
 return Tags

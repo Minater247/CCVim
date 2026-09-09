@@ -594,6 +594,7 @@ function _V.enterWindow(winnr)
         return
     end
 
+    local old_curwin = _V.curwin
     local new_curwin, new_curtp
 
     new_curwin = winnr
@@ -619,6 +620,8 @@ function _V.enterWindow(winnr)
     _V.curwin = new_curwin
     if new_curtp then
         _V.curtp = new_curtp
+    elseif _V.windows[old_curwin].tabpagenr == _V.windows[new_curwin].tabpagenr then
+        _V.tabpages[_V.windows[new_curwin].tabpagenr].prevwin = old_curwin
     end
 
     AutoCmd.Run("WinEnter")
@@ -631,7 +634,10 @@ function _V.enterWindow(winnr)
         AutoCmd.Run("BufEnter", { bufnr = newbuf.bufnr, bufname = newbuf.name })
     end
 
-    FrameTree.RebalanceCurrentTab()
+    _V.windows[old_curwin]:mark_redraw()
+    _V.windows[new_curwin]:mark_redraw()
+    _V.what_redraw["statusline"] = true
+    _V.what_redraw["tabline"] = true
 end
 
 _V.writestartup("parsing arguments")

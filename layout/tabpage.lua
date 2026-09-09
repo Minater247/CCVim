@@ -177,6 +177,7 @@ end
 ---@field tree FrameTree The FrameTree used in this Tabpage.
 ---@field opts TabOpts The options for this Tabpage.
 ---@field lastwin number The last window used on this tabpage.
+---@field prevwin number The previously accessed window on this tabpage.
 ---@field curdir string|nil The tabpage-local current directory.
 
 --- Creates a new Tabpage.
@@ -218,6 +219,14 @@ end
 
 function Tabpage:equalize(axis)
     FrameTree.Equalize(self.tree, axis)
+end
+
+function Tabpage:frame_window_count()
+    local count = 0
+    for i = 1, #self.windows do
+        if self.windows[i].frame then count = count + 1 end
+    end
+    return count
 end
 
 local function resolve_split_target(self, target_winnr)
@@ -272,7 +281,7 @@ function Tabpage:CanWinSplit(target_winnr, new_win, vertical, opts)
 
     opts = opts or {}
     local laststatus = options.get("laststatus")
-    local post_split_window_count = #self.windows + 1
+    local post_split_window_count = self:frame_window_count() + 1
 
     local function has_text_capacity(root_after, node, yoff)
         if node.split_type then
@@ -391,7 +400,8 @@ end
 function Tabpage:close(window, force, frameonly, autowrite_kind)
     local halting
     local newcurtp
-    if #self.windows == 1 then
+    local closes_frame = window.frame ~= nil
+    if closes_frame and self:frame_window_count() == 1 then
         local myidx
         for k, v in pairs(tabpages) do
             if v == self then
@@ -422,31 +432,56 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
         end
     end
 
+    local closing_current = not frameonly and window.winnr == curwin
+    local replacement
     local idx = self:_win_local_index(window)
     if idx then
         -- If closing the current window may wipe/delete its buffer, switch to another
         -- window first so BufLeave callbacks run with a valid current buffer context.
         local switched_before_close = false
-        if not frameonly and window.winnr == curwin and #self.windows > 1 then
-            local bufhidden = options.get("bufhidden", nil, window.buffer)
-            local may_drop_from_registry = (bufhidden == "wipe" or bufhidden == "delete")
-                and ((window.buffer.refcount or 0) <= 1)
-            if may_drop_from_registry then
-                local target = (self.windows[1] ~= window) and self.windows[1] or self.windows[2]
-                if target then
-                    enterWindow(target.winnr)
-                    switched_before_close = true
+        if closing_current and not halting then
+            if not closes_frame and self.prevwin and self.prevwin ~= window.winnr then
+                local previous = windows[self.prevwin]
+                if previous and previous.tabpagenr == self.tabnr then
+                    replacement = previous
+                end
+            end
+            if not replacement then
+                for i = 1, #self.windows do
+                    local candidate = self.windows[i]
+                    if candidate ~= window and candidate.frame then
+                        replacement = candidate
+                        break
+                    end
+                end
+            end
+            if not replacement then
+                for i = 1, #self.windows do
+                    if self.windows[i] ~= window then
+                        replacement = self.windows[i]
+                        break
+                    end
                 end
             end
         end
 
+        if closing_current and replacement then
+            local bufhidden = options.get("bufhidden", nil, window.buffer)
+            local may_drop_from_registry = (bufhidden == "wipe" or bufhidden == "delete")
+                and ((window.buffer.refcount or 0) <= 1)
+            if may_drop_from_registry then
+                enterWindow(replacement.winnr)
+                switched_before_close = true
+            end
+        end
+
         local bufnr = window.buffer.bufnr
-        local name = window.buffer.name
         local closeok
         if frameonly then closeok = true else closeok = window:close(force, halting, autowrite_kind) end
         if closeok == true then
             if not frameonly then
-                AutoCmd.Run("WinClosed", { bufnr = bufnr, bufname = name })
+                local winid = tostring(window.winnr)
+                AutoCmd.Run("WinClosed", { bufnr = bufnr, bufname = winid, pattern = winid })
             end
             table.remove(self.windows, idx)
             if window.frame then
@@ -466,17 +501,20 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
     if newcurtp and not frameonly then
         curtp = newcurtp
         tabpages[self.tabnr] = nil
+        local target_tab = tabpages[newcurtp]
+        replacement = windows[target_tab.lastwin] or target_tab.windows[1]
     end
 
     what_redraw["windows"] = true
     need_redraw = true
 
-    -- TODO: proper previous window handling
     if not frameonly then
         if not halting then
-            enterWindow(tabpages[curtp].windows[1].winnr)
+            if closing_current and window.winnr == curwin and replacement then
+                enterWindow(replacement.winnr)
+            end
 
-            if options.get("equalalways") then
+            if closes_frame and options.get("equalalways") then
                 FrameTree.Equalize(self.tree)
             end
         else
@@ -495,7 +533,7 @@ function Tabpage:updateFrameview()
     local displayheight, winyoff = compute_layout_metrics()
     local target_height = displayheight
 
-    if #self.windows == 1 and self._manual_root_height ~= nil then
+    if self:frame_window_count() == 1 and self._manual_root_height ~= nil then
         target_height = math.max(1, math.min(displayheight, self._manual_root_height))
     else
         self._manual_root_height = nil

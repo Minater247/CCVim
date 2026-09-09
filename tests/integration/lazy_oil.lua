@@ -26,6 +26,14 @@ return {
         end
         copy_plugin(plugin_root .. "/oil.nvim", "/plugins/oil.nvim")
         copy_plugin(plugin_root .. "/lazy.nvim", "/plugins/lazy.nvim")
+        Assert.eval_block(backend, "Lazy runtime help resolution", [=[
+            vim.opt.rtp:prepend('/plugins/lazy.nvim')
+            vim.cmd('help nvim')
+            local name = vim.api.nvim_buf_get_name(0)
+            assert(name:match('/runtime/doc/nvim%.txt$'), ':help nvim opened ' .. name)
+            vim.api.nvim_win_close(0, true)
+            return true
+        ]=])
         Assert.eval_block(backend, "manual cleanup", [=[
             vim.opt.rtp:prepend('/plugins/lazy.nvim')
             local config = require('lazy.core.config')
@@ -54,6 +62,61 @@ return {
             return true
         ]=], backend:host_path_for_editor_path('/lazy-lock.json'),
             backend:host_path_for_editor_path('/lazy-state.json')))
+        Assert.eval_block(backend, "Lazy floating view close", [=[
+            vim.cmd('vsplit')
+            vim.cmd('split')
+            vim.cmd('vertical resize 20')
+            vim.cmd('resize 5')
+            local prior = vim.api.nvim_get_current_win()
+            local layout = vim.deepcopy(vim.fn.winlayout())
+            local function dimensions(value)
+                local result = {}
+                local function collect(node)
+                    if node[1] == 'leaf' then
+                        result[node[2]] = {
+                            vim.api.nvim_win_get_width(node[2]),
+                            vim.api.nvim_win_get_height(node[2]),
+                        }
+                    else
+                        for _, child in ipairs(node[2]) do collect(child) end
+                    end
+                end
+                collect(value)
+                return result
+            end
+            local sizes = dimensions(layout)
+            local view_module = require('lazy.view')
+            view_module.show()
+            assert(view_module.visible(), 'Lazy floating view did not open')
+            local view = view_module.view
+            local content = view.win
+            local backdrop = view.backdrop_win
+            assert(vim.api.nvim_get_current_win() == content, 'Lazy content float was not current')
+            assert(vim.deep_equal(vim.fn.winlayout(), layout), 'opening Lazy changed the tiled layout')
+            assert(vim.deep_equal(dimensions(layout), sizes), 'opening Lazy changed tiled dimensions')
+            vim.api.nvim_win_close(content, true)
+            assert(vim.wait(1000, function()
+                return not vim.api.nvim_win_is_valid(content)
+                    and (not backdrop or not vim.api.nvim_win_is_valid(backdrop))
+            end), 'Lazy floats did not close')
+            assert(vim.api.nvim_get_current_win() == prior, 'closing Lazy did not restore the prior window')
+            assert(vim.deep_equal(vim.fn.winlayout(), layout), 'closing Lazy changed the tiled layout')
+            assert(vim.deep_equal(dimensions(layout), sizes), 'closing Lazy changed tiled dimensions')
+
+            view_module.show()
+            view = view_module.view
+            content = view.win
+            backdrop = view.backdrop_win
+            view:close()
+            assert(vim.wait(1000, function()
+                return not vim.api.nvim_win_is_valid(content)
+                    and (not backdrop or not vim.api.nvim_win_is_valid(backdrop))
+            end), 'Lazy scheduled close left a float open')
+            assert(vim.api.nvim_get_current_win() == prior, 'scheduled close did not restore the prior window')
+            assert(vim.deep_equal(vim.fn.winlayout(), layout), 'scheduled close changed the tiled layout')
+            assert(vim.deep_equal(dimensions(layout), sizes), 'scheduled close changed tiled dimensions')
+            return true
+        ]=])
         copy_plugin(plugin_root .. "/oil.nvim", "/plugins/oil.nvim")
         Assert.ensure_dir(backend, "/browse")
         Assert.write_file(backend, "/browse/example.txt", "hello")
