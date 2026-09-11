@@ -63,5 +63,37 @@ return {
 
         Assert.eq("middle match line", middle[1], 2)
         Assert.table_eq("middle match cursor", middle[2], { 2, 0 })
+
+        local brackets = Assert.eval_block(backend, "searchpair escaped square brackets", [[
+            vim.api.nvim_buf_set_lines(0, 0, -1, false, { "head [value] tail" })
+            vim.api.nvim_win_set_cursor(0, { 1, 5 })
+            local rv = vim.fn.searchpair("\\[", "", "\\]", "W")
+            return { rv, vim.api.nvim_win_get_cursor(0) }
+        ]])
+
+        Assert.eq("escaped square bracket match line", brackets[1], 1)
+        Assert.table_eq("escaped square bracket match cursor", brackets[2], { 1, 11 })
+
+        local vimscript_brackets = Assert.eval_block(backend, "Vimscript searchpair escaped square brackets", [[
+            vim.api.nvim_buf_set_lines(0, 0, -1, false, { "head [value] tail" })
+            vim.api.nvim_win_set_cursor(0, { 1, 5 })
+            vim.cmd("call searchpair('\\[','','\\]','W')")
+            return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        Assert.table_eq("Vimscript escaped square bracket match cursor", vimscript_brackets, { 1, 11 })
+
+        local compile_error = Assert.eval_block(backend, "searchpair compile error shape", [=[
+            local ok, err = pcall(vim.cmd, [[call searchpair('\(','','x','W')]])
+            return { ok, tostring(err or "") }
+        ]=])
+
+        Assert.eq("searchpair invalid pattern fails", compile_error[1], false)
+        Assert.top_error_code("searchpair invalid pattern reports E54", compile_error[2], "E54")
+        Assert.truthy(
+            "searchpair invalid pattern omits Lua traceback",
+            not compile_error[2]:find("stack traceback", 1, true),
+            compile_error[2]
+        )
     end,
 }

@@ -30,6 +30,7 @@ return {
             local Event = mock.loadModule("lib.event")
             local ExMsg = mock.loadModule("lib.excmd.exmsg")
             local CmdRead = mock.loadModule("lib.excmd.cmdread")
+            local Api = mock.loadModule("lib.luaapi.api")
 
             Event.LoadCommandModule()
 
@@ -142,6 +143,44 @@ return {
                 "ExMsg.readMore",
                 ":pwd"
             )
+
+            local cmdline_events = {}
+            Api.nvim_create_autocmd({ "CmdlineEnter", "CmdlineChanged", "CmdlineLeave" }, {
+                pattern = "/",
+                callback = function(info)
+                    cmdline_events[#cmdline_events + 1] = {
+                        event = info.event,
+                        match = info.match,
+                        data = info.data,
+                    }
+                end,
+            })
+
+            local submitted
+            CmdRead.read("/", function(value) submitted = value end)
+            Assert.eq("alternate command type", CmdRead.gettype(), "/")
+            feed_text("needle")
+            Assert.eq("alternate prompt input", CmdRead.getline(), "needle")
+            Assert.truthy(
+                "alternate prompt is rendered",
+                row_text(screen.height):find("/needle", 1, true) ~= nil,
+                row_text(screen.height)
+            )
+            press_enter()
+            Assert.eq("alternate prompt submission", submitted, "needle")
+            Assert.eq("alternate prompt closes", CmdRead.is_active(), false)
+            Assert.eq("cmdline enter event", cmdline_events[1].event, "CmdlineEnter")
+            Assert.eq("cmdline enter pattern", cmdline_events[1].match, "/")
+            Assert.eq("cmdline change event count", #cmdline_events - 2, 6)
+            Assert.eq("cmdline leave event", cmdline_events[#cmdline_events].event, "CmdlineLeave")
+            Assert.eq("submitted cmdline does not abort", cmdline_events[#cmdline_events].data.abort, false)
+            Assert.eq("cmdline event type", cmdline_events[#cmdline_events].data.cmdtype, "/")
+
+            CmdRead.read("/", function() end)
+            feed_seq(Key.strtoseq("<C-Tab>"))
+            Assert.eq("Ctrl-Tab closes alternate prompt", CmdRead.is_active(), false)
+            Assert.eq("cancelled cmdline leave event", cmdline_events[#cmdline_events].event, "CmdlineLeave")
+            Assert.eq("cancelled cmdline reports abort", cmdline_events[#cmdline_events].data.abort, true)
         end)
 
         mock.cleanup()

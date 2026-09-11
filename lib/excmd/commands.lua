@@ -47,6 +47,7 @@ local COMMAND_SPECS = {
     { name = "filetype", min = 5, dispatch = true, complete = "filetype" },
     { name = "doautoall", min = 7, dispatch = true, complete = "event" },
     { name = "set", min = 2, complete = "option" },
+    { name = "nohlsearch", min = 3, dispatch = true, addr = "none" },
     { name = "packadd", min = 2, dispatch = true, complete = "packadd" },
     { name = "verbose", min = 4, wrapper = true },
     { name = "echo", min = 2, dispatch = true, addr = "none" },

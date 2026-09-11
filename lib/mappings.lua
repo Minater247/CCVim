@@ -13,6 +13,7 @@ local Visual = loadModule("lib.visual")
 local RegisterUtil = loadModule("lib.registers")
 local Scopes = loadModule("lib.luaapi.scopes")
 local Tab = loadModule("lib.tab")
+local Search = loadModule("lib.search")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 
@@ -22,6 +23,19 @@ local function push_register(regtype, value)
         registers[i] = registers[i - 1]
     end
     registers[1] = { regtype, value }
+end
+
+local function push_char_delete(parts)
+    local entry = { "charwise", table.concat(parts, "\n") }
+    registers["unnamed"] = entry
+    if #parts > 1 then
+        for i = 8, 2, -1 do
+            registers[i] = registers[i - 1]
+        end
+        registers[1] = entry
+    else
+        registers["-"] = entry
+    end
 end
 
 local function _mov_dn(n)
@@ -416,6 +430,67 @@ local function _read_visual_replace_char()
     Command.emitter_names[#Command.emitter_names + 1] = "Visual.replace_char"
 end
 
+local function _read_normal_replace_char(count)
+    local replace_count = count or 1
+    Command.override_emitter[#Command.override_emitter + 1] = function(key)
+        table.remove(Command.override_emitter)
+        table.remove(Command.emitter_names)
+
+        local win = windows[curwin]
+        local buf = win.buffer
+        local line = buf:get_line(win.cursory, true) or ""
+        local line_len = Utf8.len(line)
+        local first = win.cursorx
+        local last = first + replace_count - 1
+        if first < 1 or last > line_len then
+            return
+        end
+
+        local emitted = key:emittable()
+        local printable = key:printable()
+        if emitted == nil and printable ~= "<C-e>" and printable ~= "<C-y>" then
+            return
+        end
+
+        local replacement
+        if printable == "<C-e>" or printable == "<C-y>" then
+            local source_line = win.cursory + (printable == "<C-e>" and 1 or -1)
+            local source = buf:get_line(source_line, true)
+            if not source or Utf8.len(source) < last then
+                return
+            end
+            replacement = Utf8.sub(source, first, last)
+        elseif emitted == "\r" then
+            buf:undo_begin(win)
+            buf:set_line(win.cursory, Utf8.sub(line, 1, first - 1), true)
+            local new_line = win.cursory + 1
+            buf:insert_line(new_line, Utf8.sub(line, last + 1), true)
+            local cursor_col = 1
+            if options.get("autoindent", nil, buf) then
+                cursor_col = win:reindentLine(new_line, win:computeIndentForLine(new_line), 1)
+                cursor_col = math.max(1, cursor_col - 1)
+            end
+            Syntax.ParseLinetypes(buf, win.cursory)
+            win:cursorSet(cursor_col, new_line)
+            buf:undo_end(win)
+            win:mark_redraw()
+            return
+        else
+            replacement = string.rep(emitted, replace_count)
+        end
+
+        buf:set_line(
+            win.cursory,
+            Utf8.sub(line, 1, first - 1) .. replacement .. Utf8.sub(line, last + 1),
+            true
+        )
+        Syntax.ParseLinetypes(buf, win.cursory)
+        win:cursorSetX(last)
+        win:mark_redraw()
+    end
+    Command.emitter_names[#Command.emitter_names + 1] = "Normal.replace_char"
+end
+
 local function _shift_visual_selection(right, count)
     local win = windows[curwin]
     local selection = Visual.finish(win)
@@ -631,6 +706,91 @@ local function _select_special_move(move, shifted)
     move()
 end
 
+local JumpWindow
+
+local function _same_jump_line(a, b)
+    return a and b and a.buffer == b.buffer and a.line == b.line
+end
+
+local function _jump_position(win)
+    return { buffer = win.buffer, line = win.cursory, col = win.cursorx }
+end
+
+local function _record_jump_position(win, pos)
+    local jumps = win.jumplist or {}
+    local index = win.jumpindex or (#jumps + 1)
+    while #jumps >= index do
+        table.remove(jumps)
+    end
+    for i = #jumps, 1, -1 do
+        if _same_jump_line(jumps[i], pos) then
+            table.remove(jumps, i)
+            break
+        end
+    end
+    jumps[#jumps + 1] = pos
+    while #jumps > 100 do
+        table.remove(jumps, 1)
+    end
+    win.jumplist = jumps
+    win.jumpindex = #jumps + 1
+end
+
+local function _go_to_jump(win, pos)
+    if pos.buffer ~= win.buffer then
+        JumpWindow = JumpWindow or loadModule("layout.window")
+        JumpWindow.SwitchBuffer(win, pos.buffer, { update_refcount = true })
+    end
+    win:cursorSet(pos.col, pos.line)
+    win:mark_redraw()
+end
+
+local function _move_jump(older, count)
+    local win = windows[curwin]
+    local jumps = win.jumplist or {}
+    local index = win.jumpindex or (#jumps + 1)
+    local step = count or 1
+    if older and index == #jumps + 1 then
+        jumps[#jumps + 1] = _jump_position(win)
+        index = #jumps
+    end
+    local target = older and math.max(1, index - step) or math.min(#jumps, index + step)
+    if target < 1 or target > #jumps or target == index then
+        return
+    end
+    win.jumplist = jumps
+    win.jumpindex = target
+    _go_to_jump(win, jumps[target])
+end
+
+local function _run_search(pattern, direction, count, remember_direction)
+    local win = windows[curwin]
+    local found, origin, err = Search.execute(pattern, direction, count, remember_direction)
+    if found then
+        _record_jump_position(win, origin)
+    else
+        ExMsg.echoerr(err)
+    end
+end
+
+local function _read_search(direction, count)
+    local win = windows[curwin]
+    Search.begin(win, direction, count)
+    CmdRead.read(
+        direction > 0 and "/" or "?",
+        function(pattern)
+            local found, origin, err = Search.finish(pattern)
+            if found then
+                _record_jump_position(win, origin)
+            else
+                ExMsg.echoerr(err)
+            end
+        end,
+        Search.change,
+        Search.cancel
+    )
+end
+
 Command.nimap_builtin_callback({ K(keys.down) }, _mov_dn)
 Command.nimap_builtin_callback({ K(keys.up) }, _mov_up)
 Command.nimap_builtin_callback({ K(keys.left) }, _mov_lt)
@@ -642,6 +802,17 @@ Command.nmap_builtin_callback({ K(keys.l) }, _mov_rt)
 Command.nmap_builtin_callback({ K(keys.p, true) }, _mov_up)
 Command.nmap_builtin_callback({ K(keys.j, true) }, _mov_dn)
 Command.nmap_builtin_callback({ K(keys.n, true) }, _mov_dn)
+Command.nmap_builtin_callback({ K(keys.slash) }, function(count) _read_search(1, count) end)
+Command.nmap_builtin_callback({ K(keys.slash, false, true) }, function(count) _read_search(-1, count) end)
+Command.nmap_builtin_callback({ K(keys.n) }, function(count)
+    _run_search("", Search.direction(), count, false)
+end)
+Command.nmap_builtin_callback({ K(keys.n, false, true) }, function(count)
+    _run_search("", -Search.direction(), count, false)
+end)
+Command.nmap_builtin_callback({ K(keys.o, true) }, function(count) _move_jump(true, count) end)
+Command.nmap_builtin_callback({ K(keys.i, true) }, function(count) _move_jump(false, count) end)
+Command.nmap_builtin_callback({ K(keys.tab) }, function(count) _move_jump(false, count) end)
 Command.nmap_builtin_callback({ K(keys.g), K(keys.h) }, function() _start_select("char") end)
 Command.nmap_builtin_callback({ K(keys.g), K(keys.h, false, true) }, function() _start_select("line") end)
 Command.nmap_builtin_callback({ K(keys.g), K(keys.h, true) }, function() _start_select("block") end)
@@ -714,6 +885,9 @@ Command.vmap_builtin_callback({ K(keys.g, true) }, function() setMode("select") 
 Command.smap_builtin_callback({ K(keys.g, true) }, function() setMode("visual") end)
 Command.smap_builtin_callback({ K(keys.o, true) }, Command.begin_select_once)
 Command.smap_builtin_callback({ K(keys.leftBracket, true) }, function() setMode("normal") end)
+if Backend.current().kind == "cc" then
+    Command.smap_builtin_callback({ K(keys.tab, true) }, function() setMode("normal") end)
+end
 Command.smap_builtin_callback({ K(keys.c, true) }, function() setMode("normal") end)
 Command.smap_builtin_callback({ K(keys.j, true) }, function() Command.replace_select("\r") end)
 Command.smap_builtin_callback({ K(keys.backspace) }, Command.delete_select)
@@ -759,6 +933,7 @@ Command.vmap_builtin_callback({ K(keys.grave, false, true) }, function()
     _transform_visual_selection(_toggle_case)
 end)
 Command.vmap_builtin_callback({ K(keys.r) }, _read_visual_replace_char)
+Command.nmap_builtin_callback({ K(keys.r) }, _read_normal_replace_char)
 Command.vmap_builtin_callback({ K(keys.period, false, true) }, function(count)
     _shift_visual_selection(true, count)
 end)
@@ -866,7 +1041,7 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         count = count or 1
-        local row = (win:textheight()) - 1 - count
+        local row = win:textheight() - count
         win:cursorSetScreenRow(row, { startofline = options.get("startofline") })
     end
 )
@@ -951,12 +1126,17 @@ Command.nmap_builtin_callback(
 Command.nmap_builtin_callback(
     { K(keys.five, false, true) },
     function(count)
+        local win = windows[curwin]
+        local origin = _jump_position(win)
         if count then
-            local win = windows[curwin]
-            win:cursorSetY(math.floor((count * win.buffer:line_count(true) + 99) / 100))
+            if count < 1 or count > 100 then return end
+            local target = math.floor((count * win.buffer:line_count(true) + 99) / 100)
+            if target == win.cursory then return end
+            win:cursorSetY(target)
             win:cursorApplyStartofline()
-        else
-            windows[curwin]:matchPairs()
+            _record_jump_position(win, origin)
+        elseif win:matchPairs() then
+            _record_jump_position(win, origin)
         end
     end
 )
@@ -1083,6 +1263,15 @@ Command.nmap_builtin_callback(
     end
 )
 
+Command.nmap_builtin_callback(
+    { K(keys.r, false, true) },
+    function()
+        local win = windows[curwin]
+        win.replace_mode = true
+        setMode("insert")
+    end
+)
+
 local function _open_line(win, below)
     local buf = win.buffer
     local new_line = win.cursory + (below and 1 or 0)
@@ -1112,6 +1301,7 @@ Command.nmap_builtin_callback(
     function(count)
         local win = windows[curwin]
         local buf = win.buffer
+        local target_line = win.cursory
 
         local lines = buf:remove_lines(win.cursory, win.cursory + (count or 1) - 1)
 
@@ -1121,9 +1311,11 @@ Command.nmap_builtin_callback(
 
         push_register("linewise", lines)
 
-        Syntax.ParseLinetypes(buf, win.cursory)
-
-        win:cursorMove(-win.cursorx, -1)
+        target_line = math.min(target_line, math.max(1, buf:line_count(true)))
+        win:cursorSetY(target_line)
+        win:cursorApplyStartofline()
+        Syntax.ParseLinetypes(buf, target_line)
+        win:mark_redraw()
     end
 )
 
@@ -1386,6 +1578,47 @@ Command.nmap_builtin_callback(
     end
 )
 
+Command.nmap_builtin_operator_with_motions(
+    { K(keys.y) },
+    function(total, motion_name)
+        local win = windows[curwin]
+        local buf = win.buffer
+        if motion_name ~= "w" then
+            return
+        end
+
+        local start_line = win.cursory
+        local start_col = win.cursorx
+        local target_line, target_col = WordNav.posNext(
+            win,
+            false,
+            false,
+            total or 1,
+            start_line,
+            start_col
+        )
+        if not target_line then
+            target_line = buf:line_count(true)
+            target_col = Utf8.len(buf:get_line(target_line, true) or "") + 1
+        end
+
+        local parts = {}
+        if target_line == start_line then
+            parts[1] = Utf8.sub(buf:get_line(start_line, true) or "", start_col, target_col - 1)
+        else
+            parts[1] = Utf8.sub(buf:get_line(start_line, true) or "", start_col)
+            for line = start_line + 1, target_line - 1 do
+                parts[#parts + 1] = buf:get_line(line, true) or ""
+            end
+            parts[#parts + 1] = Utf8.sub(buf:get_line(target_line, true) or "", 1, target_col - 1)
+        end
+        _set_visual_register("char", table.concat(parts, "\n"))
+    end,
+    {
+        ["w"] = { K(keys.w) },
+    }
+)
+
 Command.nmap_builtin_callback(
     { K(keys.semiColon or keys.semicolon, false, true) },
     function()
@@ -1519,6 +1752,47 @@ Command.nmap_builtin_operator_with_motions(
 
             Syntax.ParseLinetypes(buf, win.cursory)
             win:mark_redraw()
+        elseif motion_name == "e" then
+            local start_line = win.cursory
+            local start_col = win.cursorx
+            local target_line, target_col = WordNav.posNext(
+                win,
+                false,
+                true,
+                total,
+                start_line,
+                start_col
+            )
+            if target_line then
+                local removed = {}
+                if target_line == start_line then
+                    local line = buf:get_line(start_line, true) or ""
+                    removed[1] = Utf8.sub(line, start_col, target_col)
+                    buf:set_line(
+                        start_line,
+                        Utf8.sub(line, 1, start_col - 1) .. Utf8.sub(line, target_col + 1),
+                        true
+                    )
+                else
+                    local first = buf:get_line(start_line, true) or ""
+                    local last = buf:get_line(target_line, true) or ""
+                    removed[1] = Utf8.sub(first, start_col)
+                    for line = start_line + 1, target_line - 1 do
+                        removed[#removed + 1] = buf:get_line(line, true) or ""
+                    end
+                    removed[#removed + 1] = Utf8.sub(last, 1, target_col)
+                    buf:set_line(
+                        start_line,
+                        Utf8.sub(first, 1, start_col - 1) .. Utf8.sub(last, target_col + 1),
+                        true
+                    )
+                    buf:remove_lines(start_line + 1, target_line)
+                end
+                push_char_delete(removed)
+                Syntax.ParseLinetypes(buf, start_line)
+                win:cursorSet(start_col, start_line)
+                win:mark_redraw()
+            end
         end
 
         win:cursorMove(0, 0)
@@ -1553,12 +1827,64 @@ Command.nmap_builtin_operator_with_motions(
             push_register("inline", lines)
 
             setMode("insert")
+            if win.cursorx > 1 then
+                win.insert_curs_start = { win.cursorx - 1, win.cursory }
+            end
 
+            win:mark_redraw()
+        elseif motion_name == "e" then
+            local target_line, target_col = WordNav.posNext(
+                win,
+                false,
+                true,
+                total or 1,
+                win.cursory,
+                win.cursorx
+            )
+            if not target_line then
+                return
+            end
+
+            local start_line = win.cursory
+            local start_col = win.cursorx
+            local removed = {}
+            if target_line == start_line then
+                local line = buf:get_line(start_line, true) or ""
+                removed[1] = Utf8.sub(line, start_col, target_col)
+                buf:set_line(
+                    start_line,
+                    Utf8.sub(line, 1, start_col - 1) .. Utf8.sub(line, target_col + 1),
+                    true
+                )
+            else
+                local first = buf:get_line(start_line, true) or ""
+                local last = buf:get_line(target_line, true) or ""
+                removed[1] = Utf8.sub(first, start_col)
+                for line = start_line + 1, target_line - 1 do
+                    removed[#removed + 1] = buf:get_line(line, true) or ""
+                end
+                removed[#removed + 1] = Utf8.sub(last, 1, target_col)
+                buf:set_line(
+                    start_line,
+                    Utf8.sub(first, 1, start_col - 1) .. Utf8.sub(last, target_col + 1),
+                    true
+                )
+                buf:remove_lines(start_line + 1, target_line)
+            end
+
+            push_char_delete(removed)
+            Syntax.ParseLinetypes(buf, start_line)
+            win:cursorSet(start_col, start_line)
+            setMode("insert")
+            if win.cursorx > 1 then
+                win.insert_curs_start = { win.cursorx - 1, win.cursory }
+            end
             win:mark_redraw()
         end
     end,
     {
-        ["$"] = { K(keys.four, false, true) }
+        ["$"] = { K(keys.four, false, true) },
+        ["e"] = { K(keys.e) },
     }
 )
 

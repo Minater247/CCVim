@@ -70,6 +70,7 @@ lib/
 	screen.lua
 	screendraw.lua
 	scriptsource.lua
+	search.lua
 	sign.lua
 	statusline.lua
 	syntax.lua

@@ -250,4 +250,159 @@ function Decoration.iter_extmarks(buf, visitor)
     end
 end
 
+function Decoration.capture_extmark_positions(buf)
+    local all = buf._extmarks
+    if type(all) ~= "table" then
+        return nil
+    end
+
+    local snapshot = {}
+    for ns, ns_marks in pairs(all) do
+        if type(ns_marks) == "table" then
+            local positions = {}
+            for id, mark in pairs(ns_marks) do
+                local opts = mark.opts or {}
+                positions[id] = {
+                    line = mark.line,
+                    col = mark.col,
+                    end_row = opts.end_row,
+                    end_col = opts.end_col,
+                    invalid = opts.invalid,
+                }
+            end
+            snapshot[ns] = positions
+        end
+    end
+    return snapshot
+end
+
+function Decoration.restore_extmark_positions(buf, snapshot)
+    if type(snapshot) ~= "table" or type(buf._extmarks) ~= "table" then
+        return
+    end
+
+    for ns, positions in pairs(snapshot) do
+        local ns_marks = buf._extmarks[ns]
+        if type(ns_marks) == "table" then
+            for id, position in pairs(positions) do
+                local mark = ns_marks[id]
+                if mark and (mark.opts or {}).undo_restore ~= false then
+                    mark.line = position.line
+                    mark.col = position.col
+                    mark.opts = mark.opts or {}
+                    mark.opts.end_row = position.end_row
+                    mark.opts.end_col = position.end_col
+                    mark.opts.invalid = position.invalid
+                end
+            end
+        end
+    end
+end
+
+local function position_less(row, col, other_row, other_col)
+    return row < other_row or (row == other_row and col < other_col)
+end
+
+local function position_equal(row, col, other_row, other_col)
+    return row == other_row and col == other_col
+end
+
+local function splice_position(row, col, gravity, start_row, start_col,
+        old_end_row, old_end_col, new_end_row, new_end_col)
+    if position_less(row, col, start_row, start_col) then
+        return row, col, false
+    end
+
+    if position_equal(old_end_row, old_end_col, start_row, start_col) then
+        if position_equal(row, col, start_row, start_col) then
+            if gravity then
+                return new_end_row, new_end_col, false
+            end
+            return row, col, false
+        end
+    end
+
+    if position_less(row, col, old_end_row, old_end_col) then
+        if gravity then
+            return new_end_row, new_end_col, true
+        end
+        return start_row, start_col, true
+    end
+
+    if row == old_end_row then
+        return new_end_row, new_end_col + col - old_end_col, false
+    end
+
+    return row + new_end_row - old_end_row, col, false
+end
+
+function Decoration.on_text_changed(buf, start_row, start_col, old_end_row, old_end_col,
+        new_end_row, new_end_col)
+    local all = buf._extmarks
+    if type(all) ~= "table" then
+        return
+    end
+
+    for _, ns_marks in pairs(all) do
+        if type(ns_marks) == "table" then
+            local remove = {}
+            for id, mark in pairs(ns_marks) do
+                local opts = mark.opts or {}
+                local line, col, deleted = splice_position(
+                    mark.line or 0,
+                    mark.col or 0,
+                    opts.right_gravity ~= false,
+                    start_row,
+                    start_col,
+                    old_end_row,
+                    old_end_col,
+                    new_end_row,
+                    new_end_col
+                )
+                mark.line = line
+                mark.col = col
+
+                local end_deleted = deleted
+                if opts.end_row ~= nil then
+                    opts.end_row, opts.end_col, end_deleted = splice_position(
+                        opts.end_row,
+                        opts.end_col or 0,
+                        opts.end_right_gravity == true,
+                        start_row,
+                        start_col,
+                        old_end_row,
+                        old_end_col,
+                        new_end_row,
+                        new_end_col
+                    )
+                end
+
+                if opts.invalidate and deleted and end_deleted then
+                    if opts.undo_restore == false then
+                        remove[#remove + 1] = id
+                    else
+                        opts.invalid = true
+                    end
+                end
+            end
+            for i = 1, #remove do
+                ns_marks[remove[i]] = nil
+            end
+        end
+    end
+end
+
+function Decoration.on_lines_changed(buf, start1, old_count, new_count)
+    local start_row = start1 - 1
+    Decoration.on_text_changed(
+        buf,
+        start_row,
+        0,
+        start_row + old_count,
+        0,
+        start_row + new_count,
+        0
+    )
+end
+
 return Decoration

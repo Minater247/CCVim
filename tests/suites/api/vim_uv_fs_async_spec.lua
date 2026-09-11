@@ -37,6 +37,17 @@ return {
                 }
             end)
 
+            local previous_log_debug = LOG_DEBUG
+            local debug_calls = 0
+            LOG_DEBUG = function()
+                debug_calls = debug_calls + 1
+            end
+            for _ = 1, 10 do
+                vim.uv.fs_stat(missing_stat)
+            end
+            LOG_DEBUG = previous_log_debug
+            out.missing_stat_debug_calls = debug_calls
+
             vim.uv.fs_realpath(root, function(err, path)
                 out.realpath = {
                     err = err,
@@ -188,6 +199,7 @@ return {
             result.missing_stat.err
         )
         Assert.eq("fs_stat missing stat nil", result.missing_stat.stat_is_nil, true)
+        Assert.eq("fs_stat misses do not write debug logs", result.missing_stat_debug_calls, 0)
         Assert.eq("fs_realpath err nil", result.realpath.err, nil)
         local realpath_matches = result.realpath.path == root
             or (root:sub(1, 4) == "/tmp" and result.realpath.path == "/private" .. root)

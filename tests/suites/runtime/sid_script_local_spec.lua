@@ -8,6 +8,8 @@ return {
 
         local expr_script = Assert.temp_path(backend, "sid-expr-runtime", ".vim")
         local map_script = Assert.temp_path(backend, "sid-map-runtime", ".vim")
+        local first_local_script = Assert.temp_path(backend, "sid-first-local-runtime", ".vim")
+        local second_local_script = Assert.temp_path(backend, "sid-second-local-runtime", ".vim")
 
         Assert.write_file(backend, expr_script, [[
 function! s:NetrwGetWord()
@@ -38,8 +40,28 @@ nunmap <buffer> <SID>MapLhs
 let g:sid_after_unmap = maparg('<SID>MapLhs', 'n')
 ]])
 
+        Assert.write_file(backend, first_local_script, [[
+function! s:SharedName()
+  return 'first'
+endfunction
+function! SidFirstCaller()
+  return s:SharedName()
+endfunction
+]])
+
+        Assert.write_file(backend, second_local_script, [[
+function! s:SharedName()
+  return 'second'
+endfunction
+function! SidSecondCaller()
+  return s:SharedName()
+endfunction
+]])
+
         local result = Assert.eval_block(backend, "sid script-local scenarios", string.format([=[
             vim.cmd("enew!")
+            vim.cmd("source " .. vim.fn.fnameescape(%q))
+            vim.cmd("source " .. vim.fn.fnameescape(%q))
             vim.cmd("source " .. vim.fn.fnameescape(%q))
             vim.cmd("source " .. vim.fn.fnameescape(%q))
 
@@ -55,8 +77,10 @@ let g:sid_after_unmap = maparg('<SID>MapLhs', 'n')
                 vim.g.sid_map.noremap,
                 vim.g.sid_map_plain,
                 vim.g.sid_after_unmap,
+                vim.fn.SidFirstCaller(),
+                vim.fn.SidSecondCaller(),
             }
-        ]=], expr_script, map_script))
+        ]=], expr_script, map_script, first_local_script, second_local_script))
 
         Assert.table_eq("sid nested expression returns list", result[1], { 1, "target", 1 })
         Assert.eq("sid direct :call works", result[2], 7)
@@ -73,5 +97,7 @@ let g:sid_after_unmap = maparg('<SID>MapLhs', 'n')
             string.format(":call <SNR>%d_MapRhs()<CR>", result[7])
         )
         Assert.eq("nunmap removes expanded <SID> mapping", result[11], "")
+        Assert.eq("first script resolves its own same-named local function", result[12], "first")
+        Assert.eq("second script resolves its own same-named local function", result[13], "second")
     end,
 }

@@ -11,6 +11,7 @@ local Utf8 = loadModule("lib.utf8")
 local BufAttach = loadModule("lib.bufattach")
 local Sign = loadModule("lib.sign")
 local Options = loadModule("lib.options")
+local Decoration = loadModule("lib.decoration")
 
 local curr_bufno = 1
 
@@ -174,6 +175,22 @@ local function _line_diff_bounds(before, after)
     end
 
     return first, before_end, after_end
+end
+
+local function _text_diff_bounds(before, after)
+    local prefix = 0
+    local shared = math.min(#before, #after)
+    while prefix < shared and before:byte(prefix + 1) == after:byte(prefix + 1) do
+        prefix = prefix + 1
+    end
+
+    local suffix = 0
+    while suffix < shared - prefix
+        and before:byte(#before - suffix) == after:byte(#after - suffix)
+    do
+        suffix = suffix + 1
+    end
+    return prefix, #before - suffix, #after - suffix
 end
 
 local function _undo_entry_after_lines(entry)
@@ -475,6 +492,13 @@ function Buffer:undo_begin(win)
     }
 end
 
+function Buffer:_undo_capture_extmarks()
+    local st = self:_ensure_undo_state()
+    if st.restoring or not st.pending or st.pending.extmarks_captured then return end
+    st.pending.before_extmarks = Decoration.capture_extmark_positions(self)
+    st.pending.extmarks_captured = true
+end
+
 function Buffer:undo_mark_changed()
     local st = self:_ensure_undo_state()
     if st.restoring then
@@ -546,6 +570,9 @@ function Buffer:undo_end(win)
         local jstart, jbefore_end, jafter_end = _line_diff_bounds(prev.before_lines, self.lines)
         prev.after_modified = after_modified
         prev.after_cursor = after_cursor
+        if pending.extmarks_captured then
+            prev.after_extmarks = Decoration.capture_extmark_positions(self)
+        end
         prev.changed_start = jstart
         prev.changed_end = jstart and math.max(jbefore_end, jafter_end)
         if jstart then
@@ -569,6 +596,8 @@ function Buffer:undo_end(win)
         after_modified = after_modified,
         before_cursor = pending.before_cursor,
         after_cursor = after_cursor,
+        before_extmarks = pending.before_extmarks,
+        after_extmarks = pending.extmarks_captured and Decoration.capture_extmark_positions(self) or nil,
         changed_start = changed_start,
         changed_end = changed_start and math.max(before_end, after_end),
     }
@@ -605,7 +634,7 @@ function Buffer:undojoin()
     return true
 end
 
-function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
+function Buffer:_undo_apply(lines, modified, cursor, extmarks, win, noauto)
     local old_lines = _copy_lines(self.lines)
     self.lines = _copy_lines(lines)
     if #self.lines == 0 then
@@ -614,6 +643,7 @@ function Buffer:_undo_apply(lines, modified, cursor, win, noauto)
     self.opts.modified = modified == true
 
     Sign.on_lines_changed(self, 1, #old_lines, #self.lines)
+    Decoration.restore_extmark_positions(self, extmarks)
 
     _notify_full_replace(self, old_lines, self.lines)
     Syntax.ParseLinetypes(self, 1)
@@ -650,21 +680,24 @@ function Buffer:_undo_jump_to(target, win, noauto)
     local lines
     local modified
     local cursor
+    local extmarks
 
     if target < st.index then
         entry = st.entries[target + 1]
         lines = entry.before_lines
         modified = entry.before_modified
         cursor = entry.before_cursor
+        extmarks = entry.before_extmarks
     else
         entry = st.entries[target]
         lines = _undo_entry_after_lines(entry)
         modified = entry.after_modified
         cursor = entry.after_cursor
+        extmarks = entry.after_extmarks
     end
 
     st.restoring = true
-    local ok, err = pcall(self._undo_apply, self, lines, modified, cursor, win, noauto)
+    local ok, err = pcall(self._undo_apply, self, lines, modified, cursor, extmarks, win, noauto)
     st.restoring = false
     if not ok then
         error(err)
@@ -842,7 +875,20 @@ function Buffer:set_line(line_nr, text, load_if_unloaded, noauto)
     self:_undo_note_single_line_change(ln, old_line)
     local start_byte = _bytes_before_row(lines, ln - 1)
     local new_line = tostring(text or "")
+    if old_line ~= new_line then self:_undo_capture_extmarks() end
     lines[ln] = new_line
+    if old_line ~= new_line then
+        local start_col, old_end_col, new_end_col = _text_diff_bounds(old_line, new_line)
+        Decoration.on_text_changed(
+            self,
+            ln - 1,
+            start_col,
+            ln - 1,
+            old_end_col,
+            ln - 1,
+            new_end_col
+        )
+    end
     self:undo_mark_changed()
     self.opts.modified = true
     _notify_buf_lines(self, {
@@ -865,8 +911,10 @@ function Buffer:insert_line(index, item, load_if_unloaded, noauto)
     local idx = math.max(1, math.floor(tonumber(index) or (#lines + 1)))
     local new_line = tostring(item or "")
     local start_byte = _bytes_before_row(lines, idx - 1)
+    self:_undo_capture_extmarks()
     table.insert(lines, idx, new_line)
     Sign.on_lines_changed(self, idx, 0, 1)
+    Decoration.on_lines_changed(self, idx, 0, 1)
     self:undo_mark_changed()
     self.opts.modified = true
     _notify_buf_lines(self, {
@@ -922,6 +970,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     end
 
     local k_remove = e - s + 1
+    self:_undo_capture_extmarks()
     for _ = 1, k_remove do
         table.remove(self.lines, s)
     end
@@ -935,6 +984,9 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
 
     if not opts.skip_sign_adjust then
         Sign.on_lines_changed(self, s, k_remove, 0)
+    end
+    if not opts.skip_extmark_adjust then
+        Decoration.on_lines_changed(self, s, k_remove, 0)
     end
 
     self.opts.modified = true
@@ -959,7 +1011,7 @@ function Buffer:remove_lines(start1, end1, opts, noauto)
     return removed
 end
 
-function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
+function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto, extmark_edit)
     ModifierState.check()
     self.loaded = true
     local line_count = #self.lines
@@ -999,12 +1051,15 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
     end
     local start_byte = _bytes_before_row(self.lines, s)
 
+    if k_remove > 0 or m_insert > 0 then self:_undo_capture_extmarks() end
+
     -- 1) Delete k_remove lines from self.lines at start1
     if k_remove > 0 then
         self:remove_lines(start1, start1 + k_remove - 1, {
             allow_empty = true,
             silent_no_lines = true,
             skip_sign_adjust = true,
+            skip_extmark_adjust = true,
             skip_buf_attach_notify = true,
         }, true)
     end
@@ -1027,6 +1082,19 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto)
 
     if k_remove > 0 or m_insert > 0 then
         Sign.on_lines_changed(self, start1, k_remove, m_insert)
+        if extmark_edit then
+            Decoration.on_text_changed(
+                self,
+                extmark_edit.start_row,
+                extmark_edit.start_col,
+                extmark_edit.old_end_row,
+                extmark_edit.old_end_col,
+                extmark_edit.new_end_row,
+                extmark_edit.new_end_col
+            )
+        else
+            Decoration.on_lines_changed(self, start1, k_remove, m_insert)
+        end
     end
     
     -- Mark modified (like altering buffer contents)

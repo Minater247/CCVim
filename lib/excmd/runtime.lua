@@ -34,6 +34,7 @@ local Key = loadModule("lib.key")
 local Menu = loadModule("lib.menu")
 local Intro = loadModule("lib.intro")
 local HelpTags = loadModule("lib.helptags")
+local Search = loadModule("lib.search")
 local Completion
 
 Runtime._FUNCS = {}
@@ -247,10 +248,11 @@ local function resolve_function_def(name, opts)
     end
     opts = opts or {}
     local state = opts.state or Runtime._CURRENT_STATE or EMPTY_ARGS
-    if state.funcs and state.funcs[name] then
+    local script_local = name:match("^s:") or name:match("^<SID>")
+    if not script_local and state.funcs and state.funcs[name] then
         return state.funcs[name], name
     end
-    if Runtime._FUNCS[name] then
+    if not script_local and Runtime._FUNCS[name] then
         return Runtime._FUNCS[name], name
     end
     local canon = canonical_function_name(name, {
@@ -261,16 +263,12 @@ local function resolve_function_def(name, opts)
 
     local def
     if state and state.funcs then
-        def = state.funcs[name] or state.funcs[canon]
-        if not def then
-            local _, tail = canon:match("^<SNR>(%d+)_(.+)$")
-            if tail then
-                def = state.funcs["s:" .. tail]
-            end
-        end
+        def = state.funcs[canon]
+        if not def and not script_local then def = state.funcs[name] end
     end
     if not def then
-        def = Runtime._FUNCS[name] or Runtime._FUNCS[canon]
+        def = Runtime._FUNCS[canon]
+        if not def and not script_local then def = Runtime._FUNCS[name] end
     end
     return def, canon
 end
@@ -840,15 +838,28 @@ end
 local function runtime_index(container, idx)
     if container == nil then return nil end
     if type(container) == "table" then
-        if runtime_table_kind(container) == "list" and type(idx) == "number" then
-            local key = idx >= 0 and (idx + 1) or (#container + idx + 1)
+        if runtime_table_kind(container) == "list" then
+            if type(idx) == "number"
+                and ((math.type and math.type(idx) == "float") or idx % 1 ~= 0)
+            then
+                error(Error(805))
+            end
+            local numeric_idx = math.modf(to_number(idx))
+            local key = numeric_idx >= 0 and (numeric_idx + 1) or (#container + numeric_idx + 1)
             return container[key]
         end
         return container[idx]
     end
-    if type(container) == "string" then
-        if type(idx) ~= "number" then return nil end
-        local pos = idx >= 0 and (idx + 1) or (#container + idx + 1)
+    if type(container) == "string" or type(container) == "number" then
+        container = tostring(container)
+        if type(idx) == "number"
+            and ((math.type and math.type(idx) == "float") or idx % 1 ~= 0)
+        then
+            error(Error(805))
+        end
+        idx = math.modf(to_number(idx))
+        if idx < 0 then return "" end
+        local pos = idx + 1
         if pos < 1 or pos > #container then return "" end
         return container:sub(pos, pos)
     end
@@ -1693,10 +1704,10 @@ function Runtime:register_function(name, params, body, attrs)
         closure_frame = attr_map.closure and self.state.frames[#self.state.frames] or nil,
     }
     local canon = canonical_function_name(name, { state = self.state })
-    def.name = canon or name
-    self.state.funcs[name] = def
-    self.state.funcs[def.name] = def
     local is_script_local = type(name) == "string" and (name:match("^s:") or name:match("^<SID>"))
+    def.name = canon or name
+    if not is_script_local then self.state.funcs[name] = def end
+    self.state.funcs[def.name] = def
     if not is_script_local then
         Runtime._FUNCS[name] = def
     end
@@ -3879,7 +3890,12 @@ function Runtime:substitute(argstr, _bang, cmdctx)
     end
 
     if (not count_only) and changed then
-        buf:set_lines(line1 - 1, line2, false, new_lines)
+        for i = 1, #new_lines do
+            local line = line1 + i - 1
+            if new_lines[i] ~= buf:get_line(line, true) then
+                buf:set_line(line, new_lines[i], true)
+            end
+        end
         win:mark_redraw()
     end
     return true
@@ -5336,6 +5352,10 @@ function Runtime.new(init_state, init_opts)
             return self:set_options(argstr, "global")
         elseif cmd == "setlocal" then
             return self:set_options(argstr, "local")
+        elseif cmd == "nohlsearch" then
+            if strip(argstr) ~= "" then error(Error(488, argstr)) end
+            Search.suspend()
+            return true
         elseif cmd == "sign" then
             local tokens = command_args(argstr, cmdctx)
             if #tokens == 0 then
@@ -6469,16 +6489,14 @@ function Runtime.new(init_state, init_opts)
             if args[1] == "FALLBACK" then
                 local ft = args[2]
                 if not ft or ft == "" then return true end
-                local bnr = buf.bufnr
-                local bt = scopes._b_by_buf[bnr]
-                local already = (bt and bt.did_filetype) or (Options.get("filetype", nil, buf) ~= "")
-                if already then return true end
-                Options.set("filetype", ft, nil, nil, buf)
-                scopes.b.did_filetype = 1
+                if Builtins.fn.did_filetype() ~= 0 then return true end
+                Options.set("filetype", ft, true, nil, buf)
+                scopes.b.did_filetype = false
                 return true
             end
             if #args > 1 then return true end
-            Options.set("filetype", args[1], nil, nil, buf)
+            if Builtins.fn.did_filetype() ~= 0 then return true end
+            Options.set("filetype", args[1], true, nil, buf)
             scopes.b.did_filetype = 1
             return true
         elseif cmd == "filetype" then

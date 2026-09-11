@@ -509,6 +509,7 @@ function _V.setMode(newmode, newx, newy)
     _V.vimmode = newmode
     if mode_changed and oldmode == "insert" and newmode ~= "insert" then
         leave_insert_cursor(win)
+        win.replace_mode = nil
     end
     if newy then
         win:cursorSetY(newy)

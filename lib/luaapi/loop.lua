@@ -11,15 +11,6 @@ local function has_uri_scheme(path)
     return type(path) == "string" and path:match("^[%w][%w%+%-%.]*://") ~= nil
 end
 
-local function log_fs_stat_miss(path, reason)
-    local trace = debug.traceback("fs_stat miss trace:", 3)
-    LOG_DEBUG("error maybe? loop.fs_stat miss path=%s reason=%s\n%s", tostring(path), tostring(reason), tostring(trace))
-end
-
-local function log_loop_fs(format, ...)
-    LOG_DEBUG("loop.fs " .. tostring(format), ...)
-end
-
 -- Convert a time in ms to the format a stat expects.
 local function modtimeconv(msec)
     return {
@@ -62,7 +53,6 @@ end
 
 local function _fs_stat_impl(path)
     if has_uri_scheme(path) then
-        log_fs_stat_miss(path, "uri-scheme")
         return nil, "ENOENT: unsupported uri scheme"
     end
 
@@ -70,7 +60,6 @@ local function _fs_stat_impl(path)
 
     local ok, attribs = pcall(fs.attributes, path)
     if not ok or type(attribs) ~= "table" then
-        log_fs_stat_miss(path, ok and "invalid-attribs" or tostring(attribs))
         return nil, ok and "ENOENT: invalid attribs" or tostring(attribs)
     end
 
@@ -87,12 +76,6 @@ end
 function loop.fs_stat(path, callback)
     local stat, err = _fs_stat_impl(path)
     if type(callback) == "function" then
-        log_loop_fs(
-            "fs_stat(path=%s, cb=true) -> err=%s type=%s",
-            tostring(path),
-            tostring(err),
-            tostring(stat and stat.type)
-        )
         callback(err, stat)
         return
     end
@@ -118,7 +101,6 @@ function loop.fs_opendir(path, a2, a3)
 
     if has_uri_scheme(path) then
         local err = "ENOENT: unsupported uri scheme"
-        log_loop_fs("fs_opendir(path=%s) -> %s", tostring(path), err)
         if callback then
             callback(err, nil)
             return
@@ -129,7 +111,6 @@ function loop.fs_opendir(path, a2, a3)
     local dir = VimFs.abspath(path)
     if not fs.exists(dir) then
         local err = "ENOENT: no such file or directory"
-        log_loop_fs("fs_opendir(path=%s) -> %s", tostring(dir), err)
         if callback then
             callback(err, nil)
             return
@@ -138,7 +119,6 @@ function loop.fs_opendir(path, a2, a3)
     end
     if not fs.isDir(dir) then
         local err = "ENOTDIR: not a directory"
-        log_loop_fs("fs_opendir(path=%s) -> %s", tostring(dir), err)
         if callback then
             callback(err, nil)
             return
@@ -153,13 +133,6 @@ function loop.fs_opendir(path, a2, a3)
         _max_entries = max_entries,
         _closed = false,
     })
-    local state = FakeUserdata.state(handle)
-    log_loop_fs(
-        "fs_opendir(path=%s) -> ok items=%d max=%d",
-        tostring(dir),
-        #(state and state._items or {}),
-        max_entries
-    )
     if callback then
         callback(nil, handle)
         return
@@ -171,7 +144,6 @@ function loop.fs_readdir(handle, callback)
     local state = FakeUserdata.state(handle)
     if state == nil or not state._path then
         local err = "EBADF: bad directory handle"
-        log_loop_fs("fs_readdir(handle=%s) -> %s", tostring(handle), err)
         if type(callback) == "function" then
             callback(err, nil)
             return
@@ -180,7 +152,6 @@ function loop.fs_readdir(handle, callback)
     end
     if state._closed then
         local err = "EBADF: directory handle closed"
-        log_loop_fs("fs_readdir(path=%s) -> %s", tostring(state._path), err)
         if type(callback) == "function" then
             callback(err, nil)
             return
@@ -189,7 +160,6 @@ function loop.fs_readdir(handle, callback)
     end
 
     if state._idx > #state._items then
-        log_loop_fs("fs_readdir(path=%s) -> eof", tostring(state._path))
         if type(callback) == "function" then
             callback(nil, nil)
             return
@@ -211,7 +181,6 @@ function loop.fs_readdir(handle, callback)
             type = fs.isDir(abs) and "directory" or "file",
         }
     end
-    log_loop_fs("fs_readdir(path=%s) -> %d entries", tostring(state._path), #out)
     if type(callback) == "function" then
         callback(nil, out)
         return
@@ -223,7 +192,6 @@ function loop.fs_closedir(handle, callback)
     local state = FakeUserdata.state(handle)
     if state == nil or not state._path then
         local err = "EBADF: bad directory handle"
-        log_loop_fs("fs_closedir(handle=%s) -> %s", tostring(handle), err)
         if type(callback) == "function" then
             callback(err)
             return
@@ -231,7 +199,6 @@ function loop.fs_closedir(handle, callback)
         return nil, err
     end
     state._closed = true
-    log_loop_fs("fs_closedir(path=%s) -> ok", tostring(state._path))
     if type(callback) == "function" then
         callback(nil)
         return
@@ -475,7 +442,6 @@ end
 function loop.fs_unlink(path, callback)
     local ok, err, errname = _fs_unlink_impl(path)
     if type(callback) == "function" then
-        log_loop_fs("fs_unlink(path=%s, cb=true) -> err=%s ok=%s", tostring(path), tostring(err), tostring(ok))
         callback(err, ok and true)
         return new_fs_req("unlink", {
             _path = path,
@@ -515,13 +481,6 @@ end
 function loop.fs_rename(path, new_path, callback)
     local ok, err, errname = _fs_rename_impl(path, new_path)
     if type(callback) == "function" then
-        log_loop_fs(
-            "fs_rename(path=%s, new_path=%s, cb=true) -> err=%s ok=%s",
-            tostring(path),
-            tostring(new_path),
-            tostring(err),
-            tostring(ok)
-        )
         callback(err, ok and true)
         return new_fs_req("rename", {
             _path = path,
@@ -755,7 +714,6 @@ end
 function loop.fs_realpath(path, callback)
     local real, err = _fs_realpath_impl(path)
     if type(callback) == "function" then
-        log_loop_fs("fs_realpath(path=%s, cb=true) -> err=%s real=%s", tostring(path), tostring(err), tostring(real))
         callback(err, real)
         return
     end

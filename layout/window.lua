@@ -22,6 +22,7 @@ local CmdRead = loadModule("lib.excmd.cmdread")
 local ScreenDraw = loadModule("lib.screendraw")
 local Options = loadModule("lib.options")
 local Visual = loadModule("lib.visual")
+local Search = loadModule("lib.search")
 
 local curr_winno = 1
 
@@ -1546,7 +1547,7 @@ function Window:render(xoff, yoff)
     end
     local visual_y = 0
     local pending_cursor = nil
-    local show_cursor = (self.winnr == curwin) and (not CmdRead.is_active())
+    local show_cursor = (self.winnr == curwin) and ((not CmdRead.is_active()) or Search.is_active_for(self))
     local visual_selection = Visual.active(self) and Visual.selection(self)
     local last_visible_idx = math.min(linecnt, start_idx + max_rows - 1)
     local top0 = math.max(0, start_idx - 1)
@@ -1612,6 +1613,7 @@ function Window:render(xoff, yoff)
         end)
 
         local line_str = lines[i] or ""
+        local search_matches = Search.matches(self, i, line_str)
         local cursor_byte = (self.cursory == i) and Utf8.byte_index(line_str, self.cursorx, true)
         local rendered, blitLines, cursorPos, ranges, gsrc = TexRen.parse(
             line_str,
@@ -1745,6 +1747,34 @@ function Window:render(xoff, yoff)
                         hl_slice[idx] = row_hl
                     end
                 end
+            end
+
+            if search_matches and vis_len > 0 then
+                if not hl_slice then
+                    hl_slice, swap_slice = {}, {}
+                    local normal_hl = Highlight.GetId("Normal")
+                    for idx = 1, vis_len do
+                        hl_slice[idx] = normal_hl
+                        swap_slice[idx] = false
+                    end
+                end
+                local range = ranges and ranges[j]
+                local range_start = (range and range.i) or 1
+                for idx = 1, vis_len do
+                    local source_byte = gsrc and gsrc[range_start + x1 + idx - 2]
+                    if source_byte then
+                        local group
+                        for match_idx = 1, #search_matches do
+                            local match = search_matches[match_idx]
+                            if source_byte >= match.start_byte and source_byte <= match.end_byte then
+                                group = match.group
+                                if group == "IncSearch" or group == "CurSearch" then break end
+                            end
+                        end
+                        if group then hl_slice[idx] = Highlight.GetId(group) end
+                    end
+                end
+                have_hl = true
             end
 
             if visual_selection and vis_len > 0 then
@@ -1908,114 +1938,242 @@ function Window:drawStatus(xoff, yoff)
 end
 
 function Window:matchPairs()
-    local win   = windows[curwin]
+    local win = windows[curwin]
     local buf = win.buffer
     buf:ensure_loaded(true)
     local lines = buf:lines_ref(true)
-    local y     = win.cursory
-    local x     = win.cursorx
-
-    local line  = lines[y] or ""
+    local y = win.cursory
+    local x = win.cursorx
+    local line = lines[y] or ""
     local line_len = Utf8.len(line)
-    if line_len == 0 or x < 1 or x > line_len then
-        return
-    end
+    if line_len == 0 or x < 1 or x > line_len then return false end
 
     local mp = options.ParseKeyedCSL(options.get("matchpairs", nil, self.buffer), { [":"] = true })
-
-    -- Build fast lookup tables
     local start2stop, stop2start, is_start, is_stop = {}, {}, {}, {}
     for s, e in pairs(mp) do
-        start2stop[s] = e
-        stop2start[e] = s
-        is_start[s]   = true
-        is_stop[e]    = true
+        if type(e) == "string" and Utf8.len(s) == 1 and Utf8.len(e) == 1 and s ~= e then
+            start2stop[s] = e
+            stop2start[e] = s
+            is_start[s] = true
+            is_stop[e] = true
+        end
     end
 
-    local function ch_at(i)
-        return Utf8.char_at(line, i)
+    local cpo = options.get("cpoptions") or ""
+    local check_quotes = not cpo:find("%", 1, true)
+    local check_slashes = not cpo:find("M", 1, true)
+    local line_info = {}
+
+    local function info_at(lnum)
+        if line_info[lnum] then return line_info[lnum] end
+        local text = lines[lnum] or ""
+        local len = Utf8.len(text)
+        local ignored = {}
+        local parity = {}
+        local pair_count = 0
+        for col = 1, len do
+            local ch = Utf8.char_at(text, col)
+            if is_start[ch] or is_stop[ch] then pair_count = pair_count + 1 end
+        end
+        local ends_in_backslash = len > 0 and Utf8.char_at(text, len) == "\\"
+        local previous_ends_in_backslash = lnum > 1
+            and Utf8.char_at(lines[lnum - 1] or "", Utf8.len(lines[lnum - 1] or "")) == "\\"
+        local honor_double_quotes = check_quotes
+            and not (pair_count % 2 == 1 and not ends_in_backslash and not previous_ends_in_backslash)
+        local in_double = false
+        if honor_double_quotes and previous_ends_in_backslash then
+            in_double = info_at(lnum - 1).ends_in_double
+        end
+        local slashes = 0
+        for col = 1, len do
+            local ch = Utf8.char_at(text, col)
+            parity[col] = slashes % 2
+            local escaped = slashes % 2 == 1
+            if honor_double_quotes and ch == '"' and not escaped then
+                in_double = not in_double
+                ignored[col] = true
+            else
+                local quoted_char = check_quotes
+                    and col > 1
+                    and col < len
+                    and Utf8.char_at(text, col - 1) == "'"
+                    and Utf8.char_at(text, col + 1) == "'"
+                ignored[col] = check_quotes and (in_double or quoted_char) or false
+            end
+            if ch == "\\" then
+                slashes = slashes + 1
+            else
+                slashes = 0
+            end
+        end
+        line_info[lnum] = {
+            text = text,
+            len = len,
+            ignored = ignored,
+            parity = parity,
+            ends_in_double = in_double,
+        }
+        return line_info[lnum]
     end
 
-    -- Forward scan for the matching 'stop' of a given 'start' at position i0
-    local function find_match_forward(i0, startc, stopc)
+    local function usable(info, col, target_parity)
+        return not info.ignored[col]
+            and (not check_slashes or info.parity[col] == target_parity)
+    end
+
+    local function find_match_forward(line0, col0, startc, stopc, target_parity)
         local depth = 1
-        for i = i0 + 1, line_len do
-            local c = ch_at(i)
-            if c == startc then
-                depth = depth + 1
-            elseif c == stopc then
-                depth = depth - 1
-                if depth == 0 then
-                    return i
+        for lnum = line0, #lines do
+            local info = info_at(lnum)
+            local first = lnum == line0 and col0 + 1 or 1
+            for col = first, info.len do
+                local ch = Utf8.char_at(info.text, col)
+                if usable(info, col, target_parity) then
+                    if ch == startc then
+                        depth = depth + 1
+                    elseif ch == stopc then
+                        depth = depth - 1
+                        if depth == 0 then return col, lnum end
+                    end
                 end
             end
         end
-        return nil
     end
 
-    -- Backward scan for the matching 'start' of a given 'stop' at position i0
-    local function find_match_backward(i0, startc, stopc)
+    local function find_match_backward(line0, col0, startc, stopc, target_parity)
         local depth = 1
-        for i = i0 - 1, 1, -1 do
-            local c = ch_at(i)
-            if c == stopc then
-                depth = depth + 1
-            elseif c == startc then
-                depth = depth - 1
-                if depth == 0 then
-                    return i
+        for lnum = line0, 1, -1 do
+            local info = info_at(lnum)
+            local first = lnum == line0 and col0 - 1 or info.len
+            for col = first, 1, -1 do
+                local ch = Utf8.char_at(info.text, col)
+                if usable(info, col, target_parity) then
+                    if ch == stopc then
+                        depth = depth + 1
+                    elseif ch == startc then
+                        depth = depth - 1
+                        if depth == 0 then return col, lnum end
+                    end
                 end
             end
         end
-        return nil
     end
 
-    -- Scan forward (strictly after position x) for the first pair character on this line
-    local function first_pair_after(pos)
-        for i = pos + 1, line_len do
-            local c = ch_at(i)
-            if is_start[c] or is_stop[c] then
-                return i, c
+    local function find_token_forward(line0, col0, token)
+        for lnum = line0, #lines do
+            local info = info_at(lnum)
+            local first = lnum == line0 and col0 or 1
+            local last = info.len - Utf8.len(token) + 1
+            for col = first, last do
+                if Utf8.sub(info.text, col, col + Utf8.len(token) - 1) == token then
+                    return col, lnum
+                end
             end
         end
-        return nil, nil
     end
 
-    local cur = ch_at(x)
-
-    -- Case 1: cursor is on a start or end char -> jump to its match, if any.
-    if is_start[cur] then
-        local stopc = start2stop[cur]
-        local j = find_match_forward(x, cur, stopc)
-        if j then self:cursorSet(j, y) end
-        return
-    elseif is_stop[cur] then
-        local startc = stop2start[cur]
-        local j = find_match_backward(x, startc, cur)
-        if j then self:cursorSet(j, y) end
-        return
+    local function find_token_backward(line0, col0, token)
+        for lnum = line0, 1, -1 do
+            local info = info_at(lnum)
+            local first = lnum == line0 and col0 or info.len - Utf8.len(token) + 1
+            for col = first, 1, -1 do
+                if Utf8.sub(info.text, col, col + Utf8.len(token) - 1) == token then
+                    return col, lnum
+                end
+            end
+        end
     end
 
-    -- Case 2: not on a pair char -> look forward for first pair char on this line.
-    local i, c = first_pair_after(x)
-    if not i then
-        -- Nothing to do if no pair chars after cursor on this line
-        return
+    local two = Utf8.sub(line, x, x + 1)
+    local before = x > 1 and Utf8.sub(line, x - 1, x) or ""
+    if two == "/*" or before == "/*" then
+        local start_col = two == "/*" and x or x - 1
+        local col, lnum = find_token_forward(y, start_col + 2, "*/")
+        if col then
+            self:cursorSet(col + 1, lnum)
+            return true
+        end
+        return false
+    elseif two == "*/" or before == "*/" then
+        local stop_col = two == "*/" and x or x - 1
+        local col, lnum = find_token_backward(y, stop_col - 1, "/*")
+        if col then
+            self:cursorSet(col, lnum)
+            return true
+        end
+        return false
     end
 
-    if is_start[c] then
-        -- Found a start first -> jump to its matching end (if any).
-        local stopc = start2stop[c]
-        local j = find_match_forward(i, c, stopc)
-        if j then self:cursorSet(j, y) end
-        return
-    else
-        -- Found an end before any start -> search backward for that end's start.
-        local startc = stop2start[c]
-        local j = find_match_backward(i, startc, c)
-        if j then self:cursorSet(j, y) end
-        return
+    local candidate_col, candidate_char, candidate_parity
+    local current_info = info_at(y)
+    for col = x, current_info.len do
+        local ch = Utf8.char_at(line, col)
+        if (is_start[ch] or is_stop[ch]) and not current_info.ignored[col] then
+            candidate_col = col
+            candidate_char = ch
+            candidate_parity = current_info.parity[col]
+            break
+        end
     end
+
+    if candidate_col then
+        local col, lnum
+        if is_start[candidate_char] then
+            col, lnum = find_match_forward(
+                y, candidate_col, candidate_char, start2stop[candidate_char], candidate_parity
+            )
+        else
+            col, lnum = find_match_backward(
+                y, candidate_col, stop2start[candidate_char], candidate_char, candidate_parity
+            )
+        end
+        if col then
+            self:cursorSet(col, lnum)
+            return true
+        end
+        return false
+    end
+
+    local hash_col, directive = line:match("^%s*()#%s*([%a]+)")
+    if not directive or x > hash_col then return false end
+    directive = directive:lower()
+    local opening = directive == "if" or directive == "ifdef" or directive == "ifndef"
+    local middle = directive == "else" or directive == "elif"
+    if opening or middle then
+        local depth = 0
+        for lnum = y + 1, #lines do
+            local col, word = (lines[lnum] or ""):match("^%s*()#%s*([%a]+)")
+            word = word and word:lower()
+            if word == "if" or word == "ifdef" or word == "ifndef" then
+                depth = depth + 1
+            elseif word == "endif" then
+                if depth == 0 then
+                    self:cursorSet(col, lnum)
+                    return true
+                end
+                depth = depth - 1
+            elseif opening and depth == 0 and (word == "else" or word == "elif") then
+                self:cursorSet(col, lnum)
+                return true
+            end
+        end
+    elseif directive == "endif" then
+        local depth = 0
+        for lnum = y - 1, 1, -1 do
+            local col, word = (lines[lnum] or ""):match("^%s*()#%s*([%a]+)")
+            word = word and word:lower()
+            if word == "endif" then
+                depth = depth + 1
+            elseif word == "if" or word == "ifdef" or word == "ifndef" then
+                if depth == 0 then
+                    self:cursorSet(col, lnum)
+                    return true
+                end
+                depth = depth - 1
+            end
+        end
+    end
+    return false
 end
 
 local function _first_non_blank_col1(s)
@@ -2528,6 +2686,32 @@ function Window:insertText(text, line, offset, insetoff, cursor_on_end)
     self:cursorSet(col1, ln)
     self:markUpdate((first_dirty ~= math.huge) and first_dirty or line)
     if first_dirty ~= math.huge then buf:run_textchanged() end
+end
+
+function Window:replaceText(text)
+    text = tostring(text or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+    Utf8.each_codepoint(text, function(cp)
+        local char = Utf8.char_for_codepoint(cp)
+        if char == "\n" then
+            self:insertText(char)
+            return
+        end
+
+        local line = self.buffer:get_line(self.cursory, true) or ""
+        local len = Utf8.len(line)
+        if self.cursorx <= len then
+            self.buffer:set_line(
+                self.cursory,
+                Utf8.sub(line, 1, self.cursorx - 1) .. char .. Utf8.sub(line, self.cursorx + 1),
+                true
+            )
+            self:cursorSetX(self.cursorx + 1)
+        else
+            self:insertText(char)
+        end
+    end)
+    Syntax.ParseLinetypes(self.buffer, self.cursory)
+    self:mark_redraw()
 end
 
 function Window:pasteRegister(reg_name, line, offset, isBefore)

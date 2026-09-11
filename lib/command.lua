@@ -50,7 +50,11 @@ Command.emit_raw                  = function(keys_seq)
             else
                 local emitted = key:emittable()
                 if emitted ~= nil then
-                    win:insertText(emitted)
+                    if win.replace_mode then
+                        win:replaceText(emitted)
+                    else
+                        win:insertText(emitted)
+                    end
                 end
             end
         elseif vimmode == "select" then

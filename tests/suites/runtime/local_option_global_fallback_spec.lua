@@ -10,6 +10,12 @@ return {
             vim.api.nvim_set_option_value("tabstop", 4, { scope = "global" })
             vim.api.nvim_set_option_value("shiftwidth", 4, { scope = "global" })
             vim.api.nvim_set_option_value("expandtab", true, { scope = "global" })
+            vim.api.nvim_set_option_value("filetype", "oil", { scope = "global" })
+            vim.api.nvim_set_option_value("syntax", "oil", { scope = "global" })
+            vim.api.nvim_set_option_value("bufhidden", "wipe", { scope = "global" })
+            vim.api.nvim_set_option_value("buftype", "nofile", { scope = "global" })
+            vim.api.nvim_set_option_value("readonly", true, { scope = "global" })
+            vim.api.nvim_set_option_value("modified", true, { scope = "global" })
 
             local buffer_current = {
                 tabstop = vim.bo.tabstop,
@@ -30,6 +36,22 @@ return {
                 tabstop = vim.bo.tabstop,
                 shiftwidth = vim.bo.shiftwidth,
                 expandtab = vim.bo.expandtab,
+                filetype = vim.bo.filetype,
+                syntax = vim.bo.syntax,
+                bufhidden = vim.bo.bufhidden,
+                buftype = vim.bo.buftype,
+                readonly = vim.bo.readonly,
+                modified = vim.bo.modified,
+            }
+
+            local global_filetype = vim.api.nvim_get_option_value("filetype", { scope = "global" })
+            vim.cmd("setfiletype FALLBACK conf")
+            local fallback = { vim.bo.filetype, vim.fn.did_filetype() }
+            vim.cmd("setfiletype lua")
+            local detected = {
+                vim.bo.filetype,
+                vim.fn.did_filetype(),
+                vim.api.nvim_get_option_value("filetype", { scope = "global" }),
             }
 
             vim.api.nvim_set_option_value("number", true, { scope = "global" })
@@ -67,6 +89,9 @@ return {
                 buffer_current = buffer_current,
                 buffer_local = buffer_local,
                 buffer_new = buffer_new,
+                global_filetype = global_filetype,
+                fallback = fallback,
+                detected = detected,
                 window_current = window_current,
                 window_local = window_local,
                 window_new = window_new,
@@ -86,6 +111,15 @@ return {
         Assert.eq("new buffer inherits global tabstop", result.buffer_new.tabstop, 4)
         Assert.eq("new buffer inherits global shiftwidth", result.buffer_new.shiftwidth, 4)
         Assert.eq("new buffer inherits global expandtab", result.buffer_new.expandtab, true)
+        Assert.eq("new buffer resets filetype", result.buffer_new.filetype, "")
+        Assert.eq("new buffer resets syntax", result.buffer_new.syntax, "")
+        Assert.eq("new buffer resets bufhidden", result.buffer_new.bufhidden, "")
+        Assert.eq("new buffer resets buftype", result.buffer_new.buftype, "")
+        Assert.eq("new buffer resets readonly", result.buffer_new.readonly, false)
+        Assert.eq("new buffer resets modified", result.buffer_new.modified, false)
+        Assert.eq("global filetype remains available as an option value", result.global_filetype, "oil")
+        Assert.table_eq("fallback filetype remains replaceable", result.fallback, { "conf", 0 })
+        Assert.table_eq("setfiletype overrides fallback locally", result.detected, { "lua", 1, "oil" })
 
         Assert.eq("current window keeps prior local number", result.window_current.number, false)
         Assert.eq("current window keeps prior local numberwidth", result.window_current.numberwidth, 4)

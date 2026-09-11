@@ -29,6 +29,7 @@ local Json = loadModule("lib.luaapi.json")
 local ScriptSource = loadModule("lib.scriptsource")
 local ApiBuild = loadModule("lib.luaapi.apibuild")
 local Visual = loadModule("lib.visual")
+local Search = loadModule("lib.search")
 
 local funcref_name_by_fn = setmetatable({}, { __mode = "k" })
 local funcref_fn_by_name = {}
@@ -490,32 +491,16 @@ local function _is_vim_list_expr(expr)
 end
 
 local function _prepare_match_pattern(pat, use_ignorecase_opt)
-    pat = tostring(pat or "")
+    return Search.prepare_pattern(pat, use_ignorecase_opt)
+end
 
-    -- Determine case policy from \c / \C markers (last one wins). Remove them from pattern.
-    local case_override -- true => case sensitive, false => ignore case
-    pat = pat:gsub("\\[cC]", function(m)
-        case_override = (m == "\\C")
-        return "" -- strip
-    end)
-
-    -- Base case sensitivity on override or global 'ignorecase'.
-    local case_sensitive
-    if case_override ~= nil then
-        case_sensitive = case_override
-    else
-        if use_ignorecase_opt == false then
-            case_sensitive = true
-        else
-            case_sensitive = not options.get("ignorecase")
-        end
-    end
-
-    local compiled, c_err = VimRegex.compile(pat)
-    if not compiled then
-        return nil, nil, c_err
-    end
-    return compiled, case_sensitive, nil
+local function _pattern_compile_error(err)
+    local message = tostring(err or "")
+    if message:find("Unmatched (", 1, true) then return Error(54) end
+    if message:find("Unmatched )", 1, true) then return Error(55) end
+    if message:find("Unterminated \\%[]", 1, true) then return Error(69) end
+    if message:find("Unterminated [] class", 1, true) then return Error(769) end
+    return Error(5108, message)
 end
 
 local function _search_truthy(v)
@@ -1577,7 +1562,7 @@ function Builtins.mode(_full)
     if vimmode == "normal" then
         return "n"
     elseif vimmode == "insert" then
-        return "i"
+        return windows[curwin].replace_mode and "R" or "i"
     elseif vimmode == "visual" then
         return Visual.mode_char(windows[curwin].visual_kind)
     elseif vimmode == "select" then
@@ -2085,7 +2070,7 @@ end
 
 function Builtins.getcmdtype()
     if CmdRead.is_active() then
-        return ":"
+        return CmdRead.gettype()
     end
     return ""
 end
@@ -2573,8 +2558,8 @@ end
 function Builtins.did_filetype()
     local bnr = windows[curwin].buffer.bufnr
     local bt = scopes._b_by_buf[bnr] or EMPTY_TABLE
-    if bt.did_filetype then
-        return 1
+    if bt.did_filetype ~= nil then
+        return bt.did_filetype and 1 or 0
     end
     local ft = options.get("filetype", nil, windows[curwin].buffer)
     if ft ~= nil and ft ~= "" then
@@ -2656,7 +2641,7 @@ function Builtins.search(pattern, flags, stopline, timeout, skip, ...)
 
     local compiled, case_sensitive, c_err = _prepare_match_pattern(pat)
     if not compiled then
-        error("search(): pattern compile failed: " .. tostring(c_err))
+        error(_pattern_compile_error(c_err))
     end
 
     local line_starts = {}
@@ -3175,11 +3160,11 @@ local function _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, sto
 
     local start_re, start_case_sensitive, start_err = _prepare_match_pattern(start_pat)
     if not start_re then
-        error("searchpair(): start pattern compile failed: " .. tostring(start_err))
+        error(_pattern_compile_error(start_err))
     end
     local end_re, end_case_sensitive, end_err = _prepare_match_pattern(end_pat)
     if not end_re then
-        error("searchpair(): end pattern compile failed: " .. tostring(end_err))
+        error(_pattern_compile_error(end_err))
     end
     local middle_re = nil
     local middle_case_sensitive = true
@@ -3187,11 +3172,157 @@ local function _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, sto
         local mid_err
         middle_re, middle_case_sensitive, mid_err = _prepare_match_pattern(middle_pat)
         if not middle_re then
-            error("searchpair(): middle pattern compile failed: " .. tostring(mid_err))
+            error(_pattern_compile_error(mid_err))
         end
     end
 
     local ctx = _searchpair_context()
+    local stop = tonumber(stopline) or 0
+    stop = math.floor(stop)
+    if stop < 0 then
+        stop = 0
+    elseif stop > ctx.line_count then
+        stop = ctx.line_count
+    end
+    if stop > 0 then
+        want_wrap = false
+    end
+
+    local function literal_pattern(pat)
+        local magic = {
+            ["."] = true,
+            ["^"] = true,
+            ["$"] = true,
+            ["*"] = true,
+            ["["] = true,
+            ["~"] = true,
+            ["\\"] = true,
+        }
+        if Utf8.len(pat) == 1 and not magic[pat] then
+            return pat
+        end
+        local escaped = pat:match("^\\(.)$")
+        if escaped and (magic[escaped] or escaped == "/" or escaped == "?") then
+            return escaped
+        end
+        return nil
+    end
+
+    local start_literal = literal_pattern(start_pat)
+    local end_literal = literal_pattern(end_pat)
+    if middle_pat == "" and start_literal and end_literal and start_literal ~= end_literal then
+        local depth = 0
+        local selected = nil
+        local match_count = 0
+        local skip_error = nil
+
+        local function consider(lnum, col, kind)
+            local line_text = ctx.lines[lnum] or ""
+            local byte_col = Utf8.byte_index(line_text, col, true)
+            local candidate = {
+                kind = kind,
+                s = ctx.line_starts[lnum] + byte_col - 1,
+                e = ctx.line_starts[lnum] + byte_col - 1,
+            }
+            local skipped, err = _searchpair_eval_skip(ctx, skip, candidate)
+            if err ~= nil then
+                skip_error = err
+                return true
+            end
+            if skipped then return false end
+
+            if not backward then
+                if kind == "start" then
+                    if candidate.s ~= ctx.cur_abs then depth = depth + 1 end
+                elseif depth == 0 then
+                    selected = candidate
+                    match_count = match_count + 1
+                    return not repeat_outer
+                else
+                    depth = depth - 1
+                end
+            else
+                if kind == "end" then
+                    if candidate.s ~= ctx.cur_abs then depth = depth + 1 end
+                elseif depth == 0 then
+                    selected = candidate
+                    match_count = match_count + 1
+                    return not repeat_outer
+                else
+                    depth = depth - 1
+                end
+            end
+            return false
+        end
+
+        local function scan(first_line, last_line, step, wrapped)
+            if (step > 0 and first_line > last_line) or (step < 0 and first_line < last_line) then
+                return false
+            end
+            for lnum = first_line, last_line, step do
+                local line_text = ctx.lines[lnum] or ""
+                local line_len = Utf8.len(line_text)
+                local first_col = step > 0 and 1 or line_len
+                local last_col = step > 0 and line_len or 1
+                if lnum == ctx.win.cursory then
+                    if step > 0 then
+                        if wrapped then
+                            last_col = ctx.win.cursorx - 1
+                        else
+                            first_col = ctx.win.cursorx
+                        end
+                    elseif wrapped then
+                        last_col = ctx.win.cursorx + 1
+                    else
+                        first_col = ctx.win.cursorx
+                    end
+                end
+
+                if (step > 0 and first_col <= last_col) or (step < 0 and first_col >= last_col) then
+                    for col = first_col, last_col, step do
+                        if timed_out() then return true end
+                        local ch = Utf8.char_at(line_text, col)
+                        local kind = ch == start_literal and "start"
+                            or (ch == end_literal and "end" or nil)
+                        if kind and consider(lnum, col, kind) then return true end
+                    end
+                end
+            end
+            return false
+        end
+
+        local stopped
+        if backward then
+            local lower = stop > 0 and stop or 1
+            stopped = scan(ctx.win.cursory, lower, -1, false)
+            if not stopped and want_wrap then
+                stopped = scan(ctx.line_count, ctx.win.cursory, -1, true)
+            end
+        else
+            local upper = stop > 0 and stop or ctx.line_count
+            stopped = scan(ctx.win.cursory, upper, 1, false)
+            if not stopped and want_wrap then
+                stopped = scan(1, ctx.win.cursory, 1, true)
+            end
+        end
+
+        if skip_error ~= nil then
+            return want_pos and { 0, 0 } or -1
+        end
+        if not selected then
+            return want_pos and { 0, 0 } or 0
+        end
+
+        local line, col, byte_col = ctx.abs_to_pos(selected.s)
+        if not no_move then
+            ctx.win:_set_cursor_raw(line, col)
+            ctx.win:mark_redraw()
+        end
+        if want_pos then return { line, byte_col } end
+        if return_count then return match_count end
+        return line
+    end
+
     local matches = {}
     local function append(list)
         for i = 1, #list do
@@ -3209,17 +3340,6 @@ local function _searchpair_impl(start_pat, middle_pat, end_pat, flags, skip, sto
         end
         return a.s < b.s
     end)
-
-    local stop = tonumber(stopline) or 0
-    stop = math.floor(stop)
-    if stop < 0 then
-        stop = 0
-    elseif stop > ctx.line_count then
-        stop = ctx.line_count
-    end
-    if stop > 0 then
-        want_wrap = false
-    end
 
     local function in_stop_range(m)
         if stop == 0 then
@@ -3790,73 +3910,59 @@ function Builtins.menu_info(path, modes, ...)
     }
 end
 
+local function _match_string_span(str, compiled, case_sensitive, start, count)
+    str = tostring(str or "")
+    start = tonumber(start) or 0
+    if start < 0 then start = 0 end
+    start = math.floor(start)
+    if start > #str then return nil end
+
+    if count == nil then
+        local hay = start > 0 and str:sub(start + 1) or str
+        local s, e = VimRegex.find_compiled(hay, compiled, case_sensitive)
+        if not s then return nil end
+        return start + s - 1, start + e, hay:sub(s, e)
+    end
+
+    local want_count = math.floor(tonumber(count) or 0)
+    if want_count < 1 then want_count = 1 end
+
+    local from = 1
+    local found = 0
+    while from <= #str + 1 do
+        local s, e = VimRegex.find_compiled(str, compiled, case_sensitive, from)
+        if not s then break end
+        if s - 1 >= start then
+            found = found + 1
+            if found == want_count then
+                return s - 1, e, str:sub(s, e)
+            end
+        end
+        local col = Utf8.col_from_byte(str, s, true)
+        local next_from = Utf8.byte_index(str, col + 1, true)
+        if next_from <= s then next_from = s + 1 end
+        from = next_from
+    end
+    return nil
+end
+
 -- match({expr}, {pat} [, {start} [, {count}]])
 function Builtins.match(expr, pat, start, count)
     local compiled, case_sensitive, c_err = _prepare_match_pattern(pat)
     if not compiled then
-        error("match(): pattern compile failed: " .. tostring(c_err))
+        error(_pattern_compile_error(c_err))
     end
 
     local is_list = _is_vim_list_expr(expr)
 
+    if not is_list then
+        local match_start = _match_string_span(expr, compiled, case_sensitive, start, count)
+        return match_start or -1
+    end
+
     start = tonumber(start) or 0
     local want_count = tonumber(count) or 0
     if want_count < 0 then want_count = 0 end
-
-    -- Helper to iterate matches inside a single string starting from absolute start index
-    local function nth_match_in_string(str, abs_start, nth)
-        if abs_start < 0 then abs_start = 0 end
-        local strlen = #str
-        if abs_start > strlen then return -1 end
-
-        if nth == 0 then
-            -- Fast path: just find first match honoring special start semantics
-            -- When nth not given: if start>0 treat substring from start as beginning so ^ matches there.
-            local search_text = (abs_start > 0) and str:sub(abs_start + 1) or str
-            local s
-            -- VimRegex.find_compiled returns 1-based indices in search_text
-            s = VimRegex.find_compiled(search_text, compiled, case_sensitive)
-            if not s then return -1 end
-            return abs_start + (s - 1)
-        end
-
-        -- When nth>0: iterate non-overlapping matches from start of string, ignoring those before abs_start.
-        local pos = 1
-        local found = 0
-        local hay = str
-        while pos <= #hay do
-            local segment = hay:sub(pos)
-            local s, e
-            s, e = VimRegex.find_compiled(segment, compiled, case_sensitive)
-            if not s then break end
-            local abs_s = pos + s - 1
-            if abs_s >= abs_start then
-                found = found + 1
-                if found == nth then
-                    return abs_s - 1 -- convert to 0-based byte offset
-                end
-            end
-            -- Advance; guard against zero-length matches
-            if e < s then
-                pos = pos + s -- move at least one char forward
-            else
-                pos = pos + e
-            end
-            pos = pos + 1
-        end
-        return -1
-    end
-
-    if not is_list then
-        local str = tostring(expr or "")
-        if want_count == 0 then
-            local off = nth_match_in_string(str, start, 0)
-            return off
-        else
-            local off = nth_match_in_string(str, start, want_count)
-            return off
-        end
-    end
 
     -- List handling
     local list = expr
@@ -3914,28 +4020,18 @@ function Builtins.matchstr(expr, pat, start, count, ...)
         error(Error(118, "matchstr"))
     end
 
-    local is_list = _is_vim_list_expr(expr)
-    local idx = Builtins.match(expr, pat, start, count)
-    if idx < 0 then
-        return ""
-    end
-
-    if is_list then
+    if _is_vim_list_expr(expr) then
+        local idx = Builtins.match(expr, pat, start, count)
+        if idx < 0 then return "" end
         return expr[idx + 1]
     end
 
-    local str = tostring(expr or "")
     local compiled, case_sensitive, c_err = _prepare_match_pattern(pat)
     if not compiled then
-        error("matchstr(): pattern compile failed: " .. tostring(c_err))
+        error(_pattern_compile_error(c_err))
     end
-
-    local segment = str:sub(idx + 1)
-    local s, e = VimRegex.find_compiled(segment, compiled, case_sensitive)
-    if not s then
-        return ""
-    end
-    return segment:sub(s, e)
+    local _, _, matched = _match_string_span(expr, compiled, case_sensitive, start, count)
+    return matched or ""
 end
 
 -- matchstrpos({expr}, {pat} [, {start} [, {count}]])
@@ -3946,7 +4042,7 @@ function Builtins.matchstrpos(expr, pat, start, count, ...)
 
     local compiled, case_sensitive, c_err = _prepare_match_pattern(pat)
     if not compiled then
-        error("matchstrpos(): pattern compile failed: " .. tostring(c_err))
+        error(_pattern_compile_error(c_err))
     end
 
     local is_list = _is_vim_list_expr(expr)
@@ -3955,20 +4051,11 @@ function Builtins.matchstrpos(expr, pat, start, count, ...)
     if want_count < 0 then want_count = 0 end
 
     if not is_list then
-        local idx = Builtins.match(expr, pat, start, count)
-        if idx < 0 then
-            return { "", -1, -1 }
-        end
-
-        local str = tostring(expr or "")
-        local segment = str:sub(idx + 1)
-        local s, e = VimRegex.find_compiled(segment, compiled, case_sensitive)
-        if not s then
-            return { "", -1, -1 }
-        end
-        local m = segment:sub(s, e)
-        local finish = idx + (e - s + 1)
-        return { m, idx, finish }
+        local match_start, match_end, matched = _match_string_span(
+            expr, compiled, case_sensitive, start, count
+        )
+        if match_start == nil then return { "", -1, -1 } end
+        return { matched, match_start, match_end }
     end
 
     local list = expr
@@ -4073,7 +4160,7 @@ local function _split_by_pattern(str, pat, keepempty)
         local base = pat:sub(1, -4)
         local compiled_base, case_sensitive_base, base_err = _prepare_match_pattern(base, false)
         if not compiled_base then
-            error("split(): pattern compile failed: " .. tostring(base_err))
+            error(_pattern_compile_error(base_err))
         end
 
         local out = {}
@@ -4116,7 +4203,7 @@ local function _split_by_pattern(str, pat, keepempty)
 
     local compiled, case_sensitive, c_err = _prepare_match_pattern(pat, false)
     if not compiled then
-        error("split(): pattern compile failed: " .. tostring(c_err))
+        error(_pattern_compile_error(c_err))
     end
     return _split_by_compiled(str, compiled, case_sensitive, keepempty)
 end
@@ -4244,13 +4331,17 @@ function Builtins.escape(str, chars)
     if type(chars) ~= "string" then
         error("escape(): expected {chars} as string")
     end
-    local function pat_escape(ch)
-        return (ch:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"))
+    local escape_chars = {}
+    for col = 1, Utf8.len(chars) do
+        escape_chars[Utf8.char_at(chars, col)] = true
     end
-    for ch in chars:gmatch(".") do
-        str = str:gsub(pat_escape(ch), "\\" .. ch)
+    local out = {}
+    for col = 1, Utf8.len(str) do
+        local ch = Utf8.char_at(str, col)
+        if escape_chars[ch] then out[#out + 1] = "\\" end
+        out[#out + 1] = ch
     end
-    return str
+    return table.concat(out)
 end
 
 function Builtins.winnr(arg)

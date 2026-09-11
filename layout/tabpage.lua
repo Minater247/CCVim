@@ -722,7 +722,8 @@ function Tabpage:render()
 
         if options.get("showmode") and cmdheight > 0 then
             if vimmode == "insert" then
-                ScreenDraw.put_text(screen.height - 1, 0, "-- INSERT --", "ModeMsg")
+                local label = windows[curwin].replace_mode and "-- REPLACE --" or "-- INSERT --"
+                ScreenDraw.put_text(screen.height - 1, 0, label, "ModeMsg")
             elseif vimmode == "visual" or vimmode == "select" then
                 local mode = Visual.mode_char(windows[curwin].visual_kind)
                 local name = vimmode == "select" and "SELECT" or "VISUAL"

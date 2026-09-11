@@ -1477,18 +1477,34 @@ local function eval_node(node, vim9, env)
         local idx = eval_node(node.idx, vim9, env); if is_error(idx) then return idx end
         if container == nil then return nil end
 
+        local function numeric_index()
+            if type(idx) == "number"
+                and ((math.type and math.type(idx) == "float") or idx % 1 ~= 0)
+            then
+                return nil, Error(805)
+            end
+            local numeric_idx = math.modf(num_coerce(idx) or 0)
+            return numeric_idx
+        end
+
         if type(container) == "table" then
             local kind = table_kind(container)
-            if kind == "list" and type(idx) == "number" then
-                local key = idx >= 0 and (idx + 1) or (#container + idx + 1)
+            if kind == "list" then
+                local numeric_idx, index_err = numeric_index()
+                if index_err then return index_err end
+                local key = numeric_idx >= 0 and (numeric_idx + 1) or (#container + numeric_idx + 1)
                 return container[key]
             end
             return container[idx]
         end
 
-        if type(container) == "string" then
-            if type(idx) ~= "number" then return nil end
-            local pos = idx >= 0 and (idx + 1) or (#container + idx + 1)
+        if type(container) == "string" or type(container) == "number" then
+            container = tostring(container)
+            local numeric_idx, index_err = numeric_index()
+            if index_err then return index_err end
+            idx = numeric_idx
+            if idx < 0 then return "" end
+            local pos = idx + 1
             if pos < 1 or pos > #container then return "" end
             return container:sub(pos, pos)
         end

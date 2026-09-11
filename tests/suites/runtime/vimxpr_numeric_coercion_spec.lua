@@ -62,5 +62,36 @@ return {
             Assert.eval_vim(backend, "string isnot# false comparison", "'inclusive' isnot# 'inclusive'"),
             0
         )
+
+        Assert.eq(
+            "string index coerces a numeric string",
+            Assert.eval_vim(backend, "numeric string index", "'abc'['1']"),
+            "b"
+        )
+
+        Assert.eq(
+            "negative string index is empty",
+            Assert.eval_vim(backend, "negative string index", "'abc'[-1]"),
+            ""
+        )
+
+        Assert.eq(
+            "number is converted before indexing",
+            Assert.eval_vim(backend, "number indexing", "123[1]"),
+            "2"
+        )
+
+        Assert.eq(
+            "string list index is converted as a Number",
+            Assert.eval_vim(backend, "decimal numeric string index", "[10, 20]['1.8']"),
+            20
+        )
+
+        Assert.expect_error_code_vim(
+            backend,
+            "Float string index errors",
+            "'abc'[1.8]",
+            "E805"
+        )
     end,
 }

@@ -919,18 +919,24 @@ function FakeParser:new(bufnr, lang)
         _backend = backend_for_lang(lang),
         _doc = nil,
         _tree = FakeTree:new(bufnr, lang, nil),
+        _changedtick = nil,
     }, FakeParser)
 end
 
 function FakeParser:_reparse()
     self._doc = self._backend.parse(self._bufnr, self._lang)
     self._tree = FakeTree:new(self._bufnr, self._lang, self._doc)
+    self._changedtick = api.nvim_buf_get_changedtick(self._bufnr)
+end
+
+function FakeParser:_ensure_parsed()
+    if not self._doc or self._changedtick ~= api.nvim_buf_get_changedtick(self._bufnr) then
+        self:_reparse()
+    end
 end
 
 function FakeParser:get_doc()
-    if not self._doc then
-        self:_reparse()
-    end
+    self:_ensure_parsed()
     return self._doc
 end
 
@@ -942,7 +948,7 @@ function FakeParser:parse(range, on_parse)
         cb = on_parse
     end
 
-    self:_reparse()
+    self:_ensure_parsed()
 
     local trees = { self._tree }
     if cb then
@@ -962,9 +968,7 @@ end
 
 function FakeParser:for_each_tree(fn)
     if type(fn) == "function" then
-        if not self._doc then
-            self:_reparse()
-        end
+        self:_ensure_parsed()
         fn(self._tree, self)
     end
 end
@@ -974,9 +978,7 @@ function FakeParser:register_cbs()
 end
 
 function FakeParser:tree_for_range()
-    if not self._doc then
-        self:_reparse()
-    end
+    self:_ensure_parsed()
     return self._tree
 end
 

@@ -46,6 +46,15 @@ return {
         assert_match("counted lookbehind positive", R, "hi! link", "\\a\\@1<=!", true, 3, 3)
         assert_match("counted lookbehind width", R, "end do label", "\\%(end\\s*do\\s\\+\\)\\@11<=label", true, 8, 12)
         assert_match(
+            "matchit unescaped capture locator",
+            R,
+            [=[\%(--\)\=\[\(=*\)\[]=],
+            [=[\\\@1<!\%(\\\\\)*\\(]=],
+            true,
+            12,
+            13
+        )
+        assert_match(
             "vm escaped counted repeat branch",
             R,
             "- x", "\\%(\\t\\| \\{0,4\\}\\)[-*+]\\%(\\s\\+\\S\\)\\@=",

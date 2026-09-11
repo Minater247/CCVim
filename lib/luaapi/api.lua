@@ -1020,10 +1020,20 @@ function api.nvim_buf_set_text(buffer, start_row, start_col, end_row, end_col, r
         repl[1] = ""
     end
 
+    local new_end_row = srow + #repl - 1
+    local new_end_col = #repl == 1 and (scol + #repl[1]) or #repl[#repl]
+
     repl[1] = prefix .. repl[1]
     repl[#repl] = repl[#repl] .. suffix
 
-    buf:set_lines(sidx - 1, eidx, false, repl, true)
+    buf:set_lines(sidx - 1, eidx, false, repl, true, {
+        start_row = srow,
+        start_col = scol,
+        old_end_row = erow,
+        old_end_col = ecol,
+        new_end_row = new_end_row,
+        new_end_col = new_end_col,
+    })
     request_buffer_redraw(buf, true)
 end
 
@@ -1247,7 +1257,7 @@ function api.nvim_get_mode()
     if vimmode == "normal" then
         return { mode = "n" }
     elseif vimmode == "insert" then
-        return { mode = "i" }
+        return { mode = windows[curwin].replace_mode and "R" or "i" }
     elseif vimmode == "visual" then
         return { mode = Visual.mode_char(windows[curwin].visual_kind) }
     elseif vimmode == "select" then
@@ -2221,6 +2231,21 @@ local function _extmark_in_range(mark, start_line, start_col, end_line, end_col)
     return true
 end
 
+local function _extmark_details(mark, ns_id)
+    local details = {}
+    for k, v in pairs(mark.opts or {}) do
+        details[k] = v
+    end
+    details.ns_id = ns_id
+    if details.right_gravity == nil then
+        details.right_gravity = true
+    end
+    if details.end_row ~= nil and details.end_right_gravity == nil then
+        details.end_right_gravity = false
+    end
+    return details
+end
+
 function api.nvim_buf_get_extmarks(buffer, ns_id, start, end_, opts)
     local buf = buf_for_bufnr(buffer)
     assert(buf)
@@ -2229,6 +2254,12 @@ function api.nvim_buf_get_extmarks(buffer, ns_id, start, end_, opts)
 
     local start_line, start_col = _extmark_pos_from_arg(start)
     local end_line, end_col = _extmark_pos_from_arg(end_)
+    if start == -1 then
+        start_line, start_col = math.huge, math.huge
+    end
+    if end_ == -1 then
+        end_line, end_col = math.huge, math.huge
+    end
     if end_line < start_line or (end_line == start_line and end_col >= 0 and end_col < start_col) then
         start_line, end_line = end_line, start_line
         start_col, end_col = end_col, start_col
@@ -2239,7 +2270,7 @@ function api.nvim_buf_get_extmarks(buffer, ns_id, start, end_, opts)
     Decoration.iter_extmarks(buf, function(mark_ns, id, mark)
         if ns_id == -1 or mark_ns == ns_id then
             if _extmark_in_range(mark, start_line, start_col, end_line, end_col) then
-                items[#items + 1] = { id = id, mark = mark }
+                items[#items + 1] = { id = id, mark = mark, mark_ns = mark_ns }
             end
         end
     end)
@@ -2271,11 +2302,7 @@ function api.nvim_buf_get_extmarks(buffer, ns_id, start, end_, opts)
         local mark = items[i].mark
         local entry = { id, mark.line or 0, mark.col or 0 }
         if opts.details then
-            local details = {}
-            for k, v in pairs(mark.opts or {}) do
-                details[k] = v
-            end
-            entry[4] = details
+            entry[4] = _extmark_details(mark, items[i].mark_ns)
         end
         out[#out + 1] = entry
     end
@@ -2291,14 +2318,7 @@ function api.nvim_buf_get_extmark_by_id(buffer, ns_id, id, opts)
 
     local out = { mark.line or 0, mark.col or 0 }
     if opts.details then
-        local details = {}
-        for k, v in pairs(mark.opts or {}) do details[k] = v end
-        details.ns_id = ns_id
-        if details.right_gravity == nil then details.right_gravity = true end
-        if details.end_row ~= nil and details.end_right_gravity == nil then
-            details.end_right_gravity = false
-        end
-        out[3] = details
+        out[3] = _extmark_details(mark, ns_id)
     end
     return out
 end

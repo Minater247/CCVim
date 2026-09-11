@@ -10,6 +10,7 @@ local VimExpr = loadModule("lib.excmd.vimxpr")
 local ScriptSource = loadModule("lib.scriptsource")
 local Runtime = loadModule("lib.excmd.runtime")
 local TblUtils = loadModule("lib.luaapi.tblutils")
+local Scopes = loadModule("lib.luaapi.scopes")
 
 -- TODO: winhl is currently unhandled anywhere
 
@@ -78,9 +79,11 @@ local opt_defs = {
     },
     guioptions    = {"ggg", "egmrLT","string"},
     hidden        = {"ggg", true,    "boolean"},
+    hlsearch      = {"ggg", true,    "boolean"},
     include       = {"gob", "",      "string"},
     includeexpr   = {"ltb", "",      "string"},
     ignorecase    = {"ggg", false,   "boolean"},
+    incsearch     = {"ggg", true,    "boolean"},
     indentexpr    = {"ltb", "",      "string"},
     indentkeys    = {"ltb", "0{,0},0),0],:,0#,!^F,o,O,e", "string"},
     insertmode    = {"ggg", false,   "boolean"},
@@ -95,7 +98,7 @@ local opt_defs = {
     list          = {"ltw", false,   "boolean"},
     loadplugins   = {"ggg", true,    "boolean"},
     magic         = {"ggg", true,    "boolean"},
-    matchpairs    = {"ltb", "(:),{:},[:],<:>", "string"},
+    matchpairs    = {"ltb", "(:),{:},[:]", "string"},
     mouse         = {"ggg", "nvi",   "string"},
     mousemodel    = {"ggg", "popup_setpos", "string"},
     mousemoveevent= {"ggg", false,   "boolean"},
@@ -172,6 +175,7 @@ local opt_defs = {
     winminwidth   = {"ggg", 1,       "number"},
     winwidth      = {"ggg", 20,      "number"},
     wrap          = {"ltw", false,   "boolean"},
+    wrapscan      = {"ggg", true,    "boolean"},
     write         = {"ggg", true,    "boolean"},
 }
 Options.names = TblUtils.sorted_keys(opt_defs)
@@ -451,9 +455,11 @@ local opt_aliases = {
     fo = "formatoptions",
     gcr = "guicursor",
     hid = "hidden",
+    hls = "hlsearch",
     inc = "include",
     inex = "includeexpr",
     ic = "ignorecase",
+    is = "incsearch",
     inde = "indentexpr",
     indk = "indentkeys",
     im = "insertmode",
@@ -530,6 +536,7 @@ local opt_aliases = {
     wmw = "winminwidth",
     wiw = "winwidth",
     wig = "wildignore",
+    ws = "wrapscan",
 
     -- legacy
     go = "guioptions",
@@ -798,12 +805,23 @@ end
 
 local global_opts = {}
 
+local fresh_buffer_option_defaults = {
+    bufhidden = true,
+    buftype = true,
+    filetype = true,
+    modified = true,
+    readonly = true,
+    syntax = true,
+}
+
 function Options.new_object_local_opts(scope)
     local out = {}
     for name, def in pairs(opt_defs) do
         local loc = def[1]
         local value = global_opts[name]
-        if value ~= nil then
+        if scope == "buf" and fresh_buffer_option_defaults[name] then
+            out[name] = option_default(name)
+        elseif value ~= nil then
             if scope == "buf" and loc == "ltb" then
                 out[name] = value
             elseif scope == "win" and loc == "ltw" then
@@ -1113,6 +1131,9 @@ local function sync_screen_geometry_from_options()
 end
 
 local option_updatees = {
+    hlsearch = function(value)
+        Scopes._v.hlsearch = value and 1 or 0
+    end,
     columns = function(_value)
         sync_screen_geometry_from_options()
     end,

@@ -699,6 +699,10 @@ local function _call_callback(cb, ac, event, ctx)
         ve.reason = data.reason
         ve.complete_type = data.complete_type
         ve.complete_word = data.complete_word
+    elseif event == "CmdlineEnter" or event == "CmdlineLeave" then
+        ve.cmdlevel = data.cmdlevel
+        ve.cmdtype = data.cmdtype
+        if event == "CmdlineLeave" then ve.abort = data.abort == true end
     end
 
     if type(cb) == "function" then

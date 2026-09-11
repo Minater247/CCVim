@@ -58,9 +58,25 @@ return {
             Assert.eq("b:ts_highlight enabled", Scopes._b_by_buf[buf.bufnr].ts_highlight, 1)
             Assert.truthy("highlighter active", Treesitter.highlighter.active[buf.bufnr] ~= nil)
 
+            local parser = Treesitter.get_parser(buf.bufnr, "lua")
+            local backend_parse = parser._backend.parse
+            local parse_count = 0
+            parser._backend = {
+                parse = function(...)
+                    parse_count = parse_count + 1
+                    return backend_parse(...)
+                end,
+            }
+
             local caps_local = Treesitter.get_captures_at_pos(buf.bufnr, 0, local_col)
             local caps_foo = Treesitter.get_captures_at_pos(buf.bufnr, 0, foo_col)
             local caps_return = Treesitter.get_captures_at_pos(buf.bufnr, 0, return_col)
+
+            Assert.eq("unchanged capture queries reuse parse", parse_count, 1)
+
+            buf:set_line(1, line .. " ", true)
+            Treesitter.get_captures_at_pos(buf.bufnr, 0, local_col)
+            Assert.eq("buffer change invalidates parse", parse_count, 2)
 
             local c_local = find_capture(caps_local, "keyword")
             local c_foo = find_capture(caps_foo, "function")

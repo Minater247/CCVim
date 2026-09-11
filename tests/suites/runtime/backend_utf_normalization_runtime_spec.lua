@@ -20,6 +20,15 @@ return {
                 local round_left, round_left_swap = CC.normalize_codepoint(0xE0B6)
                 local full_right, full_right_swap = CC.normalize_codepoint(0xE0B8)
                 local full_left, full_left_swap = CC.normalize_codepoint(0xE0BA)
+                local debug_calls = 0
+                local previous_log_debug = mock.globals().LOG_DEBUG
+                mock.globals().LOG_DEBUG = function()
+                    debug_calls = debug_calls + 1
+                end
+                CC.normalize_codepoint(0xE712)
+                CC.normalize_codepoint(0xE712)
+                CC.normalize_codepoint(0xE712)
+                mock.globals().LOG_DEBUG = previous_log_debug
 
                 Assert.eq("cc left separator glyph", left, string.char(0x97))
                 Assert.eq("cc left separator swap", left_swap, true)
@@ -33,6 +42,7 @@ return {
                 Assert.eq("cc full slanted right swap", full_right_swap, true)
                 Assert.eq("cc full slanted left glyph", full_left, string.char(0x8B))
                 Assert.eq("cc full slanted left swap", full_left_swap, true)
+                Assert.eq("cc unknown glyph logs once", debug_calls, 1)
 
                 CC.default_colors_set(0xF0F0F0, 0x111111, nil, nil, nil)
                 CC.hl_define(1, { foreground = 0xF0F0F0, background = 0x111111 })

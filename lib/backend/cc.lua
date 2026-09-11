@@ -128,6 +128,7 @@ for s = 0, 15 do _palette[s] = current_term_slot_rgb(s) end
 local _default_fg_rgb = _palette[0]
 local _default_bg_rgb = _palette[15]
 local _grids = {}
+local unknown_codepoints = {}
 
 -- =========================================================================
 -- Color math (OKLAB perceptual distance for RGB → nearest slot mapping)
@@ -159,7 +160,10 @@ function CC.normalize_codepoint(cp)
         return replacement.char, replacement.swap == true
     end
 
-    RuntimeScope.LOG_DEBUG("UNKNOWN CC CODEPOINT: 0x%X", cp)
+    if not unknown_codepoints[cp] then
+        unknown_codepoints[cp] = true
+        RuntimeScope.LOG_DEBUG("UNKNOWN CC CODEPOINT: 0x%X", cp)
+    end
     return "?", false
 end
 
