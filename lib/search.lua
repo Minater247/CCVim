@@ -9,6 +9,17 @@ local accepted_direction = 1
 local active
 local VimFn
 local pattern_cache = {}
+local last_char_search
+
+local function not_found_message(pattern, direction)
+    if not options.get("wrapscan") then
+        if direction > 0 then
+            return "E385: Search hit BOTTOM without match for: " .. pattern
+        end
+        return "E384: Search hit TOP without match for: " .. pattern
+    end
+    return "E486: Pattern not found: " .. pattern
+end
 
 function Search.prepare_pattern(pattern, use_ignorecase_opt)
     local raw = tostring(pattern or "")
@@ -94,24 +105,38 @@ local function perform(win, pattern, direction, count, origin)
     restore(win, origin)
     VimFn = VimFn or loadModule("lib.luaapi.fn")
     local found = false
+    local wrapped = false
     local ok, err = pcall(function()
         for _ = 1, count or 1 do
+            local previous_line = win.cursory
+            local previous_col = win.cursorx
             if VimFn.fn.search(pattern, direction < 0 and "b" or "") == 0 then
                 found = false
                 return
             end
             found = true
+            if direction > 0 then
+                if win.cursory < previous_line
+                    or (win.cursory == previous_line and win.cursorx <= previous_col)
+                then
+                    wrapped = true
+                end
+            elseif win.cursory > previous_line
+                or (win.cursory == previous_line and win.cursorx >= previous_col)
+            then
+                wrapped = true
+            end
         end
     end)
     if not ok or not found then
         restore(win, origin)
-        return false, err
+        return false, err, false
     end
 
     local line, col = win.cursory, win.cursorx
     restore(win, origin)
     win:cursorSet(col, line)
-    return true
+    return true, nil, wrapped
 end
 
 local function accept(pattern, direction)
@@ -152,10 +177,11 @@ function Search.change(pattern)
         return
     end
 
-    local ok = perform(active.win, active.pattern, active.direction, active.count, active.origin)
+    local ok, _, wrapped = perform(active.win, active.pattern, active.direction, active.count, active.origin)
     if ok then
         active.valid = true
         active.current = position(active.win)
+        active.wrapped = wrapped
     end
 end
 
@@ -184,14 +210,14 @@ function Search.finish(pattern)
     accept(effective, state.direction)
     if options.get("incsearch") and pattern ~= "" and state.valid then
         state.win:mark_redraw()
-        return true, state.origin
+        return true, state.origin, nil, state.wrapped
     end
 
-    local ok = perform(state.win, effective, state.direction, state.count, state.origin)
+    local ok, _, wrapped = perform(state.win, effective, state.direction, state.count, state.origin)
     if not ok then
-        return false, state.origin, "E486: Pattern not found: " .. effective
+        return false, state.origin, not_found_message(effective, state.direction)
     end
-    return true, state.origin
+    return true, state.origin, nil, wrapped
 end
 
 function Search.execute(pattern, direction, count, remember_direction)
@@ -213,15 +239,104 @@ function Search.execute(pattern, direction, count, remember_direction)
         Scopes._v.hlsearch = 1
     end
 
-    local ok = perform(win, effective, direction, count or 1, origin)
+    local ok, _, wrapped = perform(win, effective, direction, count or 1, origin)
     if not ok then
-        return false, origin, "E486: Pattern not found: " .. effective
+        return false, origin, not_found_message(effective, direction)
     end
-    return true, origin
+    return true, origin, nil, wrapped
 end
 
 function Search.direction()
     return accepted_direction
+end
+
+local function find_char_position(win, target, direction, till, count, repeated)
+    target = tostring(target or "")
+    if Utf8.len(target) ~= 1 then return false end
+
+    local line = win.buffer:get_line(win.cursory, true) or ""
+    local line_len = Utf8.len(line)
+    local scan_col = win.cursorx
+    if repeated and till and not options.get("cpoptions"):find(";", 1, true) then
+        local adjacent = scan_col + direction
+        if adjacent >= 1 and adjacent <= line_len and Utf8.char_at(line, adjacent) == target then
+            scan_col = adjacent
+        end
+    end
+
+    local remaining = math.max(1, math.floor(tonumber(count) or 1))
+    local match_byte
+    if direction > 0 then
+        local byte_start = Utf8.byte_index(line, scan_col + 1, true)
+        while remaining > 0 do
+            match_byte = line:find(target, byte_start, true)
+            if not match_byte then return false end
+            byte_start = match_byte + #target
+            remaining = remaining - 1
+        end
+    else
+        local byte_limit = Utf8.byte_index(line, scan_col, true)
+        local matches = {}
+        local seen = 0
+        local byte_start = 1
+        while true do
+            local found = line:find(target, byte_start, true)
+            if not found or found >= byte_limit then break end
+            seen = seen + 1
+            matches[((seen - 1) % remaining) + 1] = found
+            byte_start = found + #target
+        end
+        if seen < remaining then return false end
+        match_byte = matches[((seen - remaining) % remaining) + 1]
+    end
+
+    local match_col = Utf8.col_from_byte(line, match_byte, false)
+    local destination = match_col - (till and direction or 0)
+    return destination
+end
+
+function Search.find_char(win, target, direction, till, count)
+    last_char_search = {
+        target = target,
+        direction = direction,
+        till = till,
+    }
+    local destination = find_char_position(win, target, direction, till, count, false)
+    if not destination then return false end
+    win:cursorSetX(destination)
+    win:mark_redraw()
+    return true
+end
+
+function Search.find_char_position(win, target, direction, till, count)
+    last_char_search = {
+        target = target,
+        direction = direction,
+        till = till,
+    }
+    return find_char_position(win, target, direction, till, count, false)
+end
+
+function Search.repeat_char_position(win, opposite, count)
+    if not last_char_search then return false end
+    local direction = opposite and -last_char_search.direction or last_char_search.direction
+    local destination = find_char_position(
+        win,
+        last_char_search.target,
+        direction,
+        last_char_search.till,
+        count,
+        true
+    )
+    return destination, direction
+end
+
+function Search.repeat_char(win, opposite, count)
+    local destination = Search.repeat_char_position(win, opposite, count)
+    if not destination then return false end
+    win:cursorSetX(destination)
+    win:mark_redraw()
+    return true
 end
 
 function Search.is_active_for(win)

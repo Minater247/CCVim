@@ -472,12 +472,6 @@ local function _composite_node(buf_node, glob_node)
                 keys[k] = true
             end
         end
-    elseif glob_has_leaf then
-        if glob_node.children then
-            for k in pairs(glob_node.children) do
-                keys[k] = true
-            end
-        end
     else
         if buf_node.children then for k in pairs(buf_node.children) do keys[k] = true end end
         if glob_node.children then for k in pairs(glob_node.children) do keys[k] = true end end
@@ -1070,7 +1064,7 @@ local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_sp
     if not node.motion_root then node.motion_root = { children = {} } end
     Command.Log("map-operator(mode=normal builtin=%s) seq=%s", tostring(is_builtin == true), seq_tostring(op_seq))
 
-    local function add_motion(lhs_seq, motion_name)
+    local function add_motion(lhs_seq, motion_name, takes_argument)
         local mnode = node.motion_root
         local mseq = normalize_seq(lhs_seq)
         for i = 1, #mseq do
@@ -1082,6 +1076,7 @@ local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_sp
             mnode = child
         end
         mnode.motion_name = motion_name
+        mnode.motion_takes_argument = takes_argument == true
         Command.Log("  op-motion name=%s lhs=%s", motion_name, seq_tostring(mseq))
     end
 
@@ -1093,11 +1088,11 @@ local function _insert_operator_with_motions(op_lhs_seq, operator_cb, motions_sp
         end
     end
     if is_map then
-        for name, lhs in pairs(motions_spec) do add_motion(lhs, name) end
+        for name, lhs in pairs(motions_spec) do add_motion(lhs, name, false) end
     else
         for _, item in ipairs(motions_spec) do
             assert(type(item) == "table" and item.name and item.lhs, "motion item must have name,lhs")
-            add_motion(item.lhs, item.name)
+            add_motion(item.lhs, item.name, item.takes_argument)
         end
     end
     mappings_changed()
@@ -1438,7 +1433,7 @@ local function _enter_op_pending_global(op_node)
     state.op_motion = _new_motion_state(state.pending_op.motion_root)
 end
 
-local function _execute_operator_with_motion(motion_leaf)
+local function _execute_operator_with_motion(motion_leaf, motion_argument)
     local op_cnt  = (state.count_committed and state.count_value) or
         (state.pending_op and state.pending_op.op_count_base)
     local ms      = state.op_motion or {}
@@ -1452,12 +1447,25 @@ local function _execute_operator_with_motion(motion_leaf)
     Command.Log("operator+motion name=%s op=%d motion=%d total=%d", mname, op_cnt, mot_cnt, total)
 
     cancel_ambiguous_timer()
-    -- Operator callback signature:
-    --   cb(total_count, motion_name, op_count, motion_count)
     _with_undo_block(function()
-        state.pending_op.cb(total, mname, op_cnt, mot_cnt)
+        state.pending_op.cb(total, mname, op_cnt, mot_cnt, motion_argument)
     end)
     reset_state()
+end
+
+local function _read_operator_motion_argument(motion_leaf)
+    cancel_ambiguous_timer()
+    Command.override_emitter[#Command.override_emitter + 1] = function(key)
+        table.remove(Command.override_emitter)
+        table.remove(Command.emitter_names)
+        local argument = key:emittable()
+        if argument == nil then
+            reset_state()
+            return
+        end
+        _execute_operator_with_motion(motion_leaf, argument)
+    end
+    Command.emitter_names[#Command.emitter_names + 1] = "Operator.motion_argument"
 end
 
 local function _single_key_operator_node(root, keynum)
@@ -1493,7 +1501,11 @@ local function _op_motion_step(code)
     if at_leaf then
         ms.best_node = next_node
         if not has_more then
-            _execute_operator_with_motion(next_node)
+            if next_node.motion_takes_argument then
+                _read_operator_motion_argument(next_node)
+            else
+                _execute_operator_with_motion(next_node)
+            end
             return true
         else
             start_ambiguous_timer()

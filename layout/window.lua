@@ -110,6 +110,7 @@ function Window.SwitchBuffer(win, newbuf, opts)
     end
 
     win.buffer = newbuf
+    win:clampCursor()
     Syntax.OnWindowBufferChanged(win)
     Scopes.w.current_syntax = nil
 
@@ -118,6 +119,25 @@ function Window.SwitchBuffer(win, newbuf, opts)
     end
 
     return true
+end
+
+function Window:clampCursor()
+    local loaded = self.buffer:is_loaded()
+    local line_count = loaded and math.max(1, self.buffer:line_count(false)) or 1
+    self.cursory = math.max(1, math.min(self.cursory or 1, line_count))
+
+    local line_len = loaded and self.buffer:line_len(self.cursory, false) or 0
+    local max_col
+    if vimmode == "insert" then
+        max_col = line_len + 1
+    elseif vimmode == "visual" or vimmode == "select" then
+        max_col = line_len + (options.get("selection") == "old" and 0 or 1)
+        if self.visual_kind == "block" then max_col = line_len + 1 end
+    else
+        max_col = line_len
+    end
+    self.cursorx = math.max(1, math.min(self.cursorx or 1, math.max(1, max_col)))
+    self.scrolly[1] = math.max(1, math.min(self.scrolly[1] or 1, line_count))
 end
 
 function Window:minwidth()

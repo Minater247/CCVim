@@ -1015,6 +1015,10 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto, e
     ModifierState.check()
     self.loaded = true
     local line_count = #self.lines
+    local cursor_rows = {}
+    for _, win in pairs(windows or {}) do
+        if win.buffer == self then cursor_rows[win] = win.cursory end
+    end
 
     -- Normalize negatives relative to end+1, remaining 0-based for now
     local s = start0 >= 0 and start0 or (line_count + 1 + start0)
@@ -1078,6 +1082,17 @@ function Buffer:set_lines(start0, stop0, strict_indexing, replacement, noauto, e
     -- 3) Ensure buffer has at least one (possibly empty) line
     if #self.lines == 0 then
         self.lines = { "" }
+    end
+
+    local line_delta = m_insert - k_remove
+    for win, old_row in pairs(cursor_rows) do
+        local old_row0 = old_row - 1
+        if old_row0 >= e then
+            win.cursory = old_row + line_delta
+        elseif old_row0 >= s then
+            win.cursory = math.min(old_row0, s + m_insert) + 1
+        end
+        win:clampCursor()
     end
 
     if k_remove > 0 or m_insert > 0 then

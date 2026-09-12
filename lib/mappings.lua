@@ -14,6 +14,7 @@ local RegisterUtil = loadModule("lib.registers")
 local Scopes = loadModule("lib.luaapi.scopes")
 local Tab = loadModule("lib.tab")
 local Search = loadModule("lib.search")
+local AutoCmd = loadModule("lib.autocmd")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 
@@ -763,11 +764,30 @@ local function _move_jump(older, count)
     _go_to_jump(win, jumps[target])
 end
 
+local function _report_search_wrap(direction, win, fire_event)
+    if not options.get("shortmess"):find("s", 1, true) then
+        ExMsg._writeWithHL(
+            direction > 0 and "search hit BOTTOM, continuing at TOP"
+                or "search hit TOP, continuing at BOTTOM",
+            "WarningMsg"
+        )
+    end
+    if fire_event then
+        AutoCmd.Run("SearchWrapped", {
+            bufnr = win.buffer.bufnr,
+            bufname = win.buffer.name,
+        })
+    end
+end
+
 local function _run_search(pattern, direction, count, remember_direction)
     local win = windows[curwin]
-    local found, origin, err = Search.execute(pattern, direction, count, remember_direction)
+    local found, origin, err, wrapped = Search.execute(pattern, direction, count, remember_direction)
     if found then
         _record_jump_position(win, origin)
+        if wrapped then
+            _report_search_wrap(direction, win, true)
+        end
     else
         ExMsg.echoerr(err)
     end
@@ -779,9 +799,10 @@ local function _read_search(direction, count)
     CmdRead.read(
         direction > 0 and "/" or "?",
         function(pattern)
-            local found, origin, err = Search.finish(pattern)
+            local found, origin, err, wrapped = Search.finish(pattern)
             if found then
                 _record_jump_position(win, origin)
+                if wrapped then _report_search_wrap(direction, win, false) end
             else
                 ExMsg.echoerr(err)
             end
@@ -789,6 +810,73 @@ local function _read_search(direction, count)
         Search.change,
         Search.cancel
     )
+end
+
+local function _read_char_search(direction, till, count)
+    Command.override_emitter[#Command.override_emitter + 1] = function(key)
+        table.remove(Command.override_emitter)
+        table.remove(Command.emitter_names)
+        local target = key:emittable()
+        if target then
+            Search.find_char(windows[curwin], target, direction, till, count)
+        end
+    end
+    Command.emitter_names[#Command.emitter_names + 1] =
+        vimmode == "visual" and "Visual.find_char" or "Normal.find_char"
+end
+
+local char_motion = {
+    f = { direction = 1, till = false },
+    F = { direction = -1, till = false },
+    t = { direction = 1, till = true },
+    T = { direction = -1, till = true },
+}
+
+local char_motion_specs = {
+    { name = "f", lhs = { K(keys.f) }, takes_argument = true },
+    { name = "F", lhs = { K(keys.f, false, true) }, takes_argument = true },
+    { name = "t", lhs = { K(keys.t) }, takes_argument = true },
+    { name = "T", lhs = { K(keys.t, false, true) }, takes_argument = true },
+    { name = ";", lhs = { K(keys.semiColon or keys.semicolon) } },
+    { name = ",", lhs = { K(keys.comma) } },
+}
+
+local function _char_operator_range(win, motion_name, target, count)
+    local motion = char_motion[motion_name]
+    local start_col = win.cursorx
+    local target_col
+    local direction
+    if motion then
+        direction = motion.direction
+        target_col = Search.find_char_position(win, target, direction, motion.till, count)
+    elseif motion_name == ";" or motion_name == "," then
+        target_col, direction = Search.repeat_char_position(win, motion_name == ",", count)
+    else
+        return nil
+    end
+    if not target_col then return nil end
+    if direction > 0 then
+        return start_col, target_col
+    end
+    return target_col, start_col - 1
+end
+
+local function _char_operator_text(win, motion_name, target, count)
+    local first_col, last_col = _char_operator_range(win, motion_name, target, count)
+    if not first_col then return nil end
+    local line = win.buffer:get_line(win.cursory, true) or ""
+    return Utf8.sub(line, first_col, last_col), first_col, last_col, line
+end
+
+local function _operator_motion_specs(extra)
+    local specs = {}
+    for i = 1, #extra do specs[#specs + 1] = extra[i] end
+    for i = 1, #char_motion_specs do specs[#specs + 1] = char_motion_specs[i] end
+    return specs
+end
+
+local function _is_char_motion(name)
+    return char_motion[name] ~= nil or name == ";" or name == ","
 end
 
 Command.nimap_builtin_callback({ K(keys.down) }, _mov_dn)
@@ -809,6 +897,26 @@ Command.nmap_builtin_callback({ K(keys.n) }, function(count)
 end)
 Command.nmap_builtin_callback({ K(keys.n, false, true) }, function(count)
     _run_search("", -Search.direction(), count, false)
+end)
+Command.nmap_builtin_callback({ K(keys.f) }, function(count) _read_char_search(1, false, count) end)
+Command.nmap_builtin_callback({ K(keys.f, false, true) }, function(count) _read_char_search(-1, false, count) end)
+Command.nmap_builtin_callback({ K(keys.t) }, function(count) _read_char_search(1, true, count) end)
+Command.nmap_builtin_callback({ K(keys.t, false, true) }, function(count) _read_char_search(-1, true, count) end)
+Command.nmap_builtin_callback({ K(keys.semiColon or keys.semicolon) }, function(count)
+    Search.repeat_char(windows[curwin], false, count)
+end)
+Command.nmap_builtin_callback({ K(keys.comma) }, function(count)
+    Search.repeat_char(windows[curwin], true, count)
+end)
+Command.vmap_builtin_callback({ K(keys.f) }, function(count) _read_char_search(1, false, count) end)
+Command.vmap_builtin_callback({ K(keys.f, false, true) }, function(count) _read_char_search(-1, false, count) end)
+Command.vmap_builtin_callback({ K(keys.t) }, function(count) _read_char_search(1, true, count) end)
+Command.vmap_builtin_callback({ K(keys.t, false, true) }, function(count) _read_char_search(-1, true, count) end)
+Command.vmap_builtin_callback({ K(keys.semiColon or keys.semicolon) }, function(count)
+    Search.repeat_char(windows[curwin], false, count)
+end)
+Command.vmap_builtin_callback({ K(keys.comma) }, function(count)
+    Search.repeat_char(windows[curwin], true, count)
 end)
 Command.nmap_builtin_callback({ K(keys.o, true) }, function(count) _move_jump(true, count) end)
 Command.nmap_builtin_callback({ K(keys.i, true) }, function(count) _move_jump(false, count) end)
@@ -1580,43 +1688,54 @@ Command.nmap_builtin_callback(
 
 Command.nmap_builtin_operator_with_motions(
     { K(keys.y) },
-    function(total, motion_name)
+    function(total, motion_name, _, _, motion_argument)
         local win = windows[curwin]
         local buf = win.buffer
-        if motion_name ~= "w" then
+        if _is_char_motion(motion_name) then
+            local text, first_col = _char_operator_text(
+                win,
+                motion_name,
+                motion_argument,
+                total or 1
+            )
+            if text then
+                _set_visual_register("char", text)
+                win:cursorSetX(first_col)
+            end
+        elseif motion_name == "w" then
+            local start_line = win.cursory
+            local start_col = win.cursorx
+            local target_line, target_col = WordNav.posNext(
+                win,
+                false,
+                false,
+                total or 1,
+                start_line,
+                start_col
+            )
+            if not target_line then
+                target_line = buf:line_count(true)
+                target_col = Utf8.len(buf:get_line(target_line, true) or "") + 1
+            end
+
+            local parts = {}
+            if target_line == start_line then
+                parts[1] = Utf8.sub(buf:get_line(start_line, true) or "", start_col, target_col - 1)
+            else
+                parts[1] = Utf8.sub(buf:get_line(start_line, true) or "", start_col)
+                for line = start_line + 1, target_line - 1 do
+                    parts[#parts + 1] = buf:get_line(line, true) or ""
+                end
+                parts[#parts + 1] = Utf8.sub(buf:get_line(target_line, true) or "", 1, target_col - 1)
+            end
+            _set_visual_register("char", table.concat(parts, "\n"))
+        else
             return
         end
-
-        local start_line = win.cursory
-        local start_col = win.cursorx
-        local target_line, target_col = WordNav.posNext(
-            win,
-            false,
-            false,
-            total or 1,
-            start_line,
-            start_col
-        )
-        if not target_line then
-            target_line = buf:line_count(true)
-            target_col = Utf8.len(buf:get_line(target_line, true) or "") + 1
-        end
-
-        local parts = {}
-        if target_line == start_line then
-            parts[1] = Utf8.sub(buf:get_line(start_line, true) or "", start_col, target_col - 1)
-        else
-            parts[1] = Utf8.sub(buf:get_line(start_line, true) or "", start_col)
-            for line = start_line + 1, target_line - 1 do
-                parts[#parts + 1] = buf:get_line(line, true) or ""
-            end
-            parts[#parts + 1] = Utf8.sub(buf:get_line(target_line, true) or "", 1, target_col - 1)
-        end
-        _set_visual_register("char", table.concat(parts, "\n"))
     end,
-    {
-        ["w"] = { K(keys.w) },
-    }
+    _operator_motion_specs({
+        { name = "w", lhs = { K(keys.w) } },
+    })
 )
 
 Command.nmap_builtin_callback(
@@ -1660,13 +1779,31 @@ Command.nmap_builtin_callback(
 
 Command.nmap_builtin_operator_with_motions(
     { K(keys.d) },
-    function(total, motion_name)
+    function(total, motion_name, _, _, motion_argument)
         local win = windows[curwin]
         local buf = win.buffer
 
         total = total or 1
 
-        if motion_name == "$" then
+        if _is_char_motion(motion_name) then
+            local removed, first_col, last_col, line = _char_operator_text(
+                win,
+                motion_name,
+                motion_argument,
+                total
+            )
+            if removed then
+                buf:set_line(
+                    win.cursory,
+                    Utf8.sub(line, 1, first_col - 1) .. Utf8.sub(line, last_col + 1),
+                    true
+                )
+                push_char_delete({ removed })
+                Syntax.ParseLinetypes(buf, win.cursory)
+                win:cursorSetX(math.min(first_col, math.max(1, Utf8.len(buf:get_line(win.cursory, true) or ""))))
+                win:mark_redraw()
+            end
+        elseif motion_name == "$" then
             local lines = {}
             lines[1] = Utf8.sub(buf:get_line(win.cursory, true), win.cursorx)
             buf:set_line(win.cursory, Utf8.sub(buf:get_line(win.cursory, true), 1, win.cursorx - 1))
@@ -1797,20 +1934,41 @@ Command.nmap_builtin_operator_with_motions(
 
         win:cursorMove(0, 0)
     end,
-    {
-        ["w"] = { K(keys.w) },
-        ["$"] = { K(keys.four, false, true) },
-        ["e"] = { K(keys.e) },
-    }
+    _operator_motion_specs({
+        { name = "w", lhs = { K(keys.w) } },
+        { name = "$", lhs = { K(keys.four, false, true) } },
+        { name = "e", lhs = { K(keys.e) } },
+    })
 )
 
 Command.nmap_builtin_operator_with_motions(
     { K(keys.c) },
-    function(total, motion_name)
+    function(total, motion_name, _, _, motion_argument)
         local win = windows[curwin]
         local buf = win.buffer
 
-        if motion_name == "$" then
+        if _is_char_motion(motion_name) then
+            local removed, first_col, last_col, line = _char_operator_text(
+                win,
+                motion_name,
+                motion_argument,
+                total or 1
+            )
+            if not removed then return end
+            buf:set_line(
+                win.cursory,
+                Utf8.sub(line, 1, first_col - 1) .. Utf8.sub(line, last_col + 1),
+                true
+            )
+            push_char_delete({ removed })
+            Syntax.ParseLinetypes(buf, win.cursory)
+            win:cursorSetX(math.min(first_col, math.max(1, Utf8.len(buf:get_line(win.cursory, true) or ""))))
+            setMode("insert")
+            if win.cursorx > 1 then
+                win.insert_curs_start = { win.cursorx - 1, win.cursory }
+            end
+            win:mark_redraw()
+        elseif motion_name == "$" then
             local lines = {}
             lines[1] = Utf8.sub(buf:get_line(win.cursory, true), win.cursorx)
             buf:set_line(win.cursory, Utf8.sub(buf:get_line(win.cursory, true), 1, win.cursorx - 1))
@@ -1882,10 +2040,10 @@ Command.nmap_builtin_operator_with_motions(
             win:mark_redraw()
         end
     end,
-    {
-        ["$"] = { K(keys.four, false, true) },
-        ["e"] = { K(keys.e) },
-    }
+    _operator_motion_specs({
+        { name = "$", lhs = { K(keys.four, false, true) } },
+        { name = "e", lhs = { K(keys.e) } },
+    })
 )
 
 Command.nmap_builtin_operator_with_motions(

@@ -699,6 +699,7 @@ function api.nvim_win_set_buf(...)
     end
     win.buffer = newbuf
     newbuf.refcount = (newbuf.refcount or 0) + 1
+    win:clampCursor()
 
     local Syntax = loadModule("lib.syntax")
     Syntax.OnWindowBufferChanged(win)
