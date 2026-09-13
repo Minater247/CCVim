@@ -47,11 +47,14 @@ local opt_defs = {
     conceallevel  = {"ltw", 0,       "number"},
     copyindent    = {"ltb", false,   "boolean"},
     cpoptions     = {"ggg", "aABceFs_", "string"},
+    cursorbind    = {"ltw", false,   "boolean"},
     cursorcolumn  = {"ltw", false,   "boolean"},
     cursorline    = {"ltw", false,   "boolean"},
     cursorlineopt = {"ltw", "both",  "string"},
     define        = {"gob", "",      "string"},
     diff          = {"ltw", false,   "boolean"},
+    diffexpr      = {"ggg", "",      "string"},
+    diffopt       = {"ggg", "internal,filler,closeoff,linematch:40", "string"},
     encoding      = {"ggg", "utf-8", "string"},
     equalalways   = {"ggg", true,    "boolean"},
     eventignore   = {"ggg", "",      "string"},
@@ -121,6 +124,8 @@ local opt_defs = {
     relativenumber= {"ltw", false,   "boolean"},
     report        = {"ggg", 2,       "number"},
     runtimepath   = {"ggg", ccvim_path .. "/runtime," .. ccvim_path .. "/runtime/after", "string"},
+    scrollbind    = {"ltw", false,   "boolean"},
+    scrollopt     = {"ggg", "ver,jump", "string"},
     shell         = {"ggg", "sh",    "string"},
     shiftwidth    = {"ltb", 8,       "number"},
     shortmess     = {"ggg", "ltToOCF", "string"},
@@ -250,6 +255,42 @@ local function _normalize_mouse_flags(value)
 end
 
 local function _normalize_option_value(name, value, source_expr)
+    if name == "diffopt" and type(value) == "string" then
+        local flags = {
+            closeoff = true, filler = true, followwrap = true, hiddenoff = true,
+            horizontal = true, iblank = true, icase = true, ["indent-heuristic"] = true,
+            internal = true, iwhite = true, iwhiteall = true, iwhiteeol = true,
+            vertical = true,
+        }
+        local algorithms = { myers = true, minimal = true, patience = true, histogram = true }
+        local horizontal = false
+        local vertical = false
+        for item in value:gmatch("[^,]+") do
+            local numeric_name = item:match("^(context):%d+$")
+                or item:match("^(foldcolumn):%d+$")
+                or item:match("^(linematch):%d+$")
+            local algorithm = item:match("^algorithm:(.+)$")
+            local valid = flags[item] or numeric_name or (algorithm and algorithms[algorithm])
+            if not valid then error(Error(474, source_expr)) end
+            if flags[item] then
+                if item == "horizontal" then horizontal = true end
+                if item == "vertical" then vertical = true end
+            end
+        end
+        if horizontal and vertical then error(Error(474, source_expr)) end
+        return value
+    end
+
+    if name == "scrollopt" and type(value) == "string" then
+        local allowed = { ver = true, hor = true, jump = true }
+        for item in value:gmatch("[^,]+") do
+            if not allowed[item] then
+                error(Error(474, source_expr))
+            end
+        end
+        return value
+    end
+
     if name == "bufhidden" and type(value) == "string" then
         local v = tostring(value):gsub("^%s+", ""):gsub("%s+$", ""):lower()
         local allowed = {
@@ -433,10 +474,13 @@ local opt_aliases = {
     cole = "conceallevel",
     cfu = "completefunc",
     cpo = "cpoptions",
+    crb = "cursorbind",
     cuc = "cursorcolumn",
     cul = "cursorline",
     culopt = "cursorlineopt",
     def = "define",
+    dex = "diffexpr",
+    dip = "diffopt",
     enc = "encoding",
     ea = "equalalways",
     ei = "eventignore",
@@ -507,6 +551,8 @@ local opt_aliases = {
     sts = "softtabstop",
     spr = "splitright",
     sb = "splitbelow",
+    scb = "scrollbind",
+    sbo = "scrollopt",
     sol = "startofline",
     stl = "statusline",
     syn = "syntax",
@@ -1131,6 +1177,18 @@ local function sync_screen_geometry_from_options()
 end
 
 local option_updatees = {
+    diff = function(_value, win)
+        if win then
+            win.need_redraw = true
+        else
+            what_redraw["windows"] = true
+        end
+        need_redraw = true
+    end,
+    diffopt = function()
+        what_redraw["windows"] = true
+        need_redraw = true
+    end,
     hlsearch = function(value)
         Scopes._v.hlsearch = value and 1 or 0
     end,

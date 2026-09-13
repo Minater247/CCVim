@@ -215,10 +215,10 @@ local function create_default_namespace()
     hlgroups.WildMenu = make_group(RGB.black, RGB.yellow)
     hlgroups.Folded = make_group(RGB.cyan, RGB.gray)
     hlgroups.FoldColumn = make_group(RGB.cyan, RGB.lightGray)
-    hlgroups.DiffAdd = make_group(nil, RGB.blue)
-    hlgroups.DiffChange = make_group(nil, RGB.purple)
-    hlgroups.DiffDelete = make_group(RGB.blue, RGB.cyan)
-    hlgroups.DiffText = make_group(nil, RGB.red)
+    hlgroups.DiffAdd = make_group(RGB.black, RGB.green)
+    hlgroups.DiffChange = make_group(nil, RGB.gray)
+    hlgroups.DiffDelete = make_group(RGB.red)
+    hlgroups.DiffText = make_group(RGB.black, RGB.cyan)
     hlgroups.SignColumn = make_group(RGB.cyan, RGB.gray)
     hlgroups._:link("CursorLineSign", "SignColumn")
     hlgroups.SpellBad = make_group(RGB.gray, RGB.red)
@@ -282,6 +282,16 @@ end
 
 local hlns = { create_default_namespace() }
 
+local function group_has_attrs(group)
+    return type(group) == "table" and (
+        group[1] ~= nil
+        or group[2] ~= nil
+        or group[3] ~= nil
+        or group._cterm_fg ~= nil
+        or group._cterm_bg ~= nil
+    )
+end
+
 local function ns_table(ns)
     ns = ns or 0
     local idx = ns + 1
@@ -296,7 +306,7 @@ end
 local function resolved_normal_colors(ns)
     local tbl = ns_table(ns)
     local stored = tbl.Normal
-    if (not stored or #stored == 0) and ns and ns ~= 0 then
+    if not group_has_attrs(stored) and ns and ns ~= 0 then
         stored = hlns[1].Normal
     end
     stored = stored or {}
@@ -314,7 +324,7 @@ end
 local function resolved_normal_cterm_colors(ns)
     local tbl = ns_table(ns)
     local stored = tbl.Normal
-    if (not stored or #stored == 0) and ns and ns ~= 0 then
+    if not group_has_attrs(stored) and ns and ns ~= 0 then
         stored = hlns[1].Normal
     end
     stored = stored or {}
@@ -324,7 +334,7 @@ end
 local function resolved_group_colors(name, ns, nodefault)
     local tbl = ns_table(ns)
     local stored = tbl[name]
-    if (not stored or #stored == 0) and ns and ns ~= 0 then
+    if not group_has_attrs(stored) and ns and ns ~= 0 then
         stored = hlns[1][name]
     end
     stored = stored or {}
@@ -498,13 +508,13 @@ function Highlight.ListingSuffix(name, ns)
     end
 
     local raw = tbl[name]
-    if (raw == nil or #raw == 0) and ns and ns ~= 0 then
+    if not group_has_attrs(raw) and ns and ns ~= 0 then
         raw = hlns[1][name]
     end
     if raw == nil then
         return ""
     end
-    if #raw == 0 then
+    if not group_has_attrs(raw) then
         return " cleared"
     end
     return ""
@@ -642,7 +652,7 @@ local function fallback_palette_entries()
         local tbl = hlns[i]
         if tbl then
             for name, raw in pairs(tbl) do
-                if type(name) == "string" and type(raw) == "table" and #raw > 0 then
+                if type(name) == "string" and group_has_attrs(raw) then
                     local fg = raw[1] or color_value_to_rgb(raw._raw_fg)
                     local bg = raw[2] or color_value_to_rgb(raw._raw_bg)
                     if fg ~= nil then

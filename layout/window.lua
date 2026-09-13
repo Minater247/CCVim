@@ -23,8 +23,18 @@ local ScreenDraw = loadModule("lib.screendraw")
 local Options = loadModule("lib.options")
 local Visual = loadModule("lib.visual")
 local Search = loadModule("lib.search")
+local Diff = loadModule("lib.diff")
 
 local curr_winno = 1
+local cursorbind_active = false
+local scrollbind_active = false
+
+local function option_list_has(name, value)
+    for _, item in ipairs(Options.ParseCSL(Options.get(name))) do
+        if item == value then return true end
+    end
+    return false
+end
 
 ---@class WinOpts
 
@@ -1022,7 +1032,7 @@ function Window:cursorMoveScreen(dy)
     self:cursorSetScreenRow(row_offset + dy, { screen_col = col_in_row })
 end
 
-function Window:cursorMove(deltax, deltay, force_reset_held_x)
+function Window:cursorMove(deltax, deltay, force_reset_held_x, suppress_cursorbind)
     self.buffer:ensure_loaded(true)
     deltax = deltax or 0
     deltay = deltay or 0
@@ -1128,12 +1138,33 @@ function Window:cursorMove(deltax, deltay, force_reset_held_x)
 
     local move_event = (vimmode == "insert") and "CursorMovedI" or "CursorMoved"
     Autocmd.Run(move_event)
+
+    if self.opts.cursorbind and not suppress_cursorbind and not cursorbind_active then
+        local tab = tabpages[self.tabpagenr or curtp]
+        if tab then
+            cursorbind_active = true
+            for _, peer in ipairs(tab.windows) do
+                if peer ~= self and peer.opts.cursorbind then
+                    peer:_set_cursor_raw(self.cursory, self.cursorx)
+                    local height = peer:textheight()
+                    height = math.max(1, height)
+                    if peer.cursory < peer.scrolly[1] then
+                        peer.scrolly[1] = peer.cursory
+                    elseif peer.cursory >= peer.scrolly[1] + height then
+                        peer.scrolly[1] = peer.cursory - height + 1
+                    end
+                    peer:mark_redraw()
+                end
+            end
+            cursorbind_active = false
+        end
+    end
 end
 
-function Window:cursorSet(x, y, force_reset_held_x)
+function Window:cursorSet(x, y, force_reset_held_x, suppress_cursorbind)
     x = x or self.cursorx
     y = y or self.cursory
-    self:cursorMove(x - self.cursorx, y - self.cursory, force_reset_held_x)
+    self:cursorMove(x - self.cursorx, y - self.cursory, force_reset_held_x, suppress_cursorbind)
 end
 
 function Window:cursorSetX(x, force_reset_held_x)
@@ -1224,6 +1255,21 @@ function Window:scroll(deltax, deltay)
     end
 
     self:mark_redraw()
+
+    if self.opts.scrollbind and not scrollbind_active then
+        local sync_x = deltax ~= 0 and option_list_has("scrollopt", "hor")
+        local sync_y = deltay ~= 0 and option_list_has("scrollopt", "ver")
+        local tab = tabpages[self.tabpagenr or curtp]
+        if tab and (sync_x or sync_y) then
+            scrollbind_active = true
+            for _, peer in ipairs(tab.windows) do
+                if peer ~= self and peer.opts.scrollbind then
+                    peer:scroll(sync_x and deltax or 0, sync_y and deltay or 0)
+                end
+            end
+            scrollbind_active = false
+        end
+    end
 end
 
 function Window:hasLocalStatusline()
@@ -1569,6 +1615,7 @@ function Window:render(xoff, yoff)
     local pending_cursor = nil
     local show_cursor = (self.winnr == curwin) and ((not CmdRead.is_active()) or Search.is_active_for(self))
     local visual_selection = Visual.active(self) and Visual.selection(self)
+    local diff_info = self.opts.diff and Diff.info(self, options.get("diffopt")) or nil
     local last_visible_idx = math.min(linecnt, start_idx + max_rows - 1)
     local top0 = math.max(0, start_idx - 1)
     local bot0 = math.max(top0, last_visible_idx - 1)
@@ -1633,6 +1680,9 @@ function Window:render(xoff, yoff)
         end)
 
         local line_str = lines[i] or ""
+        local diff_line = diff_info and diff_info.lines[i] or nil
+        local filler_before = diff_info and (diff_info.filler_before[i] or 0) or 0
+        local filler_after = (diff_info and i == linecnt) and (diff_info.trailing_filler or 0) or 0
         local search_matches = Search.matches(self, i, line_str)
         local cursor_byte = (self.cursory == i) and Utf8.byte_index(line_str, self.cursorx, true)
         local rendered, blitLines, cursorPos, ranges, gsrc = TexRen.parse(
@@ -1647,6 +1697,27 @@ function Window:render(xoff, yoff)
             cursor_byte,
             prefetched_blits[i]
         )
+
+        if filler_before > 0 or filler_after > 0 then
+            blitLines = blitLines or { hl = {}, swap = {} }
+            blitLines.hl = blitLines.hl or {}
+            blitLines.swap = blitLines.swap or {}
+            ranges = ranges or {}
+            gsrc = gsrc or {}
+            for _ = 1, filler_before do
+                table.insert(rendered, 1, "")
+                table.insert(blitLines.hl, 1, {})
+                table.insert(blitLines.swap, 1, {})
+                table.insert(ranges, 1, {})
+            end
+            for _ = 1, filler_after do
+                rendered[#rendered + 1] = ""
+                blitLines.hl[#blitLines.hl + 1] = {}
+                blitLines.swap[#blitLines.swap + 1] = {}
+                ranges[#ranges + 1] = {}
+            end
+            if cursorPos then cursorPos.line = cursorPos.line + filler_before end
+        end
 
         local text_effects = _extmark_text_effects_for_line(self.buffer, i, line_str)
         if text_effects then
@@ -1695,16 +1766,19 @@ function Window:render(xoff, yoff)
         for j = j_start, #rendered do
             if visual_y >= max_rows then break end
 
+            local filler_row = j <= filler_before or j > #rendered - filler_after
+            local first_text_row = j == filler_before + 1
+
             if sign_w > 0 then
-                draw_signcol(visual_y, iscursor_line, (j == 1) and line_signs)
+                draw_signcol(visual_y, iscursor_line and not filler_row, first_text_row and line_signs)
             end
 
             if show_numbers then
                 local label = ""
-                local iscursor = iscursor_line
+                local iscursor = iscursor_line and not filler_row
                 local sign_text
                 local sign_hl
-                if j == 1 then
+                if first_text_row then
                     if sign_in_num and #line_signs > 0 then
                         local top = line_signs[1]
                         sign_text = sign_entry_text(top)
@@ -1733,6 +1807,12 @@ function Window:render(xoff, yoff)
             local vis_text = (x2 >= x1) and Utf8.sub(text, x1, x2) or ""
             local vis_len = Utf8.len(vis_text)
 
+            if filler_row and text_w > 0 then
+                local diff_char = options.ParseKeyedCSL(options.get("fillchars", self), { [":"] = true }).diff or "-"
+                vis_text = string.rep(Utf8.char_at(diff_char, 1), text_w)
+                vis_len = text_w
+            end
+
             local hl_slice
             local swap_slice
             if have_hl then
@@ -1748,7 +1828,8 @@ function Window:render(xoff, yoff)
                 end
             end
 
-            if linehl and text_w > 0 then
+            local row_linehl = linehl or (filler_row and "DiffDelete") or (diff_line and diff_line.group)
+            if row_linehl and text_w > 0 then
                 if vis_len < text_w then
                     local missing = text_w - vis_len
                     vis_text = vis_text .. string.rep(" ", missing)
@@ -1762,11 +1843,35 @@ function Window:render(xoff, yoff)
                     end
                 end
                 if have_hl then
-                    local row_hl = Highlight.GetId(linehl)
+                    local row_hl = Highlight.GetId(row_linehl)
                     for idx = 1, vis_len do
                         hl_slice[idx] = row_hl
                     end
                 end
+            end
+
+            if diff_line and diff_line.text_end and diff_line.text_end >= diff_line.text_start
+                and not filler_row and vis_len > 0
+            then
+                if not hl_slice then
+                    hl_slice, swap_slice = {}, {}
+                    local base_hl = Highlight.GetId(row_linehl or "Normal")
+                    for idx = 1, vis_len do
+                        hl_slice[idx] = base_hl
+                        swap_slice[idx] = false
+                    end
+                end
+                local diff_text_hl = Highlight.GetId("DiffText")
+                local range = ranges and ranges[j]
+                local range_start = (range and range.i) or 1
+                for idx = 1, vis_len do
+                    local source_byte = gsrc and gsrc[range_start + x1 + idx - 2]
+                    local source_col = source_byte and Utf8.col_from_byte(line_str, source_byte, true)
+                    if source_col and source_col >= diff_line.text_start and source_col <= diff_line.text_end then
+                        hl_slice[idx] = diff_text_hl
+                    end
+                end
+                have_hl = true
             end
 
             if search_matches and vis_len > 0 then
@@ -1827,13 +1932,13 @@ function Window:render(xoff, yoff)
                     ScreenDraw.put_hl_text(draw_y - 1, draw_x - 1, vis_text, hl_slice, wraps_to_next, swap_slice)
                     draw_x = draw_x + vis_len
                 else
-                    if linehl then
-                        setGroup(linehl)
+                    if row_linehl then
+                        setGroup(row_linehl)
                     else
                         setGroup("Normal")
                     end
                     writeText(vis_text)
-                    if linehl and vis_len < text_w then
+                    if row_linehl and vis_len < text_w then
                         writeText(string.rep(" ", text_w - vis_len))
                     end
                     setGroup("Normal")
@@ -1845,6 +1950,7 @@ function Window:render(xoff, yoff)
                 show_cursor
                 and (not cursor_virtual)
                 and iscursor_line
+                and not filler_row
                 and cursorPos
                 and (cursorPos.line == j)
                 and text_w > 0

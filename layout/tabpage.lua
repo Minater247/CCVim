@@ -23,6 +23,38 @@ local Visual = loadModule("lib.visual")
 local Intro = loadModule("lib.intro")
 local may_intro = true
 
+local function diffopt_has(name)
+    for _, item in ipairs(Options.ParseCSL(Options.get("diffopt"))) do
+        if item == name then return true end
+    end
+    return false
+end
+
+local function restore_diff_options(win)
+    local saved = win._diff_saved_options
+    local function restore(name, default)
+        if saved then return saved[name] end
+        return default
+    end
+    local function set(name, value)
+        Options.set(name, value, true, win, win.buffer)
+    end
+    set("diff", restore("diff", false))
+    set("scrollbind", restore("scrollbind", false))
+    set("cursorbind", restore("cursorbind", false))
+    if not diffopt_has("followwrap") then set("wrap", restore("wrap", true)) end
+    set("foldmethod", restore("foldmethod", "manual"))
+    set("foldcolumn", restore("foldcolumn", "0"))
+    set("foldenable", restore("foldenable", false))
+    win._diff_saved_options = nil
+    local scroll_values = {}
+    for _, item in ipairs(Options.ParseCSL(Options.get("scrollopt"))) do
+        if item ~= "" and item ~= "hor" then scroll_values[#scroll_values + 1] = item end
+    end
+    Options.set("scrollopt", table.concat(scroll_values, ","))
+    win:mark_redraw()
+end
+
 local function all_tabpage_ids()
     local ids = {}
     for tabnr, _ in pairs(tabpages) do
@@ -484,6 +516,17 @@ function Tabpage:close(window, force, frameonly, autowrite_kind)
                 AutoCmd.Run("WinClosed", { bufnr = bufnr, bufname = winid, pattern = winid })
             end
             table.remove(self.windows, idx)
+            if window.opts.diff and diffopt_has("closeoff") then
+                local remaining
+                local count = 0
+                for _, candidate in ipairs(self.windows) do
+                    if candidate.opts.diff then
+                        remaining = candidate
+                        count = count + 1
+                    end
+                end
+                if count == 1 then restore_diff_options(remaining) end
+            end
             if window.frame then
                 local ok, new_root = FrameTree.Close(window.frame)
                 if ok and new_root then
@@ -631,7 +674,7 @@ function Tabpage:WinSplit(target_winnr, new_win, vertical, split_opts)
 end
 
 function Tabpage:WinSplitForStartup(target_winnr, new_win, vertical)
-    return self:_WinSplit(target_winnr, new_win, vertical, nil, false)
+    return self:_WinSplit(target_winnr, new_win, vertical, { place_after = true }, false)
 end
 
 function Tabpage:FindWin(target_winnr)

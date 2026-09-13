@@ -5,6 +5,7 @@ local Buffer = loadModule("layout.buffer")
 local Window = loadModule("layout.window")
 local Tabpage = loadModule("layout.tabpage")
 local FrameTree = loadModule("lib.frame")
+local Options = loadModule("lib.options")
 local pending_file_bufnrs
 local pending_window_bufnrs
 
@@ -15,6 +16,7 @@ local function print_help(argv0)
   --                    Only file names after this
 
   -h, --help            Print this help message
+  -d                    Start in diff mode
   -o[N]                 Open N windows (default: one per file)
   -O[N]                 Open N vertical windows (default: one per file)
   -p[N]                 Open N tab pages (default: one per file)
@@ -40,6 +42,8 @@ function Args.parse(argv)
         window_ids = {},
         nomodifiable = false,
         readonly = false,
+        diff_mode = false,
+        window_layout_explicit = false,
 
         win_split_type = 0, -- 0=none, 1=horizontal, 2=vertical
         mktabs = 1,
@@ -90,6 +94,8 @@ function Args.parse(argv)
                     elseif c == "R" then
                         options.set("updatecount", 10000)
                         state.readonly = true
+                    elseif c == "d" then
+                        state.diff_mode = true
                     elseif c == "O" then
                         c = v:sub(j+1, j+1)
                         local cnt = 0
@@ -100,6 +106,7 @@ function Args.parse(argv)
                         end
                         state.win_split_type = 2
                         state.mkwins = cnt
+                        state.window_layout_explicit = true
                     elseif c == "o" then
                         c = v:sub(j+1, j+1)
                         local cnt = 0
@@ -110,6 +117,7 @@ function Args.parse(argv)
                         end
                         state.win_split_type = 1
                         state.mkwins = cnt
+                        state.window_layout_explicit = true
                     elseif c == "p" then
                         c = v:sub(j+1, j+1)
                         local cnt = 0
@@ -143,6 +151,25 @@ function Args.parse(argv)
         return false
     end
 
+    if state.diff_mode then
+        if #state.files > 8 then
+            print("E96: Cannot diff more than 8 buffers")
+            return false
+        end
+        if not state.window_layout_explicit then
+            state.mkwins = 0
+            state.win_split_type = Options.get("diffopt"):find("horizontal", 1, true) and 1 or 2
+        end
+        if #state.files > 1 then
+            local first_name = fs.getName(state.files[1])
+            for index = 2, #state.files do
+                if fs.isDir(state.files[index]) then
+                    state.files[index] = fs.combine(state.files[index], first_name)
+                end
+            end
+        end
+    end
+
     -- Step 1: Make the buffers
     for idx = 1, #state.files do
         local buf = Buffer(true, false, false)
@@ -158,7 +185,25 @@ function Args.parse(argv)
 
     for idx = 1, state.mkwins do
         local win = Window(buffers[state.file_bufnrs[idx]])
+        if state.diff_mode then
+            win.opts.diff = true
+            win.opts.scrollbind = true
+            win.opts.cursorbind = true
+            win.opts.foldmethod = "diff"
+            local foldcolumn = Options.get("diffopt"):match("foldcolumn:(%d)")
+            win.opts.foldcolumn = foldcolumn or "2"
+            if not Options.get("diffopt"):find("followwrap", 1, true) then win.opts.wrap = false end
+        end
         state.window_ids[#state.window_ids + 1] = win.winnr
+    end
+
+    if state.diff_mode then
+        local scrollopt = Options.get("scrollopt")
+        local has_hor = false
+        for _, item in ipairs(Options.ParseCSL(scrollopt)) do
+            if item == "hor" then has_hor = true break end
+        end
+        if not has_hor then Options.set("scrollopt", scrollopt .. (scrollopt == "" and "" or ",") .. "hor") end
     end
 
     local firsttp = Tabpage(windows[state.window_ids[1]])

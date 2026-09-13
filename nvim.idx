@@ -15,6 +15,7 @@ lib/
 	color.lua
 	command.lua
 	decoration.lua
+	diff.lua
 	envvars.lua
 	error.lua
 	event.lua

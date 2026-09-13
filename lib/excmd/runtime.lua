@@ -35,6 +35,7 @@ local Menu = loadModule("lib.menu")
 local Intro = loadModule("lib.intro")
 local HelpTags = loadModule("lib.helptags")
 local Search = loadModule("lib.search")
+local Diff = loadModule("lib.diff")
 local Completion
 
 Runtime._FUNCS = {}
@@ -4626,8 +4627,8 @@ function Runtime.new(init_state, init_opts)
 
     local function _split_orientation(default_vertical)
         local mods = _current_command_modifiers()
-        if mods and mods.split_orientation == "vertical" then
-            return true
+        if mods and mods.split_orientation then
+            return mods.split_orientation == "vertical"
         end
         return default_vertical
     end
@@ -4672,6 +4673,123 @@ function Runtime.new(init_state, init_opts)
             target_winnr = _split_target_winnr(default_target_winnr),
             place_after = _split_place_after(vertical),
         }
+    end
+
+    local function _diff_option_has(name)
+        for _, item in ipairs(Options.ParseCSL(Options.get("diffopt"))) do
+            if item == name then return true end
+        end
+        return false
+    end
+
+    local function _diff_foldcolumn()
+        for _, item in ipairs(Options.ParseCSL(Options.get("diffopt"))) do
+            local value = item:match("^foldcolumn:(%d)")
+            if value then return value end
+        end
+        return "2"
+    end
+
+    local function _csv_set(raw, name, enabled)
+        local values, seen = {}, false
+        for _, value in ipairs(Options.ParseCSL(raw)) do
+            if value == name then
+                seen = true
+                if enabled then values[#values + 1] = value end
+            elseif value ~= "" then
+                values[#values + 1] = value
+            end
+        end
+        if enabled and not seen then values[#values + 1] = name end
+        return table.concat(values, ",")
+    end
+
+    local function _set_window_option(win, name, value)
+        Options.set(name, value, true, win, win.buffer)
+    end
+
+    local function _diff_enter(win)
+        if not win.opts.diff then
+            local buffers_seen = {}
+            local count = 0
+            for _, candidate in ipairs(tabpages[curtp].windows) do
+                if candidate.opts.diff and not buffers_seen[candidate.buffer] then
+                    buffers_seen[candidate.buffer] = true
+                    count = count + 1
+                end
+            end
+            if not buffers_seen[win.buffer] and count >= 8 then error(Error(96)) end
+            win._diff_saved_options = {
+                diff = Options.get("diff", win),
+                scrollbind = Options.get("scrollbind", win),
+                cursorbind = Options.get("cursorbind", win),
+                wrap = Options.get("wrap", win),
+                foldmethod = Options.get("foldmethod", win),
+                foldcolumn = Options.get("foldcolumn", win),
+                foldenable = Options.get("foldenable", win),
+            }
+        end
+        _set_window_option(win, "diff", true)
+        _set_window_option(win, "scrollbind", true)
+        _set_window_option(win, "cursorbind", true)
+        if not _diff_option_has("followwrap") then _set_window_option(win, "wrap", false) end
+        _set_window_option(win, "foldmethod", "diff")
+        _set_window_option(win, "foldcolumn", _diff_foldcolumn())
+        Options.set("scrollopt", _csv_set(Options.get("scrollopt"), "hor", true))
+        win:mark_redraw()
+    end
+
+    local function _diff_off(win)
+        local saved = win._diff_saved_options
+        local function restore(name, default)
+            if saved then return saved[name] end
+            return default
+        end
+        _set_window_option(win, "diff", restore("diff", false))
+        _set_window_option(win, "scrollbind", restore("scrollbind", false))
+        _set_window_option(win, "cursorbind", restore("cursorbind", false))
+        if not _diff_option_has("followwrap") then
+            _set_window_option(win, "wrap", restore("wrap", true))
+        end
+        _set_window_option(win, "foldmethod", restore("foldmethod", "manual"))
+        _set_window_option(win, "foldcolumn", restore("foldcolumn", "0"))
+        _set_window_option(win, "foldenable", restore("foldenable", false))
+        win._diff_saved_options = nil
+        win:mark_redraw()
+    end
+
+    local function _diff_peer(win, spec, put)
+        local candidates = {}
+        local seen = {}
+        local other_count = 0
+        for _, peer in ipairs(Diff.windows(win)) do
+            local buf = peer.buffer
+            if buf ~= win.buffer and not seen[buf] then
+                other_count = other_count + 1
+                if not put or Options.get("modifiable", peer, buf) then
+                    seen[buf] = true
+                    candidates[#candidates + 1] = buf
+                end
+            end
+        end
+        if spec == "" then
+            if #candidates == 0 then return nil, Error(put and other_count > 0 and 793 or 100) end
+            if #candidates > 1 then return nil, Error(101) end
+            return candidates[1]
+        end
+
+        local number = tonumber(spec)
+        if number and win.buffer.bufnr == number then return win.buffer end
+        local matches = {}
+        for _, buf in ipairs(candidates) do
+            local name = tostring(buf.name or "")
+            if (number and buf.bufnr == number) or (not number and name:find(spec, 1, true)) then
+                matches[#matches + 1] = buf
+            end
+        end
+        if #matches == 0 then return nil, Error(102, spec) end
+        if #matches > 1 then return nil, Error(93, spec) end
+        return matches[1]
     end
 
     local function _edit_buffer_name(win, newname, bang)
@@ -6294,6 +6412,75 @@ function Runtime.new(init_state, init_opts)
                 return true
             end
             return true
+        elseif cmd == "diffthis" then
+            if strip(argstr) ~= "" then error(Error(488, argstr)) end
+            _diff_enter(windows[curwin])
+            return true
+        elseif cmd == "diffoff" then
+            if strip(argstr) ~= "" then error(Error(488, argstr)) end
+            local current = windows[curwin]
+            if bang then
+                for _, win in ipairs(tabpages[curtp].windows) do
+                    if win.opts.diff then _diff_off(win) end
+                end
+            else
+                _diff_off(current)
+            end
+            Options.set("scrollopt", _csv_set(Options.get("scrollopt"), "hor", false))
+            what_redraw["windows"] = true
+            need_redraw = true
+            return true
+        elseif cmd == "diffupdate" then
+            if strip(argstr) ~= "" then error(Error(488, argstr)) end
+            what_redraw["windows"] = true
+            need_redraw = true
+            return true
+        elseif cmd == "diffget" or cmd == "diffput" then
+            local win = windows[curwin]
+            if not win.opts.diff then error(Error(99)) end
+            local args = command_args(argstr, cmdctx)
+            if #args > 1 then error(Error(488, args[2])) end
+            local other, peer_error = _diff_peer(win, args[1] or "", cmd == "diffput")
+            if not other then error(peer_error) end
+            if other == win.buffer then return true end
+            if (cmdctx.range or 0) > 0 then
+                Diff.apply_range(
+                    win,
+                    cmd == "diffput",
+                    cmdctx.line1,
+                    cmdctx.line2,
+                    Options.get("diffopt"),
+                    other
+                )
+            else
+                Diff.apply_hunk(win, cmd == "diffput", Options.get("diffopt"), other)
+            end
+            what_redraw["windows"] = true
+            need_redraw = true
+            return true
+        elseif cmd == "diffsplit" then
+            local filename = strip(argstr)
+            if filename == "" then error(Error(471)) end
+            local refwin = windows[curwin]
+            local diff_options = Diff.options(Options.get("diffopt"))
+            local split_opts = _split_command_options(0, diff_options.vertical and not diff_options.horizontal)
+            if not _split_preflight(split_opts.target_winnr, refwin, split_opts.vertical, split_opts.place_after) then
+                error(Error(36))
+            end
+            local targetbuf = Buffer(true, false)
+            targetbuf.name = filename
+            targetbuf:Load(true)
+            local newwin = Window(targetbuf, refwin)
+            if not _split_real(split_opts.target_winnr, newwin, split_opts.vertical, split_opts.place_after) then
+                error(Error(36))
+            end
+            _diff_enter(refwin)
+            _diff_enter(newwin)
+            enterWindow(newwin.winnr)
+            newwin:cursorSet(1, 1)
+            what_redraw["windows"] = true
+            need_redraw = true
+            return true
         elseif cmd == "split" then
             local refwin = windows[curwin]
             local split_opts = _split_command_options(0, false)
@@ -6667,7 +6854,13 @@ function Runtime.new(init_state, init_opts)
                         params[string.sub(args[i], 1, idx - 1)] = string.sub(args[i], idx + 1)
                     end
                     for k, v in pairs(params) do
-                        if k == "guifg" and v:match("^#%x%x%x%x%x%x$") then
+                        if k == "guifg" and v:lower() == "none" then
+                            Highlight.SetGroupColor(args[1], "fg", nil)
+                            changed = true
+                        elseif k == "guibg" and v:lower() == "none" then
+                            Highlight.SetGroupColor(args[1], "bg", nil)
+                            changed = true
+                        elseif k == "guifg" and v:match("^#%x%x%x%x%x%x$") then
                             Highlight.SetGroupColor(args[1], "fg", { rgb = tonumber("0x" .. v:sub(2)) })
                             changed = true
                         elseif k == "guibg" and v:match("^#%x%x%x%x%x%x$") then

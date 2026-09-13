@@ -529,7 +529,7 @@ end
 function api.nvim_win_set_cursor(...)
     local window, pos = expect_args({ ... }, 2)
 
-    win_for_id(window):cursorSet(pos[2] + 1, pos[1])
+    win_for_id(window):cursorSet(pos[2] + 1, pos[1], nil, true)
 end
 
 function api.nvim_win_close(...)

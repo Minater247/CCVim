@@ -15,6 +15,7 @@ local Scopes = loadModule("lib.luaapi.scopes")
 local Tab = loadModule("lib.tab")
 local Search = loadModule("lib.search")
 local AutoCmd = loadModule("lib.autocmd")
+local Diff = loadModule("lib.diff")
 
 local function K(k, c, s, a) return Key:new(k, c, s, a) end
 
@@ -1426,6 +1427,22 @@ Command.nmap_builtin_callback(
         win:mark_redraw()
     end
 )
+
+Command.nmap_builtin_callback({ K(keys.leftBracket), K(keys.c) }, function(count)
+    Diff.jump(windows[curwin], -1, count, options.get("diffopt"))
+end)
+
+Command.nmap_builtin_callback({ K(keys.rightBracket), K(keys.c) }, function(count)
+    Diff.jump(windows[curwin], 1, count, options.get("diffopt"))
+end)
+
+Command.nmap_builtin_callback({ K(keys.d), K(keys.o) }, function(count)
+    Event.ExecuteCommand(":diffget" .. (count and (" " .. tostring(count)) or ""))
+end)
+
+Command.nmap_builtin_callback({ K(keys.d), K(keys.p) }, function(count)
+    Event.ExecuteCommand(":diffput" .. (count and (" " .. tostring(count)) or ""))
+end)
 
 Command.nmap_builtin_callback(
     { K(keys.j, false, true) },
